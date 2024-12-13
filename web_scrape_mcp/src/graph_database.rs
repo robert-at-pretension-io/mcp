@@ -687,8 +687,15 @@ pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
-            "Manages a knowledge graph, which stores and connects information in the form of nodes and relationships.
-            
+            "A sophisticated knowledge graph system for storing, connecting, and analyzing complex information networks.
+
+            **Core Purpose:**
+            - Build and maintain a comprehensive knowledge network
+            - Track relationships between different pieces of information
+            - Enable complex information retrieval and analysis
+            - Support decision making with contextual data
+            - Map and navigate knowledge landscapes
+
             **PROACTIVE USAGE INSTRUCTIONS:**
             1. CONTINUOUSLY RECORD USER INFORMATION during conversations without explicit commands.
             2. CREATE NODES for any revealed:
