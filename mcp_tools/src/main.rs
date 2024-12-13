@@ -88,7 +88,7 @@ async fn main() {
             graph_tool_info(),
             regex_replace_tool_info(),
             sequential_thinking::sequential_thinking_tool_info(),
-            memory::memory_tool_info(),
+            // memory::memory_tool_info(),
             task_planning::task_planning_tool_info(),
         ],
         client_capabilities: None,
