@@ -687,84 +687,22 @@ pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
-            "Knowledge graph tool for storing and connecting information from conversations.
+            "Knowledge graph tool for building and maintaining contextual information networks.
 
+            **COMMANDMENTS:**
+            - CONTINUOUSLY capture and connect information during ALL interactions
+            - NEVER wait for explicit commands to store data
+            - ALWAYS check context before responding
+            - IMMEDIATELY link new information to existing knowledge
+            
             **Use this tool to:**
-            - Store information learned during conversations
-            - Track relationships between topics and concepts
-            - Build context for future interactions
-            - Find related information from past conversations
-
-            **PROACTIVE CORE PURPOSE:**
-            - CONTINUOUSLY BUILD AND UPDATE knowledge networks during conversations
-            - AUTOMATICALLY TRACK relationships between all information
-            - PROACTIVELY ENABLE rich context for every interaction
-            - IMMEDIATELY SUPPORT decisions with relevant data
-            - CONSTANTLY MAP AND UPDATE knowledge landscapes
+            - Build and maintain knowledge networks
+            - Track relationships between concepts
+            - Store conversation context
+            - Find related historical information
+            - Map connections between topics
             
-            **CRITICAL: PROACTIVE USAGE REQUIRED**
-            - This tool MUST be used CONTINUOUSLY during ALL interactions
-            - NEVER wait for explicit commands to store information
-            - AUTOMATICALLY capture and connect all relevant data
-            - PROACTIVELY maintain and update the knowledge graph
-            - IMMEDIATELY store and link new information
-
-            **PROACTIVE USAGE INSTRUCTIONS:**
-            1. CONTINUOUSLY RECORD USER INFORMATION during conversations without explicit commands.
-            2. CREATE NODES for any revealed:
-               - Personal details
-               - Preferences
-               - Experiences
-               - Opinions
-               - Goals
-               - Problems
-               - Relationships
-            3. UPDATE EXISTING NODES when new information emerges.
-            4. CONNECT RELATED INFORMATION as it's discovered.
-            
-            **CRITICAL INITIALIZATION AND CONTEXTUAL SEARCH:**
-            1.  **ALWAYS** run `get_top_tags`, `get_tags_by_date`, and `get_most_connected` at the beginning of each conversation to get a basic overview.
-            2.  **BEFORE EVERY RESPONSE,** particularly when the conversation topic changes, you **MUST** run `search_nodes` with **MULTIPLE** queries, such as:
-                - Exact user statements or keywords from their latest input.
-                - Synonyms or related terms to those keywords.
-                - General topic indicators if their message implies a shift.
-                - A few general queries using terms derived from the most recent messages, or previous conversations, if appropriate.
-            3. If `search_nodes` returns relevant nodes, use `get_node` or `get_children` to get detailed information about those nodes, to fully understand the context.
-            4. If nodes contain information that relates to current topic, suggest exploration of related topics before proceeding further.
-
-            **Core Functions:**
-            - Track relationships and connections.
-            - Record preferences and interests.
-            - Log life events and milestones.
-            - Document work and projects.
-            - Monitor goals and progress.
-            - Build interaction history.
-            - Map skill development.
-            - Note behavioral patterns.
-            - Store decision history.
-            - Record communication preferences.
-            - Track problem-solving approaches.
-            - Map professional networks.
-            - Document tools and workflows.
-            - Store scheduling patterns.
-            - Track information sources.
-            - Log important dates.
-            - Monitor routines.
-
-            **USAGE PATTERN:**
-            1. START CONVERSATIONS by checking existing knowledge using `get_top_tags`, `get_tags_by_date`, `get_most_connected` and  `search_nodes` with multiple queries.
-            2. LISTEN ACTIVELY for new information.
-            3. STORE INFORMATION IMMEDIATELY as it's shared using `create_node` or `update_node`.
-            4. CONNECT new information to existing knowledge using `connect_nodes`.
-            5. USE stored information to personalize responses, and suggest explorations using `get_children`.
-          
-            **SEARCH STRATEGY:**
-             - Always start with `search_nodes` using at least 3 different queries.
-            - Use `get_nodes_by_tag` to discover information that relates to a current discussion.
-             - Use `get_children` to explore connections when appropriate.
-             - Use `get_most_connected` and `get_top_tags` to find areas of focus and for initial context.
-
-            **Actions:**
+            **Key Actions:**
             - `create_root`: creates the first node in the graph, which will contain overall information about the user. This action MUST be performed first before using any other actions.
               - params: `name`, `description`, `content`.
             - `create_node`: creates a new node in the graph, connected to an existing node.
