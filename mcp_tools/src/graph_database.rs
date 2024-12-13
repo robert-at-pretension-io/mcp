@@ -686,6 +686,7 @@ struct ShortestPathParams {
 pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
+        // simplify the description so the ai just knows when it should it be used ai
         description: Some(
             "A sophisticated knowledge graph system for storing, connecting, and analyzing complex information networks.
 

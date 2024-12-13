@@ -130,6 +130,7 @@ pub async fn handle_git_tool_call(params: CallToolParams, id: Option<Value>) -> 
 pub fn git_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {
         name: "git".to_string(),
+        // simplify the description so the ai just knows when it should it be used ai
         description: Some(
             "A comprehensive Git version control interface for managing source code and file changes systematically.
 

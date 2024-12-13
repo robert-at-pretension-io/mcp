@@ -83,6 +83,7 @@ pub struct BraveSearchClient {
 pub fn search_tool_info() -> ToolInfo {
     ToolInfo {
         name: "brave_search".into(),
+        // simplify the description so the ai just knows when it should it be used ai
         description: Some(
             "Searches the internet using the Brave search engine. 
             

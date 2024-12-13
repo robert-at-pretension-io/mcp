@@ -29,6 +29,7 @@ pub struct ScrapingBeeClient {
 pub fn scraping_tool_info() -> ToolInfo {
     ToolInfo {
         name: "scrape_url".into(),
+        // simplify the description so the ai just knows when it should it be used ai!
         description: Some(
             "Extracts and analyzes text content from a webpage. 
              This tool is designed to access pages, including those that use JavaScript for rendering.

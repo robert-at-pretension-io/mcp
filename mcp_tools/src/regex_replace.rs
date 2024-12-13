@@ -66,6 +66,7 @@ pub async fn handle_regex_replace_tool_call(params: CallToolParams, id: Option<V
 pub fn regex_replace_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {
         name: "regex_replace".to_string(),
+        // simplify the description so the ai just knows when it should it be used ai
         description: Some(
             "A precise tool for making targeted text replacements in files using regular expressions.
 
