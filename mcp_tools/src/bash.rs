@@ -37,26 +37,10 @@ impl BashExecutor {
     pub fn tool_info(&self) -> ToolInfo {
         ToolInfo {
             name: "bash".to_string(),
-            # simplify this description as well ai!
             description: Some(
-                "System command execution tool for OS-level operations.
-
-                **COMMANDMENTS:**
-                - VERIFY command safety before execution
-                - CHECK outputs for success/failure
-                - AVOID interactive commands
-                - USE specific paths, not wildcards
+                "System command execution tool.
                 
-                **Use this tool to:**
-                - Run system utilities (ls, grep, etc)
-                - Manage files and directories
-                - Execute scripts and programs
-                - Process command outputs
-                
-                **Returns:** Command's stdout/stderr and success status.
-                
-                **Safety:** No sensitive ops, passwords, or user interaction."
-                .to_string()
+                Use this to run shell commands and system utilities.".to_string()
             ),
             input_schema: json!({})
         }
