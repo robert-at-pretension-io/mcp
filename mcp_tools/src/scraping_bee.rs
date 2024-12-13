@@ -30,20 +30,9 @@ pub fn scraping_tool_info() -> ToolInfo {
     ToolInfo {
         name: "scrape_url".into(),
         description: Some(
-            "Web content extraction tool for detailed information gathering.
-
-            **COMMANDMENTS:**
-            - AUTOMATICALLY scrape pages from search results
-            - IMMEDIATELY extract content when URLs are shared
-            - ALWAYS cite sources when using content
-            - VERIFY URLs before scraping
+            "Web scraping tool.
             
-            **Use this tool to:**
-            - Extract full webpage content
-            - Analyze detailed information
-            - Follow up on shared links
-            - Gather comprehensive data
-            - Process search results
+            Use this to extract content from web pages."
            ".into()
         ),
         input_schema: json!({

@@ -84,20 +84,9 @@ pub fn search_tool_info() -> ToolInfo {
     ToolInfo {
         name: "brave_search".into(),
         description: Some(
-            "Web search tool for finding current information and facts.
-
-            **COMMANDMENTS:**
-            - CONTINUOUSLY search for relevant information
-            - IMMEDIATELY verify claims and statements
-            - ALWAYS check facts before responding
-            - PROACTIVELY research new topics
+            "Web search tool.
             
-            **Use this tool to:**
-            - Find current information
-            - Verify facts and claims
-            - Research emerging topics
-            - Gather supporting evidence
-            - Access reliable sources
+            Use this to search the web for information."
            ".into()
         ),
         input_schema: json!({

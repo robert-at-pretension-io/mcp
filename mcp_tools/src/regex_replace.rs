@@ -67,20 +67,9 @@ pub fn regex_replace_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {
         name: "regex_replace".to_string(),
         description: Some(
-            "Single-match text replacement tool using regex patterns.
-
-            **COMMANDMENTS:**
-            - ENSURE pattern matches exactly ONE occurrence
-            - VERIFY pattern before replacing
-            - KEEP replacements minimal and targeted
-            - CHECK context around matches
+            "Regex replacement tool.
             
-            **Use this tool to:**
-            - Change specific text patterns
-            - Update version numbers
-            - Modify function names
-            - Fix formatting issues
-            - Standardize text formats
+            Use this to replace text using regex patterns."
             "
             .to_string()
         ),

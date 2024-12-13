@@ -131,20 +131,9 @@ pub fn git_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {
         name: "git".to_string(),
         description: Some(
-            "Git version control tool for managing code changes.
-
-            **COMMANDMENTS:**
-            - CHECK status before operations
-            - WRITE clear commit messages
-            - VERIFY changes before committing
-            - REVIEW history before pushing
+            "Git version control tool.
             
-            **Use this tool to:**
-            - Track code changes
-            - Manage versions
-            - Share code
-            - Undo changes
-            - Collaborate with others
+            Use this to manage code changes."
            ".to_string()
         ),
         input_schema: json!({
