@@ -86,8 +86,7 @@ pub fn search_tool_info() -> ToolInfo {
         description: Some(
             "Web search tool.
             
-            Use this to search the web for information."
-           ".into()
+            Use this to search the web for information.".into()
         ),
         input_schema: json!({
             "type": "object",

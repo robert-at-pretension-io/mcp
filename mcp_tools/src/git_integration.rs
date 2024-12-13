@@ -133,8 +133,7 @@ pub fn git_tool_info() -> shared_protocol_objects::ToolInfo {
         description: Some(
             "Git version control tool.
             
-            Use this to manage code changes."
-           ".to_string()
+            Use this to manage code changes.".to_string()
         ),
         input_schema: json!({
             "type": "object",

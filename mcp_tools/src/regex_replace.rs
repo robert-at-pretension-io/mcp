@@ -69,9 +69,7 @@ pub fn regex_replace_tool_info() -> shared_protocol_objects::ToolInfo {
         description: Some(
             "Regex replacement tool.
             
-            Use this to replace text using regex patterns."
-            "
-            .to_string()
+            Use this to replace text using regex patterns.".to_string()
         ),
         input_schema: serde_json::json!({
             "type": "object",

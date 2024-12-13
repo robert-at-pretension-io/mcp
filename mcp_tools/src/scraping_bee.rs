@@ -32,8 +32,7 @@ pub fn scraping_tool_info() -> ToolInfo {
         description: Some(
             "Web scraping tool.
             
-            Use this to extract content from web pages."
-           ".into()
+            Use this to extract content from web pages.".into()
         ),
         input_schema: json!({
             "type": "object",
