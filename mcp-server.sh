@@ -14,7 +14,7 @@ export KNOWLEDGE_GRAPH_DIR=${KNOWLEDGE_GRAPH_DIR:-"$HOME/Developer/.mcp/knowledg
 export THOUGHTS_DIR=${THOUGHTS_DIR:-"$HOME/Developer/.mcp/thoughts"}
 
 # Set up tracing configuration
-export RUST_LOG="web_scrape_mcp=debug,info"
+export RUST_LOG="mcp_tools=debug,info"
 export RUST_BACKTRACE=1
 
 # Set up logging directory
@@ -27,6 +27,6 @@ echo "Starting MCP server with debug tracing..."
 echo "Log file: $LOG_DIR/mcp-server.log"
 
 # Run with tracing enabled
-RUST_LOG="web_scrape_mcp=debug,info"
+RUST_LOG="mcp_tools=debug,info"
 cd "$SCRIPT_DIR"
-exec "target/debug/web_scrape_mcp" "$@"
+exec "target/debug/mcp_tools" "$@"

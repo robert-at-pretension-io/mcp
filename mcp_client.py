@@ -57,7 +57,7 @@ class MCPClient:
             
             # Set up environment variables
             env = os.environ.copy()
-            env["RUST_LOG"] = "web_scrape_mcp=debug,info"
+            env["RUST_LOG"] = "mcp_tools=debug,info"
             env["RUST_BACKTRACE"] = "1"
             env["LOG_DIR"] = os.path.expanduser("~/Developer/.mcp/logs")
             env["KNOWLEDGE_GRAPH_DIR"] = os.path.expanduser("~/Developer/.mcp/knowledge_graph")

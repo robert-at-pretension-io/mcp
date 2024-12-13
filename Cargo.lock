@@ -1449,6 +1449,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcp_tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "chrono",
+ "dirs",
+ "env_logger",
+ "futures",
+ "html2text",
+ "html5ever 0.29.0",
+ "image",
+ "indexmap",
+ "markup5ever_rcdom",
+ "mime_guess",
+ "parking_lot",
+ "petgraph",
+ "pretty_assertions",
+ "regex",
+ "reqwest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "shared_protocol_objects",
+ "tempfile",
+ "test-log",
+ "thiserror 2.0.6",
+ "tokio",
+ "tokio-stream",
+ "tokio-test",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3114,47 +3155,6 @@ checksum = "04dd7223427d52553d3702c004d3b2fe07c148165faa56313cb00211e31c12bc"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "web_scrape_mcp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "chrono",
- "dirs",
- "env_logger",
- "futures",
- "html2text",
- "html5ever 0.29.0",
- "image",
- "indexmap",
- "markup5ever_rcdom",
- "mime_guess",
- "parking_lot",
- "petgraph",
- "pretty_assertions",
- "regex",
- "reqwest",
- "schemars",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "shared_protocol_objects",
- "tempfile",
- "test-log",
- "thiserror 2.0.6",
- "tokio",
- "tokio-stream",
- "tokio-test",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "url",
- "uuid",
- "wiremock",
 ]
 
 [[package]]

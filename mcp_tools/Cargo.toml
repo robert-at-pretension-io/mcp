@@ -1,5 +1,5 @@
 [package]
-name = "web_scrape_mcp"
+name = "mcp_tools"
 version = "0.1.0"
 edition = "2021"
 
