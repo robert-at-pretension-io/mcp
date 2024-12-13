@@ -37,6 +37,7 @@ impl BashExecutor {
     pub fn tool_info(&self) -> ToolInfo {
         ToolInfo {
             name: "bash".to_string(),
+            # simplify this description as well ai!
             description: Some(
                 "System command execution tool for OS-level operations.
 
