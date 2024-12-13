@@ -37,7 +37,32 @@ impl BashExecutor {
     pub fn tool_info(&self) -> ToolInfo {
         ToolInfo {
             name: "bash".to_string(),
-            description: Some("Execute bash shell commands".to_string()),
+            description: Some(
+                "Executes commands in a bash shell environment. USE THIS TOOL TO RUN SYSTEM-LEVEL OPERATIONS, MANAGE FILES, AND PERFORM UTILITIES.
+                
+                **When to Use:**
+                - When an operation requires direct interaction with the operating system.
+                - To perform file system operations like creating directories, reading files, or moving content.
+                - To run system utilities like `ls`, `grep`, `cat`, `date`, `ping`, or `wget`.
+                - To execute scripts or other CLI tools.
+    
+                **Input:**
+                - Expects a single string representing the bash command.
+                    - Avoid any commands that could have unintended side effects or cause harm to the system.
+                    - Be specific and avoid using wildcard characters for clarity.
+    
+                **Output:**
+                - Returns the command's standard output (STDOUT), and standard error (STDERR) as strings.
+                - Indicates if the command was successful via `is_error` flag. If the command fails, `is_error` will be `true` and the STDERR will contain the details of the failure.
+                
+                **Usage Constraints:**
+                - Do not use this tool for sensitive operations or password management.
+                -  Do not run commands that might require user interaction.
+                - Only use if necessary. Favor existing or specialized tools.
+                - Be specific, precise and make sure to include required arguments and options for the command.
+                - ALWAYS examine the output (both stdout and stderr) to confirm a successful execution.
+            ".to_string()
+            ),
             input_schema: json!({})
         }
     }

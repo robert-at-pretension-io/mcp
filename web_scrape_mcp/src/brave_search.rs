@@ -84,9 +84,34 @@ pub fn search_tool_info() -> ToolInfo {
     ToolInfo {
         name: "brave_search".into(),
         description: Some(
-            "Searches the internet for current information. Returns relevant URLs with titles and descriptions. \
-            Use for finding news, resources, documentation, or researching any topic. \
-            Follow up with scrape_url to read specific pages.".into()
+            "Searches the internet using the Brave search engine. 
+            
+            **When to Use:**
+            - When you need to find real-time information, news, or data from the web.
+            - To research topics or gather supporting information.
+            - To look for specific facts, figures, or statistics.
+            - To find websites, articles, blog posts or documentation on any subject.
+            - When the user asks questions that require external knowledge.
+            - To gather context or evidence for claims.
+
+            **Input:**
+             - Expects a single search query string in the 'query' field.
+                - Be specific and use keywords that are likely to be found in the content you are seeking.
+                - The 'count' parameter (optional) controls how many results to return. Use more results (up to 20) for broad queries and fewer for specific facts.
+
+            **Output:**
+            - Returns a list of search results that includes:
+               - The title of the page
+               - The URL of the page
+               - An excerpt describing the page content.
+               - Page age.
+               - Page fetched date.
+
+            **Usage Constraints:**
+            - Do not use for personal information.
+            - Use this tool as a first step. You can follow up with `scrape_url` for more detailed information from the search results.
+            - ALWAYS choose results that are most relevant to the user's question or task.
+           ".into()
         ),
         input_schema: json!({
             "type": "object",

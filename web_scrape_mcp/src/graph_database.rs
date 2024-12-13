@@ -686,7 +686,102 @@ struct ShortestPathParams {
 pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
-        description: Some("A tool for managing and interacting with a knowledge graph.".to_string()),
+        description: Some(
+            "Manages a knowledge graph, which stores and connects information in the form of nodes and relationships.
+            
+            **PROACTIVE USAGE INSTRUCTIONS:**
+            1. CONTINUOUSLY RECORD USER INFORMATION during conversations without explicit commands.
+            2. CREATE NODES for any revealed:
+               - Personal details
+               - Preferences
+               - Experiences
+               - Opinions
+               - Goals
+               - Problems
+               - Relationships
+            3. UPDATE EXISTING NODES when new information emerges.
+            4. CONNECT RELATED INFORMATION as it's discovered.
+            
+            **CRITICAL INITIALIZATION AND CONTEXTUAL SEARCH:**
+            1.  **ALWAYS** run `get_top_tags`, `get_tags_by_date`, and `get_most_connected` at the beginning of each conversation to get a basic overview.
+            2.  **BEFORE EVERY RESPONSE,** particularly when the conversation topic changes, you **MUST** run `search_nodes` with **MULTIPLE** queries, such as:
+                - Exact user statements or keywords from their latest input.
+                - Synonyms or related terms to those keywords.
+                - General topic indicators if their message implies a shift.
+                - A few general queries using terms derived from the most recent messages, or previous conversations, if appropriate.
+            3. If `search_nodes` returns relevant nodes, use `get_node` or `get_children` to get detailed information about those nodes, to fully understand the context.
+            4. If nodes contain information that relates to current topic, suggest exploration of related topics before proceeding further.
+
+            **Core Functions:**
+            - Track relationships and connections.
+            - Record preferences and interests.
+            - Log life events and milestones.
+            - Document work and projects.
+            - Monitor goals and progress.
+            - Build interaction history.
+            - Map skill development.
+            - Note behavioral patterns.
+            - Store decision history.
+            - Record communication preferences.
+            - Track problem-solving approaches.
+            - Map professional networks.
+            - Document tools and workflows.
+            - Store scheduling patterns.
+            - Track information sources.
+            - Log important dates.
+            - Monitor routines.
+
+            **USAGE PATTERN:**
+            1. START CONVERSATIONS by checking existing knowledge using `get_top_tags`, `get_tags_by_date`, `get_most_connected` and  `search_nodes` with multiple queries.
+            2. LISTEN ACTIVELY for new information.
+            3. STORE INFORMATION IMMEDIATELY as it's shared using `create_node` or `update_node`.
+            4. CONNECT new information to existing knowledge using `connect_nodes`.
+            5. USE stored information to personalize responses, and suggest explorations using `get_children`.
+          
+            **SEARCH STRATEGY:**
+             - Always start with `search_nodes` using at least 3 different queries.
+            - Use `get_nodes_by_tag` to discover information that relates to a current discussion.
+             - Use `get_children` to explore connections when appropriate.
+             - Use `get_most_connected` and `get_top_tags` to find areas of focus and for initial context.
+
+            **Actions:**
+            - `create_root`: creates the first node in the graph, which will contain overall information about the user. This action MUST be performed first before using any other actions.
+              - params: `name`, `description`, `content`.
+            - `create_node`: creates a new node in the graph, connected to an existing node.
+              - params: `name`, `description`, `content`, `parent_name` (of an existing node), `relation` (relationship to parent).
+            - `update_node`: modifies the details of an existing node.
+              - params: `node_name` (of the node to update), plus new `name`, `description`, or `content` properties as needed.
+            - `delete_node`: deletes a node from the graph.
+              - params: `node_name` (of the node to delete).
+            - `move_node`: changes the parent of a node in the graph.
+              - params: `node_name` (of the node to move), `new_parent_name` (the desired new parent node's name), `new_relation` (the relationship to the new parent).
+            - `connect_nodes`: establishes a relationship between two nodes.
+              - params: `from_node_name`, `to_node_name`, `relation` (the type of connection).
+            - `get_node`: retrieves information about a single node.
+              - params: `node_name` (of the node to fetch).
+            - `get_children`: retrieves all child nodes of a specified node.
+               - params: `parent_node_name` (of the parent node).
+            - `get_nodes_by_tag`: retrieves nodes that are tagged with a specific string.
+              - params: `tag` (to search for).
+            - `search_nodes`: finds all nodes that match a given search `query`.
+             - params: `query` (search text).
+            - `get_most_connected`: retrieves a specified number of nodes that have the most connections.
+             - params: `limit` (optional number of top results). Default is 10.
+            - `get_top_tags`: retrieves a specified number of most commonly used tags in the graph.
+             - params: `limit` (optional number of top results). Default is 10.
+            - `get_recent_nodes`: retrieves a specified number of most recent nodes in the graph.
+             - params: `limit` (optional number of top results). Default is 10.
+            - `get_tags_by_date`: retrieves a specified number of most recently created tags and oldest created tags in the graph.
+             - params: `limit` (optional number of top results). Default is 30.
+             - `shortest_path`: retrieves all steps to reach one node from another node in the graph.
+             - params: `from_node_name` and `to_node_name`.
+
+            **Output:**
+            - Returns a JSON object containing the result of the graph operation.
+            - Returns node data with the node's name, description, content, tags, and metadata.
+            
+            **REMEMBER: Don't wait for commands - actively maintain the user's knowledge graph during natural conversation, and leverage prior information for context and expansion.**"
+        .into()),
         input_schema: json!({
             "type": "object",
             "properties": {

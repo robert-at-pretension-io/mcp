@@ -66,7 +66,33 @@ pub async fn handle_regex_replace_tool_call(params: CallToolParams, id: Option<V
 pub fn regex_replace_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {
         name: "regex_replace".to_string(),
-        description: Some("Perform a regex search and replace in a file, ensuring exactly one match before replacing.".to_string()),
+        description: Some(
+            "Performs a regex search and replace operation on a file.
+
+            **When to Use:**
+            - To modify the contents of a file based on a pattern.
+            - When a specific single pattern must be replaced, instead of all found patterns.
+            - To ensure that a string is replaced with an exact string in a file.
+
+             **Input:**
+             - Requires a file_path which indicates the file to be modified.
+             - The pattern parameter must be a valid regex pattern.
+             - A replacement parameter is used for replacing the found pattern.
+
+            **Output:**
+            - Indicates that a successful replacement was performed.
+            - An error is returned, if no match is found, or if multiple matches are found.
+
+             **Usage Constraints:**
+            - Use this tool to replace exactly a single occurrence of a pattern.
+            - Before using the tool ensure that there is exactly one expected match.
+            - Do not use for replacing anything other than a single, clear pattern.
+            - Do not use if you are unsure about the effects of your regex expression.
+            - ALWAYS make sure that there is exactly 1 match before proceeding with any changes.
+            - Only make changes when necessary.
+            "
+            .to_string()
+        ),
         input_schema: serde_json::json!({
             "type": "object",
             "properties": {

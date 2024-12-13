@@ -30,8 +30,34 @@ pub fn scraping_tool_info() -> ToolInfo {
     ToolInfo {
         name: "scrape_url".into(),
         description: Some(
-            "Extracts and analyzes text content from webpages. Handles JavaScript-rendered content \
-            and blocked pages using OCR. Use for reading articles, documentation, or any web content.".into()
+            "Extracts and analyzes text content from a webpage. 
+             This tool is designed to access pages, including those that use JavaScript for rendering.
+            It is also capable of handling blocked pages using OCR where possible, providing readable text,
+            when normal text extraction is not possible.
+
+            **When to Use:**
+            - To fetch detailed content from web pages linked in search results of tools like `brave_search`.
+            - When you need the complete text from an article, blog post, document, or web resource.
+            - To read information from pages with JavaScript, which other tools might not be able to render.
+             - To analyze text content for context and meaning.
+
+            **Input:**
+             - Expects a single string representing the full URL of a webpage.
+                - Make sure the url is accurate and complete.
+                - Avoid URLs with personal information or restricted access.
+
+            **Output:**
+            - Returns the text content of the webpage.
+            - Includes URLs in the text response, wherever applicable.
+            -  For blocked pages using OCR, it will return an approximation of the visible text.
+
+            **Usage Constraints:**
+            - The tool might be slow on complex pages that require JS rendering or OCR.
+            - Do not scrape for malicious or illegal purposes.
+            - ALWAYS check that the URL is valid before using this tool.
+            - ALWAYS provide a reference to the source when extracting data.
+            - ALWAYS use this tool after `brave_search` to extract content from a known source.
+           ".into()
         ),
         input_schema: json!({
             "type": "object",

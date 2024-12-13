@@ -130,7 +130,43 @@ pub async fn handle_git_tool_call(params: CallToolParams, id: Option<Value>) -> 
 pub fn git_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {
         name: "git".to_string(),
-        description: Some("Interact with a Git repository. Supports init_repo, add_files, commit_changes, undo_last_commit, get_status, get_log, push_changes.".to_string()),
+        description: Some(
+            "Interacts with a Git repository. Supports essential Git operations.
+
+             **When to Use:**
+            - When you need to manage the state of a project or file using Git.
+            - When you need to stage, commit, push changes to a repository.
+            - To view the current status of files, commits or branches.
+
+             **Actions:**
+            - `init_repo`: Initializes a Git repository in the specified directory.
+                -  params: `repo_path` (the location for the new repo), optional, default is './repo'
+            - `add_files`: Stages specified files to be included in the next commit.
+                - params: `files` (an array of file paths).
+            - `commit_changes`: Commits the staged changes with a provided message.
+                - params: `message` (the commit message).
+            - `undo_last_commit`: Undoes the most recent commit, but preserves working directory changes.
+               - params: None.
+            - `get_status`: Retrieves the current status of the repository.
+               - params: None.
+            - `get_log`: Retrieves a history of the commits in the repository.
+               - params: `max_count` (optional, the number of recent commits, default is 5).
+            - `push_changes`: Pushes all committed changes to the specified remote and branch.
+               -  params: `remote` (optional, the target remote, default is 'origin') and `branch` (optional, the target branch, default is 'main').
+
+            **Output:**
+            - The output includes messages that describe the execution of the provided action.
+            - It will show error messages, if the action was not successful.
+            -  It includes the git log, or the current status of tracked or untracked files.
+
+            **Usage Constraints:**
+            - All paths are relative to the running environment.
+            - Always make sure the repo_path is correct.
+            - Always check the status and log after running any git action.
+            - Do not push if the code is not fully tested and reviewed.
+            - Do not use if you are unsure about the git command that will be performed.
+           ".to_string()
+        ),
         input_schema: json!({
             "type": "object",
             "properties": {
