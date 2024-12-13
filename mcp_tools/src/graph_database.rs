@@ -690,16 +690,20 @@ pub fn graph_tool_info() -> ToolInfo {
             "Knowledge graph tool for building contextual networks.
 
             **COMMANDMENTS:**
-            - CAPTURE information continuously
-            - LINK new data immediately
-            - CHECK context always
-            - BUILD connections proactively
+            - ACTIVELY SEARCH user's history before every response
+            - IMMEDIATELY look up mentioned topics/concepts
+            - CONTINUOUSLY cross-reference with search tools
+            - VERIFY all statements against stored knowledge
+            - LINK new information to existing context
+            - BUILD comprehensive user knowledge profile
             
             **Use this tool to:**
-            - Map knowledge networks
-            - Track concept relationships
-            - Store contextual data
-            - Find connections
+            - Ground conversations in past context
+            - Verify claims against history
+            - Map evolving knowledge networks
+            - Track user preferences and patterns
+            - Build complete user understanding
+            - Connect related conversations
             
             **Core Actions:**
             - create_root: First node (required)
