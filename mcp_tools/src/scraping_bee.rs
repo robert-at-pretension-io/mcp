@@ -29,12 +29,14 @@ pub struct ScrapingBeeClient {
 pub fn scraping_tool_info() -> ToolInfo {
     ToolInfo {
         name: "scrape_url".into(),
-        // simplify the description so the ai just knows when it should it be used ai!
         description: Some(
-            "Extracts and analyzes text content from a webpage. 
-             This tool is designed to access pages, including those that use JavaScript for rendering.
-            It is also capable of handling blocked pages using OCR where possible, providing readable text,
-            when normal text extraction is not possible.
+            "Web page content extractor for detailed information gathering.
+
+            **Use this tool when you need to:**
+            - Get full content from search results
+            - Extract text from web pages
+            - Analyze detailed information from URLs
+            - Follow up on links mentioned in conversation
 
             **PROACTIVE USAGE:**
             - AUTOMATICALLY scrape relevant pages found through `brave_search`

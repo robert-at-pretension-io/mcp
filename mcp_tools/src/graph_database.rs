@@ -686,9 +686,14 @@ struct ShortestPathParams {
 pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
-        // simplify the description so the ai just knows when it should it be used ai
         description: Some(
-            "A sophisticated knowledge graph system for storing, connecting, and analyzing complex information networks.
+            "Knowledge graph tool for storing and connecting information from conversations.
+
+            **Use this tool to:**
+            - Store information learned during conversations
+            - Track relationships between topics and concepts
+            - Build context for future interactions
+            - Find related information from past conversations
 
             **PROACTIVE CORE PURPOSE:**
             - CONTINUOUSLY BUILD AND UPDATE knowledge networks during conversations

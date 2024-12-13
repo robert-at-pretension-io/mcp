@@ -83,9 +83,14 @@ pub struct BraveSearchClient {
 pub fn search_tool_info() -> ToolInfo {
     ToolInfo {
         name: "brave_search".into(),
-        // simplify the description so the ai just knows when it should it be used ai
         description: Some(
-            "Searches the internet using the Brave search engine. 
+            "Web search tool for finding current information and facts.
+
+            **Use this tool when you need to:**
+            - Find current information about a topic
+            - Verify facts or claims
+            - Research new topics that come up
+            - Get supporting evidence
             
             **PROACTIVE USAGE:**
             - CONTINUOUSLY search for relevant information during conversations
