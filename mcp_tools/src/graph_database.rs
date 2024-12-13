@@ -687,26 +687,48 @@ pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
-            "CRITICAL: Must be used EXTENSIVELY at the START of EVERY conversation!
+            "**⚠️ MANDATORY: SEARCH GRAPH BEFORE EVERY SINGLE RESPONSE ⚠️**
 
-            Knowledge graph tool for grounding all interactions in user context.
+            Knowledge graph tool for maintaining complete user context.
+
+            **CORE PRINCIPLE: NO RESPONSE WITHOUT GRAPH SEARCH**
 
             **COMMANDMENTS:**
-            - START EVERY CONVERSATION with deep knowledge search
-            - EXHAUSTIVELY explore user history before first response
-            - IMMEDIATELY build context from past interactions
-            - AGGRESSIVELY cross-reference all prior knowledge
-            - VERIFY every statement against historical context
-            - CONTINUOUSLY update user knowledge profile
-            - NEVER proceed without thorough context search
+            1. BEFORE GENERATING ANY RESPONSE:
+               - Search ALL relevant nodes
+               - Cross-reference EVERY statement
+               - Verify ALL assumptions
+               - Update knowledge with new info
             
+            2. DURING EVERY CONVERSATION:
+               - START with exhaustive knowledge search
+               - SEARCH graph before each response
+               - VERIFY every user statement against history
+               - CROSS-CHECK all claims with stored data
+               - UPDATE graph with new information
+               - MAINTAIN complete context at all times
+            
+            3. NEVER:
+               - Respond without searching first
+               - Make assumptions without verification
+               - Skip context checks
+               - Ignore historical data
+               - Proceed without graph updates
+
+            **Mandatory Process:**
+            1. SEARCH nodes for relevant context
+            2. CROSS-REFERENCE new info against history
+            3. UPDATE graph with new information
+            4. BASE response on complete context
+            5. VERIFY response against stored knowledge
+
             **Use this tool to:**
-            - GROUND ALL CONVERSATIONS in complete history
-            - BUILD DEEP CONTEXT before any response
-            - UNDERSTAND full user background
-            - MAP all related past discussions
-            - TRACK evolving user patterns
-            - CONNECT all relevant knowledge
+            - GROUND every single response in history
+            - VERIFY all assumptions about user
+            - MAINTAIN perfect context awareness
+            - ENSURE knowledge consistency
+            - PREVENT context loss
+            - BUILD comprehensive user model
             
             **Core Actions:**
             - create_root: First node (required)
