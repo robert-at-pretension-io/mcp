@@ -227,13 +227,20 @@ pub fn sequential_thinking_tool_info() -> ToolInfo {
         description: Some(
             "A sophisticated tool for breaking down complex reasoning into structured, sequential thoughts.
 
+            **PROACTIVE USAGE:**
+            - AUTOMATICALLY break down complex topics as they arise
+            - CONTINUOUSLY document thought processes during conversations
+            - PROACTIVELY analyze and structure decision-making
+            - IMMEDIATELY capture and organize emerging ideas
+            - ACTIVELY maintain thought branches for different possibilities
+            - CONSTANTLY refine and revise understanding
+            
             **When to Use:**
-            - To solve complex problems step-by-step
-            - When analyzing situations that require careful consideration
-            - For documenting decision-making processes
-            - To break down complex plans into manageable steps
-            - When exploring different branches of reasoning
-            - For revising and refining previous thoughts
+            - ALWAYS during complex discussions
+            - IMMEDIATELY when multiple steps or factors need consideration
+            - CONTINUOUSLY throughout problem-solving processes
+            - AUTOMATICALLY when organizing thoughts and ideas
+            - PROACTIVELY when exploring different perspectives
             
             **Key Features:**
             - Records thoughts in numbered sequence

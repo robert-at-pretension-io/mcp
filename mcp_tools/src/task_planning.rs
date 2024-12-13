@@ -309,13 +309,20 @@ pub fn task_planning_tool_info() -> ToolInfo {
         description: Some(
             "A comprehensive project and task management system for organizing, tracking, and executing work efficiently.
 
+            **PROACTIVE USAGE:**
+            - AUTOMATICALLY create tasks when work items are mentioned
+            - CONTINUOUSLY break down discussed activities into tasks
+            - PROACTIVELY identify and track dependencies
+            - IMMEDIATELY capture progress updates from conversation
+            - CONSTANTLY assess and adjust task priorities
+            - ACTIVELY organize and structure work discussions
+            
             **When to Use:**
-            - Planning new projects or initiatives
-            - Breaking down complex work into manageable tasks
-            - Managing dependencies between different pieces of work
-            - Tracking progress on ongoing activities
-            - Prioritizing multiple competing tasks
-            - Organizing collaborative work efforts
+            - ALWAYS when work activities are discussed
+            - IMMEDIATELY when new requirements emerge
+            - CONTINUOUSLY during project discussions
+            - PROACTIVELY when coordination is needed
+            - AUTOMATICALLY when tracking commitments
             
             **Key Features:**
             - Task creation with rich metadata

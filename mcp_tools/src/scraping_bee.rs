@@ -35,11 +35,17 @@ pub fn scraping_tool_info() -> ToolInfo {
             It is also capable of handling blocked pages using OCR where possible, providing readable text,
             when normal text extraction is not possible.
 
+            **PROACTIVE USAGE:**
+            - AUTOMATICALLY scrape relevant pages found through `brave_search`
+            - IMMEDIATELY fetch full content when URLs are mentioned
+            - PROACTIVELY gather detailed information from referenced websites
+            - CONTINUOUSLY analyze and extract context from web content
+            
             **When to Use:**
-            - To fetch detailed content from web pages linked in search results of tools like `brave_search`.
-            - When you need the complete text from an article, blog post, document, or web resource.
-            - To read information from pages with JavaScript, which other tools might not be able to render.
-             - To analyze text content for context and meaning.
+            - ALWAYS after `brave_search` returns relevant results
+            - IMMEDIATELY when URLs are mentioned in conversation
+            - AUTOMATICALLY when detailed content would enhance understanding
+            - PROACTIVELY when additional context could be valuable
 
             **Input:**
              - Expects a single string representing the full URL of a webpage.

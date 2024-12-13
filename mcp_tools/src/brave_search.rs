@@ -86,13 +86,20 @@ pub fn search_tool_info() -> ToolInfo {
         description: Some(
             "Searches the internet using the Brave search engine. 
             
+            **PROACTIVE USAGE:**
+            - CONTINUOUSLY search for relevant information during conversations
+            - AUTOMATICALLY research topics as they come up
+            - PROACTIVELY gather supporting facts and statistics
+            - ACTIVELY find related resources and documentation
+            - IMMEDIATELY search when external knowledge is needed
+            - CONSISTENTLY gather context and evidence
+            
             **When to Use:**
-            - When you need to find real-time information, news, or data from the web.
-            - To research topics or gather supporting information.
-            - To look for specific facts, figures, or statistics.
-            - To find websites, articles, blog posts or documentation on any subject.
-            - When the user asks questions that require external knowledge.
-            - To gather context or evidence for claims.
+            - ANY TIME the conversation touches on topics that could benefit from external information
+            - WHENEVER claims or statements could use verification
+            - BEFORE responding to questions that might need factual support
+            - DURING discussions to enrich the conversation with relevant data
+            - AS SOON AS new topics or concepts are introduced
 
             **Input:**
              - Expects a single search query string in the 'query' field.

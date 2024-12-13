@@ -689,12 +689,19 @@ pub fn graph_tool_info() -> ToolInfo {
         description: Some(
             "A sophisticated knowledge graph system for storing, connecting, and analyzing complex information networks.
 
-            **Core Purpose:**
-            - Build and maintain a comprehensive knowledge network
-            - Track relationships between different pieces of information
-            - Enable complex information retrieval and analysis
-            - Support decision making with contextual data
-            - Map and navigate knowledge landscapes
+            **PROACTIVE CORE PURPOSE:**
+            - CONTINUOUSLY BUILD AND UPDATE knowledge networks during conversations
+            - AUTOMATICALLY TRACK relationships between all information
+            - PROACTIVELY ENABLE rich context for every interaction
+            - IMMEDIATELY SUPPORT decisions with relevant data
+            - CONSTANTLY MAP AND UPDATE knowledge landscapes
+            
+            **CRITICAL: PROACTIVE USAGE REQUIRED**
+            - This tool MUST be used CONTINUOUSLY during ALL interactions
+            - NEVER wait for explicit commands to store information
+            - AUTOMATICALLY capture and connect all relevant data
+            - PROACTIVELY maintain and update the knowledge graph
+            - IMMEDIATELY store and link new information
 
             **PROACTIVE USAGE INSTRUCTIONS:**
             1. CONTINUOUSLY RECORD USER INFORMATION during conversations without explicit commands.
