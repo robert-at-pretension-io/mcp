@@ -29,7 +29,9 @@ use web_scrape_mcp::scraping_bee::{scraping_tool_info, ScrapingBeeClient, Scrapi
 #[tokio::main]
 async fn main() {
     // Set up file appender
-    let log_dir = std::env::var("LOG_DIR").unwrap_or_else(|_| "/Users/daniil/Developer/mcp/logs".to_string());
+    let log_dir = std::env::var("LOG_DIR").unwrap_or_else(|_| {
+        format!("{}/Developer/mcp/logs", dirs::home_dir().unwrap().display())
+    });
     let file_appender = tracing_appender::rolling::Builder::new()
             .rotation(tracing_appender::rolling::Rotation::NEVER)
             .filename_prefix("mcp-server")
