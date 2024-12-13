@@ -687,58 +687,31 @@ pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
-            "Knowledge graph tool for building and maintaining contextual information networks.
+            "Knowledge graph tool for building contextual networks.
 
             **COMMANDMENTS:**
-            - CONTINUOUSLY capture and connect information during ALL interactions
-            - NEVER wait for explicit commands to store data
-            - ALWAYS check context before responding
-            - IMMEDIATELY link new information to existing knowledge
+            - CAPTURE information continuously
+            - LINK new data immediately
+            - CHECK context always
+            - BUILD connections proactively
             
             **Use this tool to:**
-            - Build and maintain knowledge networks
-            - Track relationships between concepts
-            - Store conversation context
-            - Find related historical information
-            - Map connections between topics
+            - Map knowledge networks
+            - Track concept relationships
+            - Store contextual data
+            - Find connections
             
-            **Key Actions:**
-            - `create_root`: creates the first node in the graph, which will contain overall information about the user. This action MUST be performed first before using any other actions.
-              - params: `name`, `description`, `content`.
-            - `create_node`: creates a new node in the graph, connected to an existing node.
-              - params: `name`, `description`, `content`, `parent_name` (of an existing node), `relation` (relationship to parent).
-            - `update_node`: modifies the details of an existing node.
-              - params: `node_name` (of the node to update), plus new `name`, `description`, or `content` properties as needed.
-            - `delete_node`: deletes a node from the graph.
-              - params: `node_name` (of the node to delete).
-            - `move_node`: changes the parent of a node in the graph.
-              - params: `node_name` (of the node to move), `new_parent_name` (the desired new parent node's name), `new_relation` (the relationship to the new parent).
-            - `connect_nodes`: establishes a relationship between two nodes.
-              - params: `from_node_name`, `to_node_name`, `relation` (the type of connection).
-            - `get_node`: retrieves information about a single node.
-              - params: `node_name` (of the node to fetch).
-            - `get_children`: retrieves all child nodes of a specified node.
-               - params: `parent_node_name` (of the parent node).
-            - `get_nodes_by_tag`: retrieves nodes that are tagged with a specific string.
-              - params: `tag` (to search for).
-            - `search_nodes`: finds all nodes that match a given search `query`.
-             - params: `query` (search text).
-            - `get_most_connected`: retrieves a specified number of nodes that have the most connections.
-             - params: `limit` (optional number of top results). Default is 10.
-            - `get_top_tags`: retrieves a specified number of most commonly used tags in the graph.
-             - params: `limit` (optional number of top results). Default is 10.
-            - `get_recent_nodes`: retrieves a specified number of most recent nodes in the graph.
-             - params: `limit` (optional number of top results). Default is 10.
-            - `get_tags_by_date`: retrieves a specified number of most recently created tags and oldest created tags in the graph.
-             - params: `limit` (optional number of top results). Default is 30.
-             - `shortest_path`: retrieves all steps to reach one node from another node in the graph.
-             - params: `from_node_name` and `to_node_name`.
-
-            **Output:**
-            - Returns a JSON object containing the result of the graph operation.
-            - Returns node data with the node's name, description, content, tags, and metadata.
+            **Core Actions:**
+            - create_root: First node (required)
+            - create_node: Add connected nodes
+            - update/delete_node: Modify graph
+            - connect_nodes: Link information
+            - get_node/children: Read data
+            - search/tags: Find content
             
-            **REMEMBER: Don't wait for commands - actively maintain the user's knowledge graph during natural conversation, and leverage prior information for context and expansion.**"
+            **Returns:** Node data with name, description, content, tags, metadata.
+            
+            **Remember:** Build knowledge graph during conversation, don't wait for commands."
         .into()),
         input_schema: json!({
             "type": "object",
