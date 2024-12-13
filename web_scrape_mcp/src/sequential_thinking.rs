@@ -224,7 +224,44 @@ pub struct BranchThoughtParams {
 pub fn sequential_thinking_tool_info() -> ToolInfo {
     ToolInfo {
         name: "sequential_thinking".to_string(),
-        description: Some("A tool for managing sequential thinking and thought revision process.".to_string()),
+        description: Some(
+            "A sophisticated tool for breaking down complex reasoning into structured, sequential thoughts.
+
+            **When to Use:**
+            - To solve complex problems step-by-step
+            - When analyzing situations that require careful consideration
+            - For documenting decision-making processes
+            - To break down complex plans into manageable steps
+            - When exploring different branches of reasoning
+            - For revising and refining previous thoughts
+            
+            **Key Features:**
+            - Records thoughts in numbered sequence
+            - Supports branching for alternative reasoning paths
+            - Allows revision of previous thoughts
+            - Maintains relationships between connected thoughts
+            - Tracks the evolution of ideas over time
+            
+            **Best Practices:**
+            1. Start with clear, atomic thoughts
+            2. Build complexity gradually
+            3. Use branching for exploring alternatives
+            4. Revise thoughts when new information emerges
+            5. Connect related thoughts explicitly
+            
+            **Usage Pattern:**
+            1. Begin with foundational thoughts
+            2. Add subsequent thoughts that build on previous ones
+            3. Branch when multiple possibilities need exploration
+            4. Revise thoughts as understanding improves
+            5. Review the thought sequence for completeness
+            
+            **Integration:**
+            - Works well with memory tool for long-term storage
+            - Can feed into task planning for action items
+            - Supports graph tool for relationship mapping
+            ".to_string()
+        ),
         input_schema: json!({
             "type": "object",
             "properties": {

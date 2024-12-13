@@ -67,29 +67,39 @@ pub fn regex_replace_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {
         name: "regex_replace".to_string(),
         description: Some(
-            "Performs a regex search and replace operation on a file.
+            "A precise tool for making targeted text replacements in files using regular expressions.
 
             **When to Use:**
-            - To modify the contents of a file based on a pattern.
-            - When a specific single pattern must be replaced, instead of all found patterns.
-            - To ensure that a string is replaced with an exact string in a file.
-
-             **Input:**
-             - Requires a file_path which indicates the file to be modified.
-             - The pattern parameter must be a valid regex pattern.
-             - A replacement parameter is used for replacing the found pattern.
-
+            - When you need to modify specific text patterns in configuration files
+            - To update version numbers, dates, or other formatted strings
+            - For changing function names, variable names, or code patterns
+            - To fix formatting issues or standardize text formats
+            - When updating URLs, paths, or other structured text
+            
+            **Input:**
+            - file_path: The exact path to the file that needs modification
+            - pattern: A regex pattern that uniquely identifies the text to change
+            - replacement: The new text to insert in place of the match
+            
             **Output:**
-            - Indicates that a successful replacement was performed.
-            - An error is returned, if no match is found, or if multiple matches are found.
-
-             **Usage Constraints:**
-            - Use this tool to replace exactly a single occurrence of a pattern.
-            - Before using the tool ensure that there is exactly one expected match.
-            - Do not use for replacing anything other than a single, clear pattern.
-            - Do not use if you are unsure about the effects of your regex expression.
-            - ALWAYS make sure that there is exactly 1 match before proceeding with any changes.
-            - Only make changes when necessary.
+            - Success message if exactly one match was found and replaced
+            - Error message if no matches or multiple matches were found
+            - Details about what was changed or why the operation failed
+            
+            **Usage Constraints:**
+            - CRITICAL: Tool will only proceed if exactly ONE match is found
+            - Pattern must be specific enough to match only the intended text
+            - Always verify the pattern will match the intended text only
+            - Do not use for bulk replacements or multiple matches
+            - Avoid patterns that could match unintended text
+            - Test patterns carefully before applying replacements
+            
+            **Best Practices:**
+            1. First use the pattern to verify exactly one match exists
+            2. Double-check the replacement text is correctly formatted
+            3. Consider the context around the text being replaced
+            4. Keep replacements minimal and targeted
+            5. Use specific patterns rather than broad ones
             "
             .to_string()
         ),

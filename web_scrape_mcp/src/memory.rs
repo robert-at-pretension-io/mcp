@@ -131,7 +131,43 @@ impl MemoryTool {
 pub fn memory_tool_info() -> ToolInfo {
     ToolInfo {
         name: "memory".to_string(),
-        description: Some("A tool for managing long-term memory storage of thoughts and their relationships".to_string()),
+        description: Some(
+            "An advanced knowledge management tool for storing, connecting, and retrieving information long-term.
+
+            **When to Use:**
+            - To preserve important insights and discoveries
+            - For building a knowledge base of user preferences
+            - To maintain context across multiple conversations
+            - When tracking the evolution of ideas over time
+            - For connecting related pieces of information
+            - To build a searchable archive of past interactions
+            
+            **Key Features:**
+            - Permanent storage of thoughts and insights
+            - Relationship mapping between pieces of information
+            - Tagging system for easy categorization
+            - Full-text search capabilities
+            - Metadata tracking for context
+            
+            **Best Practices:**
+            1. Always add relevant tags for better retrieval
+            2. Include detailed metadata for context
+            3. Create meaningful connections between related memories
+            4. Use specific, descriptive names for nodes
+            5. Regular updates to existing memories as new info emerges
+            
+            **Integration Points:**
+            - Works with sequential_thinking to store thought processes
+            - Connects with graph_tool for relationship visualization
+            - Supports task_planning for historical context
+            
+            **Search Strategy:**
+            1. Use specific keywords from current context
+            2. Consider synonyms and related terms
+            3. Leverage tags for categorical searches
+            4. Examine connected memories for broader context
+            ".to_string()
+        ),
         input_schema: json!({
             "type": "object",
             "properties": {

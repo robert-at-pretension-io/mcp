@@ -131,40 +131,70 @@ pub fn git_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {
         name: "git".to_string(),
         description: Some(
-            "Interacts with a Git repository. Supports essential Git operations.
+            "A comprehensive Git version control interface for managing source code and file changes systematically.
 
-             **When to Use:**
-            - When you need to manage the state of a project or file using Git.
-            - When you need to stage, commit, push changes to a repository.
-            - To view the current status of files, commits or branches.
-
-             **Actions:**
-            - `init_repo`: Initializes a Git repository in the specified directory.
-                -  params: `repo_path` (the location for the new repo), optional, default is './repo'
-            - `add_files`: Stages specified files to be included in the next commit.
-                - params: `files` (an array of file paths).
-            - `commit_changes`: Commits the staged changes with a provided message.
-                - params: `message` (the commit message).
-            - `undo_last_commit`: Undoes the most recent commit, but preserves working directory changes.
-               - params: None.
-            - `get_status`: Retrieves the current status of the repository.
-               - params: None.
-            - `get_log`: Retrieves a history of the commits in the repository.
-               - params: `max_count` (optional, the number of recent commits, default is 5).
-            - `push_changes`: Pushes all committed changes to the specified remote and branch.
-               -  params: `remote` (optional, the target remote, default is 'origin') and `branch` (optional, the target branch, default is 'main').
-
-            **Output:**
-            - The output includes messages that describe the execution of the provided action.
-            - It will show error messages, if the action was not successful.
-            -  It includes the git log, or the current status of tracked or untracked files.
-
-            **Usage Constraints:**
-            - All paths are relative to the running environment.
-            - Always make sure the repo_path is correct.
-            - Always check the status and log after running any git action.
-            - Do not push if the code is not fully tested and reviewed.
-            - Do not use if you are unsure about the git command that will be performed.
+            **When to Use:**
+            - Managing source code versions and history
+            - Tracking changes to configuration files
+            - Collaborating on shared codebases
+            - Documenting code evolution over time
+            - Creating and managing feature branches
+            - Preparing code for deployment
+            
+            **Core Operations:**
+            1. Repository Management:
+               - init_repo: Create new Git repository
+               - get_status: Check current repo state
+               - get_log: View commit history
+            
+            2. Change Management:
+               - add_files: Stage specific files
+               - commit_changes: Record staged changes
+               - undo_last_commit: Revert recent changes
+            
+            3. Remote Operations:
+               - push_changes: Share commits with remote
+            
+            **Best Practices:**
+            1. Repository Setup:
+               - Initialize in appropriate directory
+               - Verify repository state before operations
+               - Maintain clean working directory
+            
+            2. Change Tracking:
+               - Stage related changes together
+               - Write clear, descriptive commit messages
+               - Review changes before committing
+               - Keep commits focused and atomic
+            
+            3. Collaboration:
+               - Pull before pushing changes
+               - Resolve conflicts promptly
+               - Follow branch naming conventions
+               - Keep remote refs updated
+            
+            **Safety Guidelines:**
+            - ALWAYS check status before operations
+            - Verify target repository path
+            - Review changes before committing
+            - Test code before pushing
+            - Back up important changes
+            - Use appropriate branch strategies
+            
+            **Integration Workflow:**
+            1. Check repository status
+            2. Stage relevant changes
+            3. Create descriptive commit
+            4. Verify commit history
+            5. Push to appropriate remote
+            
+            **Parameters Guide:**
+            - repo_path: Target repository location
+            - files: Array of paths to stage
+            - message: Descriptive commit text
+            - remote: Target remote (default: origin)
+            - branch: Target branch (default: main)
+            - max_count: History limit for logs
            ".to_string()
         ),
         input_schema: json!({

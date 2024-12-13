@@ -306,7 +306,48 @@ impl TaskPlanningTool {
 pub fn task_planning_tool_info() -> ToolInfo {
     ToolInfo {
         name: "task_planning".to_string(),
-        description: Some("A tool for planning and managing tasks with dependencies and project context".to_string()),
+        description: Some(
+            "A comprehensive project and task management system for organizing, tracking, and executing work efficiently.
+
+            **When to Use:**
+            - Planning new projects or initiatives
+            - Breaking down complex work into manageable tasks
+            - Managing dependencies between different pieces of work
+            - Tracking progress on ongoing activities
+            - Prioritizing multiple competing tasks
+            - Organizing collaborative work efforts
+            
+            **Key Features:**
+            - Task creation with rich metadata
+            - Priority levels (Low, Medium, High, Critical)
+            - Status tracking (NotStarted, InProgress, Blocked, Completed, Cancelled)
+            - Dependency management
+            - Time estimation and tracking
+            - Project organization
+            - Tagging system
+            
+            **Best Practices:**
+            1. Create clear, actionable task descriptions
+            2. Set realistic time estimates
+            3. Establish explicit dependencies
+            4. Use appropriate priority levels
+            5. Keep status information current
+            6. Tag tasks for easy filtering
+            
+            **Task Lifecycle:**
+            1. Creation with initial scope
+            2. Priority and time estimation
+            3. Dependency mapping
+            4. Progress tracking
+            5. Status updates
+            6. Completion or cancellation
+            
+            **Integration Points:**
+            - Uses memory tool for historical context
+            - Works with graph_tool for dependency visualization
+            - Connects with sequential_thinking for task breakdown
+            ".to_string()
+        ),
         input_schema: json!({
             "type": "object",
             "properties": {
