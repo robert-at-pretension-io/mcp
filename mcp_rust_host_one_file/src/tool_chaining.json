@@ -1,223 +1,351 @@
 [
-    {
-      "title": "Searching and then scraping",
-      "steps": [
-        "brave_search with {\"query\": \"OpenAI documentation\"}",
-        "scrape_url with {\"url\": \"<a URL from the search result>\"}"
-      ]
-    },
-    {
-      "title": "Graph and knowledge enrichment",
-      "steps": [
-        "graph_tool with {\"action\": \"get_top_tags\", \"params\": {\"limit\": 10}}",
-        "graph_tool with {\"action\": \"get_tags_by_date\", \"params\": {\"limit\": 10}}",
-        "graph_tool with {\"action\": \"get_most_connected\", \"params\": {\"limit\": 10}}",
-        "graph_tool with {\"action\": \"search_nodes\", \"params\": {\"query\": \"some keyword\"}}"
-      ]
-    },
-    {
-      "title": "Add and commit files with git",
-      "steps": [
-        "git with {\"action\":\"init_repo\"}",
-        "git with {\"action\":\"add_files\",\"files\":[\"src/main.rs\"]}",
-        "git with {\"action\":\"commit_changes\",\"message\":\"Initial commit\"}"
-      ]
-    },
-    {
-      "title": "Scrape and store content in the graph",
-      "steps": [
-        "scrape_url with {\"url\": \"https://example.com\"}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Example\",\"description\":\"From scraped content\",\"content\":\"...\",\"parent_name\":\"root\",\"relation\":\"refers_to\"}}"
-      ]
-    },
-    {
-      "title": "Modify files then commit again",
-      "steps": [
-        "regex_replace with {\"file_path\":\"./README.md\",\"pattern\":\"old text\",\"replacement\":\"new text\"}",
-        "git with {\"action\":\"add_files\",\"files\":[\"README.md\"]}",
-        "git with {\"action\":\"commit_changes\",\"message\":\"Update README\"}"
-      ]
-    },
-    {
-      "title": "Enrich graph with user info and search it",
-      "steps": [
-        "graph_tool with {\"action\":\"create_root\",\"params\":{\"name\":\"User\",\"description\":\"Root user node\",\"content\":\"User info\"}}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"User Preferences\",\"description\":\"User likes cats\",\"content\":\"likes cats\",\"parent_name\":\"User\",\"relation\":\"has_detail\"}}",
-        "graph_tool with {\"action\":\"search_nodes\",\"params\":{\"query\":\"cats\"}}"
-      ]
-    },
-    {
-      "title": "Run bash command then update graph",
-      "steps": [
-        "bash with {\"command\":\"ls -la\"}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"SystemCheck\",\"description\":\"Output of ls\",\"content\":\"(paste output here)\",\"parent_name\":\"User\",\"relation\":\"observed\"}}"
-      ]
-    },
-    {
-      "title": "Get recent nodes and store search results",
-      "steps": [
-        "graph_tool with {\"action\":\"get_recent_nodes\",\"params\":{\"limit\":5}}",
-        "brave_search with {\"query\":\"latest AI news\"}",
-        "scrape_url with {\"url\":\"<news URL>\"}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"AI News\",\"description\":\"Latest AI news snippet\",\"content\":\"...\",\"parent_name\":\"User\",\"relation\":\"learned\"}}"
-      ]
-    },
-    {
-      "title": "Push changes to remote repository",
-      "steps": [
-        "git with {\"action\":\"get_status\"}",
-        "git with {\"action\":\"push_changes\",\"remote\":\"origin\",\"branch\":\"main\"}"
-      ]
-    },
-    {
-      "title": "Create nodes for multiple interests and connect them",
-      "steps": [
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Hobby\",\"description\":\"User hobby\",\"content\":\"User likes hiking\",\"parent_name\":\"User\",\"relation\":\"has_hobby\"}}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Work\",\"description\":\"User job\",\"content\":\"Software developer\",\"parent_name\":\"User\",\"relation\":\"has_profession\"}}",
-        "graph_tool with {\"action\":\"connect_nodes\",\"params\":{\"from_node_name\":\"Hobby\",\"to_node_name\":\"Work\",\"relation\":\"inspires\"}}"
-      ]
-    },
-    {
-      "title": "Search a concept and scrape its explanation",
-      "steps": [
-        "brave_search with {\"query\":\"Definition of entropy in information theory\"}",
-        "scrape_url with {\"url\":\"<a URL from the search result>\"}"
-      ]
-    },
-    {
-      "title": "Integrate scraped info into graph",
-      "steps": [
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Entropy\",\"description\":\"Info theory concept\",\"content\":\"...\",\"parent_name\":\"User\",\"relation\":\"learned_about\"}}"
-      ]
-    },
-    {
-      "title": "Update existing node details",
-      "steps": [
-        "graph_tool with {\"action\":\"update_node\",\"params\":{\"node_name\":\"Hobby\",\"new_description\":\"Outdoor activities\",\"new_content\":\"User enjoys hiking in the mountains\"}}"
-      ]
-    },
-    {
-      "title": "Get top tags and connect related info",
-      "steps": [
-        "graph_tool with {\"action\":\"get_top_tags\",\"params\":{\"limit\":5}}",
-        "graph_tool with {\"action\":\"get_nodes_by_tag\",\"params\":{\"tag\":\"hobby\"}}"
-      ]
-    },
-    {
-      "title": "Perform regex replace in code file then commit",
-      "steps": [
-        "regex_replace with {\"file_path\":\"./src/main.rs\",\"pattern\":\"fn main()\",\"replacement\":\"fn start()\"}",
-        "git with {\"action\":\"add_files\",\"files\":[\"src/main.rs\"]}",
-        "git with {\"action\":\"commit_changes\",\"message\":\"Rename main to start\"}"
-      ]
-    },
-    {
-      "title": "Check git log and update a node",
-      "steps": [
-        "git with {\"action\":\"get_log\",\"max_count\":3}",
-        "graph_tool with {\"action\":\"update_node\",\"params\":{\"node_name\":\"Work\",\"new_content\":\"Software developer with experience in Rust\"}}"
-      ]
-    },
-    {
-      "title": "Undo last commit and record the action in graph",
-      "steps": [
-        "git with {\"action\":\"undo_last_commit\"}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"VersionControlEvent\",\"description\":\"Undo commit action\",\"content\":\"Last commit undone\",\"parent_name\":\"User\",\"relation\":\"performed_action\"}}"
-      ]
-    },
-    {
-      "title": "Search user interests and store them",
-      "steps": [
-        "graph_tool with {\"action\":\"search_nodes\",\"params\":{\"query\":\"hiking\"}}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"NewHobby\",\"description\":\"Related hobby\",\"content\":\"User also likes cycling\",\"parent_name\":\"User\",\"relation\":\"has_hobby\"}}"
-      ]
-    },
-    {
-      "title": "Get tags by date and relate them",
-      "steps": [
-        "graph_tool with {\"action\":\"get_tags_by_date\",\"params\":{\"limit\":5}}",
-        "graph_tool with {\"action\":\"connect_nodes\",\"params\":{\"from_node_name\":\"NewHobby\",\"to_node_name\":\"Hobby\",\"relation\":\"complements\"}}"
-      ]
-    },
-    {
-      "title": "Scrape a tutorial and store results",
-      "steps": [
-        "brave_search with {\"query\":\"Rust async tutorial\"}",
-        "scrape_url with {\"url\":\"<tutorial URL>\"}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"RustAsyncTutorial\",\"description\":\"Tutorial content\",\"content\":\"...\",\"parent_name\":\"Work\",\"relation\":\"improves_skill\"}}"
-      ]
-    },
-    {
-      "title": "Update content after scraping",
-      "steps": [
-        "regex_replace with {\"file_path\":\"./NOTES.txt\",\"pattern\":\"OldContent\",\"replacement\":\"NewContent\"}",
-        "graph_tool with {\"action\":\"update_node\",\"params\":{\"node_name\":\"Entropy\",\"new_content\":\"Expanded knowledge on entropy\"}}"
-      ]
-    },
-    {
-      "title": "Search something else and store results again",
-      "steps": [
-        "brave_search with {\"query\":\"Latest programming languages\"}",
-        "scrape_url with {\"url\":\"<found URL>\"}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"ProgrammingLangs\",\"description\":\"Info on languages\",\"content\":\"...\",\"parent_name\":\"User\",\"relation\":\"interested_in\"}}"
-      ]
-    },
-    {
-      "title": "Chain multiple scrapes",
-      "steps": [
-        "brave_search with {\"query\":\"Quantum computing basics\"}",
-        "scrape_url with {\"url\":\"<found URL>\"}",
-        "scrape_url with {\"url\":\"<another related URL>\"}"
-      ]
-    },
-    {
-      "title": "Store multiple scrapes in graph",
-      "steps": [
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"QuantumComputing\",\"description\":\"Basics\",\"content\":\"...\",\"parent_name\":\"User\",\"relation\":\"learning\"}}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"QuantumResources\",\"description\":\"Additional info\",\"content\":\"...\",\"parent_name\":\"QuantumComputing\",\"relation\":\"references\"}}"
-      ]
-    },
-    {
-      "title": "Add and commit large file changes",
-      "steps": [
-        "bash with {\"command\":\"touch LARGE_FILE.txt\"}",
-        "git with {\"action\":\"add_files\",\"files\":[\"LARGE_FILE.txt\"]}",
-        "git with {\"action\":\"commit_changes\",\"message\":\"Add large file\"}"
-      ]
-    },
-    {
-      "title": "Move a node under another in graph",
-      "steps": [
-        "graph_tool with {\"action\":\"move_node\",\"params\":{\"node_name\":\"QuantumResources\",\"new_parent_name\":\"Work\",\"new_relation\":\"research_related\"}}"
-      ]
-    },
-    {
-      "title": "Search graph and enrich nodes",
-      "steps": [
-        "graph_tool with {\"action\":\"search_nodes\",\"params\":{\"query\":\"rust\"}}",
-        "graph_tool with {\"action\":\"update_node\",\"params\":{\"node_name\":\"RustAsyncTutorial\",\"new_description\":\"Comprehensive guide\"}}"
-      ]
-    },
-    {
-      "title": "Run a bash script and record outcome",
-      "steps": [
-        "bash with {\"command\":\"echo Hello World > message.txt\"}",
-        "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"SystemMessage\",\"description\":\"Result of echo\",\"content\":\"Hello World\",\"parent_name\":\"User\",\"relation\":\"observed\"}}"
-      ]
-    },
-    {
-      "title": "Get recent nodes again and link to current interests",
-      "steps": [
-        "graph_tool with {\"action\":\"get_recent_nodes\",\"params\":{\"limit\":5}}",
-        "graph_tool with {\"action\":\"connect_nodes\",\"params\":{\"from_node_name\":\"ProgrammingLangs\",\"to_node_name\":\"RustAsyncTutorial\",\"relation\":\"studying\"}}"
-      ]
-    },
-    {
-      "title": "Perform another regex replacement and commit",
-      "steps": [
-        "regex_replace with {\"file_path\":\"./DOCS.md\",\"pattern\":\"Placeholder\",\"replacement\":\"Real Content\"}",
-        "git with {\"action\":\"add_files\",\"files\":[\"DOCS.md\"]}",
-        "git with {\"action\":\"commit_changes\",\"message\":\"Update docs\"}"
-      ]
-    }
-  ]
+  {
+    "title": "Searching and then scraping",
+    "steps": [
+      "brave_search with {\"query\": \"OpenAI documentation\"}",
+      "scrape_url with {\"url\": \"<a URL from the search result>\"}"
+    ]
+  },
+  {
+    "title": "Graph and knowledge enrichment",
+    "steps": [
+      "graph_tool with {\"action\": \"get_top_tags\", \"params\": {\"limit\": 10}}",
+      "graph_tool with {\"action\": \"get_tags_by_date\", \"params\": {\"limit\": 10}}",
+      "graph_tool with {\"action\": \"get_most_connected\", \"params\": {\"limit\": 10}}",
+      "graph_tool with {\"action\": \"search_nodes\", \"params\": {\"query\": \"some keyword\"}}"
+    ]
+  },
+  {
+    "title": "Add and commit files with git",
+    "steps": [
+      "git with {\"action\":\"init_repo\"}",
+      "git with {\"action\":\"add_files\",\"files\":[\"src/main.rs\"]}",
+      "git with {\"action\":\"commit_changes\",\"message\":\"Initial commit\"}"
+    ]
+  },
+  {
+    "title": "Scrape and store content in the graph",
+    "steps": [
+      "scrape_url with {\"url\": \"https://example.com\"}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Example\",\"description\":\"From scraped content\",\"content\":\"...\",\"parent_name\":\"root\",\"relation\":\"refers_to\"}}"
+    ]
+  },
+  {
+    "title": "Modify files then commit again",
+    "steps": [
+      "regex_replace with {\"file_path\":\"./README.md\",\"pattern\":\"old text\",\"replacement\":\"new text\"}",
+      "git with {\"action\":\"add_files\",\"files\":[\"README.md\"]}",
+      "git with {\"action\":\"commit_changes\",\"message\":\"Update README\"}"
+    ]
+  },
+  {
+    "title": "Enrich graph with user info and search it",
+    "steps": [
+      "graph_tool with {\"action\":\"create_root\",\"params\":{\"name\":\"User\",\"description\":\"Root user node\",\"content\":\"User info\"}}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"User Preferences\",\"description\":\"User likes cats\",\"content\":\"likes cats\",\"parent_name\":\"User\",\"relation\":\"has_detail\"}}",
+      "graph_tool with {\"action\":\"search_nodes\",\"params\":{\"query\":\"cats\"}}"
+    ]
+  },
+  {
+    "title": "Run bash command then update graph",
+    "steps": [
+      "bash with {\"command\":\"ls -la\"}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"SystemCheck\",\"description\":\"Output of ls\",\"content\":\"(paste output here)\",\"parent_name\":\"User\",\"relation\":\"observed\"}}"
+    ]
+  },
+  {
+    "title": "Get recent nodes and store search results",
+    "steps": [
+      "graph_tool with {\"action\":\"get_recent_nodes\",\"params\":{\"limit\":5}}",
+      "brave_search with {\"query\":\"latest AI news\"}",
+      "scrape_url with {\"url\":\"<news URL>\"}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"AI News\",\"description\":\"Latest AI news snippet\",\"content\":\"...\",\"parent_name\":\"User\",\"relation\":\"learned\"}}"
+    ]
+  },
+  {
+    "title": "Push changes to remote repository",
+    "steps": [
+      "git with {\"action\":\"get_status\"}",
+      "git with {\"action\":\"push_changes\",\"remote\":\"origin\",\"branch\":\"main\"}"
+    ]
+  },
+  {
+    "title": "Create nodes for multiple interests and connect them",
+    "steps": [
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Hobby\",\"description\":\"User hobby\",\"content\":\"User likes hiking\",\"parent_name\":\"User\",\"relation\":\"has_hobby\"}}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Work\",\"description\":\"User job\",\"content\":\"Software developer\",\"parent_name\":\"User\",\"relation\":\"has_profession\"}}",
+      "graph_tool with {\"action\":\"connect_nodes\",\"params\":{\"from_node_name\":\"Hobby\",\"to_node_name\":\"Work\",\"relation\":\"inspires\"}}"
+    ]
+  },
+  {
+    "title": "Search a concept and scrape its explanation",
+    "steps": [
+      "brave_search with {\"query\":\"Definition of entropy in information theory\"}",
+      "scrape_url with {\"url\":\"<a URL from the search result>\"}"
+    ]
+  },
+  {
+    "title": "Integrate scraped info into graph",
+    "steps": [
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Entropy\",\"description\":\"Info theory concept\",\"content\":\"...\",\"parent_name\":\"User\",\"relation\":\"learned_about\"}}"
+    ]
+  },
+  {
+    "title": "Update existing node details",
+    "steps": [
+      "graph_tool with {\"action\":\"update_node\",\"params\":{\"node_name\":\"Hobby\",\"new_description\":\"Outdoor activities\",\"new_content\":\"User enjoys hiking in the mountains\"}}"
+    ]
+  },
+  {
+    "title": "Get top tags and connect related info",
+    "steps": [
+      "graph_tool with {\"action\":\"get_top_tags\",\"params\":{\"limit\":5}}",
+      "graph_tool with {\"action\":\"get_nodes_by_tag\",\"params\":{\"tag\":\"hobby\"}}"
+    ]
+  },
+  {
+    "title": "Perform regex replace in code file then commit",
+    "steps": [
+      "regex_replace with {\"file_path\":\"./src/main.rs\",\"pattern\":\"fn main()\",\"replacement\":\"fn start()\"}",
+      "git with {\"action\":\"add_files\",\"files\":[\"src/main.rs\"]}",
+      "git with {\"action\":\"commit_changes\",\"message\":\"Rename main to start\"}"
+    ]
+  },
+  {
+    "title": "Check git log and update a node",
+    "steps": [
+      "git with {\"action\":\"get_log\",\"max_count\":3}",
+      "graph_tool with {\"action\":\"update_node\",\"params\":{\"node_name\":\"Work\",\"new_content\":\"Software developer with experience in Rust\"}}"
+    ]
+  },
+  {
+    "title": "Undo last commit and record the action in graph",
+    "steps": [
+      "git with {\"action\":\"undo_last_commit\"}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"VersionControlEvent\",\"description\":\"Undo commit action\",\"content\":\"Last commit undone\",\"parent_name\":\"User\",\"relation\":\"performed_action\"}}"
+    ]
+  },
+  {
+    "title": "Search user interests and store them",
+    "steps": [
+      "graph_tool with {\"action\":\"search_nodes\",\"params\":{\"query\":\"hiking\"}}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"NewHobby\",\"description\":\"Related hobby\",\"content\":\"User also likes cycling\",\"parent_name\":\"User\",\"relation\":\"has_hobby\"}}"
+    ]
+  },
+  {
+    "title": "Get tags by date and relate them",
+    "steps": [
+      "graph_tool with {\"action\":\"get_tags_by_date\",\"params\":{\"limit\":5}}",
+      "graph_tool with {\"action\":\"connect_nodes\",\"params\":{\"from_node_name\":\"NewHobby\",\"to_node_name\":\"Hobby\",\"relation\":\"complements\"}}"
+    ]
+  },
+  {
+    "title": "Scrape a tutorial and store results",
+    "steps": [
+      "brave_search with {\"query\":\"Rust async tutorial\"}",
+      "scrape_url with {\"url\":\"<tutorial URL>\"}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"RustAsyncTutorial\",\"description\":\"Tutorial content\",\"content\":\"...\",\"parent_name\":\"Work\",\"relation\":\"improves_skill\"}}"
+    ]
+  },
+  {
+    "title": "Update content after scraping",
+    "steps": [
+      "regex_replace with {\"file_path\":\"./NOTES.txt\",\"pattern\":\"OldContent\",\"replacement\":\"NewContent\"}",
+      "graph_tool with {\"action\":\"update_node\",\"params\":{\"node_name\":\"Entropy\",\"new_content\":\"Expanded knowledge on entropy\"}}"
+    ]
+  },
+  {
+    "title": "Search something else and store results again",
+    "steps": [
+      "brave_search with {\"query\":\"Latest programming languages\"}",
+      "scrape_url with {\"url\":\"<found URL>\"}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"ProgrammingLangs\",\"description\":\"Info on languages\",\"content\":\"...\",\"parent_name\":\"User\",\"relation\":\"interested_in\"}}"
+    ]
+  },
+  {
+    "title": "Chain multiple scrapes",
+    "steps": [
+      "brave_search with {\"query\":\"Quantum computing basics\"}",
+      "scrape_url with {\"url\":\"<found URL>\"}",
+      "scrape_url with {\"url\":\"<another related URL>\"}"
+    ]
+  },
+  {
+    "title": "Store multiple scrapes in graph",
+    "steps": [
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"QuantumComputing\",\"description\":\"Basics\",\"content\":\"...\",\"parent_name\":\"User\",\"relation\":\"learning\"}}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"QuantumResources\",\"description\":\"Additional info\",\"content\":\"...\",\"parent_name\":\"QuantumComputing\",\"relation\":\"references\"}}"
+    ]
+  },
+  {
+    "title": "Add and commit large file changes",
+    "steps": [
+      "bash with {\"command\":\"touch LARGE_FILE.txt\"}",
+      "git with {\"action\":\"add_files\",\"files\":[\"LARGE_FILE.txt\"]}",
+      "git with {\"action\":\"commit_changes\",\"message\":\"Add large file\"}"
+    ]
+  },
+  {
+    "title": "Move a node under another in graph",
+    "steps": [
+      "graph_tool with {\"action\":\"move_node\",\"params\":{\"node_name\":\"QuantumResources\",\"new_parent_name\":\"Work\",\"new_relation\":\"research_related\"}}"
+    ]
+  },
+  {
+    "title": "Search graph and enrich nodes",
+    "steps": [
+      "graph_tool with {\"action\":\"search_nodes\",\"params\":{\"query\":\"rust\"}}",
+      "graph_tool with {\"action\":\"update_node\",\"params\":{\"node_name\":\"RustAsyncTutorial\",\"new_description\":\"Comprehensive guide\"}}"
+    ]
+  },
+  {
+    "title": "Run a bash script and record outcome",
+    "steps": [
+      "bash with {\"command\":\"echo Hello World > message.txt\"}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"SystemMessage\",\"description\":\"Result of echo\",\"content\":\"Hello World\",\"parent_name\":\"User\",\"relation\":\"observed\"}}"
+    ]
+  },
+  {
+    "title": "Get recent nodes again and link to current interests",
+    "steps": [
+      "graph_tool with {\"action\":\"get_recent_nodes\",\"params\":{\"limit\":5}}",
+      "graph_tool with {\"action\":\"connect_nodes\",\"params\":{\"from_node_name\":\"ProgrammingLangs\",\"to_node_name\":\"RustAsyncTutorial\",\"relation\":\"studying\"}}"
+    ]
+  },
+  {
+    "title": "Perform another regex replacement and commit",
+    "steps": [
+      "regex_replace with {\"file_path\":\"./DOCS.md\",\"pattern\":\"Placeholder\",\"replacement\":\"Real Content\"}",
+      "git with {\"action\":\"add_files\",\"files\":[\"DOCS.md\"]}",
+      "git with {\"action\":\"commit_changes\",\"message\":\"Update docs\"}"
+    ]
+  },
+  {
+    "title": "Memory Creation and Connection",
+    "steps": [
+      "memory_tool with {\"action\":\"memorize_thought\",\"params\":{\"thought_number\":1,\"tags\":[\"important\",\"insight\"],\"metadata\":{\"source\":\"conversation\"}}}",
+      "memory_tool with {\"action\":\"memorize_thought\",\"params\":{\"thought_number\":2,\"tags\":[\"followup\",\"action\"],\"metadata\":{\"priority\":\"high\"}}}",
+      "memory_tool with {\"action\":\"connect_thoughts\",\"params\":{\"from_thought\":1,\"to_thought\":2,\"relation\":\"leads_to\"}}"
+    ]
+  },
+  {
+    "title": "Memory Search and Task Creation",
+    "steps": [
+      "memory_tool with {\"action\":\"search_memory\",\"params\":{\"query\":\"important insights\",\"include_thoughts\":true}}",
+      "task_planning with {\"action\":\"create_task\",\"params\":{\"title\":\"Follow up on insight\",\"description\":\"From memory search\",\"priority\":\"high\",\"project\":\"insights\"}}"
+    ]
+  },
+  {
+    "title": "Task Planning and Dependencies",
+    "steps": [
+      "task_planning with {\"action\":\"create_task\",\"params\":{\"title\":\"Research topic\",\"description\":\"Initial research\",\"priority\":\"medium\",\"project\":\"research\"}}",
+      "task_planning with {\"action\":\"create_task\",\"params\":{\"title\":\"Write summary\",\"description\":\"Summarize findings\",\"priority\":\"high\",\"project\":\"research\"}}",
+      "task_planning with {\"action\":\"add_dependency\",\"params\":{\"from_task\":\"Write summary\",\"to_task\":\"Research topic\",\"dependency_type\":\"depends_on\"}}"
+    ]
+  },
+  {
+    "title": "Project Task Management",
+    "steps": [
+      "task_planning with {\"action\":\"get_project_tasks\",\"params\":{\"project\":\"research\",\"status\":\"in_progress\"}}",
+      "task_planning with {\"action\":\"update_task\",\"params\":{\"task_id\":\"Research topic\",\"new_status\":\"completed\",\"actual_hours\":2.5}}",
+      "task_planning with {\"action\":\"search_tasks\",\"params\":{\"query\":\"summary\"}}"
+    ]
+  },
+  {
+    "title": "Memory-Based Task Planning",
+    "steps": [
+      "memory_tool with {\"action\":\"search_memory\",\"params\":{\"query\":\"action items\",\"include_thoughts\":true}}",
+      "task_planning with {\"action\":\"create_task\",\"params\":{\"title\":\"Process action items\",\"description\":\"From memory search\",\"priority\":\"high\",\"project\":\"followup\"}}",
+      "memory_tool with {\"action\":\"memorize_thought\",\"params\":{\"thought_number\":3,\"tags\":[\"processed\",\"task\"],\"metadata\":{\"task_id\":\"Process action items\"}}}"
+    ]
+  },
+  {
+    "title": "Research and Task Creation Workflow",
+    "steps": [
+      "brave_search with {\"query\":\"Latest developments in AI\"}",
+      "scrape_url with {\"url\":\"<found URL>\"}",
+      "memory_tool with {\"action\":\"memorize_thought\",\"params\":{\"thought_number\":4,\"tags\":[\"research\",\"ai\"],\"metadata\":{\"source\":\"web\"}}}",
+      "task_planning with {\"action\":\"create_task\",\"params\":{\"title\":\"Review AI developments\",\"description\":\"Based on research\",\"priority\":\"high\",\"project\":\"ai_research\"}}"
+    ]
+  },
+  {
+    "title": "Task Status Updates and Memory Links",
+    "steps": [
+      "task_planning with {\"action\":\"update_task\",\"params\":{\"task_id\":\"Review AI developments\",\"new_status\":\"in_progress\"}}",
+      "memory_tool with {\"action\":\"memorize_thought\",\"params\":{\"thought_number\":5,\"tags\":[\"progress\",\"ai\"],\"metadata\":{\"task_id\":\"Review AI developments\"}}}",
+      "memory_tool with {\"action\":\"connect_thoughts\",\"params\":{\"from_thought\":4,\"to_thought\":5,\"relation\":\"progress_update\"}}"
+    ]
+  },
+  {
+    "title": "Integrated Knowledge Management",
+    "steps": [
+      "scrape_url with {\"url\":\"<research URL>\"}",
+      "memory_tool with {\"action\":\"memorize_thought\",\"params\":{\"thought_number\":6,\"tags\":[\"knowledge\",\"research\"],\"metadata\":{\"source\":\"research\"}}}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Research Findings\",\"description\":\"From memory\",\"content\":\"...\",\"parent_name\":\"root\",\"relation\":\"contains\"}}",
+      "task_planning with {\"action\":\"create_task\",\"params\":{\"title\":\"Document findings\",\"description\":\"From research\",\"priority\":\"medium\",\"project\":\"documentation\"}}"
+    ]
+  },
+  {
+    "title": "Research with Sequential Thinking",
+    "steps": [
+      "brave_search with {\"query\":\"Latest developments in quantum computing\"}",
+      "sequential_thinking with {\"action\":\"add_thought\",\"params\":{\"content\":\"Initial research on quantum computing\",\"total_thoughts\":3}}",
+      "scrape_url with {\"url\":\"<research URL>\"}",
+      "sequential_thinking with {\"action\":\"add_thought\",\"params\":{\"content\":\"Key findings from research\",\"total_thoughts\":3}}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Quantum Computing Research\",\"description\":\"Research findings\",\"content\":\"...\",\"parent_name\":\"Research\",\"relation\":\"contains\"}}",
+      "sequential_thinking with {\"action\":\"add_thought\",\"params\":{\"content\":\"Conclusions and next steps\",\"total_thoughts\":3}}"
+    ]
+  },
+  {
+    "title": "Task Planning and Memory Integration",
+    "steps": [
+      "task_planning with {\"action\":\"create_task\",\"params\":{\"title\":\"Research Project\",\"description\":\"Complete quantum computing research\",\"priority\":1}}",
+      "sequential_thinking with {\"action\":\"add_thought\",\"params\":{\"content\":\"Research plan outline\",\"total_thoughts\":1}}",
+      "memory with {\"action\":\"memorize_thought\",\"params\":{\"thought_number\":1,\"tags\":[\"research\",\"planning\"],\"metadata\":{\"project\":\"quantum\"}}}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Research Plan\",\"description\":\"Project planning\",\"content\":\"...\",\"parent_name\":\"Tasks\",\"relation\":\"plans\"}}"
+    ]
+  },
+  {
+    "title": "Memory-Based Knowledge Graph",
+    "steps": [
+      "sequential_thinking with {\"action\":\"add_thought\",\"params\":{\"content\":\"Initial concept exploration\",\"total_thoughts\":2}}",
+      "memory with {\"action\":\"memorize_thought\",\"params\":{\"thought_number\":1,\"tags\":[\"concept\"],\"metadata\":{}}}",
+      "sequential_thinking with {\"action\":\"add_thought\",\"params\":{\"content\":\"Detailed analysis\",\"total_thoughts\":2}}",
+      "memory with {\"action\":\"memorize_thought\",\"params\":{\"thought_number\":2,\"tags\":[\"analysis\"],\"metadata\":{}}}",
+      "memory with {\"action\":\"connect_thoughts\",\"params\":{\"from_thought\":1,\"to_thought\":2,\"relation\":\"leads_to\"}}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Concept Analysis\",\"description\":\"Connected thoughts analysis\",\"content\":\"...\",\"parent_name\":\"Knowledge\",\"relation\":\"contains\"}}"
+    ]
+  },
+  {
+    "title": "Task Progress Tracking",
+    "steps": [
+      "task_planning with {\"action\":\"create_task\",\"params\":{\"title\":\"Implementation\",\"description\":\"Implement new feature\",\"priority\":1}}",
+      "sequential_thinking with {\"action\":\"add_thought\",\"params\":{\"content\":\"Implementation approach\",\"total_thoughts\":1}}",
+      "task_planning with {\"action\":\"update_task\",\"params\":{\"task_id\":\"1\",\"status\":\"in_progress\"}}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Feature Implementation\",\"description\":\"Progress tracking\",\"content\":\"...\",\"parent_name\":\"Tasks\",\"relation\":\"tracks\"}}",
+      "sequential_thinking with {\"action\":\"revise_thought\",\"params\":{\"content\":\"Updated implementation plan\",\"revises_number\":1}}"
+    ]
+  },
+  {
+    "title": "Branched Thinking and Task Management",
+    "steps": [
+      "sequential_thinking with {\"action\":\"add_thought\",\"params\":{\"content\":\"Main approach\",\"total_thoughts\":1}}",
+      "sequential_thinking with {\"action\":\"branch_thought\",\"params\":{\"content\":\"Alternative approach\",\"branch_from\":1,\"branch_id\":\"alt1\"}}",
+      "task_planning with {\"action\":\"create_task\",\"params\":{\"title\":\"Evaluate Approaches\",\"description\":\"Compare main and alternative approaches\",\"priority\":2}}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Approach Comparison\",\"description\":\"Analysis of approaches\",\"content\":\"...\",\"parent_name\":\"Evaluation\",\"relation\":\"compares\"}}"
+    ]
+  },
+  {
+    "title": "Integrated Research and Version Control",
+    "steps": [
+      "brave_search with {\"query\":\"Latest Rust async features\"}",
+      "sequential_thinking with {\"action\":\"add_thought\",\"params\":{\"content\":\"Initial research on async Rust\",\"total_thoughts\":2}}",
+      "scrape_url with {\"url\":\"<research URL>\"}",
+      "sequential_thinking with {\"action\":\"add_thought\",\"params\":{\"content\":\"Implementation ideas\",\"total_thoughts\":2}}",
+      "git with {\"action\":\"init_repo\"}",
+      "git with {\"action\":\"add_files\",\"files\":[\"src/async_impl.rs\"]}",
+      "git with {\"action\":\"commit_changes\",\"message\":\"Add async implementation based on research\"}",
+      "graph_tool with {\"action\":\"create_node\",\"params\":{\"name\":\"Async Implementation\",\"description\":\"New async features\",\"content\":\"...\",\"parent_name\":\"Development\",\"relation\":\"implements\"}}"
+    ]
+  }
+]

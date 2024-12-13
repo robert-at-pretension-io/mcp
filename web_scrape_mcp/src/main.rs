@@ -1,91 +1,73 @@
-mod graph_database;
-mod git_integration;
-mod regex_replace;
-use graph_database::{GraphManager, handle_graph_tool_call, graph_tool_info};
-use regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
-use git_integration::{handle_git_tool_call, git_tool_info};
-
-fn detect_intended_tool_call(json: &Value) -> Option<String> {
-    // Common tool parameter names and their likely tools
-    let tool_hints = [
-        (vec!["file_path", "pattern", "replacement"], "regex_replace"),
-        (vec!["command"], "bash"),
-        (vec!["url"], "scrape_url"),
-        (vec!["query"], "brave_search"),
-        (vec!["action", "repo_path", "files", "message"], "git"),
-        (vec!["action", "params", "name", "description", "content"], "graph_tool")
-    ];
-
-    // If it's an object, check its fields
-    if let Some(obj) = json.as_object() {
-        for (params, tool_name) in tool_hints.iter() {
-            // Count how many of the hint parameters are present
-            let matches = params.iter()
-                .filter(|&param| obj.contains_key(*param))
-                .count();
-            
-            // If we find more than half of the expected parameters, this is probably the intended tool
-            if matches >= (params.len() + 1) / 2 {
-                return Some((*tool_name).to_string());
-            }
-        }
-    }
-    None
-}
-use shared_protocol_objects::{
-    ResourceInfo, ToolInfo, ServerCapabilities, Implementation, 
-    InitializeResult, ClientCapabilities,
-    ResourcesCapability, ToolsCapability, PromptsCapability,
-    JsonRpcRequest, JsonRpcResponse,
-    ListResourcesResult, ListToolsResult, ReadResourceParams,
-    ResourceContent, ReadResourceResult,
-    ToolResponseContent, CallToolResult, CallToolParams,
-    LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
-    PARSE_ERROR, INVALID_PARAMS, INTERNAL_ERROR, error_response, success_response
-};
-
-mod process_html;
-use process_html::extract_text_from_html;
-
-mod bash;
-use bash::{BashExecutor, BashParams, bash_tool_info};
-
-mod brave_search;
-mod scraping_bee;
-
-use brave_search::{BraveSearchClient, search_tool_info};
-use scraping_bee::{ScrapingBeeClient, ScrapingBeeResponse, scraping_tool_info};
+use futures::StreamExt;
 use serde_json::{json, Value};
+use shared_protocol_objects::{
+    error_response, success_response, CallToolParams, CallToolResult, ClientCapabilities,
+    Implementation, InitializeResult, JsonRpcRequest, JsonRpcResponse, ListResourcesResult,
+    ListToolsResult, PromptsCapability, ReadResourceParams, ReadResourceResult, ResourceContent,
+    ResourceInfo, ResourcesCapability, ServerCapabilities, ToolInfo, ToolResponseContent,
+    ToolsCapability, INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION, PARSE_ERROR,
+    SUPPORTED_PROTOCOL_VERSIONS,
+};
 use std::collections::HashMap;
-
 use std::sync::Arc;
-use tokio::io::stdout;
-use tokio::io::AsyncWriteExt;
-use tokio::io::{self, AsyncBufReadExt, BufReader};
-use tokio::sync::mpsc;
-use tokio::sync::Mutex;
-use tokio::task;
+use tokio::io::{stdout, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::{mpsc, Mutex};
+use tokio::{io, task};
 use tokio_stream::wrappers::LinesStream;
-use tokio_stream::StreamExt;
-
-
-#[derive(Debug)]
-struct MCPServerState {
-    resources: Vec<ResourceInfo>,
-    tools: Vec<ToolInfo>,
-    client_capabilities: Option<ClientCapabilities>,
-    client_info: Option<Implementation>,
-}
+use tracing::{debug, error, info, warn, Level};
+use tracing_subscriber::{self, EnvFilter};
+use tracing_appender;
+use web_scrape_mcp::bash::{bash_tool_info, BashExecutor, BashParams};
+use web_scrape_mcp::brave_search::{search_tool_info, BraveSearchClient};
+use web_scrape_mcp::git_integration::{git_tool_info, handle_git_tool_call};
+use web_scrape_mcp::{graph_database, memory, sequential_thinking, task_planning};
+use web_scrape_mcp::graph_database::{graph_tool_info, handle_graph_tool_call, GraphManager};
+use web_scrape_mcp::process_html::extract_text_from_html;
+use web_scrape_mcp::regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
+use web_scrape_mcp::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
 
 #[tokio::main]
 async fn main() {
-    // Verify required environment variables are present
-    let _ = std::env::var("SCRAPINGBEE_API_KEY")
-        .expect("SCRAPINGBEE_API_KEY environment variable must be set");
-    let _ = std::env::var("BRAVE_API_KEY").expect("BRAVE_API_KEY environment variable must be set");
+    // Set up file appender
+    let log_dir = std::env::var("LOG_DIR").unwrap_or_else(|_| "/Users/daniil/Developer/mcp/logs".to_string());
+    let file_appender = tracing_appender::rolling::Builder::new()
+            .rotation(tracing_appender::rolling::Rotation::NEVER)
+            .filename_prefix("mcp-server")
+            .filename_suffix("log")
+            .build(log_dir)
+            .expect("Failed to create log directory");
+
+    // Initialize the tracing subscriber with both stdout and file output
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
     
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::DEBUG.into())
+                .add_directive("web_scrape_mcp=debug".parse().unwrap())
+        )
+        .with_writer(non_blocking)
+        .with_thread_ids(true)
+        .with_file(true)
+        .with_line_number(true)
+        .with_target(true)
+        .init();
+
+    info!("Starting MCP server...");
+
+    // Verify required environment variables are present
+    let _scrapingbee_key = std::env::var("SCRAPINGBEE_API_KEY")
+        .expect("SCRAPINGBEE_API_KEY environment variable must be set");
+    let _brave_key = std::env::var("BRAVE_API_KEY")
+        .expect("BRAVE_API_KEY environment variable must be set");
+
+    debug!("Environment variables loaded successfully");
+
     let _ = std::env::var("KNOWLEDGE_GRAPH_DIR").unwrap_or_else(|_| {
-        println!("KNOWLEDGE_GRAPH_DIR not set, using default: {}", graph_database::DEFAULT_GRAPH_DIR);
+        println!(
+            "KNOWLEDGE_GRAPH_DIR not set, using default: {}",
+            graph_database::DEFAULT_GRAPH_DIR
+        );
         graph_database::DEFAULT_GRAPH_DIR.to_string()
     });
 
@@ -102,10 +84,13 @@ async fn main() {
             scraping_tool_info(),
             search_tool_info(),
             graph_tool_info(),
-            regex_replace_tool_info()
+            regex_replace_tool_info(),
+            sequential_thinking::sequential_thinking_tool_info(),
+            memory::memory_tool_info(),
+            task_planning::task_planning_tool_info(),
         ],
         client_capabilities: None,
-        client_info: None
+        client_info: None,
     }));
 
     let (tx_out, mut rx_out) = mpsc::unbounded_channel::<JsonRpcResponse>();
@@ -114,6 +99,7 @@ async fn main() {
         let mut out = stdout();
         while let Some(resp) = rx_out.recv().await {
             let serialized = serde_json::to_string(&resp).unwrap();
+            debug!("Sending response: {}", serialized);
             let _ = out.write_all(serialized.as_bytes()).await;
             let _ = out.write_all(b"\n").await;
             let _ = out.flush().await;
@@ -130,10 +116,15 @@ async fn main() {
             continue;
         }
 
+        debug!("Received input: {}", line);
         let parsed: Result<JsonRpcRequest, _> = serde_json::from_str(&line);
         let req = match parsed {
-            Ok(req) => req,
-            Err(_) => {
+            Ok(req) => {
+                debug!("Parsed request: {:?}", req);
+                req
+            }
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
                 // Try parsing as raw JSON first
                 if let Ok(raw_json) = serde_json::from_str::<Value>(&line) {
                     // Check if this looks like an attempted tool call
@@ -149,10 +140,10 @@ async fn main() {
                                 \"name\": \"{}\",\n    \
                                 \"arguments\": {}\n  \
                               }}\n\
-                            }}", 
+                            }}",
                             intended_tool,
                             intended_tool,
-                            raw_json.to_string()
+                            raw_json
                         );
                         let resp = error_response(None, PARSE_ERROR, &error_msg);
                         let _ = tx_out.send(resp);
@@ -169,15 +160,27 @@ async fn main() {
         let tx_out_clone = tx_out.clone();
 
         task::spawn(async move {
+            debug!("Handling request: {:?}", req);
             let resp = handle_request(req, &state, tx_out_clone.clone()).await;
             if let Some(resp) = resp {
+                debug!("Got response: {:?}", resp);
                 let _ = tx_out_clone.send(resp);
+            } else {
+                warn!("No response generated for request");
             }
         });
     }
 
     drop(tx_out);
     let _ = printer_handle.await;
+}
+
+#[derive(Debug)]
+struct MCPServerState {
+    resources: Vec<ResourceInfo>,
+    tools: Vec<ToolInfo>,
+    client_capabilities: Option<ClientCapabilities>,
+    client_info: Option<Implementation>,
 }
 
 async fn handle_request(
@@ -198,7 +201,8 @@ async fn handle_request(
                 None => return Some(error_response(id, -32602, "Missing params")),
             };
 
-            let protocol_version = params.get("protocolVersion")
+            let protocol_version = params
+                .get("protocolVersion")
                 .and_then(|v| v.as_str())
                 .unwrap_or(LATEST_PROTOCOL_VERSION);
 
@@ -227,15 +231,13 @@ async fn handle_request(
                     experimental: Some(HashMap::new()),
                     logging: Some(json!({})),
                     prompts: Some(PromptsCapability {
-                        list_changed: false
+                        list_changed: false,
                     }),
                     resources: Some(ResourcesCapability {
                         subscribe: false,
                         list_changed: true,
                     }),
-                    tools: Some(ToolsCapability {
-                        list_changed: true,
-                    }),
+                    tools: Some(ToolsCapability { list_changed: true }),
                 },
                 server_info: Implementation {
                     name: "rust-mcp-server".into(),
@@ -258,7 +260,7 @@ async fn handle_request(
                         "tools": result.capabilities.tools
                     }
                 })),
-                error: None
+                error: None,
             })
         }
 
@@ -272,7 +274,8 @@ async fn handle_request(
         }
 
         "resources/read" => {
-            let params_res: Result<ReadResourceParams, _> = serde_json::from_value(req.params.unwrap_or(Value::Null));
+            let params_res: Result<ReadResourceParams, _> =
+                serde_json::from_value(req.params.unwrap_or(Value::Null));
             let params = match params_res {
                 Ok(p) => p,
                 Err(e) => {
@@ -314,7 +317,8 @@ async fn handle_request(
         }
 
         "tools/call" => {
-            let params_res: Result<CallToolParams, _> = serde_json::from_value(req.params.clone().unwrap_or(Value::Null));
+            let params_res: Result<CallToolParams, _> =
+                serde_json::from_value(req.params.clone().unwrap_or(Value::Null));
             let params = match params_res {
                 Ok(p) => p,
                 Err(e) => {
@@ -398,14 +402,12 @@ async fn handle_request(
                                 Some(success_response(id, json!(tool_res)))
                             }
                             Ok(ScrapingBeeResponse::Binary(bytes)) => {
-                                // Save screenshot 
-                                    return Some(error_response(
-                                        id,
-                                        -32603,
-                                        &format!("Can't read binary scrapes"),
-                                    ));
-                                
-
+                                // Save screenshot
+                                return Some(error_response(
+                                    id,
+                                    -32603,
+                                    &format!("Can't read binary scrapes"),
+                                ));
                             }
                             Err(e) => {
                                 let tool_res = CallToolResult {
@@ -438,21 +440,21 @@ async fn handle_request(
                         match executor.execute(bash_params).await {
                             Ok(result) => {
                                 let tool_res = CallToolResult {
-                                content: vec![ToolResponseContent {
-                                    type_: "text".into(),
-                                    text: format!(
-                                        "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}", 
-                                        result.status,
-                                        result.stdout,
-                                        result.stderr
-                                    ),
-                                    annotations: None,
-                                }],
-                                is_error: Some(!result.success),
-                                _meta: None,
-                                progress: None,
-                                total: None,
-                            };
+                                    content: vec![ToolResponseContent {
+                                        type_: "text".into(),
+                                        text: format!(
+                                            "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                                            result.status,
+                                            result.stdout,
+                                            result.stderr
+                                        ),
+                                        annotations: None,
+                                    }],
+                                    is_error: Some(!result.success),
+                                    _meta: None,
+                                    progress: None,
+                                    total: None,
+                                };
                                 Some(success_response(id, json!(tool_res)))
                             }
                             Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
@@ -460,7 +462,7 @@ async fn handle_request(
                     } else if t.name == "git" {
                         match handle_git_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string()))
+                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
                         }
                     } else if t.name == "brave_search" {
                         let query = match params.arguments.get("query").and_then(Value::as_str) {
@@ -537,15 +539,38 @@ async fn handle_request(
                         }
                     } else if t.name == "graph_tool" {
                         // Initialize with just the filename - path will be determined from env var
-                        let mut graph_manager = GraphManager::new("knowledge_graph.json".to_string());
+                        let mut graph_manager =
+                            GraphManager::new("knowledge_graph.json".to_string());
                         match handle_graph_tool_call(params, &mut graph_manager, id.clone()).await {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string()))
+                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
                         }
                     } else if t.name == "regex_replace" {
                         match handle_regex_replace_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string()))
+                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
+                        }
+                    } else if t.name == "sequential_thinking" {
+                        match sequential_thinking::handle_sequential_thinking_tool_call(
+                            params,
+                            id.clone(),
+                        )
+                        .await
+                        {
+                            Ok(resp) => Some(resp),
+                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
+                        }
+                    } else if t.name == "memory" {
+                        match memory::handle_memory_tool_call(params, id.clone()).await {
+                            Ok(resp) => Some(resp),
+                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
+                        }
+                    } else if t.name == "task_planning" {
+                        match task_planning::handle_task_planning_tool_call(params, id.clone())
+                            .await
+                        {
+                            Ok(resp) => Some(resp),
+                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
                         }
                     } else {
                         Some(error_response(id, -32601, "Tool not implemented"))
@@ -559,3 +584,37 @@ async fn handle_request(
     }
 }
 
+fn detect_intended_tool_call(json: &Value) -> Option<String> {
+    // Common tool parameter names and their likely tools
+    let tool_hints = [
+        (vec!["file_path", "pattern", "replacement"], "regex_replace"),
+        (vec!["command"], "bash"),
+        (vec!["url"], "scrape_url"),
+        (vec!["query"], "brave_search"),
+        (vec!["action", "repo_path", "files", "message"], "git"),
+        (
+            vec!["action", "params", "name", "description", "content"],
+            "graph_tool",
+        ),
+        (vec!["action", "params"], "sequential_thinking"),
+        (vec!["action", "params"], "memory"),
+        (vec!["action", "params"], "task_planning"),
+    ];
+
+    // If it's an object, check its fields
+    if let Some(obj) = json.as_object() {
+        for (params, tool_name) in tool_hints.iter() {
+            // Count how many of the hint parameters are present
+            let matches = params
+                .iter()
+                .filter(|&param| obj.contains_key(*param))
+                .count();
+
+            // If we find more than half of the expected parameters, this is probably the intended tool
+            if matches >= (params.len() + 1) / 2 {
+                return Some((*tool_name).to_string());
+            }
+        }
+    }
+    None
+}

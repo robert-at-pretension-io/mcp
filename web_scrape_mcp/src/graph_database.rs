@@ -1,32 +1,33 @@
-use std::fs;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize}; 
+use std::fs;
 
 pub const DEFAULT_GRAPH_DIR: &str = "/tmp/knowledge_graphs";
-use petgraph::{Graph, adj::IndexType};
+use anyhow::{anyhow, Result};
 use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
+use petgraph::{adj::IndexType, Graph};
 use serde_json::{json, Value};
-use anyhow::{Result, anyhow};
+use tracing::debug;
 use shared_protocol_objects::{
-    JsonRpcResponse, ToolInfo,
-    CallToolParams, CallToolResult,
-    ToolResponseContent,
-    success_response, error_response, INVALID_PARAMS, INTERNAL_ERROR
+    success_response, CallToolParams,
+    CallToolResult, JsonRpcResponse,
+    ToolInfo,
+    ToolResponseContent
 };
 
 #[derive(Serialize, Deserialize, Clone)]
-struct DataNode {
+pub(crate) struct DataNode {
     #[serde(default)]
-    name: String,
+    pub(crate) name: String,
     #[serde(default)]
-    description: String,
+    pub(crate) description: String,
     #[serde(default)]
-    content: String,
+    pub(crate) content: String,
     #[serde(default)]
-    metadata: HashMap<String, String>,
+    pub(crate) metadata: HashMap<String, String>,
     #[serde(default)]
-    tags: Vec<String>,
+    pub(crate) tags: Vec<String>,
     #[serde(default)]
     quotes: Vec<String>,
     #[serde(default)]
@@ -38,7 +39,7 @@ struct DataNode {
 }
 
 impl DataNode {
-    fn new(name: String, description: String, content: String) -> Self {
+    pub(crate) fn new(name: String, description: String, content: String) -> Self {
         let now = chrono::Utc::now();
         DataNode {
             name,
@@ -65,8 +66,8 @@ struct SerializableGraph {
 
 #[derive(Clone)]
 pub struct GraphManager {
-    graph: Graph<DataNode, String>, 
-    root: Option<NodeIndex>,
+    pub(crate) graph: Graph<DataNode, String>,
+    pub(crate) root: Option<NodeIndex>,
     path: std::path::PathBuf,
 }
 
@@ -78,7 +79,7 @@ impl GraphManager {
         };
 
         let mut similarities = Vec::new();
-        
+
         for idx in self.graph.node_indices() {
             if let Some(target_node) = self.graph.node_weight(idx) {
                 if target_node.name == node_name {
@@ -104,10 +105,10 @@ impl GraphManager {
                                 shared_value_count += 1;
                             }
                         }
-                        if source_keys.union(&target_keys).count() == 0 { 
-                            0.0 
-                        } else { 
-                            shared_value_count as f64 / source_keys.union(&target_keys).count() as f64 
+                        if source_keys.union(&target_keys).count() == 0 {
+                            0.0
+                        } else {
+                            shared_value_count as f64 / source_keys.union(&target_keys).count() as f64
                         }
                     },
                     "structural" => {
@@ -147,7 +148,7 @@ impl GraphManager {
         // Extract path and relationship types
         let mut relationships = Vec::new();
         let indices = path_indices.1;
-        
+
         // Get relationship labels between consecutive nodes
         for window in indices.windows(2) {
             if let [current, next] = window {
@@ -171,43 +172,43 @@ impl GraphManager {
         // Get graph directory from env var or use default
         let graph_dir = std::env::var("KNOWLEDGE_GRAPH_DIR")
             .unwrap_or_else(|_| DEFAULT_GRAPH_DIR.to_string());
-        
+
         // Create directory if it doesn't exist
         std::fs::create_dir_all(&graph_dir)
             .expect("Failed to create knowledge graph directory");
-        
+
         // Build absolute path for graph file
         let path = std::path::PathBuf::from(graph_dir).join(filename);
-        
+
         // Try loading existing graph first
         let graph = if path.exists() {
-            //debug!("Found existing graph file at {}", path.display());
+            debug!("Found existing graph file at {}", path.display());
             let serializable = match fs::read_to_string(&path) {
                 Ok(data) => {
-                    //debug!("Successfully loaded graph data");
+                    debug!("Successfully loaded graph data");
                     match serde_json::from_str(&data) {
                         Ok(s) => {
-                            //debug!("Successfully parsed graph data");
+                            debug!("Successfully parsed graph data");
                             s
                         }
-                        Err(_e) => {
-                            //debug!("Failed to parse graph data: {}", e);
-                            SerializableGraph { 
-                                nodes: vec![], 
-                                edges: vec![] 
+                        Err(e) => {
+                            debug!("Failed to parse graph data: {}", e);
+                            SerializableGraph {
+                                nodes: vec![],
+                                edges: vec![]
                             }
                         }
                     }
                 }
-                Err(_e) => {
-                    //debug!("Failed to read graph file: {}", e);
-                    SerializableGraph { 
-                        nodes: vec![], 
-                        edges: vec![] 
+                Err(e) => {
+                    debug!("Failed to read graph file: {}", e);
+                    SerializableGraph {
+                        nodes: vec![],
+                        edges: vec![]
                     }
                 }
             };
-            
+
             let mut graph = Graph::new();
             // Restore nodes
             for (idx, node) in serializable.nodes {
@@ -228,16 +229,16 @@ impl GraphManager {
         } else {
             Graph::new()
         };
-        
+
         let root = graph.node_indices().find(|&i| {
             graph.edges_directed(i, petgraph::Direction::Incoming).count() == 0
         });
         Self { graph, root, path: path.to_owned() }
     }
-    
+
 
     async fn save(&self) -> Result<()> {
-        //debug!("Starting save operation to {}", self.path.display());
+        debug!("Starting save operation to {}", self.path.display());
         // Convert to serializable format with better error handling
         let serializable = SerializableGraph {
             nodes: self.graph.node_indices()
@@ -253,14 +254,14 @@ impl GraphManager {
         };
         let json = serde_json::to_string(&serializable)
             .map_err(|e| anyhow!("Failed to serialize graph: {}", e))?;
-        // //debug!("Writing graph data...");
+        debug!("Writing graph data...");
         tokio::fs::write(&self.path, json).await
             .map_err(|e| anyhow!("Failed to write graph file {}: {}", self.path.display(), e))?;
-        // //debug!("Graph save completed successfully");
+        debug!("Graph save completed successfully");
         Ok(())
     }
 
-    async fn create_root(&mut self, node: DataNode) -> Result<NodeIndex> {
+    pub(crate) async fn create_root(&mut self, node: DataNode) -> Result<NodeIndex> {
         if self.root.is_some() {
             let connected_nodes = self.get_most_connected_nodes(10)
                 .iter()
@@ -283,7 +284,7 @@ impl GraphManager {
         Ok(idx)
     }
 
-    async fn create_connected_node(&mut self, node: DataNode, parent: NodeIndex, rel: String) -> Result<NodeIndex> {
+    pub(crate) async fn create_connected_node(&mut self, node: DataNode, parent: NodeIndex, rel: String) -> Result<NodeIndex> {
         if !self.graph.node_weight(parent).is_some() {
             return Err(anyhow!("Parent node index {} not found in graph", parent.index()));
         }
@@ -295,22 +296,22 @@ impl GraphManager {
                 .join("\n");
             return Err(anyhow!("Node with name '{}' already exists.\n\nMost connected nodes for reference:\n{}", node.name, connected_nodes));
         }
-        
+
         // Add node to graph
         let idx = self.graph.add_node(node.clone());
         self.graph.add_edge(parent, idx, rel.clone());
-        
+
         // Update parent's child list
         self.update_parent_child_list(parent);
-        
+
         self.save().await.map_err(|e| anyhow!(
-            "Failed to save graph after adding node '{}' with relation '{}' to parent {}: {}", 
+            "Failed to save graph after adding node '{}' with relation '{}' to parent {}: {}",
             node.name, rel, parent.index(), e
         ))?;
         Ok(idx)
     }
 
-    async fn update_node(&mut self, idx: NodeIndex, node: DataNode) -> Result<()> {
+    pub(crate) async fn update_node(&mut self, idx: NodeIndex, node: DataNode) -> Result<()> {
         // Only check for name uniqueness if the name is actually changing
         if let Some(current) = self.graph.node_weight(idx) {
             if current.name != node.name && self.node_name_exists(&node.name) {
@@ -330,7 +331,7 @@ impl GraphManager {
     async fn move_node(&mut self, node_idx: NodeIndex, new_parent_idx: NodeIndex, new_relation: String) -> Result<()> {
         // Get current parent
         let incoming: Vec<_> = self.graph.neighbors_directed(node_idx, petgraph::Direction::Incoming).collect();
-        
+
         // Remove edge from old parent
         if let Some(old_parent_idx) = incoming.first() {
             // Collect edge IDs first to avoid borrowing conflict
@@ -338,19 +339,19 @@ impl GraphManager {
                 .edges_connecting(*old_parent_idx, node_idx)
                 .map(|e| e.id())
                 .collect();
-        
+
             // Then remove edges using collected IDs
             for edge_id in edge_ids {
                 self.graph.remove_edge(edge_id);
             }
-            
+
             // Update old parent's child list
             self.update_parent_child_list(*old_parent_idx);
         }
 
         // Add edge to new parent
         self.graph.add_edge(new_parent_idx, node_idx, new_relation);
-        
+
         // Update new parent's child list
         self.update_parent_child_list(new_parent_idx);
 
@@ -369,10 +370,10 @@ impl GraphManager {
 
         let neighbors: Vec<_> = self.graph.neighbors(idx).collect();
         let incoming: Vec<_> = self.graph.neighbors_directed(idx, petgraph::Direction::Incoming).collect();
-        
+
         if neighbors.len() > 1 || incoming.len() > 1 {
             return Err(anyhow!(
-                "Cannot delete node '{}' with multiple connections (has {} outgoing and {} incoming)", 
+                "Cannot delete node '{}' with multiple connections (has {} outgoing and {} incoming)",
                 node_name, neighbors.len(), incoming.len()
             ));
         }
@@ -382,7 +383,7 @@ impl GraphManager {
             // First remove the node
             self.graph.remove_node(idx)
                 .ok_or_else(|| anyhow!("Failed to remove node '{}' from graph", node_name))?;
-            
+
             // Then update parent's child list
             self.update_parent_child_list(*parent_idx);
         } else {
@@ -392,26 +393,26 @@ impl GraphManager {
 
         self.graph.remove_node(idx)
             .ok_or_else(|| anyhow!("Failed to remove node '{}' from graph", node_name))?;
-            
+
         self.save().await.map_err(|e| anyhow!(
-            "Failed to save graph after deleting node '{}': {}", 
+            "Failed to save graph after deleting node '{}': {}",
             node_name, e
         ))?;
         Ok(())
     }
-    
 
-    fn get_node(&self, idx: NodeIndex) -> Option<&DataNode> {
+
+    pub(crate) fn get_node(&self, idx: NodeIndex) -> Option<&DataNode> {
         self.graph.node_weight(idx)
     }
 
-    async fn connect(&mut self, from: NodeIndex, to: NodeIndex, rel: String) -> Result<()> {
+    pub(crate) async fn connect(&mut self, from: NodeIndex, to: NodeIndex, rel: String) -> Result<()> {
         self.graph.add_edge(from, to, rel);
         Ok(self.save().await?)
     }
 
     // Method to get a node by its name
-    fn get_node_by_name(&self, name: &str) -> Option<(NodeIndex, &DataNode)> {
+    pub(crate) fn get_node_by_name(&self, name: &str) -> Option<(NodeIndex, &DataNode)> {
         self.graph.node_indices()
             .find_map(|idx| {
                 self.graph.node_weight(idx).and_then(|node| {
@@ -442,7 +443,7 @@ impl GraphManager {
         let actual_child_names: Vec<String> = children.iter()
             .map(|(_, node, _)| node.name.clone())
             .collect();
-            
+
         if let Some(parent_node) = self.graph.node_weight_mut(parent) {
             if parent_node.child_nodes != actual_child_names {
                 parent_node.child_nodes = actual_child_names;
@@ -474,7 +475,7 @@ impl GraphManager {
     }
 
     // Method to get all nodes with names or descriptions matching a query string
-    fn search_nodes(&self, query: &str) -> Vec<(NodeIndex, &DataNode)> {
+    pub(crate) fn search_nodes(&self, query: &str) -> Vec<(NodeIndex, &DataNode)> {
         self.graph.node_indices()
             .filter_map(|idx| {
                 self.graph.node_weight(idx).and_then(|node| {
@@ -499,7 +500,7 @@ impl GraphManager {
                 })
             })
             .collect();
-        
+
         // Sort by edge count in descending order
         nodes.sort_by(|a, b| b.2.cmp(&a.2));
         nodes.truncate(limit);
@@ -512,7 +513,7 @@ impl GraphManager {
                 self.graph.node_weight(idx).map(|node| (idx, node))
             })
             .collect();
-        
+
         // Sort by modified date in descending order
         nodes.sort_by(|a, b| b.1.date_modified.cmp(&a.1.date_modified));
         nodes.truncate(limit);
@@ -522,14 +523,14 @@ impl GraphManager {
     fn get_top_tags(&self, limit: usize) -> Vec<(String, usize)> {
         // Create a HashMap to count tag occurrences
         let mut tag_counts: HashMap<String, usize> = HashMap::new();
-        
+
         // Count occurrences of each tag
         for node in self.graph.node_weights() {
             for tag in &node.tags {
                 *tag_counts.entry(tag.clone()).or_insert(0) += 1;
             }
         }
-        
+
         // Convert to vector and sort by count
         let mut tag_vec: Vec<_> = tag_counts.into_iter().collect();
         tag_vec.sort_by(|a, b| b.1.cmp(&a.1));
@@ -539,7 +540,7 @@ impl GraphManager {
 
     fn get_tags_by_date(&self, limit: usize) -> (Vec<(String, chrono::DateTime<chrono::Utc>)>, Vec<(String, chrono::DateTime<chrono::Utc>)>) {
         let mut tag_dates: HashMap<String, Vec<chrono::DateTime<chrono::Utc>>> = HashMap::new();
-        
+
         // Collect all dates for each tag
         for node in self.graph.node_weights() {
             for tag in &node.tags {
@@ -573,6 +574,11 @@ impl GraphManager {
             .collect();
 
         (recent, oldest)
+    }
+
+    // Method to get all node indices in the graph
+    pub fn node_indices(&self) -> impl Iterator<Item = NodeIndex> + '_ {
+        self.graph.node_indices()
     }
 }
 
@@ -610,7 +616,7 @@ struct DeleteNodeParams {
 #[derive(Deserialize)]
 struct MoveNodeParams {
     node_name: String,
-    new_parent_name: String, 
+    new_parent_name: String,
     new_relation: String,
 }
 
@@ -1385,7 +1391,7 @@ pub async fn handle_graph_tool_call(
                 is_error: Some(false),
                 _meta: None,
                 progress: None,
-                total: None
+                total: None,
             };
             Ok(success_response(id, serde_json::to_value(tool_res)?))
         }

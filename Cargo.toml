@@ -9,3 +9,9 @@ members = [
 [workspace.dependencies]
 env_logger = "0.10"
 console = "0.15"
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"
+codegen-units = 1

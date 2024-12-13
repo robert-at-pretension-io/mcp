@@ -182,6 +182,15 @@ fn infer_tool_from_json(json: &Value) -> Option<(String, Value)> {
     if json.get("command").is_some() {
         return Some(("bash".to_string(), json.clone()));
     }
+    if json.get("sequential_thinking").is_some() {
+        return Some(("sequential_thinking".to_string(), json.clone()));
+    }
+    if json.get("memory").is_some() {
+        return Some(("memory".to_string(), json.clone()));
+    }
+    if json.get("task_planning").is_some() {
+        return Some(("task_planning".to_string(), json.clone()));
+    }
     
     // If we can't infer the tool, return None
     None

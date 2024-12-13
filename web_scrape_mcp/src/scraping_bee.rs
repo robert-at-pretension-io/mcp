@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
-use serde::{Deserialize, Serialize};
-use log::{info, warn, error, debug};
+use serde::Serialize;
+use tracing::{info, warn, error, debug};
 use serde_json::json;
 
 use ::shared_protocol_objects::ToolInfo;

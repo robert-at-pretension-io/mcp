@@ -1,9 +1,8 @@
-use std::process::{Command, Stdio};
-use std::collections::HashMap;
 use anyhow::{anyhow, Result};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use shared_protocol_objects::{CallToolParams, CallToolResult, ToolInfo, ToolResponseContent, JsonRpcResponse, success_response, error_response, INTERNAL_ERROR};
+use serde::Deserialize;
+use serde_json::{json, Value};
+use shared_protocol_objects::{error_response, success_response, CallToolParams, CallToolResult, JsonRpcResponse, ToolResponseContent, INTERNAL_ERROR};
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Deserialize)]
 struct GitParams {
@@ -127,7 +126,6 @@ pub async fn handle_git_tool_call(params: CallToolParams, id: Option<Value>) -> 
 
     Ok(success_response(id, serde_json::to_value(tool_res)?))
 }
-
 
 pub fn git_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {

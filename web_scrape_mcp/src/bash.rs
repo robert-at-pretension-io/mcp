@@ -8,6 +8,15 @@ use shared_protocol_objects::ToolInfo;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BashParams {
     pub command: String,
+    #[serde(default = "default_cwd")]
+    pub cwd: String,
+}
+
+fn default_cwd() -> String {
+    std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("/"))
+        .to_string_lossy()
+        .to_string()
 }
 
 #[derive(Debug)]
@@ -59,10 +68,25 @@ impl BashExecutor {
     }
 
     pub async fn execute(&self, params: BashParams) -> Result<BashResult> {
+        // Create working directory if it doesn't exist
+        let cwd = std::path::PathBuf::from(&params.cwd);
+        if !cwd.exists() {
+            std::fs::create_dir_all(&cwd)?;
+        }
+
         let output = Command::new("sh")
             .arg("-c")
             .arg(&params.command)
+            .current_dir(&cwd)
             .output()?;
+
+        // Check if there were permission issues
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("permission denied") {
+                return Err(anyhow::anyhow!("Permission denied. Try running with appropriate permissions or in a different directory."));
+            }
+        }
 
         Ok(BashResult {
             success: output.status.success(),
@@ -83,6 +107,10 @@ pub fn bash_tool_info() -> ToolInfo {
                 "command": {
                     "type": "string",
                     "description": "The bash command to execute"
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "The working directory for the command"
                 }
             },
             "required": ["command"],
@@ -90,4 +118,3 @@ pub fn bash_tool_info() -> ToolInfo {
         }),
     }
 }
-

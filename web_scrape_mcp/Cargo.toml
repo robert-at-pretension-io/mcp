@@ -10,7 +10,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0"
 reqwest = { version = "0.12.9", features = ["json", "multipart", "stream"] }
-log = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 schemars = "0.8"
 base64 = "0.22.1"
 image = "0.25.5"
@@ -28,5 +30,14 @@ petgraph = "0.6.4"
 chrono = { version = "0.4.31", features = ["serde"] }
 url = "2.5.0"
 regex = "1.11.1"
+tempfile = "3.14.0"
+indexmap = "2.7.0"
+parking_lot = "0.12.3"
+serde_yaml = "0.9.34+deprecated"
 
-
+[dev-dependencies]
+wiremock = "0.6.2"
+tokio-test = "0.4"
+test-log = "0.2"
+env_logger = "0.11.5"
+pretty_assertions = "1.4"
