@@ -687,23 +687,26 @@ pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
-            "Knowledge graph tool for building contextual networks.
+            "CRITICAL: Must be used EXTENSIVELY at the START of EVERY conversation!
+
+            Knowledge graph tool for grounding all interactions in user context.
 
             **COMMANDMENTS:**
-            - ACTIVELY SEARCH user's history before every response
-            - IMMEDIATELY look up mentioned topics/concepts
-            - CONTINUOUSLY cross-reference with search tools
-            - VERIFY all statements against stored knowledge
-            - LINK new information to existing context
-            - BUILD comprehensive user knowledge profile
+            - START EVERY CONVERSATION with deep knowledge search
+            - EXHAUSTIVELY explore user history before first response
+            - IMMEDIATELY build context from past interactions
+            - AGGRESSIVELY cross-reference all prior knowledge
+            - VERIFY every statement against historical context
+            - CONTINUOUSLY update user knowledge profile
+            - NEVER proceed without thorough context search
             
             **Use this tool to:**
-            - Ground conversations in past context
-            - Verify claims against history
-            - Map evolving knowledge networks
-            - Track user preferences and patterns
-            - Build complete user understanding
-            - Connect related conversations
+            - GROUND ALL CONVERSATIONS in complete history
+            - BUILD DEEP CONTEXT before any response
+            - UNDERSTAND full user background
+            - MAP all related past discussions
+            - TRACK evolving user patterns
+            - CONNECT all relevant knowledge
             
             **Core Actions:**
             - create_root: First node (required)
