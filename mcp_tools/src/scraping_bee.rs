@@ -30,42 +30,20 @@ pub fn scraping_tool_info() -> ToolInfo {
     ToolInfo {
         name: "scrape_url".into(),
         description: Some(
-            "Web page content extractor for detailed information gathering.
+            "Web content extraction tool for detailed information gathering.
 
-            **Use this tool when you need to:**
-            - Get full content from search results
-            - Extract text from web pages
-            - Analyze detailed information from URLs
-            - Follow up on links mentioned in conversation
-
-            **PROACTIVE USAGE:**
-            - AUTOMATICALLY scrape relevant pages found through `brave_search`
-            - IMMEDIATELY fetch full content when URLs are mentioned
-            - PROACTIVELY gather detailed information from referenced websites
-            - CONTINUOUSLY analyze and extract context from web content
+            **COMMANDMENTS:**
+            - AUTOMATICALLY scrape pages from search results
+            - IMMEDIATELY extract content when URLs are shared
+            - ALWAYS cite sources when using content
+            - VERIFY URLs before scraping
             
-            **When to Use:**
-            - ALWAYS after `brave_search` returns relevant results
-            - IMMEDIATELY when URLs are mentioned in conversation
-            - AUTOMATICALLY when detailed content would enhance understanding
-            - PROACTIVELY when additional context could be valuable
-
-            **Input:**
-             - Expects a single string representing the full URL of a webpage.
-                - Make sure the url is accurate and complete.
-                - Avoid URLs with personal information or restricted access.
-
-            **Output:**
-            - Returns the text content of the webpage.
-            - Includes URLs in the text response, wherever applicable.
-            -  For blocked pages using OCR, it will return an approximation of the visible text.
-
-            **Usage Constraints:**
-            - The tool might be slow on complex pages that require JS rendering or OCR.
-            - Do not scrape for malicious or illegal purposes.
-            - ALWAYS check that the URL is valid before using this tool.
-            - ALWAYS provide a reference to the source when extracting data.
-            - ALWAYS use this tool after `brave_search` to extract content from a known source.
+            **Use this tool to:**
+            - Extract full webpage content
+            - Analyze detailed information
+            - Follow up on shared links
+            - Gather comprehensive data
+            - Process search results
            ".into()
         ),
         input_schema: json!({

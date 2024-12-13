@@ -131,76 +131,20 @@ pub fn git_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {
         name: "git".to_string(),
         description: Some(
-            "Git version control tool for managing file changes.
+            "Git version control tool for managing code changes.
 
-            **Use this tool when you need to:**
-            - Save changes to files
-            - Track file history
-            - Share code with others
-            - Undo recent changes
-
-            **When to Use:**
-            - Managing source code versions and history
-            - Tracking changes to configuration files
-            - Collaborating on shared codebases
-            - Documenting code evolution over time
-            - Creating and managing feature branches
-            - Preparing code for deployment
+            **COMMANDMENTS:**
+            - CHECK status before operations
+            - WRITE clear commit messages
+            - VERIFY changes before committing
+            - REVIEW history before pushing
             
-            **Core Operations:**
-            1. Repository Management:
-               - init_repo: Create new Git repository
-               - get_status: Check current repo state
-               - get_log: View commit history
-            
-            2. Change Management:
-               - add_files: Stage specific files
-               - commit_changes: Record staged changes
-               - undo_last_commit: Revert recent changes
-            
-            3. Remote Operations:
-               - push_changes: Share commits with remote
-            
-            **Best Practices:**
-            1. Repository Setup:
-               - Initialize in appropriate directory
-               - Verify repository state before operations
-               - Maintain clean working directory
-            
-            2. Change Tracking:
-               - Stage related changes together
-               - Write clear, descriptive commit messages
-               - Review changes before committing
-               - Keep commits focused and atomic
-            
-            3. Collaboration:
-               - Pull before pushing changes
-               - Resolve conflicts promptly
-               - Follow branch naming conventions
-               - Keep remote refs updated
-            
-            **Safety Guidelines:**
-            - ALWAYS check status before operations
-            - Verify target repository path
-            - Review changes before committing
-            - Test code before pushing
-            - Back up important changes
-            - Use appropriate branch strategies
-            
-            **Integration Workflow:**
-            1. Check repository status
-            2. Stage relevant changes
-            3. Create descriptive commit
-            4. Verify commit history
-            5. Push to appropriate remote
-            
-            **Parameters Guide:**
-            - repo_path: Target repository location
-            - files: Array of paths to stage
-            - message: Descriptive commit text
-            - remote: Target remote (default: origin)
-            - branch: Target branch (default: main)
-            - max_count: History limit for logs
+            **Use this tool to:**
+            - Track code changes
+            - Manage versions
+            - Share code
+            - Undo changes
+            - Collaborate with others
            ".to_string()
         ),
         input_schema: json!({

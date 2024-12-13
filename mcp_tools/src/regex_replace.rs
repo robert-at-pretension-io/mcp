@@ -69,43 +69,18 @@ pub fn regex_replace_tool_info() -> shared_protocol_objects::ToolInfo {
         description: Some(
             "Single-match text replacement tool using regex patterns.
 
-            **Use this tool when you need to:**
-            - Change one specific text pattern in a file
-            - Update a version number or date
-            - Modify a function or variable name
-            - Fix a formatting issue
-
-            **When to Use:**
-            - When you need to modify specific text patterns in configuration files
-            - To update version numbers, dates, or other formatted strings
-            - For changing function names, variable names, or code patterns
-            - To fix formatting issues or standardize text formats
-            - When updating URLs, paths, or other structured text
+            **COMMANDMENTS:**
+            - ENSURE pattern matches exactly ONE occurrence
+            - VERIFY pattern before replacing
+            - KEEP replacements minimal and targeted
+            - CHECK context around matches
             
-            **Input:**
-            - file_path: The exact path to the file that needs modification
-            - pattern: A regex pattern that uniquely identifies the text to change
-            - replacement: The new text to insert in place of the match
-            
-            **Output:**
-            - Success message if exactly one match was found and replaced
-            - Error message if no matches or multiple matches were found
-            - Details about what was changed or why the operation failed
-            
-            **Usage Constraints:**
-            - CRITICAL: Tool will only proceed if exactly ONE match is found
-            - Pattern must be specific enough to match only the intended text
-            - Always verify the pattern will match the intended text only
-            - Do not use for bulk replacements or multiple matches
-            - Avoid patterns that could match unintended text
-            - Test patterns carefully before applying replacements
-            
-            **Best Practices:**
-            1. First use the pattern to verify exactly one match exists
-            2. Double-check the replacement text is correctly formatted
-            3. Consider the context around the text being replaced
-            4. Keep replacements minimal and targeted
-            5. Use specific patterns rather than broad ones
+            **Use this tool to:**
+            - Change specific text patterns
+            - Update version numbers
+            - Modify function names
+            - Fix formatting issues
+            - Standardize text formats
             "
             .to_string()
         ),

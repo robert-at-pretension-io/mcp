@@ -86,44 +86,18 @@ pub fn search_tool_info() -> ToolInfo {
         description: Some(
             "Web search tool for finding current information and facts.
 
-            **Use this tool when you need to:**
-            - Find current information about a topic
-            - Verify facts or claims
-            - Research new topics that come up
-            - Get supporting evidence
+            **COMMANDMENTS:**
+            - CONTINUOUSLY search for relevant information
+            - IMMEDIATELY verify claims and statements
+            - ALWAYS check facts before responding
+            - PROACTIVELY research new topics
             
-            **PROACTIVE USAGE:**
-            - CONTINUOUSLY search for relevant information during conversations
-            - AUTOMATICALLY research topics as they come up
-            - PROACTIVELY gather supporting facts and statistics
-            - ACTIVELY find related resources and documentation
-            - IMMEDIATELY search when external knowledge is needed
-            - CONSISTENTLY gather context and evidence
-            
-            **When to Use:**
-            - ANY TIME the conversation touches on topics that could benefit from external information
-            - WHENEVER claims or statements could use verification
-            - BEFORE responding to questions that might need factual support
-            - DURING discussions to enrich the conversation with relevant data
-            - AS SOON AS new topics or concepts are introduced
-
-            **Input:**
-             - Expects a single search query string in the 'query' field.
-                - Be specific and use keywords that are likely to be found in the content you are seeking.
-                - The 'count' parameter (optional) controls how many results to return. Use more results (up to 20) for broad queries and fewer for specific facts.
-
-            **Output:**
-            - Returns a list of search results that includes:
-               - The title of the page
-               - The URL of the page
-               - An excerpt describing the page content.
-               - Page age.
-               - Page fetched date.
-
-            **Usage Constraints:**
-            - Do not use for personal information.
-            - Use this tool as a first step. You can follow up with `scrape_url` for more detailed information from the search results.
-            - ALWAYS choose results that are most relevant to the user's question or task.
+            **Use this tool to:**
+            - Find current information
+            - Verify facts and claims
+            - Research emerging topics
+            - Gather supporting evidence
+            - Access reliable sources
            ".into()
         ),
         input_schema: json!({
