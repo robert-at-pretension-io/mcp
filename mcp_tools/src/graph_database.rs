@@ -721,7 +721,9 @@ pub fn graph_tool_info() -> ToolInfo {
         description: Some(
             r#"**⚠️ MANDATORY: SEARCH GRAPH BEFORE EVERY SINGLE RESPONSE ⚠️**
 
-            Knowledge graph tool for maintaining complete user context.
+            Knowledge graph tool for maintaining complete user context. Make sure at the beginning of each chat to run the following actions to become oriented:
+            1. get_top_tags
+            2. get_recent_nodes
 
             **CORE PRINCIPLE: NO RESPONSE WITHOUT GRAPH TOOL USAGE**
 
@@ -775,6 +777,8 @@ pub fn graph_tool_info() -> ToolInfo {
               Example: shortest_path from "SQL" to "Data Science"
             
             **Returns:** Node data with name, description, content, tags, metadata.
+
+            Just use the information you've gathered to inform the conversation -- don't fixate on it.
             
             **Remember:** Build knowledge graph during conversation, don't wait for commands."#
         .into()),
