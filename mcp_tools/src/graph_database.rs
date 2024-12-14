@@ -507,6 +507,11 @@ struct ConnectNodesParams {
 }
 
 #[derive(Deserialize)]
+struct GetRecentNodesParams {
+    limit: Option<usize>
+}
+
+#[derive(Deserialize)]
 struct GetNodeParams {
     node_name: String
 }
