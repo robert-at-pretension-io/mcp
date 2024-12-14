@@ -541,23 +541,6 @@ struct GetTagsByDateParams {
     limit: Option<usize>
 }
 
-#[derive(Deserialize)]
-struct GetRecentNodesParams {
-    limit: Option<usize>
-}
-
-#[derive(Deserialize)]
-struct FindSimilarNodesParams {
-    node_name: String,
-    similarity_criteria: Option<String>, // "tags" | "metadata" | "structural"
-    limit: Option<usize>
-}
-
-#[derive(Deserialize)]
-struct ShortestPathParams {
-    from_node_name: String,
-    to_node_name: String
-}
 
 
 // Create a function to build the tool information
