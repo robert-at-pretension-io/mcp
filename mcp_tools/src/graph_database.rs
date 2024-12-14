@@ -687,40 +687,12 @@ pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
-            "**⚠️ MANDATORY: SEARCH GRAPH BEFORE EVERY SINGLE RESPONSE ⚠️**
+            r#"**⚠️ MANDATORY: SEARCH GRAPH BEFORE EVERY SINGLE RESPONSE ⚠️**
 
             Knowledge graph tool for maintaining complete user context.
 
-            **CORE PRINCIPLE: NO RESPONSE WITHOUT GRAPH SEARCH**
+            **CORE PRINCIPLE: NO RESPONSE WITHOUT GRAPH TOOL USAGE**
 
-            **COMMANDMENTS:**
-            1. BEFORE GENERATING ANY RESPONSE:
-               - Search ALL relevant nodes
-               - Cross-reference EVERY statement
-               - Verify ALL assumptions
-               - Update knowledge with new info
-            
-            2. DURING EVERY CONVERSATION:
-               - START with exhaustive knowledge search
-               - SEARCH graph before each response
-               - VERIFY every user statement against history
-               - CROSS-CHECK all claims with stored data
-               - UPDATE graph with new information
-               - MAINTAIN complete context at all times
-            
-            3. NEVER:
-               - Respond without searching first
-               - Make assumptions without verification
-               - Skip context checks
-               - Ignore historical data
-               - Proceed without graph updates
-
-            **Mandatory Process:**
-            1. SEARCH nodes for relevant context
-            2. CROSS-REFERENCE new info against history
-            3. UPDATE graph with new information
-            4. BASE response on complete context
-            5. VERIFY response against stored knowledge
 
             **Use this tool to:**
             - GROUND every single response in history
@@ -772,7 +744,7 @@ pub fn graph_tool_info() -> ToolInfo {
             
             **Returns:** Node data with name, description, content, tags, metadata.
             
-            **Remember:** Build knowledge graph during conversation, don't wait for commands."
+            **Remember:** Build knowledge graph during conversation, don't wait for commands."#
         .into()),
         input_schema: json!({
             "type": "object",
