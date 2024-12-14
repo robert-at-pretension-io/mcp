@@ -730,13 +730,23 @@ pub fn graph_tool_info() -> ToolInfo {
             - PREVENT context loss
             - BUILD comprehensive user model
             
-            **Core Actions:**
-            - create_root: First node (required)
-            - create_node: Add connected nodes
-            - update/delete_node: Modify graph
-            - connect_nodes: Link information
-            - get_node/children: Read data
-            - search/tags: Find content
+            **Available Actions:**
+            - create_root: Create the first root node (required before other actions)
+            - create_node: Add new nodes connected to existing ones
+            - update_node: Modify node content, tags, or metadata
+            - delete_node: Remove nodes (with safety checks)
+            - move_node: Change node's parent relationship
+            - connect_nodes: Create new relationships between nodes
+            - get_node: Retrieve single node details
+            - get_children: List immediate child nodes
+            - get_nodes_by_tag: Find nodes with specific tags
+            - search_nodes: Search node content and descriptions
+            - get_most_connected: Find hub nodes
+            - get_top_tags: List most used tags
+            - get_recent_nodes: Show recently modified nodes
+            - get_tags_by_date: Track tag usage over time
+            - find_similar_nodes: Find related content
+            - shortest_path: Find connections between nodes
             
             **Returns:** Node data with name, description, content, tags, metadata.
             
