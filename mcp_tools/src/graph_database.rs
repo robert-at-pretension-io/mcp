@@ -723,30 +723,52 @@ pub fn graph_tool_info() -> ToolInfo {
             5. VERIFY response against stored knowledge
 
             **Use this tool to:**
-            - GROUND every single response in history (Example: search_nodes "previous conversation about Python")
-            - VERIFY all assumptions about user (Example: get_node "user_preferences")
-            - MAINTAIN perfect context awareness (Example: get_recent_nodes to review latest interactions)
-            - ENSURE knowledge consistency (Example: search_nodes to cross-reference facts)
-            - PREVENT context loss (Example: create_node to store new information)
-            - BUILD comprehensive user model (Example: connect_nodes to link preferences)
+            - GROUND every single response in history
+              Example: search_nodes "previous conversation about Python"
+            - VERIFY all assumptions about user
+              Example: get_node "user_preferences"
+            - MAINTAIN perfect context awareness
+              Example: get_recent_nodes to review latest interactions
+            - ENSURE knowledge consistency
+              Example: search_nodes to cross-reference facts
+            - PREVENT context loss
+              Example: create_node to store new information
+            - BUILD comprehensive user model
+              Example: connect_nodes to link preferences
             
             **Available Actions:**
-            - create_root: Create the first root node (Example: create_root for "user_profile")
-            - create_node: Add new nodes (Example: create_node "python_skills" under "technical_skills")
-            - update_node: Modify content (Example: update_node "project_status" with new progress)
-            - delete_node: Remove nodes (Example: delete_node "outdated_preference")
-            - move_node: Change relationships (Example: move_node "typescript" from "learning" to "known")
-            - connect_nodes: Link nodes (Example: connect_nodes "git" to "version_control" as "tool")
-            - get_node: Get details (Example: get_node "communication_style")
-            - get_children: List subnodes (Example: get_children "programming_languages")
-            - get_nodes_by_tag: Find tagged (Example: get_nodes_by_tag "urgent")
-            - search_nodes: Search content (Example: search_nodes "machine learning")
-            - get_most_connected: Find hubs (Example: get_most_connected to find key topics)
-            - get_top_tags: List common tags (Example: get_top_tags to see interests)
-            - get_recent_nodes: Show recent (Example: get_recent_nodes for latest updates)
-            - get_tags_by_date: Track tags (Example: get_tags_by_date to see learning progress)
-            - find_similar_nodes: Find related (Example: find_similar_nodes "python" by "tags")
-            - shortest_path: Find links (Example: shortest_path from "SQL" to "Data Science")
+            - create_root: Create the first root node
+              Example: create_root for "user_profile"
+            - create_node: Add new nodes connected to existing ones
+              Example: create_node "python_skills" under "technical_skills"
+            - update_node: Modify node content, tags, or metadata
+              Example: update_node "project_status" with new progress
+            - delete_node: Remove nodes (with safety checks)
+              Example: delete_node "outdated_preference"
+            - move_node: Change node's parent relationship
+              Example: move_node "typescript" from "learning" to "known"
+            - connect_nodes: Create new relationships between nodes
+              Example: connect_nodes "git" to "version_control" as "tool"
+            - get_node: Retrieve single node details
+              Example: get_node "communication_style"
+            - get_children: List immediate child nodes
+              Example: get_children "programming_languages"
+            - get_nodes_by_tag: Find nodes with specific tags
+              Example: get_nodes_by_tag "urgent"
+            - search_nodes: Search node content and descriptions
+              Example: search_nodes "machine learning"
+            - get_most_connected: Find hub nodes
+              Example: get_most_connected to find key topics
+            - get_top_tags: List most used tags
+              Example: get_top_tags to see interests
+            - get_recent_nodes: Show recently modified nodes
+              Example: get_recent_nodes for latest updates
+            - get_tags_by_date: Track tag usage over time
+              Example: get_tags_by_date to see learning progress
+            - find_similar_nodes: Find related content
+              Example: find_similar_nodes "python" by "tags"
+            - shortest_path: Find connections between nodes
+              Example: shortest_path from "SQL" to "Data Science"
             
             **Returns:** Node data with name, description, content, tags, metadata.
             
