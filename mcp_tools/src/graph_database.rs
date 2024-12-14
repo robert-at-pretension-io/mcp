@@ -72,6 +72,31 @@ pub struct GraphManager {
 }
 
 impl GraphManager {
+    fn get_graph_metadata(&self) -> String {
+        let total_nodes = self.graph.node_count();
+        let total_edges = self.graph.edge_count();
+        let recent_nodes = self.get_recent_nodes(5)
+            .iter()
+            .map(|(_, node)| node.name.clone())
+            .collect::<Vec<_>>();
+        let top_tags = self.get_top_tags(5)
+            .iter()
+            .map(|(tag, count)| format!("{} ({})", tag, count))
+            .collect::<Vec<_>>();
+
+        format!(
+            "\nGraph Status:\n\
+             - Total nodes: {}\n\
+             - Total connections: {}\n\
+             - Recent nodes: {}\n\
+             - Top tags: {}\n",
+            total_nodes,
+            total_edges,
+            recent_nodes.join(", "),
+            top_tags.join(", ")
+        )
+    }
+
     fn find_similar_nodes(&self, node_name: &str, criteria: &str, limit: usize) -> Vec<(NodeIndex, &DataNode, f64)> {
         let source_node = match self.get_node_by_name(node_name) {
             Some((_, node)) => node,
@@ -476,7 +501,7 @@ impl GraphManager {
 
     // Method to get all nodes with names or descriptions matching a query string
     pub(crate) fn search_nodes(&self, query: &str) -> Vec<(NodeIndex, &DataNode)> {
-        self.graph.node_indices()
+        let results = self.graph.node_indices()
             .filter_map(|idx| {
                 self.graph.node_weight(idx).and_then(|node| {
                     if node.name.contains(query) || node.description.contains(query) {
@@ -486,7 +511,14 @@ impl GraphManager {
                     }
                 })
             })
-            .collect()
+            .collect::<Vec<_>>();
+
+        if results.is_empty() {
+            debug!("No results found for query: {}", query);
+            debug!("Current graph state: {}", self.get_graph_metadata());
+        }
+
+        results
     }
 
     fn get_most_connected_nodes(&self, limit: usize) -> Vec<(NodeIndex, &DataNode, usize)> {
@@ -1244,27 +1276,47 @@ pub async fn handle_graph_tool_call(
             };
 
             let nodes = graph_manager.search_nodes(&search_params.query);
-            let nodes_info: Vec<_> = nodes.into_iter().map(|(_, node)| {
-                json!({
-                    "name": node.name,
-                    "description": node.description,
-                    "content": node.content,
-                    "tags": node.tags,
-                    "metadata": node.metadata
-                })
-            }).collect();
-            let tool_res = CallToolResult {
-                content: vec![ToolResponseContent {
-                    type_: "text".into(),
-                    text: json!(nodes_info).to_string(),
-                    annotations: None,
-                }],
-                is_error: Some(false),
-                _meta: None,
-                progress: None,
-                total: None
-            };
-            Ok(success_response(id, serde_json::to_value(tool_res)?))
+            if nodes.is_empty() {
+                let message = format!(
+                    "No nodes found matching query '{}'\n{}",
+                    search_params.query,
+                    graph_manager.get_graph_metadata()
+                );
+                let tool_res = CallToolResult {
+                    content: vec![ToolResponseContent {
+                        type_: "text".into(),
+                        text: message,
+                        annotations: None,
+                    }],
+                    is_error: Some(true),
+                    _meta: None,
+                    progress: None,
+                    total: None
+                };
+                Ok(success_response(id, serde_json::to_value(tool_res)?))
+            } else {
+                let nodes_info: Vec<_> = nodes.into_iter().map(|(_, node)| {
+                    json!({
+                        "name": node.name,
+                        "description": node.description,
+                        "content": node.content,
+                        "tags": node.tags,
+                        "metadata": node.metadata
+                    })
+                }).collect();
+                let tool_res = CallToolResult {
+                    content: vec![ToolResponseContent {
+                        type_: "text".into(),
+                        text: json!(nodes_info).to_string(),
+                        annotations: None,
+                    }],
+                    is_error: Some(false),
+                    _meta: None,
+                    progress: None,
+                    total: None
+                };
+                Ok(success_response(id, serde_json::to_value(tool_res)?))
+            }
         }
         "get_most_connected" => {
             let most_connected_params: GetMostConnectedParams = match serde_json::from_value(action_params.clone()) {
