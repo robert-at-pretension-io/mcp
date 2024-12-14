@@ -97,94 +97,7 @@ impl GraphManager {
         )
     }
 
-    fn find_similar_nodes(&self, node_name: &str, criteria: &str, limit: usize) -> Vec<(NodeIndex, &DataNode, f64)> {
-        let source_node = match self.get_node_by_name(node_name) {
-            Some((_, node)) => node,
-            None => return Vec::new()
-        };
 
-        let mut similarities = Vec::new();
-
-        for idx in self.graph.node_indices() {
-            if let Some(target_node) = self.graph.node_weight(idx) {
-                if target_node.name == node_name {
-                    continue;
-                }
-
-                let similarity_score = match criteria {
-                    "tags" => {
-                        // Calculate Jaccard similarity between tag sets
-                        let source_tags: std::collections::HashSet<_> = source_node.tags.iter().collect();
-                        let target_tags: std::collections::HashSet<_> = target_node.tags.iter().collect();
-                        let intersection = source_tags.intersection(&target_tags).count();
-                        let union = source_tags.union(&target_tags).count();
-                        if union == 0 { 0.0 } else { intersection as f64 / union as f64 }
-                    },
-                    "metadata" => {
-                        // Calculate similarity based on shared metadata keys and values
-                        let source_keys: std::collections::HashSet<_> = source_node.metadata.keys().collect();
-                        let target_keys: std::collections::HashSet<_> = target_node.metadata.keys().collect();
-                        let mut shared_value_count = 0;
-                        for key in source_keys.intersection(&target_keys) {
-                            if source_node.metadata.get(*key) == target_node.metadata.get(*key) {
-                                shared_value_count += 1;
-                            }
-                        }
-                        if source_keys.union(&target_keys).count() == 0 {
-                            0.0
-                        } else {
-                            shared_value_count as f64 / source_keys.union(&target_keys).count() as f64
-                        }
-                    },
-                    "structural" => {
-                        // Calculate similarity based on shared neighbors
-                        let source_neighbors: std::collections::HashSet<_> = self.graph.neighbors(self.get_node_by_name(node_name).unwrap().0).collect();
-                        let target_neighbors: std::collections::HashSet<_> = self.graph.neighbors(idx).collect();
-                        let intersection = source_neighbors.intersection(&target_neighbors).count();
-                        let union = source_neighbors.union(&target_neighbors).count();
-                        if union == 0 { 0.0 } else { intersection as f64 / union as f64 }
-                    },
-                    _ => 0.0
-                };
-
-                similarities.push((idx, target_node, similarity_score));
-            }
-        }
-
-        // Sort by similarity score in descending order
-        similarities.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
-        similarities.truncate(limit);
-        similarities
-    }
-
-    fn shortest_path(&self, from_name: &str, to_name: &str) -> Option<(Vec<NodeIndex>, Vec<String>)> {
-        let (start_idx, _) = self.get_node_by_name(from_name)?;
-        let (end_idx, _) = self.get_node_by_name(to_name)?;
-
-        // Use petgraph's built-in shortest path algorithm
-        let path_indices = petgraph::algo::astar(
-            &self.graph,
-            start_idx,
-            |finish| finish == end_idx,
-            |e| 1, // Each edge has weight 1
-            |_| 0  // No heuristic
-        )?;
-
-        // Extract path and relationship types
-        let mut relationships = Vec::new();
-        let indices = path_indices.1;
-
-        // Get relationship labels between consecutive nodes
-        for window in indices.windows(2) {
-            if let [current, next] = window {
-                if let Some(edge) = self.graph.find_edge(*current, *next) {
-                    relationships.push(self.graph[edge].clone());
-                }
-            }
-        }
-
-        Some((indices, relationships))
-    }
     fn node_name_exists(&self, name: &str) -> bool {
         self.graph.node_indices().any(|idx| {
             self.graph.node_weight(idx)
@@ -353,36 +266,6 @@ impl GraphManager {
         Ok(())
     }
 
-    async fn move_node(&mut self, node_idx: NodeIndex, new_parent_idx: NodeIndex, new_relation: String) -> Result<()> {
-        // Get current parent
-        let incoming: Vec<_> = self.graph.neighbors_directed(node_idx, petgraph::Direction::Incoming).collect();
-
-        // Remove edge from old parent
-        if let Some(old_parent_idx) = incoming.first() {
-            // Collect edge IDs first to avoid borrowing conflict
-            let edge_ids: Vec<_> = self.graph
-                .edges_connecting(*old_parent_idx, node_idx)
-                .map(|e| e.id())
-                .collect();
-
-            // Then remove edges using collected IDs
-            for edge_id in edge_ids {
-                self.graph.remove_edge(edge_id);
-            }
-
-            // Update old parent's child list
-            self.update_parent_child_list(*old_parent_idx);
-        }
-
-        // Add edge to new parent
-        self.graph.add_edge(new_parent_idx, node_idx, new_relation);
-
-        // Update new parent's child list
-        self.update_parent_child_list(new_parent_idx);
-
-        self.save().await?;
-        Ok(())
-    }
 
     async fn delete_node(&mut self, idx: NodeIndex) -> Result<()> {
         if Some(idx) == self.root {
@@ -570,43 +453,6 @@ impl GraphManager {
         tag_vec
     }
 
-    fn get_tags_by_date(&self, limit: usize) -> (Vec<(String, chrono::DateTime<chrono::Utc>)>, Vec<(String, chrono::DateTime<chrono::Utc>)>) {
-        let mut tag_dates: HashMap<String, Vec<chrono::DateTime<chrono::Utc>>> = HashMap::new();
-
-        // Collect all dates for each tag
-        for node in self.graph.node_weights() {
-            for tag in &node.tags {
-                tag_dates.entry(tag.clone())
-                    .or_default()
-                    .push(node.date_created);
-            }
-        }
-
-        // Convert to vectors with earliest/latest date per tag
-        let mut tag_vec: Vec<_> = tag_dates.into_iter()
-            .map(|(tag, mut dates)| {
-                dates.sort();
-                (tag, dates[0], *dates.last().unwrap())
-            })
-            .collect();
-
-        // Get recent tags (sorted by newest date)
-        let mut recent_tags = tag_vec.clone();
-        recent_tags.sort_by(|a, b| b.2.cmp(&a.2));
-        let recent = recent_tags.into_iter()
-            .take(limit)
-            .map(|(tag, _, date)| (tag, date))
-            .collect();
-
-        // Get oldest tags (sorted by oldest date)
-        tag_vec.sort_by(|a, b| a.1.cmp(&b.1));
-        let oldest = tag_vec.into_iter()
-            .take(limit)
-            .map(|(tag, date, _)| (tag, date))
-            .collect();
-
-        (recent, oldest)
-    }
 
     // Method to get all node indices in the graph
     pub fn node_indices(&self) -> impl Iterator<Item = NodeIndex> + '_ {
@@ -1378,43 +1224,6 @@ pub async fn handle_graph_tool_call(
             };
             Ok(success_response(id, serde_json::to_value(tool_res)?))
         }
-        "get_tags_by_date" => {
-            let params: GetTagsByDateParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid get_tags_by_date parameters: {}", e))
-            };
-            let limit = params.limit.unwrap_or(30);
-            let (recent_tags, oldest_tags) = graph_manager.get_tags_by_date(limit);
-
-            let result = json!({
-                "recent_tags": recent_tags.into_iter().map(|(tag, date)| {
-                    json!({
-                        "tag": tag,
-                        "date": date,
-                    })
-                }).collect::<Vec<_>>(),
-                "oldest_tags": oldest_tags.into_iter().map(|(tag, date)| {
-                    json!({
-                        "tag": tag,
-                        "date": date,
-                    })
-                }).collect::<Vec<_>>(),
-                "timestamp": chrono::Utc::now()
-            });
-
-            let tool_res = CallToolResult {
-                content: vec![ToolResponseContent {
-                    type_: "text".into(),
-                    text: result.to_string(),
-                    annotations: None,
-                }],
-                is_error: Some(false),
-                _meta: None,
-                progress: None,
-                total: None,
-            };
-            Ok(success_response(id, serde_json::to_value(tool_res)?))
-        }
         "get_recent_nodes" => {
             let recent_params: GetRecentNodesParams = match serde_json::from_value(action_params.clone()) {
                 Ok(p) => p,
@@ -1446,46 +1255,6 @@ pub async fn handle_graph_tool_call(
             };
             Ok(success_response(id, serde_json::to_value(tool_res)?))
         }
-        "shortest_path" => {
-            let path_params: ShortestPathParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid shortest_path parameters: {}", e))
-            };
-
-            match graph_manager.shortest_path(&path_params.from_node_name, &path_params.to_node_name) {
-                Some((indices, relationships)) => {
-                    let path_info: Vec<_> = indices.iter().zip(relationships.iter().chain(std::iter::once(&String::new())))
-                        .map(|(idx, rel)| {
-                            let node = graph_manager.get_node(*idx).unwrap();
-                            json!({
-                                "node": {
-                                    "name": node.name,
-                                    "description": node.description
-                                },
-                                "relation": rel
-                            })
-                        }).collect();
-
-                    let tool_res = CallToolResult {
-                        content: vec![ToolResponseContent {
-                            type_: "text".into(),
-                            text: json!(path_info).to_string(),
-                            annotations: None,
-                        }],
-                        is_error: Some(false),
-                        _meta: None,
-                        progress: None,
-                        total: None
-                    };
-                    Ok(success_response(id, serde_json::to_value(tool_res)?))
-                },
-                None => return_error!(format!(
-                    "No path found between '{}' and '{}'",
-                    path_params.from_node_name,
-                    path_params.to_node_name
-                ))
-            }
-        },
         _ => return_error!(format!("Invalid action '{}'. Supported actions: create_root, create_node, update_node, delete_node, connect_nodes, get_node, get_children, get_nodes_by_tag, search_nodes, get_most_connected, get_top_tags, get_recent_nodes, get_tags_by_date", action))
     }
 }
