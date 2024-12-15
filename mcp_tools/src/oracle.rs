@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use shared_protocol_objects::{ToolInfo, CallToolResult, ToolResponseContent};
 use shared_protocol_objects::{success_response, error_response, JsonRpcResponse, INVALID_PARAMS};
 use shared_protocol_objects::CallToolParams;
+use base64::Engine;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct OracleSelectParams {
