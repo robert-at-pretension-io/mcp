@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, Context};
 use log::{debug, error, info, warn};
-use crate::ai_client::{AIClient, AIRequestBuilder};
+use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::path::Path;
@@ -58,7 +58,7 @@ impl GeminiClient {
 }
 
 #[async_trait]
-impl AIClient for GeminiClient {
+impl<'a> AIClient for GeminiClient {
     fn model_name(&self) -> String {
         "gemini-pro".to_string()
     }
@@ -87,7 +87,7 @@ pub struct GeminiCompletionBuilder<'a> {
 }
 
 #[async_trait]
-impl AIRequestBuilder for GeminiCompletionBuilder<'_> {
+impl<'a> AIRequestBuilder for GeminiCompletionBuilder<'a> {
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.contents.push(GeminiContent {
             role: "system".to_string(),

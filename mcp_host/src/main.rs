@@ -1094,7 +1094,8 @@ Use that format above!
                                     }
 
                                     match builder.execute().await {
-                                        Ok(response) => {
+                                        Ok(response_str) => {
+                                            let response = response_str.as_str();
                                             println!("\n{}: {}", style("Assistant").cyan().bold(), response);
                                             if let Err(e) = self.handle_assistant_response(&response, server_name, &mut state, client).await {
                                                 info!("Error handling assistant response: {}", e);

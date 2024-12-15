@@ -5,7 +5,7 @@ use reqwest;
 use log::{debug, error, info, warn};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::path::Path;
-use std::fs;
+use std::{fs, time::{SystemTime, UNIX_EPOCH}};
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities, Role, Content, Message as AIMessage};
 use async_trait::async_trait;
 
@@ -373,6 +373,16 @@ impl<'a> RawCompletionBuilder<'a> {
         }
     }
 
+    fn config(mut self: Box<Self>, config: GenerationConfig) -> Box<dyn AIRequestBuilder> where Self: Sized {
+        if let Some(temp) = config.temperature {
+            self.temperature = Some(temp);
+        }
+        if let Some(tokens) = config.max_tokens {
+            self.max_tokens = Some(tokens);
+        }
+        self
+    }
+
     pub async fn execute(self) -> Result<String> {
         debug!("RawCompletionBuilder.execute called");
         let messages = self.messages.iter().map(|msg| {
@@ -687,6 +697,16 @@ where
                 json!(content_parts)
             }
         }
+    }
+
+    fn config(mut self: Box<Self>, config: GenerationConfig) -> Box<dyn AIRequestBuilder> where Self: Sized {
+        if let Some(temp) = config.temperature {
+            self.temperature = Some(temp);
+        }
+        if let Some(tokens) = config.max_tokens {
+            self.max_tokens = Some(tokens);
+        }
+        self
     }
 
     pub async fn execute(self) -> Result<T> {
@@ -1029,8 +1049,6 @@ impl<'a> Processor<'a> {
     }
 }
 
-use serde::Deserialize;
-use std::time::{SystemTime, UNIX_EPOCH};
 use sha2::{Sha256, Digest};
 
 #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
