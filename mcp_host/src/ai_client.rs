@@ -37,46 +37,40 @@ pub struct GenerationConfig {
 }
 
 /// Builder for constructing AI requests
-#[async_trait]
-pub trait AIRequestBuilder {
+pub trait AIRequestBuilder: Send {
     /// Add a system message
-    fn system(self, content: impl Into<String> + Send) -> Self;
+    fn system(self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder>;
     
     /// Add a user message
-    fn user(self, content: impl Into<String> + Send) -> Self;
+    fn user(self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder>;
     
     /// Add a user message with an image
-    fn user_with_image(self, text: impl Into<String> + Send, image_path: impl AsRef<Path> + Send) -> Result<Self> where Self: Sized;
+    fn user_with_image(self: Box<Self>, text: String, image_path: &Path) -> Result<Box<dyn AIRequestBuilder>>;
     
     /// Add a user message with an image URL
-    fn user_with_image_url(self, text: impl Into<String> + Send, image_url: impl Into<String> + Send) -> Self;
+    fn user_with_image_url(self: Box<Self>, text: String, image_url: String) -> Box<dyn AIRequestBuilder>;
     
     /// Add an assistant message
-    fn assistant(self, content: impl Into<String> + Send) -> Self;
+    fn assistant(self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder>;
     
     /// Set generation parameters
-    fn config(self, config: GenerationConfig) -> Self;
+    fn config(self: Box<Self>, config: GenerationConfig) -> Box<dyn AIRequestBuilder>;
     
     /// Execute the request and get response
-    async fn execute(self) -> Result<String>;
+    fn execute(self: Box<Self>) -> Result<String>;
 }
 
 /// Core trait for AI model implementations
 #[async_trait]
 pub trait AIClient: Send + Sync {
-    type Builder: AIRequestBuilder;
-    
     /// Create a new request builder
-    fn builder(&self) -> Self::Builder;
+    fn builder(&self) -> Box<dyn AIRequestBuilder>;
     
-    /// Validate the client's configuration (API keys, etc)
-    async fn validate(&self) -> Result<()>;
+    /// Create a raw request builder without schema validation
+    fn raw_builder(&self) -> Box<dyn AIRequestBuilder>;
     
     /// Get the model's name/identifier
     fn model_name(&self) -> String;
-    
-    /// Get the model's capabilities
-    fn capabilities(&self) -> ModelCapabilities;
 }
 
 /// Capabilities of an AI model
