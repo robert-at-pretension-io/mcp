@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
 use std::env;
 use tokio::time::timeout;
@@ -19,67 +19,20 @@ pub fn oracle_select_tool_info() -> ToolInfo {
         name: "oracle_select".to_string(),
         description: Some(
             "Executes a SELECT query on an Oracle database. Only SELECT statements are allowed.
-            Queries must be designed for efficient execution and quick response times.
+            Queries must be efficient and use best practices:
             
-            Best practices for efficient queries:
-            1. Always limit result sets:
-               - Use ROWNUM or FETCH FIRST
-               - Avoid SELECT *
-               - Include WHERE clauses
-               
-            2. Database exploration (fast metadata queries):
-               - List tables: 
-                 ```sql
-                 SELECT table_name FROM user_tables 
-                 WHERE ROWNUM <= 50 
-                 ORDER BY table_name
-                 ```
-               - Get table structure:
-                 ```sql
-                 SELECT column_name, data_type, data_length, nullable 
-                 FROM user_tab_columns 
-                 WHERE table_name = 'YOUR_TABLE_NAME'
-                 ORDER BY column_id
-                 ```
-               - List indexes:
-                 ```sql
-                 SELECT index_name, column_name, column_position
-                 FROM user_ind_columns
-                 WHERE table_name = 'YOUR_TABLE_NAME'
-                 ORDER BY index_name, column_position
-                 ```
-               
-            3. Efficient data sampling:
-               ```sql
-               SELECT /*+ FIRST_ROWS(10) */ 
-                 column1, column2, column3
-               FROM your_table 
-               WHERE ROWNUM <= 10
-               AND your_date_column >= SYSDATE - 7
-               ORDER BY your_date_column DESC
-               ```
-               
-            4. Optimized aggregations:
-               ```sql
-               SELECT /*+ PARALLEL(4) */
-                 COUNT(*) as total_rows,
-                 COUNT(DISTINCT column_name) as unique_values,
-                 MIN(numeric_column) as min_value,
-                 MAX(numeric_column) as max_value,
-                 APPROX_COUNT_DISTINCT(high_cardinality_col) as estimated_distinct
-               FROM your_table
-               WHERE create_date >= SYSDATE - 30
-               ```
+            1. Limit large result sets (use ROWNUM, FETCH FIRST).
+            2. Avoid SELECT * when not needed.
+            3. Include WHERE clauses for filtering.
+            4. For metadata queries, limit results and filter by schema.
             
-            Usage:
-            ```json
+            Example:
             {
                 \"action\": \"oracle_select\",
                 \"params\": {
-                    \"sql_query\": \"SELECT * FROM user_tables WHERE ROWNUM < 10\"
+                    \"sql_query\": \"SELECT table_name FROM user_tables WHERE ROWNUM < 10 ORDER BY table_name\"
                 }
-            }
-            ```".to_string()
+            }".to_string()
         ),
         input_schema: serde_json::json!({
             "type": "object",
@@ -99,19 +52,59 @@ pub async fn handle_oracle_select_tool_call(
     params: CallToolParams,
     id: Option<Value>,
 ) -> Result<JsonRpcResponse> {
-    let args: OracleSelectParams = serde_json::from_value(params.arguments)
-        .map_err(|e| anyhow!("Invalid arguments: {}", e))?;
+    let args: OracleSelectParams = match serde_json::from_value(params.arguments) {
+        Ok(a) => a,
+        Err(e) => {
+            return Ok(error_response(
+                id,
+                INVALID_PARAMS,
+                &format!("Invalid parameters provided. Ensure 'sql_query' is provided and is a string. Error: {}", e)
+            ))
+        }
+    };
 
     let query_trimmed = args.sql_query.trim_start().to_uppercase();
     if !query_trimmed.starts_with("SELECT") {
-        // Only SELECT is allowed
-        return Ok(error_response(id, INVALID_PARAMS, "Only SELECT statements allowed"));
+        return Ok(error_response(
+            id,
+            INVALID_PARAMS,
+            "Only SELECT statements are allowed. Please modify the query to start with 'SELECT'."
+        ));
     }
 
-    // Retrieve DB connection parameters
-    let user = env::var("ORACLE_USER").expect("ORACLE_USER must be set");
-    let password = env::var("ORACLE_PASSWORD").expect("ORACLE_PASSWORD must be set");
-    let connect_str = env::var("ORACLE_CONNECT_STRING").expect("ORACLE_CONNECT_STRING must be set");
+    // Retrieve DB connection parameters with explicit error messaging
+    let user = match env::var("ORACLE_USER") {
+        Ok(u) => u,
+        Err(_) => {
+            return Ok(error_response(
+                id,
+                INVALID_PARAMS,
+                "Environment variable ORACLE_USER not set. Please set ORACLE_USER before running queries."
+            ))
+        }
+    };
+
+    let password = match env::var("ORACLE_PASSWORD") {
+        Ok(p) => p,
+        Err(_) => {
+            return Ok(error_response(
+                id,
+                INVALID_PARAMS,
+                "Environment variable ORACLE_PASSWORD not set. Please set ORACLE_PASSWORD before running queries."
+            ))
+        }
+    };
+
+    let connect_str = match env::var("ORACLE_CONNECT_STRING") {
+        Ok(c) => c,
+        Err(_) => {
+            return Ok(error_response(
+                id,
+                INVALID_PARAMS,
+                "Environment variable ORACLE_CONNECT_STRING not set. Please set ORACLE_CONNECT_STRING before running queries."
+            ))
+        }
+    };
 
     // Connect and run query
     let rows = match run_select_query(user, password, connect_str, args.sql_query).await {
@@ -120,7 +113,12 @@ pub async fn handle_oracle_select_tool_call(
             let tool_res = CallToolResult {
                 content: vec![ToolResponseContent {
                     type_: "text".into(),
-                    text: format!("Error executing query: {}", e),
+                    text: format!("Error executing query: {}. Consider checking:\n\
+                    - That the database is reachable and credentials are correct\n\
+                    - The query syntax and table/column names\n\
+                    - If there's network latency or firewall issues\n\
+                    - If the query is too complex or missing indexes, consider using ROWNUM or FETCH FIRST\n\
+                    Original error: {}", e, e),
                     annotations: None,
                 }],
                 is_error: Some(true),
@@ -153,19 +151,23 @@ async fn run_select_query(
     connect_str: String,
     query: String
 ) -> Result<Vec<serde_json::Value>> {
-    // Execute the query with a timeout
-    let rows = timeout(Duration::from_secs(30), async {
-        // Since oracle crate is sync, we need to run in a blocking task
+    // Execute the query with a timeout. If it times out, provide a timeout-specific error.
+    let rows = timeout(Duration::from_secs(5), async {
         tokio::task::spawn_blocking(move || -> Result<Vec<serde_json::Value>> {
             // Connect to Oracle
-            let conn = oracle::Connection::connect(&user, &password, &connect_str)?;
-            
-            let mut stmt = conn.statement(&query).build()?;
-            let rows = stmt.query(&[])?;
-            
+            let conn = oracle::Connection::connect(&user, &password, &connect_str)
+                .with_context(|| format!("Failed to connect to Oracle using provided credentials and connection string: user={}, connect_str={}", user, connect_str))?;
+
+            let mut stmt = conn.statement(&query).build()
+                .with_context(|| format!("Failed to prepare statement. Check your SQL syntax: {}", query))?;
+            let rows = stmt.query(&[])
+                .with_context(|| format!("Failed to execute query. Ensure the query is valid and accessible: {}", query))?;
+
             let mut results = Vec::new();
             for row_result in rows {
-                let row = row_result?;
+                let row = row_result
+                    .with_context(|| "Failed to fetch a row from the result set. Check if the table or data is accessible.")?;
+                
                 let mut obj = serde_json::Map::new();
                 
                 for (i, col_info) in row.column_info().iter().enumerate() {
@@ -183,7 +185,7 @@ async fn run_select_query(
                             }
                         }
                         Err(_) => {
-                            // Try other types
+                            // Try numeric and date types
                             if let Ok(n) = row.get::<_, i64>(i + 1) {
                                 Value::Number(n.into())
                             } else if let Ok(f) = row.get::<_, f64>(i + 1) {
@@ -197,6 +199,7 @@ async fn run_select_query(
                             } else if let Ok(bytes) = row.get::<_, Vec<u8>>(i + 1) {
                                 Value::String(base64::engine::general_purpose::STANDARD.encode(bytes))
                             } else {
+                                // If column type is not supported or null
                                 Value::Null
                             }
                         }
@@ -207,7 +210,9 @@ async fn run_select_query(
             }
             Ok(results)
         }).await?
-    }).await??;
+    }).await.map_err(|_| {
+        anyhow!("Query execution timed out after 30 seconds. Consider simplifying the query, adding indexes, or limiting the result set with ROWNUM or FETCH FIRST.")
+    })??;
 
     Ok(rows)
 }
