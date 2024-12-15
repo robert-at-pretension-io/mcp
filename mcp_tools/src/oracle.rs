@@ -96,52 +96,47 @@ pub async fn handle_oracle_select_tool_call(
 }
 
 async fn run_select_query(user: &str, password: &str, connect_str: &str, query: &str) -> Result<Vec<serde_json::Value>> {
-    // Example using sqlx with Oracle. If using another Oracle client, adjust accordingly.
-    // Ensure you have "sqlx-oracle" feature enabled and have added dependency "sqlx = { version = ..., features = ["runtime-tokio-rustls", "oracle"]}"
-    let pool = sqlx::oracle::OraclePoolOptions::new()
-        .connect_timeout(Duration::from_secs(10))
-        .connect(&format!("oracle://{user}:{password}@{connect_str}")).await?;
+    // Create connection string
+    let conn_str = format!("{user}/{password}@{connect_str}");
+    
+    // Connect to Oracle
+    let conn = oracle::Connection::connect(conn_str, oracle::AuthMode::Default)?;
 
-    // Timeout the query after 30 seconds
-    let rows = timeout(Duration::from_secs(30), sqlx::query(query).fetch_all(&pool)).await??;
-
-    let mut results = Vec::new();
-    for row in rows {
-        let mut obj = serde_json::Map::new();
-        for (i, col) in row.columns().iter().enumerate() {
-            let val: Value = match row.try_get_raw(i) {
-                Ok(raw) => {
-                    if raw.is_null() {
-                        Value::Null
-                    } else {
-                        // We attempt conversion by type name
-                        match col.type_info().name().to_lowercase().as_str() {
-                            "number" | "float" | "binary_float" | "binary_double" => {
-                                let v: f64 = row.try_get(i)?;
-                                Value::Number(serde_json::Number::from_f64(v).unwrap_or(Value::Null.into()))
+    // Execute the query with a timeout
+    let rows = timeout(Duration::from_secs(30), async {
+        // Since oracle crate is sync, we need to run in a blocking task
+        tokio::task::spawn_blocking(move || {
+            let mut stmt = conn.statement(query).build()?;
+            let rows = stmt.query(&[])?;
+            
+            let mut results = Vec::new();
+            for row_result in rows {
+                let row = row_result?;
+                let mut obj = serde_json::Map::new();
+                
+                for (i, col_info) in row.column_info().iter().enumerate() {
+                    let val: Value = match &row.get::<_, oracle::SqlValue>(i + 1)? {
+                        oracle::SqlValue::Null => Value::Null,
+                        oracle::SqlValue::Number(n) => {
+                            if let Some(num) = n.to_f64() {
+                                Value::Number(serde_json::Number::from_f64(num).unwrap_or(Value::Null.into()))
+                            } else {
+                                Value::String(n.to_string())
                             }
-                            "varchar2" | "char" | "nchar" | "nvarchar2" | "clob" => {
-                                let v: String = row.try_get(i)?;
-                                Value::String(v)
-                            }
-                            "date" | "timestamp" => {
-                                let v: String = row.try_get(i)?;
-                                Value::String(v)
-                            }
-                            _ => {
-                                // If unknown type, try string fallback
-                                let v: String = row.try_get(i)?;
-                                Value::String(v)
-                            }
-                        }
-                    }
+                        },
+                        oracle::SqlValue::String(s) => Value::String(s.to_string()),
+                        oracle::SqlValue::Timestamp(ts) => Value::String(ts.to_string()),
+                        oracle::SqlValue::Date(d) => Value::String(d.to_string()),
+                        oracle::SqlValue::Binary(b) => Value::String(base64::encode(b)),
+                        _ => Value::String(format!("{:?}", row.get::<_, oracle::SqlValue>(i + 1)?)),
+                    };
+                    obj.insert(col_info.name().to_string(), val);
                 }
-                Err(_) => Value::Null
-            };
-            obj.insert(col.name().to_string(), val);
-        }
-        results.push(Value::Object(obj));
-    }
+                results.push(Value::Object(obj));
+            }
+            Ok::<_, anyhow::Error>(results)
+        }).await??
+    }).await??;
 
-    Ok(results)
+    Ok(rows)
 }
