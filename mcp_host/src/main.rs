@@ -624,8 +624,8 @@ Use that format above!
     pub async fn new() -> Result<Self> {
         // Try to get the AI provider from environment
         let ai_provider = std::env::var("MCP_AI_PROVIDER").unwrap_or_else(|_| {
-            info!("MCP_AI_PROVIDER not set, defaulting to 'openai'");
-            "openai".to_string()
+            info!("MCP_AI_PROVIDER not set, defaulting to 'gemini'");
+            "gemini".to_string()
         });
 
         // Get the model name from environment or use provider-specific defaults
