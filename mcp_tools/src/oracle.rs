@@ -11,7 +11,7 @@ use base64::Engine;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct OracleSelectParams {
-    query: String,
+    sql_query: String,
 }
 
 pub fn oracle_select_tool_info() -> ToolInfo {
@@ -20,12 +20,51 @@ pub fn oracle_select_tool_info() -> ToolInfo {
         description: Some(
             "Executes a SELECT query on an Oracle database. Only SELECT statements are allowed.
             
-            usage:
+            Common use cases:
+            1. Database exploration:
+               - List all tables: 
+                 ```sql
+                 SELECT table_name FROM user_tables ORDER BY table_name
+                 ```
+               - Get table structure:
+                 ```sql
+                 SELECT column_name, data_type, data_length, nullable 
+                 FROM user_tab_columns 
+                 WHERE table_name = 'YOUR_TABLE_NAME'
+                 ORDER BY column_id
+                 ```
+               - List indexes:
+                 ```sql
+                 SELECT index_name, column_name, column_position
+                 FROM user_ind_columns
+                 WHERE table_name = 'YOUR_TABLE_NAME'
+                 ORDER BY index_name, column_position
+                 ```
+               
+            2. Data sampling:
+               ```sql
+               SELECT * FROM your_table 
+               WHERE ROWNUM <= 10
+               ORDER BY your_date_column DESC
+               ```
+               
+            3. Basic statistics:
+               ```sql
+               SELECT 
+                 COUNT(*) as total_rows,
+                 COUNT(DISTINCT column_name) as unique_values,
+                 MIN(numeric_column) as min_value,
+                 MAX(numeric_column) as max_value,
+                 AVG(numeric_column) as avg_value
+               FROM your_table
+               ```
+            
+            Usage:
             ```json
             {
                 \"action\": \"oracle_select\",
                 \"params\": {
-                    \"query\": \"SELECT * FROM some_table WHERE ROWNUM < 10\"
+                    \"sql_query\": \"SELECT * FROM user_tables WHERE ROWNUM < 10\"
                 }
             }
             ```".to_string()
@@ -33,12 +72,12 @@ pub fn oracle_select_tool_info() -> ToolInfo {
         input_schema: serde_json::json!({
             "type": "object",
             "properties": {
-                "query": {
+                "sql_query": {
                     "type": "string",
-                    "description": "The SELECT SQL query to execute"
+                    "description": "The SELECT SQL query to execute. Must begin with SELECT."
                 }
             },
-            "required": ["query"],
+            "required": ["sql_query"],
             "additionalProperties": false
         }),
     }
@@ -51,7 +90,7 @@ pub async fn handle_oracle_select_tool_call(
     let args: OracleSelectParams = serde_json::from_value(params.arguments)
         .map_err(|e| anyhow!("Invalid arguments: {}", e))?;
 
-    let query_trimmed = args.query.trim_start().to_uppercase();
+    let query_trimmed = args.sql_query.trim_start().to_uppercase();
     if !query_trimmed.starts_with("SELECT") {
         // Only SELECT is allowed
         return Ok(error_response(id, INVALID_PARAMS, "Only SELECT statements allowed"));
@@ -63,7 +102,7 @@ pub async fn handle_oracle_select_tool_call(
     let connect_str = env::var("ORACLE_CONNECT_STRING").expect("ORACLE_CONNECT_STRING must be set");
 
     // Connect and run query
-    let rows = match run_select_query(user, password, connect_str, args.query).await {
+    let rows = match run_select_query(user, password, connect_str, args.sql_query).await {
         Ok(rows) => rows,
         Err(e) => {
             let tool_res = CallToolResult {
