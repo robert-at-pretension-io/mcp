@@ -58,6 +58,14 @@ struct Config {
 }
 mod openai;
 use openai::OpenAIClient;
+
+mod ai_client;
+mod gemini;
+use gemini::{GeminiClient};
+
+use ai_client::AIClient;
+
+
 use shared_protocol_objects::Role;
 mod conversation_state;
 use conversation_state::ConversationState;
