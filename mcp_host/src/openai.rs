@@ -913,7 +913,7 @@ impl<'a> Processor<'a> {
                 .system("You are an expert at extracting text and code from images.".to_string())
                 .user_with_image(
                     "Extract all visible code (in Markdown code blocks if possible) and all visible text:".to_string(),
-                    piece_path
+                    Path::new(piece_path)
                 )?
                 // .temperature(0.0)
                 // .max_tokens(5000)
