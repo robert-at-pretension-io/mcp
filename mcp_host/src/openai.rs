@@ -170,32 +170,32 @@ impl OpenAIClient {
         }
     }
 
-    pub fn builder<T>(&self) -> CompletionBuilder<'_, T> 
-    where
-        T: DeserializeOwned + Serialize + schemars::JsonSchema,
-    {
-        debug!("Creating CompletionBuilder with generic type T");
-        CompletionBuilder {
-            client: self,
-            model: "gpt-4o-mini".to_string(),
-            messages: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            _marker: std::marker::PhantomData,
-        }
-    }
+    // pub fn builder<T>(&self) -> CompletionBuilder<'_, T> 
+    // where
+    //     T: DeserializeOwned + Serialize + schemars::JsonSchema,
+    // {
+    //     debug!("Creating CompletionBuilder with generic type T");
+    //     CompletionBuilder {
+    //         client: self,
+    //         model: "gpt-4o-mini".to_string(),
+    //         messages: Vec::new(),
+    //         temperature: None,
+    //         max_tokens: None,
+    //         _marker: std::marker::PhantomData,
+    //     }
+    // }
 
 
-    pub fn raw_builder(&self) -> RawCompletionBuilder<'_> {
-        debug!("Creating RawCompletionBuilder");
-        RawCompletionBuilder {
-            client: self,
-            model: "gpt-4o-mini".into(),
-            messages: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-        }
-    }
+    // pub fn raw_builder(&self) -> RawCompletionBuilder<'_> {
+    //     debug!("Creating RawCompletionBuilder");
+    //     RawCompletionBuilder {
+    //         client: self,
+    //         model: "gpt-4o-mini".into(),
+    //         messages: Vec::new(),
+    //         temperature: None,
+    //         max_tokens: None,
+    //     }
+    // }
 
     pub fn transcription_builder(&self) -> TranscriptionBuilder<'_> {
         debug!("Creating TranscriptionBuilder");
@@ -224,219 +224,219 @@ impl OpenAIClient {
     }
 }
 
-pub struct RawCompletionBuilder<'a> {
-    client: &'a OpenAIClient,
-    model: String,
-    messages: Vec<Message>,
-    temperature: Option<f32>,
-    max_tokens: Option<u32>,
-}
+// pub struct RawCompletionBuilder<'a> {
+//     client: &'a OpenAIClient,
+//     model: String,
+//     messages: Vec<Message>,
+//     temperature: Option<f32>,
+//     max_tokens: Option<u32>,
+// }
 
-impl<'a> RawCompletionBuilder<'a> {
-    pub fn model(mut self, model: impl Into<String>) -> Self {
-        let model_str = model.into();
-        debug!("RawCompletionBuilder: Setting model to {}", model_str);
-        self.model = model_str;
-        self
-    }
+// impl<'a> RawCompletionBuilder<'a> {
+//     pub fn model(mut self, model: impl Into<String>) -> Self {
+//         let model_str = model.into();
+//         debug!("RawCompletionBuilder: Setting model to {}", model_str);
+//         self.model = model_str;
+//         self
+//     }
 
-    pub fn system(mut self, content: impl Into<String>) -> Self {
-        let c = content.into();
-        debug!("RawCompletionBuilder: Adding system message: {}", c);
-        self.messages.push(Message {
-            role: "system".to_string(),
-            content: MessageContent::Text(c),
-        });
-        self
-    }
+//     pub fn system(mut self, content: impl Into<String>) -> Self {
+//         let c = content.into();
+//         debug!("RawCompletionBuilder: Adding system message: {}", c);
+//         self.messages.push(Message {
+//             role: "system".to_string(),
+//             content: MessageContent::Text(c),
+//         });
+//         self
+//     }
 
-    pub fn user(mut self, content: impl Into<String>) -> Self {
-        let c = content.into();
-        debug!("RawCompletionBuilder: Adding user message: {}", c);
-        self.messages.push(Message {
-            role: "user".to_string(),
-            content: MessageContent::Text(c),
-        });
-        self
-    }
+//     pub fn user(mut self, content: impl Into<String>) -> Self {
+//         let c = content.into();
+//         debug!("RawCompletionBuilder: Adding user message: {}", c);
+//         self.messages.push(Message {
+//             role: "user".to_string(),
+//             content: MessageContent::Text(c),
+//         });
+//         self
+//     }
 
-    pub fn user_with_image(mut self, text: impl Into<String>, image_path: impl AsRef<Path>) -> Result<Self> {
-        let t = text.into();
-        debug!("RawCompletionBuilder: Adding user message with image from path: {}", image_path.as_ref().display());
-        let image_data = fs::read(image_path)?;
-        let base64_image = BASE64.encode(&image_data);
-        let base64_url = format!("data:image/jpeg;base64,{}", base64_image);
+//     pub fn user_with_image(mut self, text: impl Into<String>, image_path: impl AsRef<Path>) -> Result<Self> {
+//         let t = text.into();
+//         debug!("RawCompletionBuilder: Adding user message with image from path: {}", image_path.as_ref().display());
+//         let image_data = fs::read(image_path)?;
+//         let base64_image = BASE64.encode(&image_data);
+//         let base64_url = format!("data:image/jpeg;base64,{}", base64_image);
 
-        self.messages.push(Message {
-            role: "user".to_string(),
-            content: MessageContent::MultiPart(vec![
-                MessagePart::Text(t),
-                MessagePart::Image { 
-                    url: base64_url,
-                    detail: Some("high".to_string())
-                }
-            ]),
-        });
-        Ok(self)
-    }
+//         self.messages.push(Message {
+//             role: "user".to_string(),
+//             content: MessageContent::MultiPart(vec![
+//                 MessagePart::Text(t),
+//                 MessagePart::Image { 
+//                     url: base64_url,
+//                     detail: Some("high".to_string())
+//                 }
+//             ]),
+//         });
+//         Ok(self)
+//     }
 
-    pub fn user_with_image_url(mut self, text: impl Into<String>, image_url: impl Into<String>) -> Self {
-        let t = text.into();
-        let i = image_url.into();
-        debug!("RawCompletionBuilder: Adding user message with image_url: {}", i);
-        self.messages.push(Message {
-            role: "user".to_string(),
-            content: MessageContent::MultiPart(vec![
-                MessagePart::Text(t),
-                MessagePart::Image { 
-                    url: i,
-                    detail: Some("high".to_string())
-                }
-            ]),
-        });
-        self
-    }
+//     pub fn user_with_image_url(mut self, text: impl Into<String>, image_url: impl Into<String>) -> Self {
+//         let t = text.into();
+//         let i = image_url.into();
+//         debug!("RawCompletionBuilder: Adding user message with image_url: {}", i);
+//         self.messages.push(Message {
+//             role: "user".to_string(),
+//             content: MessageContent::MultiPart(vec![
+//                 MessagePart::Text(t),
+//                 MessagePart::Image { 
+//                     url: i,
+//                     detail: Some("high".to_string())
+//                 }
+//             ]),
+//         });
+//         self
+//     }
 
-    pub fn assistant(mut self, content: impl Into<String>) -> Self {
-        let c = content.into();
-        debug!("RawCompletionBuilder: Adding assistant message: {}", c);
-        self.messages.push(Message {
-            role: "assistant".to_string(),
-            content: MessageContent::Text(c),
-        });
-        self
-    }
+//     pub fn assistant(mut self, content: impl Into<String>) -> Self {
+//         let c = content.into();
+//         debug!("RawCompletionBuilder: Adding assistant message: {}", c);
+//         self.messages.push(Message {
+//             role: "assistant".to_string(),
+//             content: MessageContent::Text(c),
+//         });
+//         self
+//     }
 
-    pub fn temperature(mut self, temp: f32) -> Self {
-        debug!("RawCompletionBuilder: Setting temperature to {}", temp);
-        self.temperature = Some(temp);
-        self
-    }
+//     pub fn temperature(mut self, temp: f32) -> Self {
+//         debug!("RawCompletionBuilder: Setting temperature to {}", temp);
+//         self.temperature = Some(temp);
+//         self
+//     }
 
-    pub fn max_tokens(mut self, tokens: u32) -> Self {
-        debug!("RawCompletionBuilder: Setting max_tokens to {}", tokens);
-        self.max_tokens = Some(tokens);
-        self
-    }
+//     pub fn max_tokens(mut self, tokens: u32) -> Self {
+//         debug!("RawCompletionBuilder: Setting max_tokens to {}", tokens);
+//         self.max_tokens = Some(tokens);
+//         self
+//     }
 
-    fn format_message_content(content: &MessageContent) -> Value {
-        debug!("format_message_content called");
-        match content {
-            MessageContent::Text(text) => {
-                debug!("MessageContent is Text: {}", text);
-                json!(text)
-            },
-            MessageContent::Image { url, detail } => {
-                debug!("MessageContent is single Image: {}, detail: {:?}", url, detail);
-                json!([{
-                    "type": "image_url",
-                    "image_url": {
-                        "url": url,
-                        "detail": detail.clone().unwrap_or_else(|| "high".to_string())
-                    }
-                }])
-            },
-            MessageContent::MultiPart(parts) => {
-                debug!("MessageContent is MultiPart with {} parts", parts.len());
-                let content_parts: Vec<Value> = parts.iter().map(|part| match part {
-                    MessagePart::Text(text) => {
-                        debug!("MultiPart text: {}", text);
-                        json!({
-                            "type": "text",
-                            "text": text
-                        })
-                    },
-                    MessagePart::Image { url, detail } => {
-                        debug!("MultiPart image: {}", url);
-                        json!({
-                            "type": "image_url",
-                            "image_url": {
-                                "url": url,
-                                "detail": detail.clone().unwrap_or_else(|| "high".to_string())
-                            }
-                        })
-                    }
-                }).collect();
+//     fn format_message_content(content: &MessageContent) -> Value {
+//         debug!("format_message_content called");
+//         match content {
+//             MessageContent::Text(text) => {
+//                 debug!("MessageContent is Text: {}", text);
+//                 json!(text)
+//             },
+//             MessageContent::Image { url, detail } => {
+//                 debug!("MessageContent is single Image: {}, detail: {:?}", url, detail);
+//                 json!([{
+//                     "type": "image_url",
+//                     "image_url": {
+//                         "url": url,
+//                         "detail": detail.clone().unwrap_or_else(|| "high".to_string())
+//                     }
+//                 }])
+//             },
+//             MessageContent::MultiPart(parts) => {
+//                 debug!("MessageContent is MultiPart with {} parts", parts.len());
+//                 let content_parts: Vec<Value> = parts.iter().map(|part| match part {
+//                     MessagePart::Text(text) => {
+//                         debug!("MultiPart text: {}", text);
+//                         json!({
+//                             "type": "text",
+//                             "text": text
+//                         })
+//                     },
+//                     MessagePart::Image { url, detail } => {
+//                         debug!("MultiPart image: {}", url);
+//                         json!({
+//                             "type": "image_url",
+//                             "image_url": {
+//                                 "url": url,
+//                                 "detail": detail.clone().unwrap_or_else(|| "high".to_string())
+//                             }
+//                         })
+//                     }
+//                 }).collect();
                 
-                json!(content_parts)
-            }
-        }
-    }
+//                 json!(content_parts)
+//             }
+//         }
+//     }
 
-    fn config(mut self: Box<Self>, config: GenerationConfig) -> Box<dyn AIRequestBuilder> where Self: Sized {
-        if let Some(temp) = config.temperature {
-            self.temperature = Some(temp);
-        }
-        if let Some(tokens) = config.max_tokens {
-            self.max_tokens = Some(tokens);
-        }
-        self
-    }
+//     fn config(mut self: Box<Self>, config: GenerationConfig) -> Box<dyn AIRequestBuilder> where Self: Sized {
+//         if let Some(temp) = config.temperature {
+//             self.temperature = Some(temp);
+//         }
+//         if let Some(tokens) = config.max_tokens {
+//             self.max_tokens = Some(tokens);
+//         }
+//         self
+//     }
 
-    pub async fn execute(self) -> Result<String> {
-        debug!("RawCompletionBuilder.execute called");
-        let messages = self.messages.iter().map(|msg| {
-            debug!("formatting message with role: {}", msg.role);
-            json!({
-                "role": msg.role,
-                "content": Self::format_message_content(&msg.content)
-            })
-        }).collect::<Vec<_>>();
+//     pub async fn execute(self) -> Result<String> {
+//         debug!("RawCompletionBuilder.execute called");
+//         let messages = self.messages.iter().map(|msg| {
+//             debug!("formatting message with role: {}", msg.role);
+//             json!({
+//                 "role": msg.role,
+//                 "content": Self::format_message_content(&msg.content)
+//             })
+//         }).collect::<Vec<_>>();
 
-        let mut payload = json!({
-            "model": self.model,
-            "messages": messages,
-        });
+//         let mut payload = json!({
+//             "model": self.model,
+//             "messages": messages,
+//         });
 
-        if let Some(temp) = self.temperature {
-            debug!("Setting temperature in payload: {}", temp);
-            payload.as_object_mut().unwrap().insert("temperature".to_string(), json!(temp));
-        }
-        if let Some(tokens) = self.max_tokens {
-            debug!("Setting max_tokens in payload: {}", tokens);
-            payload.as_object_mut().unwrap().insert("max_tokens".to_string(), json!(tokens));
-        }
+//         if let Some(temp) = self.temperature {
+//             debug!("Setting temperature in payload: {}", temp);
+//             payload.as_object_mut().unwrap().insert("temperature".to_string(), json!(temp));
+//         }
+//         if let Some(tokens) = self.max_tokens {
+//             debug!("Setting max_tokens in payload: {}", tokens);
+//             payload.as_object_mut().unwrap().insert("max_tokens".to_string(), json!(tokens));
+//         }
 
-        OpenAIClient::log_payload("execute_raw", &payload);
+//         OpenAIClient::log_payload("execute_raw", &payload);
 
-        debug!("Sending request to OpenAI API for raw response");
-        let client = reqwest::Client::new();
-        let response = client
-            .post(&self.client.endpoint)
-            .header("Authorization", format!("Bearer {}", self.client.api_key))
-            .header("Content-Type", "application/json")
-            .json(&payload)
-            .send()
-            .await?;
+//         debug!("Sending request to OpenAI API for raw response");
+//         let client = reqwest::Client::new();
+//         let response = client
+//             .post(&self.client.endpoint)
+//             .header("Authorization", format!("Bearer {}", self.client.api_key))
+//             .header("Content-Type", "application/json")
+//             .json(&payload)
+//             .send()
+//             .await?;
 
-        debug!("Response received, status: {}", response.status());
-        let status = response.status();
-        if !status.is_success() {
-            warn!("Response not successful, status: {}", status);
-            let error_text = response.text().await.context("Failed to read error response")?;
-            error!("API error response: {}", error_text);
-            return Err(anyhow::anyhow!("API request failed with status {}: {}", status, error_text));
-        }
+//         debug!("Response received, status: {}", response.status());
+//         let status = response.status();
+//         if !status.is_success() {
+//             warn!("Response not successful, status: {}", status);
+//             let error_text = response.text().await.context("Failed to read error response")?;
+//             error!("API error response: {}", error_text);
+//             return Err(anyhow::anyhow!("API request failed with status {}: {}", status, error_text));
+//         }
 
-        let response_text: String = response.text().await?;
-        debug!("Full API response (raw): {}", response_text);
+//         let response_text: String = response.text().await?;
+//         debug!("Full API response (raw): {}", response_text);
 
-        let response_json: Value = match serde_json::from_str(&response_text) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Failed to parse response as JSON: {}. Raw response: {}", e, response_text);
-                return Err(anyhow::anyhow!("Failed to parse API response as JSON: {}", response_text));
-            }
-        };
+//         let response_json: Value = match serde_json::from_str(&response_text) {
+//             Ok(v) => v,
+//             Err(e) => {
+//                 error!("Failed to parse response as JSON: {}. Raw response: {}", e, response_text);
+//                 return Err(anyhow::anyhow!("Failed to parse API response as JSON: {}", response_text));
+//             }
+//         };
 
-        let content = response_json["choices"][0]["message"]["content"]
-            .as_str()
-            .context("Failed to get content from response")?;
+//         let content = response_json["choices"][0]["message"]["content"]
+//             .as_str()
+//             .context("Failed to get content from response")?;
 
-        debug!("Returning raw content from response");
-        Ok(content.to_string())
-    }
-}
+//         debug!("Returning raw content from response");
+//         Ok(content.to_string())
+//     }
+// }
 
 impl<'a> TranscriptionBuilder<'a> {
     pub fn file(mut self, path: impl Into<String>) -> Self {
@@ -556,234 +556,234 @@ impl<'a> TranscriptionBuilder<'a> {
     
 }
 
-impl<'a, T> CompletionBuilder<'a, T>
-where
-    T: DeserializeOwned + Serialize + schemars::JsonSchema,
-{
-    pub fn model(mut self, model: impl Into<String>) -> Self {
-        let m = model.into();
-        debug!("CompletionBuilder: Setting model: {}", m);
-        self.model = m;
-        self
-    }
+// impl<'a, T> CompletionBuilder<'a, T>
+// where
+//     T: DeserializeOwned + Serialize + schemars::JsonSchema,
+// {
+//     pub fn model(mut self, model: impl Into<String>) -> Self {
+//         let m = model.into();
+//         debug!("CompletionBuilder: Setting model: {}", m);
+//         self.model = m;
+//         self
+//     }
 
-    pub fn system(mut self, content: impl Into<String>) -> Self {
-        let c = content.into();
-        debug!("CompletionBuilder: Adding system message: {}", c);
-        self.messages.push(Message {
-            role: "system".to_string(),
-            content: MessageContent::Text(c),
-        });
-        self
-    }
+//     pub fn system(mut self, content: impl Into<String>) -> Self {
+//         let c = content.into();
+//         debug!("CompletionBuilder: Adding system message: {}", c);
+//         self.messages.push(Message {
+//             role: "system".to_string(),
+//             content: MessageContent::Text(c),
+//         });
+//         self
+//     }
 
-    pub fn user(mut self, content: impl Into<String>) -> Self {
-        let c = content.into();
-        debug!("CompletionBuilder: Adding user message: {}", c);
-        self.messages.push(Message {
-            role: "user".to_string(),
-            content: MessageContent::Text(c),
-        });
-        self
-    }
+//     pub fn user(mut self, content: impl Into<String>) -> Self {
+//         let c = content.into();
+//         debug!("CompletionBuilder: Adding user message: {}", c);
+//         self.messages.push(Message {
+//             role: "user".to_string(),
+//             content: MessageContent::Text(c),
+//         });
+//         self
+//     }
 
-    pub fn user_with_image(mut self, text: impl Into<String>, image_path: impl AsRef<Path>) -> Result<Self> {
-        let t = text.into();
-        debug!("CompletionBuilder: Adding user_with_image from {}", image_path.as_ref().display());
-        let image_data = fs::read(image_path)?;
-        let base64_image = BASE64.encode(&image_data);
-        let base64_url = format!("data:image/jpeg;base64,{}", base64_image);
+//     pub fn user_with_image(mut self, text: impl Into<String>, image_path: impl AsRef<Path>) -> Result<Self> {
+//         let t = text.into();
+//         debug!("CompletionBuilder: Adding user_with_image from {}", image_path.as_ref().display());
+//         let image_data = fs::read(image_path)?;
+//         let base64_image = BASE64.encode(&image_data);
+//         let base64_url = format!("data:image/jpeg;base64,{}", base64_image);
 
-        self.messages.push(Message {
-            role: "user".to_string(),
-            content: MessageContent::MultiPart(vec![
-                MessagePart::Text(t),
-                MessagePart::Image { 
-                    url: base64_url,
-                    detail: Some("high".to_string())
-                }
-            ]),
-        });
-        Ok(self)
-    }
+//         self.messages.push(Message {
+//             role: "user".to_string(),
+//             content: MessageContent::MultiPart(vec![
+//                 MessagePart::Text(t),
+//                 MessagePart::Image { 
+//                     url: base64_url,
+//                     detail: Some("high".to_string())
+//                 }
+//             ]),
+//         });
+//         Ok(self)
+//     }
 
-    pub fn user_with_image_url(mut self, text: impl Into<String>, image_url: impl Into<String>) -> Self {
-        let t = text.into();
-        let i = image_url.into();
-        debug!("CompletionBuilder: Adding user_with_image_url: {}", i);
-        self.messages.push(Message {
-            role: "user".to_string(),
-            content: MessageContent::MultiPart(vec![
-                MessagePart::Text(t),
-                MessagePart::Image { 
-                    url: i,
-                    detail: Some("high".to_string())
-                }
-            ]),
-        });
-        self
-    }
+//     pub fn user_with_image_url(mut self, text: impl Into<String>, image_url: impl Into<String>) -> Self {
+//         let t = text.into();
+//         let i = image_url.into();
+//         debug!("CompletionBuilder: Adding user_with_image_url: {}", i);
+//         self.messages.push(Message {
+//             role: "user".to_string(),
+//             content: MessageContent::MultiPart(vec![
+//                 MessagePart::Text(t),
+//                 MessagePart::Image { 
+//                     url: i,
+//                     detail: Some("high".to_string())
+//                 }
+//             ]),
+//         });
+//         self
+//     }
 
-    pub fn assistant(mut self, content: impl Into<String>) -> Self {
-        let c = content.into();
-        debug!("CompletionBuilder: Adding assistant message: {}", c);
-        self.messages.push(Message {
-            role: "assistant".to_string(),
-            content: MessageContent::Text(c),
-        });
-        self
-    }
+//     pub fn assistant(mut self, content: impl Into<String>) -> Self {
+//         let c = content.into();
+//         debug!("CompletionBuilder: Adding assistant message: {}", c);
+//         self.messages.push(Message {
+//             role: "assistant".to_string(),
+//             content: MessageContent::Text(c),
+//         });
+//         self
+//     }
 
-    pub fn temperature(mut self, temp: f32) -> Self {
-        debug!("CompletionBuilder: Setting temperature: {}", temp);
-        self.temperature = Some(temp);
-        self
-    }
+//     pub fn temperature(mut self, temp: f32) -> Self {
+//         debug!("CompletionBuilder: Setting temperature: {}", temp);
+//         self.temperature = Some(temp);
+//         self
+//     }
 
-    pub fn max_tokens(mut self, tokens: u32) -> Self {
-        debug!("CompletionBuilder: Setting max_tokens: {}", tokens);
-        self.max_tokens = Some(tokens);
-        self
-    }
+//     pub fn max_tokens(mut self, tokens: u32) -> Self {
+//         debug!("CompletionBuilder: Setting max_tokens: {}", tokens);
+//         self.max_tokens = Some(tokens);
+//         self
+//     }
 
-    fn format_message_content(content: &MessageContent) -> Value {
-        debug!("CompletionBuilder.format_message_content called");
-        match content {
-            MessageContent::Text(text) => {
-                debug!("Content is text: {}", text);
-                json!(text)
-            },
-            MessageContent::Image { url, detail } => {
-                debug!("Content is single image");
-                json!([{
-                    "type": "image_url",
-                    "image_url": {
-                        "url": url,
-                        "detail": detail.clone().unwrap_or_else(|| "high".to_string())
-                    }
-                }])
-            },
-            MessageContent::MultiPart(parts) => {
-                debug!("Content is MultiPart with {} parts", parts.len());
-                let content_parts: Vec<Value> = parts.iter().map(|part| match part {
-                    MessagePart::Text(text) => {
-                        debug!("MultiPart text: {}", text);
-                        json!({
-                            "type": "text",
-                            "text": text
-                        })
-                    },
-                    MessagePart::Image { url, detail } => {
-                        debug!("MultiPart image..");
-                        json!({
-                            "type": "image_url",
-                            "image_url": {
-                                "url": url,
-                                "detail": detail.clone().unwrap_or_else(|| "high".to_string())
-                            }
-                        })
-                    }
-                }).collect();
-                json!(content_parts)
-            }
-        }
-    }
+//     fn format_message_content(content: &MessageContent) -> Value {
+//         debug!("CompletionBuilder.format_message_content called");
+//         match content {
+//             MessageContent::Text(text) => {
+//                 debug!("Content is text: {}", text);
+//                 json!(text)
+//             },
+//             MessageContent::Image { url, detail } => {
+//                 debug!("Content is single image");
+//                 json!([{
+//                     "type": "image_url",
+//                     "image_url": {
+//                         "url": url,
+//                         "detail": detail.clone().unwrap_or_else(|| "high".to_string())
+//                     }
+//                 }])
+//             },
+//             MessageContent::MultiPart(parts) => {
+//                 debug!("Content is MultiPart with {} parts", parts.len());
+//                 let content_parts: Vec<Value> = parts.iter().map(|part| match part {
+//                     MessagePart::Text(text) => {
+//                         debug!("MultiPart text: {}", text);
+//                         json!({
+//                             "type": "text",
+//                             "text": text
+//                         })
+//                     },
+//                     MessagePart::Image { url, detail } => {
+//                         debug!("MultiPart image..");
+//                         json!({
+//                             "type": "image_url",
+//                             "image_url": {
+//                                 "url": url,
+//                                 "detail": detail.clone().unwrap_or_else(|| "high".to_string())
+//                             }
+//                         })
+//                     }
+//                 }).collect();
+//                 json!(content_parts)
+//             }
+//         }
+//     }
 
-    fn config(mut self: Box<Self>, config: GenerationConfig) -> Box<dyn AIRequestBuilder> where Self: Sized {
-        if let Some(temp) = config.temperature {
-            self.temperature = Some(temp);
-        }
-        if let Some(tokens) = config.max_tokens {
-            self.max_tokens = Some(tokens);
-        }
-        self
-    }
+//     fn config(mut self: Box<Self>, config: GenerationConfig) -> Box<dyn AIRequestBuilder> where Self: Sized {
+//         if let Some(temp) = config.temperature {
+//             self.temperature = Some(temp);
+//         }
+//         if let Some(tokens) = config.max_tokens {
+//             self.max_tokens = Some(tokens);
+//         }
+//         self
+//     }
 
-    pub async fn execute(self) -> Result<T> {
-        debug!("CompletionBuilder.execute called");
-        let schema = schemars::gen::SchemaGenerator::default()
-            .into_root_schema_for::<T>();
+//     pub async fn execute(self) -> Result<T> {
+//         debug!("CompletionBuilder.execute called");
+//         let schema = schemars::gen::SchemaGenerator::default()
+//             .into_root_schema_for::<T>();
         
-        let schema_name = OpenAIClient::sanitize_schema_name(std::any::type_name::<T>());
-        debug!("Using schema_name: {}", schema_name);
+//         let schema_name = OpenAIClient::sanitize_schema_name(std::any::type_name::<T>());
+//         debug!("Using schema_name: {}", schema_name);
 
-        let messages = self.messages.iter().map(|msg| {
-            debug!("Formatting message with role: {}", msg.role);
-            json!({
-                "role": msg.role,
-                "content": Self::format_message_content(&msg.content)
-            })
-        }).collect::<Vec<_>>();
+//         let messages = self.messages.iter().map(|msg| {
+//             debug!("Formatting message with role: {}", msg.role);
+//             json!({
+//                 "role": msg.role,
+//                 "content": Self::format_message_content(&msg.content)
+//             })
+//         }).collect::<Vec<_>>();
 
-        let mut payload = json!({
-            "model": self.model,
-            "messages": messages,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": schema_name,
-                    "schema": schema,
-                }
-            }
-        });
+//         let mut payload = json!({
+//             "model": self.model,
+//             "messages": messages,
+//             "response_format": {
+//                 "type": "json_schema",
+//                 "json_schema": {
+//                     "name": schema_name,
+//                     "schema": schema,
+//                 }
+//             }
+//         });
 
-        if let Some(temp) = self.temperature {
-            debug!("Adding temperature to payload: {}", temp);
-            payload.as_object_mut().unwrap().insert("temperature".to_string(), json!(temp));
-        }
-        if let Some(tokens) = self.max_tokens {
-            debug!("Adding max_tokens to payload: {}", tokens);
-            payload.as_object_mut().unwrap().insert("max_tokens".to_string(), json!(tokens));
-        }
+//         if let Some(temp) = self.temperature {
+//             debug!("Adding temperature to payload: {}", temp);
+//             payload.as_object_mut().unwrap().insert("temperature".to_string(), json!(temp));
+//         }
+//         if let Some(tokens) = self.max_tokens {
+//             debug!("Adding max_tokens to payload: {}", tokens);
+//             payload.as_object_mut().unwrap().insert("max_tokens".to_string(), json!(tokens));
+//         }
 
-        OpenAIClient::log_payload("execute", &payload);
+//         OpenAIClient::log_payload("execute", &payload);
 
-        debug!("Sending request to OpenAI API for structured response");
-        let client = reqwest::Client::new();
-        let response = client
-            .post(&self.client.endpoint)
-            .header("Authorization", format!("Bearer {}", self.client.api_key))
-            .header("Content-Type", "application/json")
-            .json(&payload)
-            .send()
-            .await?;
+//         debug!("Sending request to OpenAI API for structured response");
+//         let client = reqwest::Client::new();
+//         let response = client
+//             .post(&self.client.endpoint)
+//             .header("Authorization", format!("Bearer {}", self.client.api_key))
+//             .header("Content-Type", "application/json")
+//             .json(&payload)
+//             .send()
+//             .await?;
 
-        debug!("Response received with status: {}", response.status());
-        let status = response.status();
-        if !status.is_success() {
-            warn!("Request not successful, status: {}", status);
-            let error_text = response.text().await.context("Failed to read error response")?;
-            error!("API error response: {}", error_text);
-            return Err(anyhow::anyhow!("API request failed with status {}: {}", status, error_text));
-        }
+//         debug!("Response received with status: {}", response.status());
+//         let status = response.status();
+//         if !status.is_success() {
+//             warn!("Request not successful, status: {}", status);
+//             let error_text = response.text().await.context("Failed to read error response")?;
+//             error!("API error response: {}", error_text);
+//             return Err(anyhow::anyhow!("API request failed with status {}: {}", status, error_text));
+//         }
 
-        let response_text = response.text().await?;
-        debug!("Full API structured response: {}", response_text);
+//         let response_text = response.text().await?;
+//         debug!("Full API structured response: {}", response_text);
 
-        let response_json: Value = match serde_json::from_str(&response_text) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Failed to parse response as JSON: {}. Raw: {}", e, response_text);
-                return Err(anyhow::anyhow!("Failed to parse API response as JSON: {}", response_text));
-            }
-        };
+//         let response_json: Value = match serde_json::from_str(&response_text) {
+//             Ok(v) => v,
+//             Err(e) => {
+//                 error!("Failed to parse response as JSON: {}. Raw: {}", e, response_text);
+//                 return Err(anyhow::anyhow!("Failed to parse API response as JSON: {}", response_text));
+//             }
+//         };
 
-        let content = response_json["choices"][0]["message"]["content"]
-            .as_str()
-            .context("Failed to get content from response")?;
-        debug!("Parsing content into target type");
+//         let content = response_json["choices"][0]["message"]["content"]
+//             .as_str()
+//             .context("Failed to get content from response")?;
+//         debug!("Parsing content into target type");
 
-        let result: T = match serde_json::from_str(content) {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Failed to parse content into target type: {}", e);
-                return Err(anyhow::anyhow!("Failed to parse content into target type: {}", content));
-            }
-        };
+//         let result: T = match serde_json::from_str(content) {
+//             Ok(r) => r,
+//             Err(e) => {
+//                 error!("Failed to parse content into target type: {}", e);
+//                 return Err(anyhow::anyhow!("Failed to parse content into target type: {}", content));
+//             }
+//         };
 
-        Ok(result)
-    }
-}
+//         Ok(result)
+//     }
+// }
 
 
 #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
@@ -909,14 +909,14 @@ impl<'a> Processor<'a> {
             debug!("Sending chunk {} for analysis", piece_path);
             let raw_response = self.client
                 .raw_builder()
-                .model("gpt-4o-mini")
-                .system("You are an expert at extracting text and code from images.")
+                // .model("gpt-4o-mini")
+                .system("You are an expert at extracting text and code from images.".to_string())
                 .user_with_image(
-                    "Extract all visible code (in Markdown code blocks if possible) and all visible text:",
+                    "Extract all visible code (in Markdown code blocks if possible) and all visible text:".to_string(),
                     piece_path
                 )?
-                .temperature(0.0)
-                .max_tokens(5000)
+                // .temperature(0.0)
+                // .max_tokens(5000)
                 .execute()
                 .await;
     
