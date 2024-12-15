@@ -109,7 +109,7 @@ async fn run_select_query(
             // Connect to Oracle
             let conn = oracle::Connection::connect(&user, &password, &connect_str)?;
             
-            let mut stmt = conn.statement(query).build()?;
+            let mut stmt = conn.statement(&query).build()?;
             let rows = stmt.query(&[])?;
             
             let mut results = Vec::new();
