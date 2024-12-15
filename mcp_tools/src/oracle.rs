@@ -8,8 +8,7 @@ use shared_protocol_objects::{ToolInfo, CallToolResult, ToolResponseContent};
 use shared_protocol_objects::{success_response, error_response, JsonRpcResponse, INVALID_PARAMS};
 use shared_protocol_objects::CallToolParams;
 use base64::Engine;
-use oracle::sql_type::OracleType;
-use oracle::sql_value::SqlValue;
+use oracle::{OracleType, SqlValue};
 
 #[derive(Debug, Deserialize, Serialize)]
 struct OracleSelectParams {
@@ -148,7 +147,7 @@ pub async fn handle_oracle_select_tool_call(
 }
 
 fn get_typed_value<T>(row: &oracle::Row, index: usize) -> Result<Value> 
-where T: oracle::sql_value::SqlValue
+where T: SqlValue
 {
     match row.get::<_, T>(index) {
         Ok(val) => serialize_value(val),
@@ -203,7 +202,7 @@ async fn run_select_query(
                         },
                         
                         // Handle numeric types
-                        OracleType::Number(_, _) | OracleType::Float(_) | OracleType::BinaryFloat(_) | OracleType::BinaryDouble(_) => {
+                        OracleType::Number(_, _) | OracleType::Float(_) | OracleType::BinaryFloat | OracleType::BinaryDouble => {
                             // Try integer first
                             if let Ok(n) = row.get::<_, i64>(i + 1) {
                                 Value::Number(n.into())
