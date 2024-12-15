@@ -8,7 +8,7 @@ use shared_protocol_objects::{ToolInfo, CallToolResult, ToolResponseContent};
 use shared_protocol_objects::{success_response, error_response, JsonRpcResponse, INVALID_PARAMS};
 use shared_protocol_objects::CallToolParams;
 use base64::Engine;
-use oracle::sql_type::OracleType;
+use oracle::sql_type::{OracleType, SqlValue};
 
 #[derive(Debug, Deserialize, Serialize)]
 struct OracleSelectParams {
@@ -147,7 +147,7 @@ pub async fn handle_oracle_select_tool_call(
 }
 
 fn get_typed_value<T>(row: &oracle::Row, index: usize) -> Result<Value> 
-where T: oracle::SqlValue
+where T: SqlValue
 {
     match row.get::<_, T>(index) {
         Ok(val) => serialize_value(val),
@@ -194,7 +194,7 @@ async fn run_select_query(
 
                     let val: Value = match oracle_type {
                         // Handle string types
-                        oracle::OracleType::Varchar2 | oracle::OracleType::Char | oracle::OracleType::NVarchar2 | oracle::OracleType::NChar => {
+                        OracleType::Varchar2 | OracleType::Char | OracleType::NVarchar2 | OracleType::NChar => {
                             match row.get::<_, String>(i + 1) {
                                 Ok(s) => Value::String(s),
                                 Err(_) => Value::Null
@@ -202,7 +202,7 @@ async fn run_select_query(
                         },
                         
                         // Handle numeric types
-                        oracle::OracleType::Number | oracle::OracleType::Float | oracle::OracleType::Binary_Float | oracle::OracleType::Binary_Double => {
+                        OracleType::Number | OracleType::Float | OracleType::Binary_Float | OracleType::Binary_Double => {
                             // Try integer first
                             if let Ok(n) = row.get::<_, i64>(i + 1) {
                                 Value::Number(n.into())
@@ -223,7 +223,7 @@ async fn run_select_query(
                         },
                         
                         // Handle date/timestamp types
-                        oracle::OracleType::Date | oracle::OracleType::Timestamp | oracle::OracleType::TimestampTZ | oracle::OracleType::TimestampLTZ => {
+                        OracleType::Date | OracleType::Timestamp | OracleType::TimestampTZ | OracleType::TimestampLTZ => {
                             match row.get::<_, chrono::NaiveDateTime>(i + 1) {
                                 Ok(d) => Value::String(d.to_string()),
                                 Err(_) => Value::Null
@@ -231,7 +231,7 @@ async fn run_select_query(
                         },
                         
                         // Handle BLOB/RAW types
-                        oracle::OracleType::Raw | oracle::OracleType::Blob => {
+                        OracleType::Raw | OracleType::Blob => {
                             match row.get::<_, Vec<u8>>(i + 1) {
                                 Ok(bytes) => Value::String(base64::engine::general_purpose::STANDARD.encode(bytes)),
                                 Err(_) => Value::Null
@@ -239,7 +239,7 @@ async fn run_select_query(
                         },
                         
                         // Handle CLOB types
-                        oracle::OracleType::Clob | oracle::OracleType::NClob => {
+                        OracleType::Clob | OracleType::NClob => {
                             match row.get::<_, String>(i + 1) {
                                 Ok(s) => Value::String(s),
                                 Err(_) => Value::Null
