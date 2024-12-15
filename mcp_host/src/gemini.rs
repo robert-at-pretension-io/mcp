@@ -29,10 +29,18 @@ pub struct GeminiContent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SafetySetting {
+    category: String,
+    threshold: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeminiRequest {
     contents: Vec<GeminiContent>,
     #[serde(rename = "generationConfig", skip_serializing_if = "Option::is_none")]
     generation_config: Option<GeminiGenerationConfig>,
+    #[serde(rename = "safetySettings", skip_serializing_if = "Option::is_none")]
+    safety_settings: Option<Vec<SafetySetting>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -40,6 +48,10 @@ pub struct GeminiGenerationConfig {
     temperature: Option<f32>,
     #[serde(rename = "maxOutputTokens")]
     max_output_tokens: Option<u32>,
+    #[serde(rename = "topP")]
+    top_p: Option<f32>,
+    #[serde(rename = "responseModalities")]
+    response_modalities: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +66,27 @@ impl GeminiClient {
             api_key,
             endpoint: format!("https://generativelanguage.googleapis.com/v1/models/{}:generateContent", model),
         }
+    }
+
+    fn default_safety_settings() -> Vec<SafetySetting> {
+        vec![
+            SafetySetting {
+                category: "HARM_CATEGORY_HATE_SPEECH".to_string(),
+                threshold: "OFF".to_string(),
+            },
+            SafetySetting {
+                category: "HARM_CATEGORY_DANGEROUS_CONTENT".to_string(),
+                threshold: "OFF".to_string(),
+            },
+            SafetySetting {
+                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT".to_string(),
+                threshold: "OFF".to_string(),
+            },
+            SafetySetting {
+                category: "HARM_CATEGORY_HARASSMENT".to_string(),
+                threshold: "OFF".to_string(),
+            },
+        ]
     }
 }
 
@@ -161,7 +194,7 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
 
     fn assistant(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.contents.push(GeminiContent {
-            role: "assistant".to_string(),
+            role: "model".to_string(),
             parts: vec![GeminiContentPart {
                 text: Some(content),
                 inline_data: None,
@@ -179,9 +212,16 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
     }
 
     async fn execute(self: Box<Self>) -> Result<String> {
+        let mut config = self.generation_config.unwrap_or_default();
+        config.response_modalities = Some(vec!["TEXT".to_string()]);
+        if config.top_p.is_none() {
+            config.top_p = Some(0.95);
+        }
+        
         let request = GeminiRequest {
             contents: self.contents,
-            generation_config: self.generation_config,
+            generation_config: Some(config),
+            safety_settings: Some(GeminiClient::default_safety_settings()),
         };
 
         let client = reqwest::Client::new();
