@@ -14,6 +14,7 @@ use oracle::sql_type::OracleType;
 #[derive(Debug, Deserialize, Serialize)]
 struct OracleSelectParams {
     sql_query: String,
+    service: Option<String>,
 }
 
 pub fn oracle_select_tool_info() -> ToolInfo {
@@ -28,12 +29,14 @@ pub fn oracle_select_tool_info() -> ToolInfo {
             3. Include WHERE clauses for filtering.
             4. For metadata queries, limit results and filter by schema.
             
+            You can specify which service to connect to using the 'service' parameter:
+            - 'edbt' (default) for edbt.world
+            - 'ecomt' for ecomt.world
+            
             Example:
             {
-                \"action\": \"oracle_select\",
-                \"params\": {
-                    \"sql_query\": \"SELECT table_name FROM user_tables WHERE ROWNUM < 10 ORDER BY table_name\"
-                }
+                \"sql_query\": \"SELECT table_name FROM user_tables WHERE ROWNUM < 10\",
+                \"service\": \"ecomt\"
             }".to_string()
         ),
         input_schema: serde_json::json!({
@@ -42,6 +45,11 @@ pub fn oracle_select_tool_info() -> ToolInfo {
                 "sql_query": {
                     "type": "string",
                     "description": "The SELECT SQL query to execute. Must begin with SELECT."
+                },
+                "service": {
+                    "type": "string",
+                    "enum": ["edbt", "ecomt"],
+                    "description": "Which database service to connect to (edbt.world or ecomt.world). Defaults to edbt if not specified."
                 }
             },
             "required": ["sql_query"],
@@ -97,13 +105,26 @@ pub async fn handle_oracle_select_tool_call(
         }
     };
 
-    let connect_str = match env::var("ORACLE_CONNECT_STRING") {
+    let base_connect_str = match env::var("ORACLE_CONNECT_STRING") {
         Ok(c) => c,
         Err(_) => {
             return Ok(error_response(
                 id,
                 INVALID_PARAMS,
                 "Environment variable ORACLE_CONNECT_STRING not set. Please set ORACLE_CONNECT_STRING before running queries."
+            ))
+        }
+    };
+
+    // Modify connection string based on service parameter
+    let connect_str = match args.service.as_deref() {
+        Some("ecomt") => "jdbc:oracle:thin:@//tst-dbs-ora.akc.org:1521/ecomt.world".to_string(),
+        Some("edbt") | None => base_connect_str,
+        Some(other) => {
+            return Ok(error_response(
+                id,
+                INVALID_PARAMS,
+                &format!("Invalid service '{}'. Must be either 'edbt' or 'ecomt'.", other)
             ))
         }
     };
