@@ -42,7 +42,7 @@ pub struct GeminiGenerationConfig {
     max_output_tokens: Option<u32>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GeminiClient {
     api_key: String,
     endpoint: String,
@@ -87,8 +87,7 @@ pub struct GeminiCompletionBuilder {
     generation_config: Option<GeminiGenerationConfig>,
 }
 
-#[async_trait]
-impl<'a> AIRequestBuilder for GeminiCompletionBuilder<'a> {
+impl AIRequestBuilder for GeminiCompletionBuilder {
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.contents.push(GeminiContent {
             role: "system".to_string(),
@@ -173,7 +172,26 @@ impl<'a> AIRequestBuilder for GeminiCompletionBuilder<'a> {
         self
     }
 
-    async fn execute(self: Box<Self>) -> Result<String> {
+    fn executor(self: Box<Self>) -> Box<dyn AIRequestExecutor> {
+        Box::new(GeminiRequestExecutor {
+            request: GeminiRequest {
+                contents: self.contents,
+                generation_config: self.generation_config,
+            },
+            client: self.client,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct GeminiRequestExecutor {
+    request: GeminiRequest,
+    client: GeminiClient,
+}
+
+#[async_trait]
+impl AIRequestExecutor for GeminiRequestExecutor {
+    async fn execute(&self) -> Result<String> {
         let request = GeminiRequest {
             contents: self.contents,
             generation_config: self.generation_config,
