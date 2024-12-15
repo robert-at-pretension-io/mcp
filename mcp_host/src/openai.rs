@@ -10,17 +10,18 @@ use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabi
 use async_trait::async_trait;
 
 // OpenAI implementation temporarily disabled while focusing on Gemini
+// OpenAI implementation temporarily disabled
 #[async_trait]
 impl AIClient for OpenAIClient {
     fn model_name(&self) -> String {
         "gpt-4".to_string()
     }
 
-    fn builder(&self) -> Box<dyn AIRequestBuilder + 'static> {
+    fn builder(&self) -> Box<dyn AIRequestBuilder> {
         unimplemented!("OpenAI implementation temporarily disabled")
     }
 
-    fn raw_builder(&self) -> Box<dyn AIRequestBuilder + 'static> {
+    fn raw_builder(&self) -> Box<dyn AIRequestBuilder> {
         unimplemented!("OpenAI implementation temporarily disabled")
     }
 }

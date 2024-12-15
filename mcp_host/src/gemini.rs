@@ -87,6 +87,7 @@ pub struct GeminiCompletionBuilder {
     generation_config: Option<GeminiGenerationConfig>,
 }
 
+#[async_trait]
 impl AIRequestBuilder for GeminiCompletionBuilder {
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.contents.push(GeminiContent {
