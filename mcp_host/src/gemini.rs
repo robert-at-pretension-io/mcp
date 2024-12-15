@@ -172,26 +172,7 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
         self
     }
 
-    fn executor(self: Box<Self>) -> Box<dyn AIRequestExecutor> {
-        Box::new(GeminiRequestExecutor {
-            request: GeminiRequest {
-                contents: self.contents,
-                generation_config: self.generation_config,
-            },
-            client: self.client,
-        })
-    }
-}
-
-#[derive(Debug)]
-struct GeminiRequestExecutor {
-    request: GeminiRequest,
-    client: GeminiClient,
-}
-
-#[async_trait]
-impl AIRequestExecutor for GeminiRequestExecutor {
-    async fn execute(&self) -> Result<String> {
+    async fn execute(self: Box<Self>) -> Result<String> {
         let request = GeminiRequest {
             contents: self.contents,
             generation_config: self.generation_config,

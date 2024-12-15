@@ -37,6 +37,7 @@ pub struct GenerationConfig {
 }
 
 /// Builder for constructing AI requests
+#[async_trait]
 pub trait AIRequestBuilder: Send {
     /// Add a system message
     fn system(self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder>;
@@ -56,14 +57,8 @@ pub trait AIRequestBuilder: Send {
     /// Set generation parameters
     fn config(self: Box<Self>, config: GenerationConfig) -> Box<dyn AIRequestBuilder>;
     
-    /// Get the executor for this builder
-    fn executor(self: Box<Self>) -> Box<dyn AIRequestExecutor>;
-}
-
-#[async_trait]
-pub trait AIRequestExecutor: Send {
     /// Execute the request and get response
-    async fn execute(&self) -> Result<String>;
+    async fn execute(self: Box<Self>) -> Result<String>;
 }
 
 /// Core trait for AI model implementations
