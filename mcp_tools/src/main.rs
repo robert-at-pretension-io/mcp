@@ -87,6 +87,7 @@ async fn main() {
             search_tool_info(),
             graph_tool_info(),
             regex_replace_tool_info(),
+            oracle::oracle_select_tool_info(),
             // sequential_thinking::sequential_thinking_tool_info(),
             // memory::memory_tool_info(),
             //task_planning::task_planning_tool_info(),
@@ -571,6 +572,11 @@ async fn handle_request(
                         match task_planning::handle_task_planning_tool_call(params, id.clone())
                             .await
                         {
+                            Ok(resp) => Some(resp),
+                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
+                        }
+                    } else if t.name == "oracle_select" {
+                        match oracle::handle_oracle_select_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
                             Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
                         }
