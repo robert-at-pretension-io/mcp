@@ -8,6 +8,7 @@ use shared_protocol_objects::{ToolInfo, CallToolResult, ToolResponseContent};
 use shared_protocol_objects::{success_response, error_response, JsonRpcResponse, INVALID_PARAMS};
 use shared_protocol_objects::CallToolParams;
 use base64::Engine;
+use oracle::sql_type::OracleType;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct OracleSelectParams {
