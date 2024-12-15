@@ -175,70 +175,16 @@ async fn run_select_query(
                     let oracle_type = col_info.oracle_type();
                     let col_name = col_info.name().to_string();
                     
-                    // Handle NULL values first by attempting to get an Option
-                    if row.get::<_, Option<String>>(i + 1).ok() == Some(None) {
-                        obj.insert(col_name, Value::Null);
-                        continue;
-                    }
-
-                    let val: Value = match oracle_type {
-                        // Handle string types
-                        OracleType::Varchar2(_) | OracleType::Char(_) | OracleType::NVarchar2(_) | OracleType::NChar(_) => {
+                    // Convert everything to string representation
+                    let val = match row.get::<_, Option<String>>(i + 1) {
+                        Ok(Some(s)) => Value::String(s),  // Got a string value
+                        Ok(None) => Value::String("null".to_string()),  // NULL value
+                        Err(_) => {
+                            // Try getting as raw string representation for any type
                             match row.get::<_, String>(i + 1) {
                                 Ok(s) => Value::String(s),
-                                Err(_) => Value::Null
+                                Err(_) => Value::String("null".to_string())  // Fallback if conversion fails
                             }
-                        },
-                        
-                        // Handle numeric types
-                        OracleType::Number(_, _) | OracleType::Float(_) | OracleType::BinaryFloat | OracleType::BinaryDouble => {
-                            // Try integer first
-                            if let Ok(n) = row.get::<_, i64>(i + 1) {
-                                Value::Number(n.into())
-                            } else if let Ok(f) = row.get::<_, f64>(i + 1) {
-                                // Then try float
-                                if let Some(num) = serde_json::Number::from_f64(f) {
-                                    Value::Number(num)
-                                } else {
-                                    Value::Null
-                                }
-                            } else {
-                                // If both fail, try as string (for very large numbers)
-                                match row.get::<_, String>(i + 1) {
-                                    Ok(s) => Value::String(s),
-                                    Err(_) => Value::Null
-                                }
-                            }
-                        },
-                        
-                        // Handle date/timestamp types
-                        OracleType::Date | OracleType::Timestamp(_) | OracleType::TimestampTZ(_) | OracleType::TimestampLTZ(_) => {
-                            match row.get::<_, chrono::NaiveDateTime>(i + 1) {
-                                Ok(d) => Value::String(d.to_string()),
-                                Err(_) => Value::Null
-                            }
-                        },
-                        
-                        // Handle BLOB/RAW types
-                        OracleType::Raw(_) | OracleType::BLOB => {
-                            match row.get::<_, Vec<u8>>(i + 1) {
-                                Ok(bytes) => Value::String(base64::engine::general_purpose::STANDARD.encode(bytes)),
-                                Err(_) => Value::Null
-                            }
-                        },
-                        
-                        // Handle CLOB types
-                        OracleType::CLOB | OracleType::NCLOB => {
-                            match row.get::<_, String>(i + 1) {
-                                Ok(s) => Value::String(s),
-                                Err(_) => Value::Null
-                            }
-                        },
-                        
-                        // For any other types, try as string first then fall back to null
-                        _ => match row.get::<_, String>(i + 1) {
-                            Ok(s) => Value::String(s),
-                            Err(_) => Value::Null
                         }
                     };
                     
