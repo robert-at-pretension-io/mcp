@@ -49,10 +49,10 @@ pub struct GeminiClient {
 }
 
 impl GeminiClient {
-    pub fn new(api_key: String) -> Self {
+    pub fn new(api_key: String, model: String) -> Self {
         Self {
             api_key,
-            endpoint: "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent".to_string(),
+            endpoint: format!("https://generativelanguage.googleapis.com/v1/models/{}:generateContent", model),
         }
     }
 }
@@ -60,7 +60,12 @@ impl GeminiClient {
 #[async_trait]
 impl<'a> AIClient for GeminiClient {
     fn model_name(&self) -> String {
-        "gemini-pro".to_string()
+        self.endpoint
+            .split('/')
+            .last()
+            .and_then(|s| s.split(':').next())
+            .unwrap_or("gemini-pro")
+            .to_string()
     }
 
     fn builder(&self) -> Box<dyn AIRequestBuilder> {
