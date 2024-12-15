@@ -88,11 +88,11 @@ where
 }
 
 impl OpenAIClient {
-    pub fn new(api_key: String) -> Self {
+    pub fn new(api_key: String, model: String) -> Self {
         info!("Creating new OpenAIClient with provided API key");
         OpenAIClient {
             api_key,
-            endpoint: String::from("https://api.openai.com/v1/chat/completions"),
+            endpoint: format!("https://api.openai.com/v1/models/{}/chat/completions", model),
             speech_endpoint: String::from("https://api.openai.com/v1/audio/speech"),
             transcription_endpoint: String::from("https://api.openai.com/v1/audio/transcriptions"),
         }

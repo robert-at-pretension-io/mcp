@@ -94,13 +94,13 @@ impl AIClientFactory {
             "openai" => {
                 let api_key = config["api_key"].as_str()
                     .ok_or_else(|| anyhow::anyhow!("OpenAI API key not provided"))?;
-                let client = crate::openai::OpenAIClient::new(api_key.to_string());
+                let client = crate::openai::OpenAIClient::new(api_key.to_string(), "gpt-4-1106-preview".to_string());
                 Ok(Box::new(client))
             }
             "gemini" => {
                 let api_key = config["api_key"].as_str()
                     .ok_or_else(|| anyhow::anyhow!("Gemini API key not provided"))?;
-                let client = crate::gemini::GeminiClient::new(api_key.to_string());
+                let client = crate::gemini::GeminiClient::new(api_key.to_string(), "gemini-pro".to_string());
                 Ok(Box::new(client))
             }
             _ => Err(anyhow::anyhow!("Unknown AI provider: {}", provider))

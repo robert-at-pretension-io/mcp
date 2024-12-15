@@ -207,6 +207,8 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
         self.generation_config = Some(GeminiGenerationConfig {
             temperature: config.temperature,
             max_output_tokens: config.max_tokens,
+            response_modalities: Some(vec!["TEXT".to_string()]),
+            top_p: Some(0.95),
         });
         self
     }
@@ -305,9 +307,16 @@ impl GeminiCompletionBuilder {
 
     pub async fn execute(self) -> Result<String> {
         debug!("GeminiCompletionBuilder.execute called");
+        let mut config = self.generation_config.unwrap_or_default();
+        config.response_modalities = Some(vec!["TEXT".to_string()]);
+        if config.top_p.is_none() {
+            config.top_p = Some(0.95);
+        }
+        
         let request = GeminiRequest {
             contents: self.contents,
-            generation_config: self.generation_config,
+            generation_config: Some(config),
+            safety_settings: Some(GeminiClient::default_safety_settings()),
         };
 
         debug!("Sending request to Gemini API");
