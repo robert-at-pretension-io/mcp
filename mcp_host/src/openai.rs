@@ -14,7 +14,7 @@ use async_trait::async_trait;
 #[async_trait]
 impl AIClient for OpenAIClient {
     fn model_name(&self) -> String {
-        "gpt-4".to_string()
+        "gpt-4o-2024-11-20".to_string()
     }
 
     fn builder(&self) -> Box<dyn AIRequestBuilder> {
