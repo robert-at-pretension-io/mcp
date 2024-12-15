@@ -186,8 +186,8 @@ async fn run_select_query(
                     let oracle_type = col_info.oracle_type();
                     let col_name = col_info.name().to_string();
                     
-                    // Handle NULL values first
-                    if row.is_null(i + 1)? {
+                    // Handle NULL values first by attempting to get an Option
+                    if row.get::<_, Option<String>>(i + 1).ok() == Some(None) {
                         obj.insert(col_name, Value::Null);
                         continue;
                     }
