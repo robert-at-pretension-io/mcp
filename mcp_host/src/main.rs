@@ -1095,7 +1095,7 @@ Use that format above!
                                         }
                                     }
 
-                                    match builder.execute().await {
+                                    match builder.executor().execute().await {
                                         Ok(response_str) => {
                                             let response = response_str.as_str();
                                             println!("\n{}: {}", style("Assistant").cyan().bold(), response);

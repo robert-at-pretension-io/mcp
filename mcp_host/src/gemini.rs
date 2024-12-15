@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, Context};
 use log::{debug, error, info, warn};
-use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig};
+use crate::ai_client::{AIClient, AIRequestBuilder, AIRequestExecutor, GenerationConfig};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::path::Path;
@@ -222,7 +222,7 @@ impl AIRequestExecutor for GeminiRequestExecutor {
     }
 }
 
-impl<'a> GeminiCompletionBuilder<'a> {
+impl GeminiCompletionBuilder {
     pub fn user(mut self, content: impl Into<String>) -> Self {
         let c = content.into();
         debug!("GeminiCompletionBuilder: Adding user message: {}", c);
