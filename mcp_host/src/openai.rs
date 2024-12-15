@@ -9,6 +9,7 @@ use std::{fs, time::{SystemTime, UNIX_EPOCH}};
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities, Role, Content, Message as AIMessage};
 use async_trait::async_trait;
 
+// OpenAI implementation temporarily disabled while focusing on Gemini
 #[async_trait]
 impl AIClient for OpenAIClient {
     fn model_name(&self) -> String {
@@ -16,23 +17,11 @@ impl AIClient for OpenAIClient {
     }
 
     fn builder(&self) -> Box<dyn AIRequestBuilder + 'static> {
-        Box::new(RawCompletionBuilder {
-            client: self,
-            model: "gpt-4".to_string(),
-            messages: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-        })
+        unimplemented!("OpenAI implementation temporarily disabled")
     }
 
     fn raw_builder(&self) -> Box<dyn AIRequestBuilder + 'static> {
-        Box::new(RawCompletionBuilder {
-            client: self,
-            model: "gpt-4".to_string(),
-            messages: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-        })
+        unimplemented!("OpenAI implementation temporarily disabled")
     }
 }
 

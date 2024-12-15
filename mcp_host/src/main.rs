@@ -1000,14 +1000,19 @@ Use that format above!
             }
             
             debug!("Sending request to OpenAI with timeout");
-            match with_progress("Waiting for AI response...".to_string(), 
-                tokio::time::timeout(std::time::Duration::from_secs(30), builder.execute())
-            ).await {
-                Ok(result) => match result {
-                    Ok(response) => {
-                        println!("\n{}", conversation_state::format_chat_message(&Role::Assistant, &response));
-                        state.add_assistant_message(&response);
-                        current_response = response.to_string();
+            let timeout_result = with_progress("Waiting for AI response...".to_string(),
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    builder.execute()
+                )
+            ).await;
+                    
+            match timeout_result {
+                Ok(execute_result) => match execute_result {
+                    Ok(response_string) => {
+                        println!("\n{}", conversation_state::format_chat_message(&Role::Assistant, &response_string));
+                        state.add_assistant_message(&response_string);
+                        current_response = response_string;
                     }
                     Err(e) => {
                         info!("Error getting response from OpenAI API: {}", e);
