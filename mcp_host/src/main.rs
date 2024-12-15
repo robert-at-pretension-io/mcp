@@ -290,7 +290,7 @@ pub struct MCPHost {
     servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
     client_info: Implementation,
     request_timeout: std::time::Duration,
-    openai_client: Option<OpenAIClient>,
+    ai_client: Option<Box<dyn AIClient>>,
 }
 
 impl MCPHost {
@@ -614,40 +614,38 @@ Use that format above!
     }
 
     pub async fn new() -> Result<Self> {
-        let openai_client = match std::env::var("OPENAI_API_KEY") {
-            Ok(api_key) => {
-                info!("Found OpenAI API key in environment");
-                // Test the API key with a simple request
-                let client = OpenAIClient::new(api_key.clone());
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(10),
-                    client.raw_builder()
-                        .model("gpt-4o-mini")
-                        .system("Test message")
-                        .user("Echo test")
-                        .execute()
-                ).await {
-                    Ok(Ok(_)) => {
-                        info!("Successfully validated OpenAI API key");
-                        Some(client)
-                    }
-                    Ok(Err(e)) => {
-                        info!("Warning: OpenAI API key validation failed: {}", e);
-                        info!("Chat functionality may not work correctly");
-                        Some(client)
-                    }
-                    Err(_) => {
-                        info!("Warning: OpenAI API key validation timed out");
-                        info!("Chat functionality may not work correctly");
-                        Some(client)
-                    }
+        // Try OpenAI first
+        let ai_client = if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+            info!("Found OpenAI API key in environment");
+            let client = OpenAIClient::new(api_key.clone());
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                client.builder()
+                    .system("Test message")
+                    .user("Echo test")
+                    .execute()
+            ).await {
+                Ok(Ok(_)) => {
+                    info!("Successfully validated OpenAI API key");
+                    Some(Box::new(client) as Box<dyn AIClient>)
+                }
+                Ok(Err(e)) => {
+                    info!("Warning: OpenAI API key validation failed: {}", e);
+                    Some(Box::new(client) as Box<dyn AIClient>)
+                }
+                Err(_) => {
+                    info!("Warning: OpenAI API key validation timed out");
+                    Some(Box::new(client) as Box<dyn AIClient>)
                 }
             }
-            Err(_) => {
-                info!("Warning: OPENAI_API_KEY environment variable not set");
-                info!("Chat functionality will not be available");
-                None
-            }
+        } else if let Ok(api_key) = std::env::var("GEMINI_API_KEY") {
+            info!("Found Gemini API key in environment");
+            let client = GeminiClient::new(api_key);
+            Some(Box::new(client) as Box<dyn AIClient>)
+        } else {
+            info!("No AI API keys found in environment");
+            info!("Set either OPENAI_API_KEY or GEMINI_API_KEY");
+            None
         };
 
         Ok(Self {
@@ -934,7 +932,7 @@ Use that format above!
         response: &str,
         server_name: &str,
         state: &mut ConversationState,
-        client: &OpenAIClient,
+        client: &Box<dyn AIClient>,
     ) -> Result<()> {
         state.add_assistant_message(response);
         
@@ -1072,10 +1070,12 @@ Use that format above!
 
                                 state.add_user_message(user_input);
 
-                                // Use OpenAI client if available
-                                if let Some(client) = &self.openai_client {
-                                    let mut builder = client.raw_builder().model("gpt-4o-mini");
-                                
+                                // Check if we have an AI client
+                                if let Some(client) = &self.ai_client {
+                                    println!("Using AI model: {}", style(client.model_name()).yellow());
+                                    
+                                    let mut builder = client.builder();
+                                    
                                     // Add all messages from conversation state
                                     for msg in &state.messages {
                                         match msg.role {
@@ -1088,7 +1088,6 @@ Use that format above!
                                     match builder.execute().await {
                                         Ok(response) => {
                                             println!("\n{}: {}", style("Assistant").cyan().bold(), response);
-                                            // Handle the multi-step response
                                             if let Err(e) = self.handle_assistant_response(&response, server_name, &mut state, client).await {
                                                 info!("Error handling assistant response: {}", e);
                                             }
@@ -1096,7 +1095,7 @@ Use that format above!
                                         Err(e) => info!("Error getting response: {}", e),
                                     }
                                 } else {
-                                    info!("Error: OpenAI client not initialized. Set OPENAI_API_KEY environment variable.");
+                                    info!("Error: No AI client configured. Set OPENAI_API_KEY or GEMINI_API_KEY environment variable.");
                                     break;
                                 }
                             }
