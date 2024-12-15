@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, Context};
 use log::{debug, error, info, warn};
+use crate::ai_client::{AIClient, AIRequestBuilder};
+use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::path::Path;
 use std::fs;
@@ -46,16 +48,17 @@ pub struct GeminiClient {
     endpoint: String,
 }
 
-impl GeminiClient {
-    pub fn new(api_key: String) -> Self {
-        info!("Creating new GeminiClient with provided API key");
-        GeminiClient {
-            api_key,
-            endpoint: "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent".to_string(),
-        }
+#[async_trait]
+impl AIClient for GeminiClient {
+    fn model_name(&self) -> String {
+        "gemini-pro".to_string()
     }
 
-    pub fn raw_builder(&self) -> GeminiCompletionBuilder {
+    fn builder(&self) -> Box<dyn AIRequestBuilder + '_> {
+        Box::new(self.raw_builder())
+    }
+
+    fn raw_builder(&self) -> GeminiCompletionBuilder {
         debug!("Creating GeminiCompletionBuilder");
         GeminiCompletionBuilder {
             client: self,
