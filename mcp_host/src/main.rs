@@ -990,7 +990,7 @@ Use that format above!
             }
             
             // Get next action from assistant with all accumulated context
-            let mut builder = client.raw_builder().model("gpt-4o-mini");
+            let mut builder = client.raw_builder();
             for msg in &state.messages {
                 match msg.role {
                     Role::System => builder = builder.system(&msg.content),
@@ -1003,15 +1003,17 @@ Use that format above!
             match with_progress("Waiting for AI response...".to_string(), 
                 tokio::time::timeout(std::time::Duration::from_secs(30), builder.execute())
             ).await {
-                Ok(Ok(response)) => {
-                    println!("\n{}", conversation_state::format_chat_message(&Role::Assistant, &response));
-                    state.add_assistant_message(&response);
-                    current_response = response;
-                }
-                Ok(Err(e)) => {
-                    info!("Error getting response from OpenAI API: {}", e);
-                    break;
-                }
+                Ok(result) => match result {
+                    Ok(response) => {
+                        println!("\n{}", conversation_state::format_chat_message(&Role::Assistant, &response));
+                        state.add_assistant_message(&response);
+                        current_response = response.to_string();
+                    }
+                    Err(e) => {
+                        info!("Error getting response from OpenAI API: {}", e);
+                        break;
+                    }
+                },
                 Err(_) => {
                     info!("OpenAI API request timed out after 30 seconds");
                     break;
