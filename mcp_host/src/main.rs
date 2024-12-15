@@ -663,7 +663,7 @@ Use that format above!
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
             request_timeout: std::time::Duration::from_secs(120), // Increased timeout for long-running operations
-            openai_client,
+            ai_client,
         })
     }
 

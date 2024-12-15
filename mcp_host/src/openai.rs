@@ -6,7 +6,7 @@ use log::{debug, error, info, warn};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::path::Path;
 use std::fs;
-use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities, Role, Content, Message};
+use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities, Role, Content, Message as AIMessage};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone)]

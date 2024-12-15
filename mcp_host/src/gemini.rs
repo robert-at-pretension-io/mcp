@@ -48,23 +48,35 @@ pub struct GeminiClient {
     endpoint: String,
 }
 
+impl GeminiClient {
+    pub fn new(api_key: String) -> Self {
+        Self {
+            api_key,
+            endpoint: "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent".to_string(),
+        }
+    }
+}
+
 #[async_trait]
 impl AIClient for GeminiClient {
     fn model_name(&self) -> String {
         "gemini-pro".to_string()
     }
 
-    fn builder(&self) -> Box<dyn AIRequestBuilder + '_> {
-        Box::new(self.raw_builder())
-    }
-
-    fn raw_builder(&self) -> GeminiCompletionBuilder {
-        debug!("Creating GeminiCompletionBuilder");
-        GeminiCompletionBuilder {
+    fn builder(&self) -> Box<dyn AIRequestBuilder + 'static> {
+        Box::new(GeminiCompletionBuilder {
             client: self,
             contents: Vec::new(),
             generation_config: None,
-        }
+        })
+    }
+
+    fn raw_builder(&self) -> Box<dyn AIRequestBuilder + 'static> {
+        Box::new(GeminiCompletionBuilder {
+            client: self,
+            contents: Vec::new(),
+            generation_config: None,
+        })
     }
 }
 
@@ -72,6 +84,123 @@ pub struct GeminiCompletionBuilder<'a> {
     client: &'a GeminiClient,
     contents: Vec<GeminiContent>,
     generation_config: Option<GeminiGenerationConfig>,
+}
+
+#[async_trait]
+impl AIRequestBuilder for GeminiCompletionBuilder<'_> {
+    fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
+        self.contents.push(GeminiContent {
+            role: "system".to_string(),
+            parts: vec![GeminiContentPart {
+                text: Some(content),
+                inline_data: None,
+            }],
+        });
+        self
+    }
+
+    fn user(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
+        self.contents.push(GeminiContent {
+            role: "user".to_string(),
+            parts: vec![GeminiContentPart {
+                text: Some(content),
+                inline_data: None,
+            }],
+        });
+        self
+    }
+
+    fn user_with_image(mut self: Box<Self>, text: String, image_path: &Path) -> Result<Box<dyn AIRequestBuilder>> {
+        let image_data = fs::read(image_path)?;
+        let base64_image = BASE64.encode(&image_data);
+
+        self.contents.push(GeminiContent {
+            role: "user".to_string(),
+            parts: vec![
+                GeminiContentPart {
+                    text: Some(text),
+                    inline_data: None,
+                },
+                GeminiContentPart {
+                    text: None,
+                    inline_data: Some(GeminiInlineData {
+                        mime_type: "image/jpeg".to_string(),
+                        data: base64_image,
+                    }),
+                },
+            ],
+        });
+        Ok(self)
+    }
+
+    fn user_with_image_url(mut self: Box<Self>, text: String, image_url: String) -> Box<dyn AIRequestBuilder> {
+        self.contents.push(GeminiContent {
+            role: "user".to_string(),
+            parts: vec![
+                GeminiContentPart {
+                    text: Some(text),
+                    inline_data: None,
+                },
+                GeminiContentPart {
+                    text: None,
+                    inline_data: Some(GeminiInlineData {
+                        mime_type: "image/jpeg".to_string(),
+                        data: image_url,
+                    }),
+                },
+            ],
+        });
+        self
+    }
+
+    fn assistant(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
+        self.contents.push(GeminiContent {
+            role: "assistant".to_string(),
+            parts: vec![GeminiContentPart {
+                text: Some(content),
+                inline_data: None,
+            }],
+        });
+        self
+    }
+
+    fn config(mut self: Box<Self>, config: GenerationConfig) -> Box<dyn AIRequestBuilder> {
+        self.generation_config = Some(GeminiGenerationConfig {
+            temperature: config.temperature,
+            max_output_tokens: config.max_tokens,
+        });
+        self
+    }
+
+    async fn execute(self: Box<Self>) -> Result<String> {
+        let request = GeminiRequest {
+            contents: self.contents,
+            generation_config: self.generation_config,
+        };
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post(&self.client.endpoint)
+            .header("Content-Type", "application/json")
+            .query(&[("key", &self.client.api_key)])
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.context("Failed to read error response")?;
+            return Err(anyhow::anyhow!("API request failed with status {}: {}", status, error_text));
+        }
+
+        let response_text = response.text().await?;
+        let response_json: serde_json::Value = serde_json::from_str(&response_text)?;
+        let content = response_json["candidates"][0]["content"]["parts"][0]["text"]
+            .as_str()
+            .context("Failed to get text from response")?;
+
+        Ok(content.to_string())
+    }
 }
 
 impl<'a> GeminiCompletionBuilder<'a> {
