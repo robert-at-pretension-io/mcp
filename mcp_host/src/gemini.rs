@@ -80,8 +80,9 @@ impl<'a> AIClient for GeminiClient {
     }
 }
 
-pub struct GeminiCompletionBuilder<'a> {
-    client: &'a GeminiClient,
+#[derive(Debug)]
+pub struct GeminiCompletionBuilder {
+    client: GeminiClient,
     contents: Vec<GeminiContent>,
     generation_config: Option<GeminiGenerationConfig>,
 }
