@@ -63,7 +63,7 @@ impl<'a> AIClient for GeminiClient {
         "gemini-pro".to_string()
     }
 
-    fn builder(&self) -> Box<dyn AIRequestBuilder + '_> {
+    fn builder(&self) -> Box<dyn AIRequestBuilder> {
         Box::new(GeminiCompletionBuilder {
             client: self,
             contents: Vec::new(),
@@ -71,7 +71,7 @@ impl<'a> AIClient for GeminiClient {
         })
     }
 
-    fn raw_builder(&self) -> Box<dyn AIRequestBuilder + '_> {
+    fn raw_builder(&self) -> Box<dyn AIRequestBuilder> {
         Box::new(GeminiCompletionBuilder {
             client: self,
             contents: Vec::new(),
@@ -172,7 +172,7 @@ impl<'a> AIRequestBuilder for GeminiCompletionBuilder<'a> {
         self
     }
 
-    fn execute(self: Box<Self>) -> Result<String> {
+    async fn execute(self: Box<Self>) -> Result<String> {
         let request = GeminiRequest {
             contents: self.contents,
             generation_config: self.generation_config,

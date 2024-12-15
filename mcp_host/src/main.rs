@@ -628,7 +628,7 @@ Use that format above!
             let client = OpenAIClient::new(api_key.clone());
             match tokio::time::timeout(
                 std::time::Duration::from_secs(10),
-                client.builder()
+                client.builder::<serde_json::Value>()
                     .system("Test message")
                     .user("Echo test")
                     .execute()
@@ -993,9 +993,9 @@ Use that format above!
             let mut builder = client.raw_builder();
             for msg in &state.messages {
                 match msg.role {
-                    Role::System => builder = builder.system(&msg.content),
-                    Role::User => builder = builder.user(&msg.content),
-                    Role::Assistant => builder = builder.assistant(&msg.content),
+                    Role::System => builder = builder.system(msg.content.clone()),
+                    Role::User => builder = builder.user(msg.content.clone()),
+                    Role::Assistant => builder = builder.assistant(msg.content.clone()),
                 }
             }
             
