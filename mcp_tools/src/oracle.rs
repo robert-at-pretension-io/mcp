@@ -145,16 +145,27 @@ pub async fn handle_oracle_select_tool_call(
     Ok(success_response(id, serde_json::to_value(tool_res)?))
 }
 
+fn get_typed_value<T>(row: &oracle::Row, index: usize) -> Result<Value> 
+where T: oracle::SqlValue
+{
+    match row.get::<_, T>(index) {
+        Ok(val) => serialize_value(val),
+        Err(_) => Ok(Value::Null)
+    }
+}
+
+fn serialize_value<T>(val: T) -> Result<Value> {
+    Ok(serde_json::to_value(val)?)
+}
+
 async fn run_select_query(
     user: String,
     password: String,
     connect_str: String,
     query: String
 ) -> Result<Vec<serde_json::Value>> {
-    // Execute the query with a timeout. If it times out, provide a timeout-specific error.
     let rows = timeout(Duration::from_secs(5), async {
         tokio::task::spawn_blocking(move || -> Result<Vec<serde_json::Value>> {
-            // Connect to Oracle
             let conn = oracle::Connection::connect(&user, &password, &connect_str)
                 .with_context(|| format!("Failed to connect to Oracle using provided credentials and connection string: user={}, connect_str={}", user, connect_str))?;
 
@@ -171,40 +182,77 @@ async fn run_select_query(
                 let mut obj = serde_json::Map::new();
                 
                 for (i, col_info) in row.column_info().iter().enumerate() {
-                    let val: Value = match row.get::<_, String>(i + 1) {
-                        Ok(val) => {
-                            // Try to parse as number first
-                            if let Ok(n) = val.parse::<f64>() {
-                                if let Some(num) = serde_json::Number::from_f64(n) {
-                                    Value::Number(num)
-                                } else {
-                                    Value::String(val)
-                                }
-                            } else {
-                                Value::String(val)
+                    let oracle_type = col_info.oracle_type();
+                    let col_name = col_info.name().to_string();
+                    
+                    // Handle NULL values first
+                    if row.is_null(i + 1)? {
+                        obj.insert(col_name, Value::Null);
+                        continue;
+                    }
+
+                    let val: Value = match oracle_type {
+                        // Handle string types
+                        oracle::OracleType::Varchar2 | oracle::OracleType::Char | oracle::OracleType::NVarchar2 | oracle::OracleType::NChar => {
+                            match row.get::<_, String>(i + 1) {
+                                Ok(s) => Value::String(s),
+                                Err(_) => Value::Null
                             }
-                        }
-                        Err(_) => {
-                            // Try numeric and date types
+                        },
+                        
+                        // Handle numeric types
+                        oracle::OracleType::Number | oracle::OracleType::Float | oracle::OracleType::Binary_Float | oracle::OracleType::Binary_Double => {
+                            // Try integer first
                             if let Ok(n) = row.get::<_, i64>(i + 1) {
                                 Value::Number(n.into())
                             } else if let Ok(f) = row.get::<_, f64>(i + 1) {
+                                // Then try float
                                 if let Some(num) = serde_json::Number::from_f64(f) {
                                     Value::Number(num)
                                 } else {
                                     Value::Null
                                 }
-                            } else if let Ok(d) = row.get::<_, chrono::NaiveDateTime>(i + 1) {
-                                Value::String(d.to_string())
-                            } else if let Ok(bytes) = row.get::<_, Vec<u8>>(i + 1) {
-                                Value::String(base64::engine::general_purpose::STANDARD.encode(bytes))
                             } else {
-                                // If column type is not supported or null
-                                Value::Null
+                                // If both fail, try as string (for very large numbers)
+                                match row.get::<_, String>(i + 1) {
+                                    Ok(s) => Value::String(s),
+                                    Err(_) => Value::Null
+                                }
                             }
+                        },
+                        
+                        // Handle date/timestamp types
+                        oracle::OracleType::Date | oracle::OracleType::Timestamp | oracle::OracleType::TimestampTZ | oracle::OracleType::TimestampLTZ => {
+                            match row.get::<_, chrono::NaiveDateTime>(i + 1) {
+                                Ok(d) => Value::String(d.to_string()),
+                                Err(_) => Value::Null
+                            }
+                        },
+                        
+                        // Handle BLOB/RAW types
+                        oracle::OracleType::Raw | oracle::OracleType::Blob => {
+                            match row.get::<_, Vec<u8>>(i + 1) {
+                                Ok(bytes) => Value::String(base64::engine::general_purpose::STANDARD.encode(bytes)),
+                                Err(_) => Value::Null
+                            }
+                        },
+                        
+                        // Handle CLOB types
+                        oracle::OracleType::Clob | oracle::OracleType::NClob => {
+                            match row.get::<_, String>(i + 1) {
+                                Ok(s) => Value::String(s),
+                                Err(_) => Value::Null
+                            }
+                        },
+                        
+                        // For any other types, try as string first then fall back to null
+                        _ => match row.get::<_, String>(i + 1) {
+                            Ok(s) => Value::String(s),
+                            Err(_) => Value::Null
                         }
                     };
-                    obj.insert(col_info.name().to_string(), val);
+                    
+                    obj.insert(col_name, val);
                 }
                 results.push(Value::Object(obj));
             }
