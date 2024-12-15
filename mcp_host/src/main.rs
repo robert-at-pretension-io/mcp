@@ -628,9 +628,9 @@ Use that format above!
             let client = OpenAIClient::new(api_key.clone());
             match tokio::time::timeout(
                 std::time::Duration::from_secs(10),
-                client.builder::<serde_json::Value>()
-                    .system("Test message")
-                    .user("Echo test")
+                client.builder()
+                    .system("Test message".to_string())
+                    .user("Echo test".to_string())
                     .execute()
             ).await {
                 Ok(Ok(_)) => {
@@ -1100,7 +1100,7 @@ Use that format above!
                                         }
                                     }
 
-                                    match builder.executor().execute().await {
+                                    match builder.execute().await {
                                         Ok(response_str) => {
                                             let response = response_str.as_str();
                                             println!("\n{}: {}", style("Assistant").cyan().bold(), response);
