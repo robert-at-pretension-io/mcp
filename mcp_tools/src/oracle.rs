@@ -63,7 +63,7 @@ pub async fn handle_oracle_select_tool_call(
     let connect_str = env::var("ORACLE_CONNECT_STRING").expect("ORACLE_CONNECT_STRING must be set");
 
     // Connect and run query
-    let rows = match run_select_query(&user, &password, &connect_str, &args.query).await {
+    let rows = match run_select_query(user, password, connect_str, args.query).await {
         Ok(rows) => rows,
         Err(e) => {
             let tool_res = CallToolResult {
@@ -96,16 +96,18 @@ pub async fn handle_oracle_select_tool_call(
     Ok(success_response(id, serde_json::to_value(tool_res)?))
 }
 
-async fn run_select_query(user: &str, password: &str, connect_str: &str, query: &str) -> Result<Vec<serde_json::Value>> {
-    // Create connection string in the format user/password@connect_string
-    let conn_str = format!("{}/{}", user, password);
-    
+async fn run_select_query(
+    user: String,
+    password: String,
+    connect_str: String,
+    query: String
+) -> Result<Vec<serde_json::Value>> {
     // Execute the query with a timeout
     let rows = timeout(Duration::from_secs(30), async {
         // Since oracle crate is sync, we need to run in a blocking task
         tokio::task::spawn_blocking(move || -> Result<Vec<serde_json::Value>> {
             // Connect to Oracle
-            let conn = oracle::Connection::connect(user, password, connect_str)?;
+            let conn = oracle::Connection::connect(&user, &password, &connect_str)?;
             
             let mut stmt = conn.statement(query).build()?;
             let rows = stmt.query(&[])?;
