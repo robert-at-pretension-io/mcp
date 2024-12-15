@@ -19,12 +19,20 @@ pub fn oracle_select_tool_info() -> ToolInfo {
         name: "oracle_select".to_string(),
         description: Some(
             "Executes a SELECT query on an Oracle database. Only SELECT statements are allowed.
+            Queries must be designed for efficient execution and quick response times.
             
-            Common use cases:
-            1. Database exploration:
-               - List all tables: 
+            Best practices for efficient queries:
+            1. Always limit result sets:
+               - Use ROWNUM or FETCH FIRST
+               - Avoid SELECT *
+               - Include WHERE clauses
+               
+            2. Database exploration (fast metadata queries):
+               - List tables: 
                  ```sql
-                 SELECT table_name FROM user_tables ORDER BY table_name
+                 SELECT table_name FROM user_tables 
+                 WHERE ROWNUM <= 50 
+                 ORDER BY table_name
                  ```
                - Get table structure:
                  ```sql
@@ -41,22 +49,26 @@ pub fn oracle_select_tool_info() -> ToolInfo {
                  ORDER BY index_name, column_position
                  ```
                
-            2. Data sampling:
+            3. Efficient data sampling:
                ```sql
-               SELECT * FROM your_table 
+               SELECT /*+ FIRST_ROWS(10) */ 
+                 column1, column2, column3
+               FROM your_table 
                WHERE ROWNUM <= 10
+               AND your_date_column >= SYSDATE - 7
                ORDER BY your_date_column DESC
                ```
                
-            3. Basic statistics:
+            4. Optimized aggregations:
                ```sql
-               SELECT 
+               SELECT /*+ PARALLEL(4) */
                  COUNT(*) as total_rows,
                  COUNT(DISTINCT column_name) as unique_values,
                  MIN(numeric_column) as min_value,
                  MAX(numeric_column) as max_value,
-                 AVG(numeric_column) as avg_value
+                 APPROX_COUNT_DISTINCT(high_cardinality_col) as estimated_distinct
                FROM your_table
+               WHERE create_date >= SYSDATE - 30
                ```
             
             Usage:
