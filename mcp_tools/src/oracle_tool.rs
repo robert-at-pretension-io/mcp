@@ -14,7 +14,7 @@ use oracle::sql_type::OracleType;
 #[derive(Debug, Deserialize, Serialize)]
 struct OracleSelectParams {
     sql_query: String,
-    service: Option<String>,
+    connect_string: Option<String>,  // Optional override for connection string
 }
 
 pub fn oracle_select_tool_info() -> ToolInfo {
@@ -29,14 +29,13 @@ pub fn oracle_select_tool_info() -> ToolInfo {
             3. Include WHERE clauses for filtering.
             4. For metadata queries, limit results and filter by schema.
             
-            You can specify which service to connect to using the 'service' parameter:
-            - 'edbt' (default) for edbt.world
-            - 'ecomt' for ecomt.world
+            You can specify an alternate connection string using the 'connect_string' parameter.
+            If not provided, it will use the default ORACLE_CONNECT_STRING environment variable.
             
             Example:
             {
                 \"sql_query\": \"SELECT table_name FROM user_tables WHERE ROWNUM < 10\",
-                \"service\": \"ecomt\"
+                \"connect_string\": \"jdbc:oracle:thin:@//host:port/service.world\"
             }".to_string()
         ),
         input_schema: serde_json::json!({
@@ -46,10 +45,9 @@ pub fn oracle_select_tool_info() -> ToolInfo {
                     "type": "string",
                     "description": "The SELECT SQL query to execute. Must begin with SELECT."
                 },
-                "service": {
+                "connect_string": {
                     "type": "string",
-                    "enum": ["edbt", "ecomt"],
-                    "description": "Which database service to connect to (edbt.world or ecomt.world). Defaults to edbt if not specified."
+                    "description": "Optional Oracle connection string. If not provided, uses ORACLE_CONNECT_STRING environment variable."
                 }
             },
             "required": ["sql_query"],
@@ -116,16 +114,18 @@ pub async fn handle_oracle_select_tool_call(
         }
     };
 
-    // Modify connection string based on service parameter
-    let connect_str = match args.service.as_deref() {
-        Some("ecomt") => "jdbc:oracle:thin:@//tst-dbs-ora.akc.org:1521/ecomt.world".to_string(),
-        Some("edbt") | None => base_connect_str,
-        Some(other) => {
-            return Ok(error_response(
-                id,
-                INVALID_PARAMS,
-                &format!("Invalid service '{}'. Must be either 'edbt' or 'ecomt'.", other)
-            ))
+    // Use provided connect string or fall back to environment variable
+    let connect_str = match args.connect_string {
+        Some(cs) => cs,
+        None => match env::var("ORACLE_CONNECT_STRING") {
+            Ok(c) => c,
+            Err(_) => {
+                return Ok(error_response(
+                    id,
+                    INVALID_PARAMS,
+                    "No connection string provided and ORACLE_CONNECT_STRING environment variable not set."
+                ))
+            }
         }
     };
 
