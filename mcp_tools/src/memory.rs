@@ -104,7 +104,7 @@ impl MemoryTool {
 
         // Search in graph nodes
         let graph_results = self.graph.search_nodes(&params.query);
-        for (idx, node) in graph_results {
+        for (_idx, node) in graph_results {
             results.push(json!({
                 "type": "memory",
                 "name": node.name,

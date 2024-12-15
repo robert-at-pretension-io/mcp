@@ -96,16 +96,16 @@ pub async fn handle_oracle_select_tool_call(
 }
 
 async fn run_select_query(user: &str, password: &str, connect_str: &str, query: &str) -> Result<Vec<serde_json::Value>> {
-    // Create connection string
-    let conn_str = format!("{user}/{password}@{connect_str}");
+    // Create connection string in the format user/password@connect_string
+    let conn_str = format!("{}/{}", user, password);
     
-    // Connect to Oracle
-    let conn = oracle::Connection::connect(conn_str, oracle::AuthMode::Default)?;
-
     // Execute the query with a timeout
     let rows = timeout(Duration::from_secs(30), async {
         // Since oracle crate is sync, we need to run in a blocking task
-        tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || -> Result<Vec<serde_json::Value>> {
+            // Connect to Oracle
+            let conn = oracle::Connection::connect(user, password, connect_str)?;
+            
             let mut stmt = conn.statement(query).build()?;
             let rows = stmt.query(&[])?;
             
@@ -115,27 +115,44 @@ async fn run_select_query(user: &str, password: &str, connect_str: &str, query: 
                 let mut obj = serde_json::Map::new();
                 
                 for (i, col_info) in row.column_info().iter().enumerate() {
-                    let val: Value = match &row.get::<_, oracle::SqlValue>(i + 1)? {
-                        oracle::SqlValue::Null => Value::Null,
-                        oracle::SqlValue::Number(n) => {
-                            if let Some(num) = n.to_f64() {
-                                Value::Number(serde_json::Number::from_f64(num).unwrap_or(Value::Null.into()))
+                    let val: Value = match row.get::<_, String>(i + 1) {
+                        Ok(val) => {
+                            // Try to parse as number first
+                            if let Ok(n) = val.parse::<f64>() {
+                                if let Some(num) = serde_json::Number::from_f64(n) {
+                                    Value::Number(num)
+                                } else {
+                                    Value::String(val)
+                                }
                             } else {
-                                Value::String(n.to_string())
+                                Value::String(val)
                             }
-                        },
-                        oracle::SqlValue::String(s) => Value::String(s.to_string()),
-                        oracle::SqlValue::Timestamp(ts) => Value::String(ts.to_string()),
-                        oracle::SqlValue::Date(d) => Value::String(d.to_string()),
-                        oracle::SqlValue::Binary(b) => Value::String(base64::encode(b)),
-                        _ => Value::String(format!("{:?}", row.get::<_, oracle::SqlValue>(i + 1)?)),
+                        }
+                        Err(_) => {
+                            // Try other types
+                            if let Ok(n) = row.get::<_, i64>(i + 1) {
+                                Value::Number(n.into())
+                            } else if let Ok(f) = row.get::<_, f64>(i + 1) {
+                                if let Some(num) = serde_json::Number::from_f64(f) {
+                                    Value::Number(num)
+                                } else {
+                                    Value::Null
+                                }
+                            } else if let Ok(d) = row.get::<_, chrono::NaiveDateTime>(i + 1) {
+                                Value::String(d.to_string())
+                            } else if let Ok(bytes) = row.get::<_, Vec<u8>>(i + 1) {
+                                Value::String(base64::engine::general_purpose::STANDARD.encode(bytes))
+                            } else {
+                                Value::Null
+                            }
+                        }
                     };
                     obj.insert(col_info.name().to_string(), val);
                 }
                 results.push(Value::Object(obj));
             }
-            Ok::<_, anyhow::Error>(results)
-        }).await??
+            Ok(results)
+        }).await?
     }).await??;
 
     Ok(rows)
