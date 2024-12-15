@@ -9,6 +9,33 @@ use std::fs;
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities, Role, Content, Message as AIMessage};
 use async_trait::async_trait;
 
+#[async_trait]
+impl AIClient for OpenAIClient {
+    fn model_name(&self) -> String {
+        "gpt-4".to_string()
+    }
+
+    fn builder(&self) -> Box<dyn AIRequestBuilder + 'static> {
+        Box::new(RawCompletionBuilder {
+            client: self,
+            model: "gpt-4".to_string(),
+            messages: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+        })
+    }
+
+    fn raw_builder(&self) -> Box<dyn AIRequestBuilder + 'static> {
+        Box::new(RawCompletionBuilder {
+            client: self,
+            model: "gpt-4".to_string(),
+            messages: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum MessageContent {
     Text(String),

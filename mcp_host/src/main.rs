@@ -1082,14 +1082,14 @@ Use that format above!
                                 if let Some(client) = &self.ai_client {
                                     println!("Using AI model: {}", style(client.model_name()).yellow());
                                     
-                                    let mut builder = client.builder();
+                                    let mut builder = client.raw_builder();
                                     
                                     // Add all messages from conversation state
                                     for msg in &state.messages {
                                         match msg.role {
-                                            Role::System => builder = builder.system(&msg.content),
-                                            Role::User => builder = builder.user(&msg.content),
-                                            Role::Assistant => builder = builder.assistant(&msg.content),
+                                            Role::System => builder = builder.system(msg.content.clone()),
+                                            Role::User => builder = builder.user(msg.content.clone()),
+                                            Role::Assistant => builder = builder.assistant(msg.content.clone()),
                                         }
                                     }
 
