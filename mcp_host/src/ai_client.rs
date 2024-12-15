@@ -57,7 +57,7 @@ pub trait AIRequestBuilder: Send {
     fn config(self: Box<Self>, config: GenerationConfig) -> Box<dyn AIRequestBuilder>;
     
     /// Execute the request and get response
-    fn execute(self: Box<Self>) -> Result<String>;
+    async fn execute(self: Box<Self>) -> Result<String>;
 }
 
 /// Core trait for AI model implementations

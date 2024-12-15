@@ -65,7 +65,7 @@ impl<'a> AIClient for GeminiClient {
 
     fn builder(&self) -> Box<dyn AIRequestBuilder> {
         Box::new(GeminiCompletionBuilder {
-            client: self,
+            client: self.clone(),
             contents: Vec::new(),
             generation_config: None,
         })
@@ -73,7 +73,7 @@ impl<'a> AIClient for GeminiClient {
 
     fn raw_builder(&self) -> Box<dyn AIRequestBuilder> {
         Box::new(GeminiCompletionBuilder {
-            client: self,
+            client: self.clone(),
             contents: Vec::new(),
             generation_config: None,
         })
