@@ -1144,12 +1144,34 @@ Use that format above!
                                     
                                     let mut builder = client.raw_builder();
                                     
-                                    // Add all messages from conversation state
-                                    for msg in &state.messages {
+                                    // Combine all system messages into one
+                                    let system_messages: Vec<String> = state.messages.iter()
+                                        .filter_map(|msg| {
+                                            if let Role::System = msg.role {
+                                                Some(msg.content.clone())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect();
+                                    
+                                    if !system_messages.is_empty() {
+                                        builder = builder.system(system_messages.join("\n\n"));
+                                    }
+
+                                    // Add only the most recent user and assistant messages
+                                    let mut recent_messages = state.messages.iter()
+                                        .filter(|msg| matches!(msg.role, Role::User | Role::Assistant))
+                                        .rev()
+                                        .take(2)
+                                        .collect::<Vec<_>>();
+                                    recent_messages.reverse();
+
+                                    for msg in recent_messages {
                                         match msg.role {
-                                            Role::System => builder = builder.system(msg.content.clone()),
                                             Role::User => builder = builder.user(msg.content.clone()),
                                             Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                                            _ => {}
                                         }
                                     }
 
