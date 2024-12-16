@@ -240,7 +240,7 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
         let response = client
             .post(&self.client.endpoint)
             .header("Content-Type", "application/json") 
-            .header("Authorization", format!("Bearer {}", &self.client.api_key))
+            .query(&[("key", &self.client.api_key)])
             .json(&request)
             .send()
             .await?;
