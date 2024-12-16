@@ -50,6 +50,19 @@ pub struct GeminiGenerationConfig {
     max_output_tokens: Option<u32>,
     #[serde(rename = "topP")]
     top_p: Option<f32>,
+    #[serde(rename = "responseModalities")]
+    response_modalities: Vec<String>,
+}
+
+impl Default for GeminiGenerationConfig {
+    fn default() -> Self {
+        Self {
+            temperature: None,
+            max_output_tokens: None,
+            top_p: None,
+            response_modalities: vec!["TEXT".to_string()],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
