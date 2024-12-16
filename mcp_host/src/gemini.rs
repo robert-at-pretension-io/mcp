@@ -304,7 +304,6 @@ impl GeminiCompletionBuilder {
     pub async fn execute(self) -> Result<String> {
         debug!("GeminiCompletionBuilder.execute called");
         let mut config = self.generation_config.unwrap_or_default();
-        config.response_modalities = Some(vec!["TEXT".to_string()]);
         if config.top_p.is_none() {
             config.top_p = Some(0.95);
         }
