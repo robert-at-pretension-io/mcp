@@ -35,8 +35,15 @@ pub struct SafetySetting {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiSystemInstruction {
+    parts: Vec<GeminiContentPart>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeminiRequest {
     contents: Vec<GeminiContent>,
+    #[serde(rename = "systemInstruction", skip_serializing_if = "Option::is_none")]
+    system_instruction: Option<GeminiSystemInstruction>,
     #[serde(rename = "generationConfig", skip_serializing_if = "Option::is_none")]
     generation_config: Option<GeminiGenerationConfig>,
     #[serde(rename = "safetySettings", skip_serializing_if = "Option::is_none")]
@@ -133,20 +140,23 @@ impl<'a> AIClient for GeminiClient {
 pub struct GeminiCompletionBuilder {
     client: GeminiClient,
     contents: Vec<GeminiContent>,
+    system_instruction: Option<GeminiSystemInstruction>,
     generation_config: Option<GeminiGenerationConfig>,
 }
 
 #[async_trait]
 impl AIRequestBuilder for GeminiCompletionBuilder {
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
-        self.contents.push(GeminiContent {
-            role: "system".to_string(),
+        // For Gemini, system messages go in systemInstruction
+        let system_instruction = GeminiSystemInstruction {
             parts: vec![GeminiContentPart {
                 text: Some(content),
                 inline_data: None,
             }],
-        });
-        self
+        };
+        let builder = self.downcast_mut::<GeminiCompletionBuilder>().unwrap();
+        builder.system_instruction = Some(system_instruction);
+        Box::new(*builder)
     }
 
     fn user(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
@@ -205,7 +215,7 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
 
     fn assistant(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.contents.push(GeminiContent {
-            role: "model".to_string(),
+            role: "assistant".to_string(),
             parts: vec![GeminiContentPart {
                 text: Some(content),
                 inline_data: None,
