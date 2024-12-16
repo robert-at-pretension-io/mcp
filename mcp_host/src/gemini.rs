@@ -43,7 +43,7 @@ pub struct GeminiRequest {
     safety_settings: Option<Vec<SafetySetting>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeminiGenerationConfig {
     temperature: Option<f32>,
     #[serde(rename = "maxOutputTokens")]
@@ -219,6 +219,7 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
             temperature: config.temperature,
             max_output_tokens: config.max_tokens,
             top_p: Some(0.95),
+            response_modalities: vec!["TEXT".to_string()],
         });
         self
     }
