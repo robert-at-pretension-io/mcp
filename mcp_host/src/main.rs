@@ -644,7 +644,15 @@ Use that format above!
         // });
         let model_name = "gemini-2.0-flash-exp".to_string();
         info!("Initializing Gemini client with model: {}", model_name);
-        let api_key = std::env::var("GEMINI_API_KEY").expect("Gemini key must be set");
+        // Get Google Cloud auth token using gcloud command
+        let output = std::process::Command::new("gcloud")
+            .args(["auth", "print-access-token"])
+            .output()
+            .expect("Failed to execute gcloud command");
+        let api_key = String::from_utf8(output.stdout)
+            .expect("Invalid UTF-8 in gcloud output")
+            .trim()
+            .to_string();
         let client = GeminiClient::new(api_key, model_name);
         let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
