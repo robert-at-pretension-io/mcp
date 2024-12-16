@@ -653,6 +653,7 @@ Use that format above!
             .expect("Invalid UTF-8 in gcloud output")
             .trim()
             .to_string();
+        info!("Got Google Cloud auth token: {}", api_key);
         let client = GeminiClient::new(api_key, model_name);
         let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
