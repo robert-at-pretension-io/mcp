@@ -50,8 +50,6 @@ pub struct GeminiGenerationConfig {
     max_output_tokens: Option<u32>,
     #[serde(rename = "topP")]
     top_p: Option<f32>,
-    #[serde(rename = "responseModalities")]
-    response_modalities: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -207,7 +205,6 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
         self.generation_config = Some(GeminiGenerationConfig {
             temperature: config.temperature,
             max_output_tokens: config.max_tokens,
-            response_modalities: Some(vec!["TEXT".to_string()]),
             top_p: Some(0.95),
         });
         self
@@ -215,7 +212,6 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
 
     async fn execute(self: Box<Self>) -> Result<String> {
         let mut config = self.generation_config.unwrap_or_default();
-        config.response_modalities = Some(vec!["TEXT".to_string()]);
         if config.top_p.is_none() {
             config.top_p = Some(0.95);
         }
