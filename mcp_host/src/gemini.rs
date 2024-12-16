@@ -62,7 +62,7 @@ impl GeminiClient {
     pub fn new(api_key: String, model: String) -> Self {
         Self {
             api_key,
-            endpoint: format!("https://generativelanguage.googleapis.com/v1/models/{}:generateContent", model),
+            endpoint: format!("https://us-central1-aiplatform.googleapis.com/v1/projects/liminalnook/locations/us-central1/publishers/google/models/{}:streamGenerateContent", model),
         }
     }
 
@@ -225,8 +225,8 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
         let client = reqwest::Client::new();
         let response = client
             .post(&self.client.endpoint)
-            .header("Content-Type", "application/json")
-            .query(&[("key", &self.client.api_key)])
+            .header("Content-Type", "application/json") 
+            .header("Authorization", format!("Bearer {}", &self.client.api_key))
             .json(&request)
             .send()
             .await?;
