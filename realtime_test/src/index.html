@@ -174,8 +174,8 @@
             type: 'conversation.item.create',
             previous_item_id: evt.item_id,
             item: {
-              type: 'function_call_output',
-              call_id: evt.call_id,
+              type: 'tool_call_output',
+              tool_call_id: evt.call_id,
               output: JSON.stringify(result)
             }
           }));
@@ -186,8 +186,8 @@
             response: {
               modalities: ["text", "audio"],
               input: [{
-                type: "function_call_output",
-                call_id: evt.call_id,
+                type: "tool_call_output",
+                tool_call_id: evt.call_id,
                 output: JSON.stringify(result)
               }]
             }
