@@ -169,11 +169,12 @@
               throw new Error(`Unknown function: ${evt.name}`);
           }
 
-          // Return the function result
+          // Create conversation item for function call output
           dc.send(JSON.stringify({
             type: 'conversation.item.create',
+            previous_item_id: evt.item_id,
             item: {
-              type: 'function_call_output', 
+              type: 'function_call_output',
               call_id: evt.call_id,
               output: JSON.stringify(result)
             }
@@ -183,7 +184,12 @@
           dc.send(JSON.stringify({
             type: 'response.create',
             response: {
-              modalities: ["text", "audio"]
+              modalities: ["text", "audio"],
+              input: [{
+                type: "function_call_output",
+                call_id: evt.call_id,
+                output: JSON.stringify(result)
+              }]
             }
           }));
 
