@@ -22,6 +22,10 @@
   const statusEl = document.getElementById('status');
   const btn = document.getElementById('callFunctionBtn');
   const eventLog = document.getElementById('eventLog');
+  
+  // Track function call state
+  let currentFunctionCallId = null;
+  let currentFunctionCallItemId = null;
 
   function logEvent(type, details) {
     const div = document.createElement('div');
@@ -152,9 +156,14 @@
         break;
 
       case 'conversation.item.created':
-        // If this is a function call item, store its ID
+        // If this is a function call item, store its IDs
         if (evt.item.type === 'function_call') {
-          logEvent('function.call.item', {id: evt.item.id, call_id: evt.item.call_id});
+          currentFunctionCallId = evt.item.call_id;
+          currentFunctionCallItemId = evt.item.id;
+          logEvent('function.call.item', {
+            item_id: currentFunctionCallItemId, 
+            call_id: currentFunctionCallId
+          });
         }
         break;
 
@@ -178,29 +187,33 @@
 
           // Wait a short time to ensure the function call item is created
           setTimeout(() => {
-            // Create conversation item for function call output
+            // Create conversation item for function call output using stored IDs
             dc.send(JSON.stringify({
               type: 'conversation.item.create',
-              previous_item_id: evt.item_id,
+              previous_item_id: currentFunctionCallItemId,
               item: {
                 type: 'function_call_output',
-                call_id: evt.call_id,
+                call_id: currentFunctionCallId,
                 output: JSON.stringify(result)
               }
             }));
 
-            // Create a new response after function call
+            // Create a new response after function call using stored ID
             dc.send(JSON.stringify({
               type: 'response.create',
               response: {
                 modalities: ["text", "audio"],
                 input: [{
                   type: "function_call_output",
-                  call_id: evt.call_id,
+                  call_id: currentFunctionCallId,
                   output: JSON.stringify(result)
                 }]
               }
             }));
+
+            // Clear the stored IDs
+            currentFunctionCallId = null;
+            currentFunctionCallItemId = null;
           }, 100); // Small delay to ensure function call item exists
 
         } catch (error) {
@@ -212,14 +225,19 @@
           // Return error result
           dc.send(JSON.stringify({
             type: 'conversation.item.create',
+            previous_item_id: currentFunctionCallItemId,
             item: {
               type: 'function_call_output',
-              call_id: evt.call_id, 
+              call_id: currentFunctionCallId,
               output: JSON.stringify({
                 error: error.message
               })
             }
           }));
+
+          // Clear the stored IDs
+          currentFunctionCallId = null;
+          currentFunctionCallItemId = null;
         }
         break;
 
