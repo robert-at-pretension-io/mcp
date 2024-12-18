@@ -5,7 +5,6 @@ use axum::{
     Json, Router,
 };
 use anyhow::{Result, Context};
-use dotenv::dotenv;
 use reqwest::Client;
 use std::env;
 use serde::{Deserialize, Serialize};
@@ -33,10 +32,8 @@ struct AppState {
 async fn main() -> Result<()> {
     tracing_init();
 
-    dotenv().ok(); // Load .env file if present
-    
     let openai_api_key = env::var("OPENAI_API_KEY")
-        .context("OPENAI_API_KEY environment variable not set")?;
+        .context("OPENAI_API_KEY environment variable not set. Please set this environment variable.")?;
         
     let state = AppState {
         openai_api_key,
