@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>OpenAI Realtime WebRTC Example</title>
+<style>
+  #status { margin: 1em 0; }
+  #callFunctionBtn { padding: 0.5em 1em; }
+  .error { color: red; }
+  .success { color: green; }
+  .speaking { color: blue; }
+</style>
+</head>
+<body>
+<h1>OpenAI Realtime WebRTC</h1>
+<div id="status">Loading...</div>
+<button id="callFunctionBtn">Call Function</button>
+<div id="eventLog"></div>
+
+<script>
+(async () => {
+  const statusEl = document.getElementById('status');
+  const btn = document.getElementById('callFunctionBtn');
+  const eventLog = document.getElementById('eventLog');
+
+  function logEvent(type, details) {
+    const div = document.createElement('div');
+    div.textContent = `${type}: ${JSON.stringify(details)}`;
+    eventLog.prepend(div);
+  }
+
+  // 1. Get ephemeral key
+  const resp = await fetch('/session');
+  const data = await resp.json();
+  const EPHEMERAL_KEY = data.client_secret.value;
+  logEvent('session.token', {received: true});
+
+  const pc = new RTCPeerConnection();
+
+  // Show remote audio
+  const audioEl = document.createElement('audio');
+  audioEl.autoplay = true;
+  pc.ontrack = e => {
+    audioEl.srcObject = e.streams[0];
+    logEvent('audio.track', {received: true});
+  };
+  document.body.appendChild(audioEl);
+
+  // Add local audio track
+  const ms = await navigator.mediaDevices.getUserMedia({audio:true});
+  pc.addTrack(ms.getTracks()[0], ms);
+  logEvent('audio.local', {added: true});
+
+  const dc = pc.createDataChannel('oai-events');
+  
+  // Handle all possible server events
+  dc.addEventListener('open', () => {
+    statusEl.textContent = 'Connected!';
+    statusEl.className = 'success';
+    logEvent('datachannel', {status: 'open'});
+  });
+
+  dc.addEventListener('message', e => {
+    const evt = JSON.parse(e.data);
+    logEvent(evt.type, evt);
+
+    // Handle specific events
+    switch(evt.type) {
+      case 'session.created':
+        statusEl.textContent = 'Session created';
+        break;
+
+      case 'input_audio_buffer.speech_started':
+        statusEl.textContent = 'Speaking detected...';
+        statusEl.className = 'speaking';
+        break;
+
+      case 'input_audio_buffer.speech_stopped':
+        statusEl.textContent = 'Processing...';
+        break;
+
+      case 'error':
+        statusEl.textContent = `Error: ${evt.error.message}`;
+        statusEl.className = 'error';
+        break;
+
+      case 'response.function_call_arguments.done':
+        const args = JSON.parse(evt.arguments);
+        // Execute function with args
+        const result = { sum: (args.a + args.b) };
+        // Return result
+        dc.send(JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'function_call_output',
+            call_id: evt.call_id,
+            output: JSON.stringify(result)
+          }
+        }));
+        dc.send(JSON.stringify({type:'response.create'}));
+        break;
+    }
+  });
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  const baseUrl = "https://api.openai.com/v1/realtime";
+  const model = "gpt-4o-realtime-preview-2024-12-17";
+  const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
+    method: "POST",
+    body: offer.sdp,
+    headers: {
+      "Authorization": `Bearer ${EPHEMERAL_KEY}`,
+      "Content-Type": "application/sdp"
+    }
+  });
+  const answerSdp = await sdpResponse.text();
+  const answer = {
+    type: "answer",
+    sdp: answerSdp,
+  };
+  await pc.setRemoteDescription(answer);
+  logEvent('connection', {established: true});
+
+  // On button click, send a response.create event with a tool (function)
+  btn.addEventListener('click', () => {
+    const event = {
+      type: 'response.create',
+      response: {
+        modalities: ["text"],
+        instructions: "Ask the model to call the `calculate_sum` function.",
+        tools: [
+          {
+            type: "function",
+            name: "calculate_sum",
+            description: "Calculate the sum of two numbers",
+            parameters: {
+              type: "object",
+              properties: {
+                a: {type: "number"},
+                b: {type: "number"}
+              },
+              required: ["a","b"]
+            }
+          }
+        ],
+        tool_choice: "auto",
+        input: [
+          {type:"message", role:"user", content:[{type:"input_text", text:"What is 2+3?"}]}
+        ]
+      }
+    };
+    dc.send(JSON.stringify(event));
+    logEvent('function.call', {sent: true});
+  });
+})();
+</script>
+</body>
+</html>
