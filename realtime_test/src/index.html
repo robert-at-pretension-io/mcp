@@ -58,16 +58,57 @@
     statusEl.textContent = 'Connected!';
     statusEl.className = 'success';
     logEvent('datachannel', {status: 'open'});
+
+    // Send initial session configuration
+    dc.send(JSON.stringify({
+      type: 'session.update',
+      session: {
+        modalities: ['text', 'audio'],
+        instructions: 'You are a helpful assistant.',
+        voice: 'alloy',
+        input_audio_format: 'pcm16',
+        output_audio_format: 'pcm16',
+        turn_detection: {
+          type: 'server_vad',
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 500,
+          create_response: true
+        }
+      }
+    }));
   });
 
   dc.addEventListener('message', e => {
     const evt = JSON.parse(e.data);
     logEvent(evt.type, evt);
 
-    // Handle specific events
+    // Handle all possible server events
     switch(evt.type) {
+      // Session events
       case 'session.created':
-        statusEl.textContent = 'Session created';
+      case 'session.updated':
+        statusEl.textContent = `Session ${evt.type.split('.')[1]}`;
+        break;
+
+      // Conversation events  
+      case 'conversation.created':
+        logEvent('conversation', {id: evt.conversation.id});
+        break;
+
+      case 'conversation.item.created':
+      case 'conversation.item.truncated':
+      case 'conversation.item.deleted':
+        logEvent('conversation.item', evt);
+        break;
+
+      // Audio buffer events
+      case 'input_audio_buffer.committed':
+        statusEl.textContent = 'Audio committed';
+        break;
+
+      case 'input_audio_buffer.cleared':
+        statusEl.textContent = 'Audio buffer cleared';
         break;
 
       case 'input_audio_buffer.speech_started':
@@ -77,11 +118,37 @@
 
       case 'input_audio_buffer.speech_stopped':
         statusEl.textContent = 'Processing...';
+        statusEl.className = '';
         break;
 
-      case 'error':
-        statusEl.textContent = `Error: ${evt.error.message}`;
-        statusEl.className = 'error';
+      // Response events
+      case 'response.created':
+        statusEl.textContent = 'Generating response...';
+        break;
+
+      case 'response.done':
+        statusEl.textContent = 'Response complete';
+        break;
+
+      // Content streaming events
+      case 'response.text.delta':
+        // Handle streaming text
+        logEvent('text.delta', evt.delta);
+        break;
+
+      case 'response.audio.delta':
+        // Handle streaming audio
+        logEvent('audio.delta', {received: true});
+        break;
+
+      case 'response.audio_transcript.delta':
+        // Handle streaming transcript
+        logEvent('transcript.delta', evt.delta);
+        break;
+
+      // Function calling events
+      case 'response.function_call_arguments.delta':
+        logEvent('function.args.delta', evt.delta);
         break;
 
       case 'response.function_call_arguments.done':
@@ -98,6 +165,18 @@
           }
         }));
         dc.send(JSON.stringify({type:'response.create'}));
+        break;
+
+      // Error handling
+      case 'error':
+        statusEl.textContent = `Error: ${evt.error.message}`;
+        statusEl.className = 'error';
+        logEvent('error', evt.error);
+        break;
+
+      // Rate limits
+      case 'rate_limits.updated':
+        logEvent('rate_limits', evt.rate_limits);
         break;
     }
   });
@@ -123,12 +202,34 @@
   await pc.setRemoteDescription(answer);
   logEvent('connection', {established: true});
 
+  // Helper function to send audio buffer
+  function appendAudioBuffer(audioData) {
+    dc.send(JSON.stringify({
+      type: 'input_audio_buffer.append',
+      audio: btoa(audioData) // Convert to base64
+    }));
+  }
+
+  // Helper function to commit audio buffer
+  function commitAudioBuffer() {
+    dc.send(JSON.stringify({
+      type: 'input_audio_buffer.commit'
+    }));
+  }
+
+  // Helper function to clear audio buffer
+  function clearAudioBuffer() {
+    dc.send(JSON.stringify({
+      type: 'input_audio_buffer.clear'
+    }));
+  }
+
   // On button click, send a response.create event with a tool (function)
   btn.addEventListener('click', () => {
     const event = {
       type: 'response.create',
       response: {
-        modalities: ["text"],
+        modalities: ["text", "audio"],
         instructions: "Ask the model to call the `calculate_sum` function.",
         tools: [
           {
