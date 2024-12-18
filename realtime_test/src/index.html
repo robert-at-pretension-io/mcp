@@ -146,25 +146,65 @@
         logEvent('transcript.delta', evt.delta);
         break;
 
-      // Function calling events
+      // Function/tool calling events  
       case 'response.function_call_arguments.delta':
         logEvent('function.args.delta', evt.delta);
         break;
 
-      case 'response.function_call_arguments.done':
-        const args = JSON.parse(evt.arguments);
-        // Execute function with args
-        const result = { sum: (args.a + args.b) };
-        // Return result
-        dc.send(JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'function_call_output',
-            call_id: evt.call_id,
-            output: JSON.stringify(result)
+      case 'response.function_call_arguments.done': 
+        try {
+          // Parse the function arguments
+          const args = JSON.parse(evt.arguments);
+          let result;
+
+          // Execute the appropriate function based on name
+          switch(evt.name) {
+            case 'calculate_sum':
+              result = { sum: (args.a + args.b) };
+              break;
+            case 'get_weather':
+              result = { temperature: 72, conditions: "sunny" }; 
+              break;
+            default:
+              throw new Error(`Unknown function: ${evt.name}`);
           }
-        }));
-        dc.send(JSON.stringify({type:'response.create'}));
+
+          // Return the function result
+          dc.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'function_call_output', 
+              call_id: evt.call_id,
+              output: JSON.stringify(result)
+            }
+          }));
+
+          // Create a new response after function call
+          dc.send(JSON.stringify({
+            type: 'response.create',
+            response: {
+              modalities: ["text", "audio"]
+            }
+          }));
+
+        } catch (error) {
+          logEvent('function.error', {
+            message: error.message,
+            call_id: evt.call_id
+          });
+          
+          // Return error result
+          dc.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'function_call_output',
+              call_id: evt.call_id, 
+              output: JSON.stringify({
+                error: error.message
+              })
+            }
+          }));
+        }
         break;
 
       // Error handling
