@@ -151,6 +151,13 @@
         logEvent('function.args.delta', evt.delta);
         break;
 
+      case 'conversation.item.created':
+        // If this is a function call item, store its ID
+        if (evt.item.type === 'function_call') {
+          logEvent('function.call.item', {id: evt.item.id, call_id: evt.item.call_id});
+        }
+        break;
+
       case 'response.function_call_arguments.done': 
         try {
           // Parse the function arguments
@@ -169,29 +176,32 @@
               throw new Error(`Unknown function: ${evt.name}`);
           }
 
-          // Create conversation item for function call output
-          dc.send(JSON.stringify({
-            type: 'conversation.item.create',
-            previous_item_id: evt.item_id,
-            item: {
-              type: 'function_call_output',
-              call_id: evt.call_id,
-              output: JSON.stringify(result)
-            }
-          }));
-
-          // Create a new response after function call
-          dc.send(JSON.stringify({
-            type: 'response.create',
-            response: {
-              modalities: ["text", "audio"],
-              input: [{
-                type: "function_call_output",
+          // Wait a short time to ensure the function call item is created
+          setTimeout(() => {
+            // Create conversation item for function call output
+            dc.send(JSON.stringify({
+              type: 'conversation.item.create',
+              previous_item_id: evt.item_id,
+              item: {
+                type: 'function_call_output',
                 call_id: evt.call_id,
                 output: JSON.stringify(result)
-              }]
-            }
-          }));
+              }
+            }));
+
+            // Create a new response after function call
+            dc.send(JSON.stringify({
+              type: 'response.create',
+              response: {
+                modalities: ["text", "audio"],
+                input: [{
+                  type: "function_call_output",
+                  call_id: evt.call_id,
+                  output: JSON.stringify(result)
+                }]
+              }
+            }));
+          }, 100); // Small delay to ensure function call item exists
 
         } catch (error) {
           logEvent('function.error', {
