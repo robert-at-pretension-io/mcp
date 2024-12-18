@@ -192,7 +192,7 @@ async fn session(State(state): State<AppState>) -> impl IntoResponse {
             return Json(serde_json::json!({"error":"failed_to_get_key"}));
         }
     };
-    Json(serde_json::to_value(ephem)?)
+    Json(serde_json::to_value(ephem))?
 }
 
 async fn get_ephemeral_key(std_api_key: &str) -> Result<EphemeralKeyResponse> {
