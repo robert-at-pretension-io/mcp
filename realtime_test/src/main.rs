@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
     tracing_init();
 
     let state = AppState {
-        openai_api_key: "YOUR_OPENAI_API_KEY".to_string(),
+        openai_api_key: "OPENAI_API_KEY".to_string(),
     };
 
     let app = Router::new()
