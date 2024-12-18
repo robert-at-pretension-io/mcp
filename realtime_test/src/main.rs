@@ -4,7 +4,6 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use hyper::Server;
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -43,9 +42,10 @@ async fn main() -> Result<()> {
 
     let addr = SocketAddr::from(([127,0,0,1], 3000));
     println!("Server running at http://{}/", addr);
-    Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await?;
+    axum::serve(
+        tokio::net::TcpListener::bind(addr).await?,
+        app
+    ).await?;
 
     Ok(())
 }
@@ -192,7 +192,7 @@ async fn session(State(state): State<AppState>) -> impl IntoResponse {
             return Json(serde_json::json!({"error":"failed_to_get_key"}));
         }
     };
-    Json(serde_json::to_value(ephem))?
+    Json(serde_json::to_value(ephem).unwrap())
 }
 
 async fn get_ephemeral_key(std_api_key: &str) -> Result<EphemeralKeyResponse> {
