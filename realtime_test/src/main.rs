@@ -4,8 +4,10 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use anyhow::Result;
+use anyhow::{Result, Context};
+use dotenv::dotenv;
 use reqwest::Client;
+use std::env;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tracing_subscriber::fmt::init as tracing_init;
@@ -31,8 +33,13 @@ struct AppState {
 async fn main() -> Result<()> {
     tracing_init();
 
+    dotenv().ok(); // Load .env file if present
+    
+    let openai_api_key = env::var("OPENAI_API_KEY")
+        .context("OPENAI_API_KEY environment variable not set")?;
+        
     let state = AppState {
-        openai_api_key: "OPENAI_API_KEY".to_string(),
+        openai_api_key,
     };
 
     let app = Router::new()
