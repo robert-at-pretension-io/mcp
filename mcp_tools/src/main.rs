@@ -641,17 +641,31 @@ Remember: Every interaction is an opportunity to enrich the knowledge graph. Be 
                                 });
                             }
                         
+                            // Parse and format the output text if it's JSON
+                            let formattedOutput = outputText;
+                            try {
+                                const outputJson = JSON.parse(outputText);
+                                if (Array.isArray(outputJson)) {
+                                    formattedOutput = outputJson.map(node => {
+                                        return `Node: ${node.name}\nDescription: ${node.description}\nTags: [${node.tags.join(", ")}]\nCreated: ${node.date_created}\nModified: ${node.date_modified}\nContent: ${node.content}`;
+                                    }).join("\n---\n");
+                                }
+                            } catch (e) {
+                                // If not valid JSON, use as-is
+                                console.log("Output is not JSON, using raw text");
+                            }
+
                             // Send function result back to model
                             dc.send(JSON.stringify({
                                 type: "conversation.item.create",
                                 item: {
                                     type: "function_call_output",
                                     call_id: data.call_id,
-                                    output: outputText
+                                    output: formattedOutput
                                 }
                             }));
 
-                            // Create a text input with the result for the AI to respond to
+                            // Create a text input with the formatted result for the AI to respond to
                             dc.send(JSON.stringify({
                                 type: "conversation.item.create",
                                 item: {
@@ -659,7 +673,7 @@ Remember: Every interaction is an opportunity to enrich the knowledge graph. Be 
                                     role: "user",
                                     content: [{
                                         type: "input_text",
-                                        text: outputText
+                                        text: formattedOutput
                                     }]
                                 }
                             }));

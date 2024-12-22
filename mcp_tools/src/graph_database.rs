@@ -1100,10 +1100,24 @@ pub async fn handle_graph_tool_call(
                         "metadata": node.metadata
                     })
                 }).collect();
+                let formatted_nodes = nodes_info.iter().map(|node| {
+                    let node_obj = node.as_object().unwrap();
+                    format!(
+                        "Node: {}\nDescription: {}\nTags: [{}]\nCreated: {}\nModified: {}\nContent: {}\n",
+                        node_obj["name"].as_str().unwrap_or(""),
+                        node_obj["description"].as_str().unwrap_or(""),
+                        node_obj["tags"].as_array().unwrap_or(&Vec::new()).iter()
+                            .map(|t| t.as_str().unwrap_or("")).collect::<Vec<_>>().join(", "),
+                        node_obj["date_created"].as_str().unwrap_or(""),
+                        node_obj["date_modified"].as_str().unwrap_or(""),
+                        node_obj["content"].as_str().unwrap_or("")
+                    )
+                }).collect::<Vec<_>>().join("\n---\n");
+
                 let tool_res = CallToolResult {
                     content: vec![ToolResponseContent {
                         type_: "text".into(),
-                        text: json!(nodes_info).to_string(),
+                        text: formatted_nodes,
                         annotations: None,
                     }],
                     is_error: Some(false),
