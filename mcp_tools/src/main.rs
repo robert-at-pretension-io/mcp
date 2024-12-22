@@ -307,9 +307,13 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
             type: "function",
             name: tool.name,
             description: tool.description || '',
-            parameters: tool.input_schema
+            parameters: {
+                type: "object",
+                properties: tool.input_schema.properties || {},
+                required: tool.input_schema.required || []
+            }
         }));
-        console.log('Available tools:', tools); // Debug logging
+        console.log('Transformed tools:', JSON.stringify(tools, null, 2)); // Debug logging
 
         // Display available tools
         displayTools(tools);
@@ -422,45 +426,54 @@ When you get information, don't mention it. Just use it to subtly inform the con
                 console.log("Message from model:", data);
                 
                 if (data.type === "function.call") {
+                    console.log('Received function call:', data); // Debug logging
                     const toolRequest = {
                         jsonrpc: "2.0",
                         id: 1,
                         method: "tools/call",
                         params: {
                             name: data.function.name,
-                            arguments: data.function.arguments
+                            arguments: JSON.parse(data.function.arguments)
                         }
                     };
-                    
+                
                     try {
                         const response = await fetch('/tools/call', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(toolRequest)
                         });
-                        
+                    
                         const result = await response.json();
-                        console.log("Tool response:", result);
-                        
+                        console.log("Tool response:", result); // Debug logging
+                    
                         // Add to call history
                         addToCallHistory(
-                            data.function_call.name,
-                            data.function_call.arguments,
+                            data.function.name,
+                            data.function.arguments,
                             result
                         );
-                        
-                        // Send tool result back to the model
-                        // Send tool result back to the model
+                    
+                        // Send tool result back to the model in OpenAI's expected format
                         dc.send(JSON.stringify({
                             type: "function.response",
                             function: {
                                 name: data.function.name,
-                                content: result.result?.content?.[0]?.text || "Error executing tool",
+                                content: result.result?.content?.[0]?.text || "",
                                 status: result.error ? "error" : "success"
                             }
                         }));
                     } catch(err) {
                         console.error("Tool call error:", err);
+                        // Send error response in OpenAI's format
+                        dc.send(JSON.stringify({
+                            type: "function.response",
+                            function: {
+                                name: data.function.name,
+                                content: `Error: ${err.message}`,
+                                status: "error"
+                            }
+                        }));
                     }
                 }
             };
