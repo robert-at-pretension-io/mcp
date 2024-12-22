@@ -311,7 +311,11 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
             const sessionRes = await fetch(`/session?model=${model}`);
             const sessionData = await sessionRes.json();
             
-            const ephemeralKey = sessionData?.client_secret?.value;
+            if (!sessionData?.client_secret?.value) {
+                console.error("No ephemeral key found in /session response:", sessionData);
+                return;
+            }
+            const ephemeralKey = sessionData.client_secret.value;
             if(!ephemeralKey) {
                 console.error("No ephemeral key found in /session response.");
                 return;
@@ -329,28 +333,40 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
             const dc = pc.createDataChannel("oai-events");
             dc.onopen = () => {
                 console.log('Data channel open');
+                // Initial configuration
                 const configEvent = {
                     type: "session.update",
                     session: {
                         tools,
-                        tool_choice: "auto"
+                        tool_choice: "auto",
+                        modalities: ["text"]
                     }
                 };
                 dc.send(JSON.stringify(configEvent));
+
+                // Initial response.create
+                const responseCreate = {
+                    type: "response.create",
+                    response: {
+                        modalities: ["text"],
+                        instructions: "I'm ready to help you. What would you like to do?"
+                    }
+                };
+                dc.send(JSON.stringify(responseCreate));
             };
 
             dc.onmessage = async (e) => {
                 const data = JSON.parse(e.data);
                 console.log("Message from model:", data);
                 
-                if (data.function_call) {
+                if (data.type === "function.call") {
                     const toolRequest = {
                         jsonrpc: "2.0",
                         id: 1,
                         method: "tools/call",
                         params: {
-                            name: data.function_call.name,
-                            arguments: data.function_call.arguments
+                            name: data.function.name,
+                            arguments: data.function.arguments
                         }
                     };
                     
@@ -372,11 +388,13 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
                         );
                         
                         // Send tool result back to the model
+                        // Send tool result back to the model
                         dc.send(JSON.stringify({
                             type: "function.response",
-                            response: {
-                                name: data.function_call.name,
-                                content: result.result?.content?.[0]?.text || "Error executing tool"
+                            function: {
+                                name: data.function.name,
+                                content: result.result?.content?.[0]?.text || "Error executing tool",
+                                status: result.error ? "error" : "success"
                             }
                         }));
                     } catch(err) {
