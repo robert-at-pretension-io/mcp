@@ -163,7 +163,7 @@ async fn handle_tools_call(
     Json(payload): Json<ToolCallRequest>,
     state: Arc<AppState>,
 ) -> impl IntoResponse {
-    debug!("Incoming tool call: {:?}", payload);
+    debug!("Incoming tool call: {}", serde_json::to_string_pretty(&payload).unwrap_or_default());
 
     let response = match payload.method.as_str() {
         "tools/call" => {
@@ -578,27 +578,36 @@ When using information from the knowledge graph, incorporate it naturally withou
                         
                             const result = await response.json();
                             
-                            // Only log function completion
-                            console.log('Function completed:', {
-                                name: data.function.name,
-                                call_id: data.function.call_id,
-                                success: !result.error
-                            });
-                        
+                            // Log the full result for debugging
+                            console.log('Tool call result:', JSON.stringify(result, null, 2));
+                            
                             // Add to call history UI
                             addToCallHistory(
-                                data.function.name,
-                                JSON.parse(data.function.arguments),
+                                data.name,
+                                JSON.parse(data.arguments),
                                 result
                             );
+
+                            let outputText;
+                            if (result.error) {
+                                outputText = `Error: ${result.error.message}`;
+                                console.error('Tool call failed:', outputText);
+                            } else {
+                                outputText = result.result?.content?.[0]?.text || "No output received";
+                                console.log('Tool call succeeded:', {
+                                    name: data.name,
+                                    call_id: data.call_id,
+                                    output: outputText
+                                });
+                            }
                         
                             // Send result back to model
                             dc.send(JSON.stringify({
                                 type: "conversation.item.create",
                                 item: {
                                     type: "function_call_output",
-                                    call_id: data.function.call_id,
-                                    output: result.result?.content?.[0]?.text || ""
+                                    call_id: data.call_id,
+                                    output: outputText
                                 }
                             }));
                         } catch(err) {

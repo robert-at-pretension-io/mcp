@@ -718,10 +718,16 @@ pub async fn handle_graph_tool_call(
 
     let action = params.arguments.get("action")
         .and_then(Value::as_str)
-        .ok_or_else(|| anyhow!("Missing or invalid 'action' field"))?;
+        .ok_or_else(|| anyhow!("Missing or invalid 'action' field. Required fields: 'action' and 'params'.\nExample: {\"action\": \"get_top_tags\", \"params\": {\"limit\": 5}}"))?;
 
     let action_params = params.arguments.get("params")
-        .ok_or_else(|| anyhow!("Missing 'params' field"))?;
+        .ok_or_else(|| {
+            let valid_actions = ["create_root", "create_node", "update_node", "delete_node", 
+                               "connect_nodes", "get_node", "get_children", "get_nodes_by_tag", 
+                               "search_nodes", "get_most_connected", "get_top_tags", "get_recent_nodes"]
+                .join(", ");
+            anyhow!("Missing 'params' field. Valid actions are: {}", valid_actions)
+        })?;
 
     macro_rules! return_error {
         ($msg:expr) => {{
@@ -1055,7 +1061,7 @@ pub async fn handle_graph_tool_call(
             let tool_res = CallToolResult {
                 content: vec![ToolResponseContent {
                     type_: "text".into(),
-                    text: json!(nodes_info).to_string(),
+                    text: serde_json::to_string_pretty(&nodes_info).unwrap_or_else(|_| "[]".to_string()),
                     annotations: None,
                 }],
                 is_error: Some(false),
