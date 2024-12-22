@@ -323,21 +323,32 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
     </div>
     <button id="btn-start">Start RTC</button>
     <script>
-    // Override console.log to send logs to server
+    // Override console.log to send prettier logs to server
     const originalLog = console.log;
     console.log = function(...args) {
         // Call original console.log
         originalLog.apply(console, args);
         
+        // Format message for server
+        let message;
+        if (args.length === 1 && typeof args[0] === 'object') {
+            // For single objects, pretty print
+            message = JSON.stringify(args[0], null, 2);
+        } else if (args.length === 2 && args[0] && typeof args[0] === 'string' && typeof args[1] === 'object') {
+            // For label + object pattern, format nicely
+            message = `${args[0]}\n${JSON.stringify(args[1], null, 2)}`;
+        } else {
+            // For other cases, join with spaces
+            message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+        }
+        
         // Send to server
         fetch('/log', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message: args.map(arg => 
-                    typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-                ).join(' ')
-            })
+            body: JSON.stringify({ message })
         }).catch(err => originalLog('Error sending log:', err));
     };
 
