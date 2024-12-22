@@ -469,7 +469,14 @@ When you get information, don't mention it. Just use it to subtly inform the con
             dc.onmessage = async (e) => {
                 const data = JSON.parse(e.data);
                 
-                // Log all events ASIDE from delta events ai!
+                // Log all non-delta events
+                if (!data.type.includes('delta')) {
+                    console.log('Event received:', {
+                        type: data.type,
+                        data: JSON.stringify(data, null, 2)
+                    });
+                }
+                
                 switch (data.type) {
                     case "response.done":
                         if (data.response?.output?.[0]?.type === "function_call") {
