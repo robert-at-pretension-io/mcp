@@ -346,13 +346,13 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
         
         const tools = toolsData.result.tools.map(tool => {
             console.log('Processing tool:', tool.name);
-            console.log('Tool input_schema:', JSON.stringify(tool.input_schema, null, 2));
+            console.log('Tool inputSchema:', JSON.stringify(tool.inputSchema, null, 2));
             
             const transformed = {
                 type: "function",
                 name: tool.name,
                 description: tool.description || '',
-                parameters: tool.input_schema
+                parameters: tool.inputSchema
             };
             
             console.log('Transformed tool:', JSON.stringify(transformed, null, 2));
