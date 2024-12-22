@@ -268,23 +268,28 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
         <h2>Available Tools</h2>
         <pre id="tools-list">Loading tools...</pre>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        .response-box {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 4px;
-            padding: 15px;
+        .response-container {
             margin: 10px 0;
-            font-family: monospace;
-            white-space: pre-wrap;
         }
         .response-type {
             color: #0366d6;
             font-weight: bold;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
         }
-        .response-content {
-            color: #24292e;
+        /* Style for markdown content */
+        .markdown-content {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+        }
+        /* Override markdown code block styling */
+        .markdown-content pre {
+            background: #f1f1f1;
+            padding: 10px;
+            border-radius: 3px;
         }
     </style>
     <div id="function-calls">
@@ -321,20 +326,23 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
     const btn = document.getElementById('btn-start');
 
     function addResponse(data) {
-        const box = document.createElement('div');
-        box.className = 'response-box';
+        const container = document.createElement('div');
+        container.className = 'response-container';
         
         const type = document.createElement('div');
         type.className = 'response-type';
         type.textContent = data.type;
         
         const content = document.createElement('div');
-        content.className = 'response-content';
-        content.textContent = JSON.stringify(data, null, 2);
+        content.className = 'markdown-content';
         
-        box.appendChild(type);
-        box.appendChild(content);
-        responseHistory.insertBefore(box, responseHistory.firstChild);
+        // Convert the JSON to a markdown code block
+        const markdownContent = '```json\n' + JSON.stringify(data, null, 2) + '\n```';
+        content.innerHTML = marked.parse(markdownContent);
+        
+        container.appendChild(type);
+        container.appendChild(content);
+        responseHistory.insertBefore(container, responseHistory.firstChild);
     }
 
     // Function to display tools info
