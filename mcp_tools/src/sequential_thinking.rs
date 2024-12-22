@@ -66,7 +66,12 @@ impl SequentialThinkingTool {
             Err(e) => {
                 warn!("Failed to load existing tool: {}, creating new", e);
                 let thoughts_dir = std::env::var("KNOWLEDGE_GRAPH_DIR")
-                    .unwrap_or_else(|_| DEFAULT_GRAPH_DIR.to_string());
+                    .unwrap_or_else(|_| {
+                        dirs::home_dir()
+                            .expect("Could not find home directory")
+                            .to_string_lossy()
+                            .to_string()
+                    });
                 let path = std::path::PathBuf::from(&thoughts_dir);
 
                 // Check if directory exists, create if it doesn't
@@ -165,7 +170,12 @@ impl SequentialThinkingTool {
     #[instrument]
     pub fn load() -> Result<Self> {
         let thoughts_dir = std::env::var("KNOWLEDGE_GRAPH_DIR")
-            .unwrap_or_else(|_| DEFAULT_GRAPH_DIR.to_string());
+            .unwrap_or_else(|_| {
+                dirs::home_dir()
+                    .expect("Could not find home directory")
+                    .to_string_lossy()
+                    .to_string()
+            });
         let path = std::path::PathBuf::from(&thoughts_dir);
         let thoughts_file = path.join("thoughts.json");
         
