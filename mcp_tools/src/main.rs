@@ -275,12 +275,16 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
         const toolsInfo = tools.map(tool => {
             const schema = tool.parameters || {};
             const properties = schema.properties || {};
-            const paramDesc = Object.entries(properties)
-                .map(([key, value]) => `  ${key}: ${value.type}${value.description ? ` - ${value.description}` : ''}`)
+            const paramList = Object.entries(properties)
+                .map(([key, value]) => {
+                    const required = schema.required?.includes(key) ? '*' : '';
+                    return `  ${key}${required}: ${value.type}${value.description ? ` - ${value.description}` : ''}`;
+                })
                 .join('\n');
             
-            return `Tool: ${tool.name}\nDescription: ${tool.description}\nParameters:\n${paramDesc}\n`;
+            return `Tool: ${tool.name}\nDescription: ${tool.description}\nParameters:\n${paramList}\n`;
         }).join('\n---\n');
+        
         toolsList.textContent = toolsInfo;
     }
 
@@ -423,58 +427,92 @@ When you get information, don't mention it. Just use it to subtly inform the con
 
             dc.onmessage = async (e) => {
                 const data = JSON.parse(e.data);
-                console.log("Message from model:", data);
                 
-                if (data.type === "function.call") {
-                    console.log('Received function call:', data); // Debug logging
-                    const toolRequest = {
-                        jsonrpc: "2.0",
-                        id: 1,
-                        method: "tools/call",
-                        params: {
-                            name: data.function.name,
-                            arguments: JSON.parse(data.function.arguments)
+                // Only log specific important events
+                switch (data.type) {
+                    case "response.done":
+                        if (data.response?.output?.[0]?.type === "function_call") {
+                            console.log('Function call requested:', {
+                                name: data.response.output[0].name,
+                                call_id: data.response.output[0].call_id,
+                                arguments: JSON.parse(data.response.output[0].arguments)
+                            });
                         }
-                    };
-                
-                    try {
-                        const response = await fetch('/tools/call', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(toolRequest)
+                        break;
+                        
+                    case "function.call":
+                        console.log('Executing function:', {
+                            name: data.function.name,
+                            call_id: data.function.call_id
                         });
-                    
-                        const result = await response.json();
-                        console.log("Tool response:", result); // Debug logging
-                    
-                        // Add to call history
-                        addToCallHistory(
-                            data.function.name,
-                            data.function.arguments,
-                            result
-                        );
-                    
-                        // Send tool result back to the model in OpenAI's expected format
-                        dc.send(JSON.stringify({
-                            type: "function.response",
-                            function: {
+                        
+                        const toolRequest = {
+                            jsonrpc: "2.0",
+                            id: 1,
+                            method: "tools/call",
+                            params: {
                                 name: data.function.name,
-                                content: result.result?.content?.[0]?.text || "",
-                                status: result.error ? "error" : "success"
+                                arguments: JSON.parse(data.function.arguments)
                             }
-                        }));
-                    } catch(err) {
-                        console.error("Tool call error:", err);
-                        // Send error response in OpenAI's format
-                        dc.send(JSON.stringify({
-                            type: "function.response",
-                            function: {
+                        };
+                    
+                        try {
+                            const response = await fetch('/tools/call', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(toolRequest)
+                            });
+                        
+                            const result = await response.json();
+                            
+                            // Only log function completion
+                            console.log('Function completed:', {
                                 name: data.function.name,
-                                content: `Error: ${err.message}`,
-                                status: "error"
-                            }
-                        }));
-                    }
+                                call_id: data.function.call_id,
+                                success: !result.error
+                            });
+                        
+                            // Add to call history UI
+                            addToCallHistory(
+                                data.function.name,
+                                JSON.parse(data.function.arguments),
+                                result
+                            );
+                        
+                            // Send result back to model
+                            dc.send(JSON.stringify({
+                                type: "conversation.item.create",
+                                item: {
+                                    type: "function_call_output",
+                                    call_id: data.function.call_id,
+                                    output: result.result?.content?.[0]?.text || ""
+                                }
+                            }));
+                        } catch(err) {
+                            console.error('Function failed:', {
+                                name: data.function.name,
+                                call_id: data.function.call_id,
+                                error: err.message
+                            });
+                            
+                            // Send error response
+                            dc.send(JSON.stringify({
+                                type: "conversation.item.create",
+                                item: {
+                                    type: "function_call_output",
+                                    call_id: data.function.call_id,
+                                    output: `Error: ${err.message}`
+                                }
+                            }));
+                        }
+                        break;
+                        
+                    case "session.update":
+                        // Only log tool registration
+                        if (data.session?.tools) {
+                            console.log('Tools registered:', data.session.tools.map(t => t.name));
+                        }
+                        break;
                 }
             };
 
