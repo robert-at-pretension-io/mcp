@@ -255,9 +255,35 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
 </head>
 <body>
     <h1>Realtime Voice + Tools Demo</h1>
+    <div id="tools-info">
+        <h2>Available Tools</h2>
+        <pre id="tools-list">Loading tools...</pre>
+    </div>
+    <div id="function-calls">
+        <h2>Function Call History</h2>
+        <pre id="call-history"></pre>
+    </div>
     <button id="btn-start">Start RTC</button>
     <script>
+    const toolsList = document.getElementById('tools-list');
+    const callHistory = document.getElementById('call-history');
     const btn = document.getElementById('btn-start');
+
+    // Function to display tools info
+    function displayTools(tools) {
+        const toolsInfo = tools.map(tool => 
+            `Tool: ${tool.name}\nDescription: ${tool.description}\nParameters: ${JSON.stringify(tool.parameters, null, 2)}\n`
+        ).join('\n---\n');
+        toolsList.textContent = toolsInfo;
+    }
+
+    // Function to add call to history
+    function addToCallHistory(functionName, params, result) {
+        const timestamp = new Date().toISOString();
+        const callInfo = `[${timestamp}] Called: ${functionName}\nParams: ${JSON.stringify(params, null, 2)}\nResult: ${JSON.stringify(result, null, 2)}\n---\n`;
+        callHistory.textContent = callInfo + callHistory.textContent;
+    }
+
     btn.addEventListener('click', async () => {
         // First fetch available tools
         const toolsResponse = await fetch('/tools/call', {
@@ -276,6 +302,9 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
             description: tool.description,
             parameters: tool.input_schema
         }));
+
+        // Display available tools
+        displayTools(tools);
 
         const model = "gpt-4o-realtime-preview-2024-12-17";
         try {
@@ -334,6 +363,13 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
                         
                         const result = await response.json();
                         console.log("Tool response:", result);
+                        
+                        // Add to call history
+                        addToCallHistory(
+                            data.function_call.name,
+                            data.function_call.arguments,
+                            result
+                        );
                         
                         // Send tool result back to the model
                         dc.send(JSON.stringify({
