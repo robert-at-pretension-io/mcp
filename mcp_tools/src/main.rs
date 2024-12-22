@@ -270,6 +270,20 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
+        .filter-container {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        .filter-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            margin-top: 5px;
+        }
         .response-container {
             margin: 10px 0;
         }
@@ -298,6 +312,10 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
     </div>
     <div id="responses">
         <h2>Assistant Responses</h2>
+        <div class="filter-container">
+            <label for="filter-text">Filter out responses containing text (comma-separated):</label>
+            <input type="text" id="filter-text" class="filter-input" placeholder="Enter terms to filter out, separated by commas">
+        </div>
         <div id="response-history"></div>
     </div>
     <button id="btn-start">Start RTC</button>
@@ -326,23 +344,34 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
     const btn = document.getElementById('btn-start');
 
     function addResponse(data) {
-        const container = document.createElement('div');
-        container.className = 'response-container';
+        const filterInput = document.getElementById('filter-text');
+        const filterTerms = filterInput.value.split(',').map(term => term.trim().toLowerCase()).filter(Boolean);
         
-        const type = document.createElement('div');
-        type.className = 'response-type';
-        type.textContent = data.type;
+        // Convert data to string for filtering
+        const dataString = JSON.stringify(data).toLowerCase();
         
-        const content = document.createElement('div');
-        content.className = 'markdown-content';
+        // Check if any filter term is present in the data
+        const shouldFilter = filterTerms.some(term => dataString.includes(term));
         
-        // Convert the JSON to a markdown code block
-        const markdownContent = '```json\n' + JSON.stringify(data, null, 2) + '\n```';
-        content.innerHTML = marked.parse(markdownContent);
-        
-        container.appendChild(type);
-        container.appendChild(content);
-        responseHistory.insertBefore(container, responseHistory.firstChild);
+        if (!shouldFilter) {
+            const container = document.createElement('div');
+            container.className = 'response-container';
+            
+            const type = document.createElement('div');
+            type.className = 'response-type';
+            type.textContent = data.type;
+            
+            const content = document.createElement('div');
+            content.className = 'markdown-content';
+            
+            // Convert the JSON to a markdown code block
+            const markdownContent = '```json\n' + JSON.stringify(data, null, 2) + '\n```';
+            content.innerHTML = marked.parse(markdownContent);
+            
+            container.appendChild(type);
+            container.appendChild(content);
+            responseHistory.insertBefore(container, responseHistory.firstChild);
+        }
     }
 
     // Function to display tools info
