@@ -630,13 +630,34 @@ Remember: Every interaction is an opportunity to enrich the knowledge graph. Be 
                                 });
                             }
                         
-                            // Send result back to model
+                            // Send function result back to model
                             dc.send(JSON.stringify({
                                 type: "conversation.item.create",
                                 item: {
                                     type: "function_call_output",
                                     call_id: data.call_id,
                                     output: outputText
+                                }
+                            }));
+
+                            // Create a text input with the result for the AI to respond to
+                            dc.send(JSON.stringify({
+                                type: "conversation.item.create",
+                                item: {
+                                    type: "message",
+                                    role: "user",
+                                    content: [{
+                                        type: "input_text",
+                                        text: outputText
+                                    }]
+                                }
+                            }));
+
+                            // Request a response from the AI
+                            dc.send(JSON.stringify({
+                                type: "response.create",
+                                response: {
+                                    modalities: ["text", "audio"]
                                 }
                             }));
                         } catch(err) {
