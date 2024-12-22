@@ -11,7 +11,7 @@ use shared_protocol_objects::{
 };
 use chrono;
 use tracing::{debug, error, info, warn, instrument};
-use crate::graph_database::DEFAULT_GRAPH_DIR;
+// use crate::graph_database::DEFAULT_GRAPH_DIR;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct Thought {
