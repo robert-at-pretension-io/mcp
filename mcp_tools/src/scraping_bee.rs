@@ -18,6 +18,7 @@ struct ScrapingBeeRequest {
     render_js: bool,
 }
 
+#[derive(Clone)]
 pub struct ScrapingBeeClient {
     client: reqwest::Client,
     api_key: String,
