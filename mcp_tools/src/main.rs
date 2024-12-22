@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use shared_protocol_objects::{
     CallToolParams, JsonRpcError, ListToolsResult, ToolInfo,
@@ -77,9 +77,24 @@ impl GraphTool {
 }
 
 #[async_trait]
+const MAX_DESCRIPTION_LENGTH: usize = 1024;
+
+fn validate_tool_description(name: &str, description: &Option<String>) {
+    if let Some(desc) = description {
+        if desc.len() > MAX_DESCRIPTION_LENGTH {
+            panic!(
+                "Tool '{}' description exceeds maximum length of {} characters (current length: {})",
+                name, MAX_DESCRIPTION_LENGTH, desc.len()
+            );
+        }
+    }
+}
+
 impl Tool for GraphTool {
     fn info(&self) -> ToolInfo {
-        graph_tool_info()
+        let info = graph_tool_info();
+        validate_tool_description(&info.name, &info.description);
+        info
     }
 
     async fn execute(&self, params: CallToolParams) -> Result<JsonRpcResponse> {
@@ -104,7 +119,9 @@ impl BraveSearchTool {
 #[async_trait]
 impl Tool for BraveSearchTool {
     fn info(&self) -> ToolInfo {
-        search_tool_info()
+        let info = search_tool_info();
+        validate_tool_description(&info.name, &info.description);
+        info
     }
 
     async fn execute(&self, params: CallToolParams) -> Result<JsonRpcResponse> {
@@ -129,7 +146,9 @@ impl ScrapingBeeTool {
 #[async_trait]
 impl Tool for ScrapingBeeTool {
     fn info(&self) -> ToolInfo {
-        scraping_tool_info()
+        let info = scraping_tool_info();
+        validate_tool_description(&info.name, &info.description);
+        info
     }
 
     async fn execute(&self, params: CallToolParams) -> Result<JsonRpcResponse> {
