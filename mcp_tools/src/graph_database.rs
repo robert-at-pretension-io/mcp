@@ -111,12 +111,15 @@ impl GraphManager {
         let graph_dir = std::env::var("KNOWLEDGE_GRAPH_DIR")
             .unwrap_or_else(|_| DEFAULT_GRAPH_DIR.to_string());
 
-        // Create directory if it doesn't exist
-        std::fs::create_dir_all(&graph_dir)
-            .expect("Failed to create knowledge graph directory");
-
         // Build absolute path for graph file
         let path = std::path::PathBuf::from(graph_dir).join(filename);
+
+        // Create directory if it doesn't exist, ignoring "already exists" error
+        if let Err(e) = std::fs::create_dir_all(&graph_dir) {
+            if e.kind() != std::io::ErrorKind::AlreadyExists {
+                panic!("Failed to create knowledge graph directory: {}", e);
+            }
+        }
 
         // Try loading existing graph first
         let graph = if path.exists() {
