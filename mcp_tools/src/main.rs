@@ -17,12 +17,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use shared_protocol_objects::{
     CallToolParams, ListToolsResult, ToolInfo,
     success_response, error_response, JsonRpcResponse,
-    INTERNAL_ERROR, INVALID_PARAMS,
+    INTERNAL_ERROR, INVALID_PARAMS, CallToolResult,
+    ToolResponseContent,
 };
 
 use mcp_tools::graph_database::{graph_tool_info, handle_graph_tool_call, GraphManager};
 use mcp_tools::brave_search::{search_tool_info, BraveSearchClient};
-use mcp_tools::scraping_bee::{scraping_tool_info, ScrapingBeeClient};
+use mcp_tools::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
 
 // Tool trait defining the interface for all tools
 #[async_trait]
@@ -260,7 +261,7 @@ struct SessionQuery {
 // Handler functions
 async fn handle_tools_call(
     Json(payload): Json<ToolCallRequest>,
-    state: Arc<AppState>,
+    _state: Arc<AppState>,
 ) -> impl IntoResponse {
     debug!("Incoming tool call: {}", serde_json::to_string_pretty(&payload).unwrap_or_default());
 
