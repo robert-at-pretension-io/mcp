@@ -128,8 +128,42 @@ impl Tool for BraveSearchTool {
         info
     }
 
-    async fn execute(&self, _params: CallToolParams) -> Result<JsonRpcResponse> {
-        todo!("BraveSearchTool execute not yet implemented")
+    async fn execute(&self, params: CallToolParams) -> Result<JsonRpcResponse> {
+        let query = params.arguments.get("query")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing or invalid 'query' parameter"))?;
+
+        let search_response = self.client.search(query).await?;
+        
+        let formatted_results = if let Some(web) = search_response.web {
+            web.results.iter()
+                .map(|result| {
+                    format!(
+                        "Title: {}\nURL: {}\nDescription: {}\n",
+                        result.title,
+                        result.url,
+                        result.description.as_deref().unwrap_or("No description available")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n---\n")
+        } else {
+            "No web results found".to_string()
+        };
+
+        let tool_res = CallToolResult {
+            content: vec![ToolResponseContent {
+                type_: "text".into(),
+                text: formatted_results,
+                annotations: None,
+            }],
+            is_error: Some(false),
+            _meta: None,
+            progress: None,
+            total: None,
+        };
+
+        Ok(success_response(None, serde_json::to_value(tool_res)?))
     }
 }
 
@@ -155,8 +189,35 @@ impl Tool for ScrapingBeeTool {
         info
     }
 
-    async fn execute(&self, _params: CallToolParams) -> Result<JsonRpcResponse> {
-        todo!("ScrapingBeeTool execute not yet implemented") 
+    async fn execute(&self, params: CallToolParams) -> Result<JsonRpcResponse> {
+        let url = params.arguments.get("url")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing or invalid 'url' parameter"))?;
+
+        let scraping_response = self.client.clone()
+            .url(url)
+            .render_js(true)
+            .execute()
+            .await?;
+
+        let content = match scraping_response {
+            ScrapingBeeResponse::Text(text) => text,
+            ScrapingBeeResponse::Binary(_) => return Err(anyhow::anyhow!("Received binary response, expected text")),
+        };
+
+        let tool_res = CallToolResult {
+            content: vec![ToolResponseContent {
+                type_: "text".into(),
+                text: content,
+                annotations: None,
+            }],
+            is_error: Some(false),
+            _meta: None,
+            progress: None,
+            total: None,
+        };
+
+        Ok(success_response(None, serde_json::to_value(tool_res)?))
     }
 }
 
