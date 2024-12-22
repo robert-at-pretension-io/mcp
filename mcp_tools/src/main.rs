@@ -4,6 +4,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use std::net::SocketAddr;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -399,8 +400,11 @@ async fn main() -> Result<()> {
     // Start server
     let addr = "0.0.0.0:3000";
     info!("Server running on {}", addr);
-    axum::Server::bind(&addr.parse()?)
-        .serve(app.into_make_service())
-        .await?;
+    let addr: SocketAddr = addr.parse()?;
+    axum::serve(
+        tokio::net::TcpListener::bind(addr).await?,
+        app.into_make_service(),
+    )
+    .await?;
     Ok(())
 }
