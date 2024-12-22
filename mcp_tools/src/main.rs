@@ -551,21 +551,21 @@ When using information from the knowledge graph, incorporate it naturally withou
                         }
                         break;
                         
-                    case "function.call":
+                    case "response.function_call_arguments.done":
                         console.log('Function call event received:', JSON.stringify(data, null, 2));
-                        console.log('Function arguments:', data.function.arguments);
+                        console.log('Function arguments:', data.arguments);
                         console.log('Executing function:', {
-                            name: data.function.name,
-                            call_id: data.function.call_id
+                            name: data.name,
+                            call_id: data.call_id
                         });
                         
                         const toolRequest = {
-                            jsonrpc: "2.0",
+                            jsonrpc: "2.0", 
                             id: 1,
                             method: "tools/call",
                             params: {
-                                name: data.function.name,
-                                arguments: JSON.parse(data.function.arguments)
+                                name: data.name,
+                                arguments: JSON.parse(data.arguments)
                             }
                         };
                     
