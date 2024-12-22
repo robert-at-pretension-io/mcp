@@ -268,9 +268,32 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
         <h2>Available Tools</h2>
         <pre id="tools-list">Loading tools...</pre>
     </div>
+    <style>
+        .response-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .response-type {
+            color: #0366d6;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .response-content {
+            color: #24292e;
+        }
+    </style>
     <div id="function-calls">
         <h2>Function Call History</h2>
         <pre id="call-history"></pre>
+    </div>
+    <div id="responses">
+        <h2>Assistant Responses</h2>
+        <div id="response-history"></div>
     </div>
     <button id="btn-start">Start RTC</button>
     <script>
@@ -294,7 +317,25 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
 
     const toolsList = document.getElementById('tools-list');
     const callHistory = document.getElementById('call-history');
+    const responseHistory = document.getElementById('response-history');
     const btn = document.getElementById('btn-start');
+
+    function addResponse(data) {
+        const box = document.createElement('div');
+        box.className = 'response-box';
+        
+        const type = document.createElement('div');
+        type.className = 'response-type';
+        type.textContent = data.type;
+        
+        const content = document.createElement('div');
+        content.className = 'response-content';
+        content.textContent = JSON.stringify(data, null, 2);
+        
+        box.appendChild(type);
+        box.appendChild(content);
+        responseHistory.insertBefore(box, responseHistory.firstChild);
+    }
 
     // Function to display tools info
     function displayTools(tools) {
@@ -450,6 +491,9 @@ When using information from the knowledge graph, incorporate it naturally withou
 
             dc.onmessage = async (e) => {
                 const data = JSON.parse(e.data);
+                
+                // Add response to UI
+                addResponse(data);
                 
                 // Log all non-delta events
                 if (!data.type.includes('delta')) {
