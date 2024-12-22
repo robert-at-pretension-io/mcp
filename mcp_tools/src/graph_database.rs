@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
-pub const DEFAULT_GRAPH_DIR: &str = "/tmp/knowledge_graphs";
 use anyhow::{anyhow, Result};
 use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
@@ -109,8 +108,11 @@ impl GraphManager {
     pub fn new(filename: String) -> Self {
         debug!("Creating new GraphManager with filename: {}", filename);
         
-        // Use the filename directly since it should already be a full path
-        let path = std::path::PathBuf::from(filename);
+        // Always use home directory
+        let path = dirs::home_dir()
+            .expect("Could not find home directory")
+            .join(&filename);
+        
         debug!("Using graph path: {}", path.display());
 
         // Try loading existing graph first

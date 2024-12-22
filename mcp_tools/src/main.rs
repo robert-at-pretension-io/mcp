@@ -66,13 +66,6 @@ async fn main() {
 
     debug!("Environment variables loaded successfully");
 
-    let _ = std::env::var("KNOWLEDGE_GRAPH_DIR").unwrap_or_else(|_| {
-        println!(
-            "KNOWLEDGE_GRAPH_DIR not set, using default: {}",
-            graph_database::DEFAULT_GRAPH_DIR
-        );
-        graph_database::DEFAULT_GRAPH_DIR.to_string()
-    });
 
     let state = Arc::new(Mutex::new(MCPServerState {
         resources: vec![ResourceInfo {
