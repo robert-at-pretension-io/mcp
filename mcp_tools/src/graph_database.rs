@@ -549,23 +549,24 @@ pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
-            r#"Knowledge Graph Management System
+            r#"Knowledge Graph Tool
+IT IS IMPERATIVE THAT YOU search recent nodes and top tags at the beginning of the conversation to ground the conversation.
 
+Purpose: Maintain complete user context and conversation history.
 Core Functions:
-1. Context Management: Query history, verify facts, track state
-2. Knowledge Integration: Cross-reference data, store new info, link concepts
 
-Actions:
-- create_root/node: Add nodes to graph
-- update/delete_node: Modify or remove nodes
-- connect_nodes: Create relationships
-- get_node/children: Retrieve node details
-- search_nodes: Find content
-- get_most_connected/top_tags/recent: Analyze graph
+Query and verify historical context
+Store and link new information
 
-Returns: Node data with name, description, content, tags, metadata.
+Key Actions:
 
-Build knowledge graph continuously during conversation."#
+Create/update/delete nodes
+Connect related concepts
+Search and retrieve content
+Analyze graph patterns
+
+Returns: Structured node data including metadata.
+Use continuously throughout conversation."#
         .into()),
         input_schema: json!({
             "type": "object",
