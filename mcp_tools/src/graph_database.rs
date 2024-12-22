@@ -558,63 +558,21 @@ pub fn graph_tool_info() -> ToolInfo {
         description: Some(
             r#"Knowledge Graph Management System
 
-            Protocol Requirements:
-            1. Query graph before each response
-            2. Initialize with:
-               - get_top_tags
-               - get_recent_nodes
-            3. Maintain graph integrity
+Core Functions:
+1. Context Management: Query history, verify facts, track state
+2. Knowledge Integration: Cross-reference data, store new info, link concepts
 
-            Core Functions:
-            1. Context Management
-               - Query history: search_nodes "context"
-               - Verify facts: get_node "data"
-               - Track state: get_recent_nodes
-            
-            2. Knowledge Integration
-               - Cross-reference: search_nodes
-               - Store new data: create_node
-               - Link concepts: connect_nodes
-            
-            **Available Actions:**
-            - create_root: Create the first root node
-              Example: create_root for "user_profile"
-            - create_node: Add new nodes connected to existing ones
-              Example: create_node "python_skills" under "technical_skills"
-            - update_node: Modify node content, tags, or metadata
-              Example: update_node "project_status" with new progress
-            - delete_node: Remove nodes (with safety checks)
-              Example: delete_node "outdated_preference"
-            - move_node: Change node's parent relationship
-              Example: move_node "typescript" from "learning" to "known"
-            - connect_nodes: Create new relationships between nodes
-              Example: connect_nodes "git" to "version_control" as "tool"
-            - get_node: Retrieve single node details
-              Example: get_node "communication_style"
-            - get_children: List immediate child nodes
-              Example: get_children "programming_languages"
-            - get_nodes_by_tag: Find nodes with specific tags
-              Example: get_nodes_by_tag "urgent"
-            - search_nodes: Search node content and descriptions
-              Example: search_nodes "machine learning"
-            - get_most_connected: Find hub nodes
-              Example: get_most_connected to find key topics
-            - get_top_tags: List most used tags
-              Example: get_top_tags to see interests
-            - get_recent_nodes: Show recently modified nodes
-              Example: get_recent_nodes for latest updates
-            - get_tags_by_date: Track tag usage over time
-              Example: get_tags_by_date to see learning progress
-            - find_similar_nodes: Find related content
-              Example: find_similar_nodes "python" by "tags"
-            - shortest_path: Find connections between nodes
-              Example: shortest_path from "SQL" to "Data Science"
-            
-            **Returns:** Node data with name, description, content, tags, metadata.
+Actions:
+- create_root/node: Add nodes to graph
+- update/delete_node: Modify or remove nodes
+- connect_nodes: Create relationships
+- get_node/children: Retrieve node details
+- search_nodes: Find content
+- get_most_connected/top_tags/recent: Analyze graph
 
-            Just use the information you've gathered to inform the conversation -- don't fixate on it.
-            
-            **Remember:** Build knowledge graph during conversation, don't wait for commands."#
+Returns: Node data with name, description, content, tags, metadata.
+
+Build knowledge graph continuously during conversation."#
         .into()),
         input_schema: json!({
             "type": "object",
