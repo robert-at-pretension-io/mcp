@@ -432,9 +432,9 @@ impl MCPHost {
         let hidden_instruction = format!(
             "[ASSISTANT INSTRUCTION - FOLLOW ALL GUIDELINES STRICTLY]\n\
             GENERAL PRINCIPLES:\n\
-            - Use tools proactively but discreetly in each response\n\
+            - Use tools proactively but don't acknowledge the response data directly in each response, instead use it to inform the conversation\n\
             - Chain tools together to build internal context\n\
-            - Run preliminary tools silently before responding\n\
+            - Run preliminary tools before responding\n\
             - Follow each tool's usage patterns exactly as described\n\
             - Maintain a natural conversation flow - avoid dumping raw tool outputs to the user\n\
             - Don't wait for explicit user requests to use tools\n\n\
@@ -456,43 +456,7 @@ impl MCPHost {
             - BAD: \"According to my records, you mentioned having a dog named Max\"\n\
             - GOOD: \"How's Max doing? Still enjoying those long walks?\"\n\n\
             AVAILABLE TOOLS AND THEIR REQUIRED USAGE PATTERNS:\n{}\n\n\
-            TOOL CALLING SYNTAX:\n\
-            ALWAYS use this exact format to call tools:\n\
-            ```json\n\
-            {{\n\
-                \"action\": \"tool_name\",\n\
-                \"params\": {{\n\
-                    // required parameters\n\
-                }}\n\
-            }}\n\
-            ```\n\n\
-            Examples:\n\
-            ```json\n\
-            {{\n\
-                \"action\": \"get_top_tags\",\n\
-                \"params\": {{\n\
-                    \"limit\": 10\n\
-                }}\n\
-            }}\n\
-            ```\n\n\
-            ```json\n\
-            {{\n\
-                \"action\": \"create_node\",\n\
-                \"params\": {{\n\
-                    \"name\": \"Node Name\",\n\
-                    \"description\": \"Node Description\",\n\
-                    \"content\": \"Node Content\",\n\
-                    \"parent_name\": \"Parent Node\",\n\
-                    \"relation\": \"relates_to\",\n\
-                    \"tags\": [\"tag1\", \"tag2\"]\n\
-                }}\n\
-            }}\n\
-            ```\n\n\
-            CRITICAL:\n\
-            - ALWAYS use exact JSON format shown above\n\
-            - NEVER modify the JSON structure\n\
-            - ALWAYS include all required parameters\n\
-            - NEVER wait for permission to use tools",
+            ",
             tool_info_list.iter().map(|tool| {
                 format!(
                     "Tool: {}\n\
@@ -518,19 +482,11 @@ impl MCPHost {
 
         // Add startup reminder as system message
         let startup_reminder = format!(
-            "[CRITICAL STARTUP INSTRUCTION]\n\
-            You MUST run these tools BEFORE responding to the user:\n\
-            1. `graph_tool` with `action=get_top_tags` and `params={{\"limit\":10}}`\n\
-            2. `graph_tool` with `action=get_tags_by_date` and `params={{\"limit\":10}}`\n\
-            3. `graph_tool` with `action=get_most_connected` and `params={{\"limit\":10}}`\n\
-            4. `graph_tool` with `action=search_nodes` and `params={{\"query\":\"user\"}}`\n\
-            5. `graph_tool` with `action=get_nodes_by_tag` and `params={{\"tag\":\"skill\"}}`\n\
-            \n\
-            These tool runs will build essential initial context, which should then be used in your first reply.\n\
-            Consider these example tool chains for guidance:\n\
+            "Consider these example tool chains for guidance:\n\
             {}\n\
             \n\
             DO NOT PROCEED WITH USER INTERACTION UNTIL THESE ARE COMPLETE. \n\
+            WHEN TOOL CALLING, MAKE SURE YOU INCLUDE THE JSON TO MAKE THE REQUEST OR THE TOOL WILL NOT BE INVOKED!
             This is a strict requirement, not a suggestion.",
             tool_chains.get_examples(Some(15)) // Show 15 relevant examples
         );
@@ -615,7 +571,9 @@ Let me call [tool_name_here]
 }}
 ```
 
-Use that format above!
+# The most important thing: unless you actually follow that format and return that text, a tool will NOT be called. You can invoke MULTIPLE tools in one response by returning multiple tool calling json blocks. NEVER say you are calling a tool then leave out a json block.
+
+When you get information, don't mention it. Just use it to subtly inform the conversation going forward. It's jarring for the user when you info dump on them stuff they already know about their lives.
 "####);
 
         prompt
@@ -642,19 +600,31 @@ Use that format above!
         //         _ => "gpt-4-1106-preview".to_string()
         //     }
         // });
-        let model_name = "gemini-2.0-flash-exp".to_string();
-        info!("Initializing Gemini client with model: {}", model_name);
-        // Get Google Cloud auth token using gcloud command
-        let output = std::process::Command::new("gcloud")
-            .args(["auth", "print-access-token"])
-            .output()
-            .expect("Failed to execute gcloud command");
-        let api_key = String::from_utf8(output.stdout)
-            .expect("Invalid UTF-8 in gcloud output")
-            .trim()
-            .to_string();
-        info!("Got Google Cloud auth token: {}", api_key);
-        let client = GeminiClient::new(api_key, model_name);
+
+        // let model_name = "gemini-2.0-flash-exp".to_string();
+        // info!("Initializing Gemini client with model: {}", model_name);
+        // // Get Google Cloud auth token using gcloud command
+        // let output = std::process::Command::new("gcloud")
+        //     .args(["auth", "print-access-token"])
+        //     .output()
+        //     .expect("Failed to execute gcloud command");
+        // let api_key = String::from_utf8(output.stdout)
+        //     .expect("Invalid UTF-8 in gcloud output")
+        //     .trim()
+        //     .to_string();
+        // info!("Got Google Cloud auth token: {}", api_key);
+        // let client = GeminiClient::new(api_key, model_name);
+        // let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
+
+        let model_name = "gpt-4o-mini".to_string();
+        info!("Initializing OpenAI client with model: {}", model_name);
+
+        // Retrieve the OpenAI API key from an environment variable
+        let api_key = std::env::var("OPENAI_API_KEY")
+            .expect("OPENAI_API_KEY not set. Please provide it in the environment.");
+
+        info!("Got OpenAI API key: {}", api_key);
+        let client = OpenAIClient::new(api_key, model_name);
         let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
 
@@ -997,41 +967,38 @@ Use that format above!
     ) -> Result<()> {
         state.add_assistant_message(response);
         
-        // Initialize a loop for multiple tool calls
         let mut current_response = response.to_string();
         let mut iteration = 0;
-        const MAX_ITERATIONS: i32 = 15; // Increased to allow more thorough tool usage
+        const MAX_ITERATIONS: i32 = 15;
         
         while iteration < MAX_ITERATIONS {
             debug!("\nStarting iteration {} of response handling", iteration + 1);
             
-            // Try to find all tool calls in the current response
             let mut found_tool_call = false;
-            
-            // Split response into chunks that might contain tool calls
             let chunks: Vec<&str> = current_response.split("```").collect();
             for (i, chunk) in chunks.iter().enumerate() {
-                if i % 2 == 1 { // Only look at content between ``` marks
+                if i % 2 == 1 {
                     if let Some((tool_name, args)) = parse_tool_call(chunk) {
                         found_tool_call = true;
                         debug!("Found tool call in chunk {}:", i);
                         debug!("Tool: {}", tool_name);
                         debug!("Arguments: {}", serde_json::to_string_pretty(&args).unwrap_or_default());
                         
-                        // Execute the tool call
                         println!("{}", style("\nTool Call:").green().bold());
                         println!("└─ {}: {}\n", 
                             style(&tool_name).yellow(),
                             conversation_state::format_json_output(&serde_json::to_string_pretty(&args)?));
-
+    
                         match self.call_tool(server_name, &tool_name, args).await {
                             Ok(result) => {
                                 println!("{}", conversation_state::format_tool_response(&tool_name, &result));
-                                state.add_system_message(&result);
+                                // Instead of adding as a system message, add as a user message:
+                                state.add_user_message(&result);
                             }
                             Err(e) => {
                                 println!("{}: {}\n", style("Error").red().bold(), e);
-                                state.add_system_message(&format!("Error: {}", e));
+                                // In case of error, we might also add as a user message to prompt the AI to handle it gracefully
+                                state.add_user_message(&format!("Error: {}", e));
                             }
                         }
                     }
@@ -1042,7 +1009,7 @@ Use that format above!
                 break;
             }
             
-            // Get next action from assistant with all accumulated context
+            // Send all messages (including the tool results now marked as user messages) back to AI
             let mut builder = client.raw_builder();
             for msg in &state.messages {
                 match msg.role {
@@ -1051,15 +1018,12 @@ Use that format above!
                     Role::Assistant => builder = builder.assistant(msg.content.clone()),
                 }
             }
-            
-            debug!("Sending request to OpenAI with timeout");
+    
+            debug!("Sending updated conversation to AI");
             let timeout_result = with_progress("Waiting for AI response...".to_string(),
-                tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    builder.execute()
-                )
+                tokio::time::timeout(std::time::Duration::from_secs(30), builder.execute())
             ).await;
-                    
+    
             match timeout_result {
                 Ok(execute_result) => match execute_result {
                     Ok(response_string) => {
@@ -1068,12 +1032,12 @@ Use that format above!
                         current_response = response_string;
                     }
                     Err(e) => {
-                        info!("Error getting response from OpenAI API: {}", e);
+                        info!("Error getting response from API: {}", e);
                         break;
                     }
                 },
                 Err(_) => {
-                    info!("OpenAI API request timed out after 30 seconds");
+                    info!("API request timed out after 30 seconds");
                     break;
                 }
             }

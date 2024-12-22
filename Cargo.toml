@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "shared_protocol_objects",
     "mcp_host", 
-    "mcp_tools",
+    "mcp_tools", "realtime_test",
 ]
 
 [workspace.dependencies]

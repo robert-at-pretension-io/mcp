@@ -1,5 +1,5 @@
 [package]
-name = "mcp_rust_host_one_file"
+name = "mcp_host"
 version = "0.1.0"
 edition = "2021"
 
@@ -21,3 +21,8 @@ env_logger = "0.11.5"
 reqwest = { version = "0.12.9", features = ["json", "multipart", "stream"] } 
 log = "0.4.22"
 console.workspace = true
+async-trait = "0.1.83"
+axum = "0.7.9"
+tower = "0.5.2"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"

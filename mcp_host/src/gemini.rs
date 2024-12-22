@@ -122,6 +122,7 @@ impl<'a> AIClient for GeminiClient {
     fn builder(&self) -> Box<dyn AIRequestBuilder> {
         Box::new(GeminiCompletionBuilder {
             client: self.clone(),
+            system_instruction: None,
             contents: Vec::new(),
             generation_config: None,
         })
@@ -130,13 +131,14 @@ impl<'a> AIClient for GeminiClient {
     fn raw_builder(&self) -> Box<dyn AIRequestBuilder> {
         Box::new(GeminiCompletionBuilder {
             client: self.clone(),
+            system_instruction: None,
             contents: Vec::new(),
             generation_config: None,
         })
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GeminiCompletionBuilder {
     client: GeminiClient,
     contents: Vec<GeminiContent>,
@@ -147,16 +149,15 @@ pub struct GeminiCompletionBuilder {
 #[async_trait]
 impl AIRequestBuilder for GeminiCompletionBuilder {
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
-        // For Gemini, system messages go in systemInstruction
         let system_instruction = GeminiSystemInstruction {
             parts: vec![GeminiContentPart {
                 text: Some(content),
                 inline_data: None,
             }],
         };
-        let builder = self.downcast_mut::<GeminiCompletionBuilder>().unwrap();
+        let builder = &mut *self;
         builder.system_instruction = Some(system_instruction);
-        Box::new(*builder)
+        Box::new(builder.clone())
     }
 
     fn user(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
@@ -215,7 +216,7 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
 
     fn assistant(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.contents.push(GeminiContent {
-            role: "assistant".to_string(),
+            role: "model".to_string(),
             parts: vec![GeminiContentPart {
                 text: Some(content),
                 inline_data: None,
@@ -239,13 +240,15 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
         if config.top_p.is_none() {
             config.top_p = Some(0.95);
         }
-        
+    
         let request = GeminiRequest {
             contents: self.contents,
+            system_instruction: self.system_instruction.clone(),
             generation_config: Some(config),
             safety_settings: Some(GeminiClient::default_safety_settings()),
         };
-
+    
+        debug!("Sending request to Gemini API");
         let client = reqwest::Client::new();
         let response = client
             .post(&self.client.endpoint)
@@ -254,36 +257,61 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
             .json(&request)
             .send()
             .await?;
-
+    
+        debug!("Response received, status: {}", response.status());
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await.context("Failed to read error response")?;
+            error!("API error response: {}", error_text);
             return Err(anyhow::anyhow!("API request failed with status {}: {}", status, error_text));
         }
-
+    
         let response_text = response.text().await?;
+        debug!("Full API response: {}", response_text);
+    
+        // Parse the full response as an array of streamed responses
         let response_json: serde_json::Value = serde_json::from_str(&response_text)?;
-        let content = response_json["candidates"][0]["content"]["parts"][0]["text"]
-            .as_str()
-            .context("Failed to get text from response")?;
-
-        Ok(content.to_string())
+        debug!("Parsed JSON response: {:#?}", response_json);
+    
+        let arr = response_json.as_array()
+            .context("Expected the response to be an array of streamed chunks")?;
+    
+        let mut full_text = String::new();
+    
+        for chunk in arr {
+            // Navigate to candidates -> [0] -> content -> parts -> [0] -> text
+            if let Some(text_val) = chunk.pointer("/candidates/0/content/parts/0/text") {
+                if let Some(text_str) = text_val.as_str() {
+                    full_text.push_str(text_str);
+                }
+            }
+    
+            // Check if finishReason is STOP
+            if let Some(finish_reason) = chunk.pointer("/candidates/0/finishReason") {
+                if finish_reason == "STOP" {
+                    break;
+                }
+            }
+        }
+    
+        debug!("Final combined text: {}", full_text);
+        Ok(full_text)
     }
 }
 
 impl GeminiCompletionBuilder {
-    pub fn user(mut self, content: impl Into<String>) -> Self {
-        let c = content.into();
-        debug!("GeminiCompletionBuilder: Adding user message: {}", c);
-        self.contents.push(GeminiContent {
-            role: "user".to_string(),
-            parts: vec![GeminiContentPart {
-                text: Some(c),
-                inline_data: None,
-            }],
-        });
-        self
-    }
+    // pub fn user(mut self, content: impl Into<String>) -> Self {
+    //     let c = content.into();
+    //     debug!("GeminiCompletionBuilder: Adding user message: {}", c);
+    //     self.contents.push(GeminiContent {
+    //         role: "user".to_string(),
+    //         parts: vec![GeminiContentPart {
+    //             text: Some(c),
+    //             inline_data: None,
+    //         }],
+    //     });
+    //     self
+    // }
 
     pub fn user_with_image(mut self, text: impl Into<String>, image_path: impl AsRef<Path>) -> Result<Self> {
         let t = text.into();
@@ -334,11 +362,12 @@ impl GeminiCompletionBuilder {
         
         let request = GeminiRequest {
             contents: self.contents,
+            system_instruction: self.system_instruction.clone(),
             generation_config: Some(config),
             safety_settings: Some(GeminiClient::default_safety_settings()),
         };
 
-        debug!("Sending request to Gemini API");
+        debug!("Sending request to Gemini API with payload: {:#?}", request);
         let client = reqwest::Client::new();
         let response = client
             .post(&self.client.endpoint)
@@ -361,10 +390,13 @@ impl GeminiCompletionBuilder {
 
         // Parse response and extract text
         let response_json: serde_json::Value = serde_json::from_str(&response_text)?;
+        debug!("Parsed JSON response: {:#?}", response_json);
+
         let content = response_json["candidates"][0]["content"]["parts"][0]["text"]
             .as_str()
             .context("Failed to get text from response")?;
 
+        debug!("Extracted content: {}", content);
         Ok(content.to_string())
     }
 }

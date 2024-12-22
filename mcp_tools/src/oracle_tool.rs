@@ -197,12 +197,12 @@ async fn run_select_query(
                     let col_name = col_info.name().to_string();
                     
                     // Convert everything to string representation
-                    let val = match row.get::<_, Option<String>>(i + 1) {
+                    let val = match row.get::<_, Option<String>>(i) {
                         Ok(Some(s)) => Value::String(s),  // Got a string value
                         Ok(None) => Value::String("null".to_string()),  // NULL value
                         Err(_) => {
                             // Try getting as raw string representation for any type
-                            match row.get::<_, String>(i + 1) {
+                            match row.get::<_, String>(i) {
                                 Ok(s) => Value::String(s),
                                 Err(_) => Value::String("null".to_string())  // Fallback if conversion fails
                             }
