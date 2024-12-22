@@ -543,41 +543,49 @@ struct GetTagsByDateParams {
 }
 
 
-
+// DESCRIPTION MUST BE UNDER 1000 CHARACTERS
 // Create a function to build the tool information
 pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
             r#"Knowledge Graph Tool
-
 CRITICAL WORKFLOW REQUIREMENTS:
-1. ALWAYS START by running multiple search functions:
-   - get_recent_nodes to understand latest context
-   - get_top_tags for key themes
-   - search_nodes for relevant existing information
-   - get_most_connected to identify central concepts
 
-2. FOR EVERY USER INPUT:
-   - Run multiple search functions to gather ALL relevant context
-   - Cross-reference information across different nodes
-   - Look for connections between topics
-   - Verify consistency with existing knowledge
+ALWAYS START conversation with:
 
-3. BEFORE CREATING NEW NODES:
-   - Search extensively to avoid duplicates
-   - Find related nodes to connect to
-   - Gather context from multiple perspectives
+get_recent_nodes for latest context
+get_top_tags for key themes
+search_nodes for relevant info
+get_most_connected for core concepts
 
-4. AFTER ANY OPERATION:
-   - Verify changes with additional searches
-   - Look for opportunities to make new connections
-   - Check for related information to incorporate
 
-Purpose: Build and maintain comprehensive user context through aggressive information gathering and cross-referencing.
+FOR EVERY USER INPUT:
 
-Returns: Structured node data including metadata.
-NEVER respond without first gathering extensive context through multiple function calls."#
+Search all relevant context
+Cross-reference across nodes
+Find topic connections
+Verify knowledge consistency
+
+
+BEFORE NEW NODES:
+
+Search to avoid duplicates
+Find nodes to connect
+Gather multiple perspectives
+
+
+AFTER OPERATIONS:
+
+Verify changes
+Make new connections
+Check related info
+
+
+
+Purpose: Build comprehensive context through thorough information gathering.
+Returns: Structured node data with metadata.
+Always search before responding."#
         .into()),
         input_schema: json!({
             "type": "object",
