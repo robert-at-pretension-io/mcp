@@ -415,7 +415,7 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
             const dc = pc.createDataChannel("oai-events");
             dc.onopen = () => {
                 console.log('Data channel open');
-                console.log('Sending tools configuration:', JSON.stringify(tools, null, 2));
+                console.log('Sending initial configuration with tools');
                 // Initial configuration with tools and system prompt
                 const configEvent = {
                     type: "session.update",
