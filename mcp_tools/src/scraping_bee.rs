@@ -61,12 +61,12 @@ impl ScrapingBeeClient {
         }
     }
 
-    pub fn url(mut self, url: &str) -> Self {
+    pub fn url(&mut self, url: &str) -> &mut Self {
         self.url = Some(url.to_string());
         self
     }
 
-    pub fn render_js(mut self, enabled: bool) -> Self {
+    pub fn render_js(&mut self, enabled: bool) -> &mut Self {
         self.render_js = enabled;
         self
     }
