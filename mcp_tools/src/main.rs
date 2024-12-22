@@ -272,25 +272,35 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
 
     // Function to display tools info
     function displayTools(tools) {
+        console.log('DisplayTools received:', JSON.stringify(tools, null, 2));
+        
         const toolsInfo = tools.map(tool => {
+            console.log('Processing display for tool:', tool.name);
+            console.log('Tool parameters:', JSON.stringify(tool.parameters, null, 2));
+            
             const schema = tool.parameters || {};
+            console.log('Schema to process:', JSON.stringify(schema, null, 2));
+            
             let paramList = '';
             
-            // Handle our schema format
             if (schema.properties) {
+                console.log('Processing properties schema');
                 paramList = Object.entries(schema.properties)
                     .map(([key, value]) => {
+                        console.log('Processing property:', key, value);
                         const required = schema.required?.includes(key) ? '*' : '';
                         const desc = value.description ? ` - ${value.description}` : '';
                         return `  ${key}${required}: ${value.type}${desc}`;
                     })
                     .join('\n');
             } else if (schema.oneOf) {
-                // Handle oneOf schema structure
+                console.log('Processing oneOf schema');
                 paramList = schema.oneOf
                     .map((option, index) => {
+                        console.log('Processing option:', index, option);
                         const props = Object.entries(option.properties || {})
                             .map(([key, value]) => {
+                                console.log('Processing oneOf property:', key, value);
                                 const required = option.required?.includes(key) ? '*' : '';
                                 const desc = value.description ? ` - ${value.description}` : '';
                                 return `    ${key}${required}: ${value.type}${desc}`;
@@ -299,13 +309,17 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
                         return `  Option ${index + 1}:\n${props}`;
                     })
                     .join('\n');
+            } else {
+                console.log('No recognized schema structure found');
             }
             
-            return `Tool: ${tool.name}\nDescription: ${tool.description}\nParameters:\n${paramList}\n`;
+            const result = `Tool: ${tool.name}\nDescription: ${tool.description}\nParameters:\n${paramList}\n`;
+            console.log('Generated display:', result);
+            return result;
         }).join('\n---\n');
         
+        console.log('Final toolsInfo:', toolsInfo);
         toolsList.textContent = toolsInfo;
-        console.log('Displayed tools info:', toolsInfo); // Debug logging
     }
 
     // Function to add call to history
@@ -327,13 +341,23 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
             })
         });
         const toolsData = await toolsResponse.json();
-        const tools = toolsData.result.tools.map(tool => ({
-            type: "function",
-            name: tool.name,
-            description: tool.description || '',
-            parameters: tool.input_schema // Use the input_schema directly
-        }));
-        console.log('Transformed tools:', JSON.stringify(tools, null, 2)); // Debug logging
+        console.log('Raw tools response:', JSON.stringify(toolsData, null, 2));
+        console.log('Tools before transformation:', JSON.stringify(toolsData.result.tools, null, 2));
+        
+        const tools = toolsData.result.tools.map(tool => {
+            console.log('Processing tool:', tool.name);
+            console.log('Tool input_schema:', JSON.stringify(tool.input_schema, null, 2));
+            
+            const transformed = {
+                type: "function",
+                name: tool.name,
+                description: tool.description || '',
+                parameters: tool.input_schema
+            };
+            
+            console.log('Transformed tool:', JSON.stringify(transformed, null, 2));
+            return transformed;
+        });
 
         // Display available tools
         displayTools(tools);
@@ -365,6 +389,7 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
             const dc = pc.createDataChannel("oai-events");
             dc.onopen = () => {
                 console.log('Data channel open');
+                console.log('Sending tools configuration:', JSON.stringify(tools, null, 2));
                 // Initial configuration with system prompt
                 const configEvent = {
                     type: "session.update",
@@ -457,6 +482,8 @@ When you get information, don't mention it. Just use it to subtly inform the con
                         break;
                         
                     case "function.call":
+                        console.log('Function call event received:', JSON.stringify(data, null, 2));
+                        console.log('Function arguments:', data.function.arguments);
                         console.log('Executing function:', {
                             name: data.function.name,
                             call_id: data.function.call_id
