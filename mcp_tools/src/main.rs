@@ -316,8 +316,8 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
     <div id="responses">
         <h2>Assistant Responses</h2>
         <div class="filter-container">
-            <label for="filter-text">Filter out responses containing text (comma-separated):</label>
-            <input type="text" id="filter-text" class="filter-input" placeholder="Enter terms to filter out, separated by commas">
+            <label for="filter-text">Filter out responses containing text (comma-separated, default filters applied):</label>
+            <input type="text" id="filter-text" class="filter-input" value="delta,updated,created,speech,part" placeholder="Enter terms to filter out, separated by commas">
         </div>
         <div id="response-history"></div>
     </div>
@@ -535,8 +535,9 @@ When using information from the knowledge graph, incorporate it naturally withou
                 // Add response to UI
                 addResponse(data);
                 
-                // Log all non-delta events
-                if (!data.type.includes('delta')) {
+                // Log events except filtered ones
+                const defaultFilters = ['delta', 'updated', 'created', 'speech', 'part'];
+                if (!defaultFilters.some(term => data.type.toLowerCase().includes(term))) {
                     console.log('Event received:', {
                         type: data.type,
                         data: JSON.stringify(data, null, 2)
