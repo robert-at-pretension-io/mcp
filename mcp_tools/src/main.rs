@@ -274,18 +274,38 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
     function displayTools(tools) {
         const toolsInfo = tools.map(tool => {
             const schema = tool.parameters || {};
-            const properties = schema.properties || {};
-            const paramList = Object.entries(properties)
-                .map(([key, value]) => {
-                    const required = schema.required?.includes(key) ? '*' : '';
-                    return `  ${key}${required}: ${value.type}${value.description ? ` - ${value.description}` : ''}`;
-                })
-                .join('\n');
+            let paramList = '';
+            
+            // Handle our schema format
+            if (schema.properties) {
+                paramList = Object.entries(schema.properties)
+                    .map(([key, value]) => {
+                        const required = schema.required?.includes(key) ? '*' : '';
+                        const desc = value.description ? ` - ${value.description}` : '';
+                        return `  ${key}${required}: ${value.type}${desc}`;
+                    })
+                    .join('\n');
+            } else if (schema.oneOf) {
+                // Handle oneOf schema structure
+                paramList = schema.oneOf
+                    .map((option, index) => {
+                        const props = Object.entries(option.properties || {})
+                            .map(([key, value]) => {
+                                const required = option.required?.includes(key) ? '*' : '';
+                                const desc = value.description ? ` - ${value.description}` : '';
+                                return `    ${key}${required}: ${value.type}${desc}`;
+                            })
+                            .join('\n');
+                        return `  Option ${index + 1}:\n${props}`;
+                    })
+                    .join('\n');
+            }
             
             return `Tool: ${tool.name}\nDescription: ${tool.description}\nParameters:\n${paramList}\n`;
         }).join('\n---\n');
         
         toolsList.textContent = toolsInfo;
+        console.log('Displayed tools info:', toolsInfo); // Debug logging
     }
 
     // Function to add call to history
@@ -311,11 +331,7 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
             type: "function",
             name: tool.name,
             description: tool.description || '',
-            parameters: {
-                type: "object",
-                properties: tool.input_schema.properties || {},
-                required: tool.input_schema.required || []
-            }
+            parameters: tool.input_schema // Use the input_schema directly
         }));
         console.log('Transformed tools:', JSON.stringify(tools, null, 2)); // Debug logging
 
