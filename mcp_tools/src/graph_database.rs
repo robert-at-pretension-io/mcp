@@ -718,7 +718,7 @@ pub async fn handle_graph_tool_call(
 
     let action = params.arguments.get("action")
         .and_then(Value::as_str)
-        .ok_or_else(|| anyhow!("Missing or invalid 'action' field. Required fields: 'action' and 'params'.\nExample: {\"action\": \"get_top_tags\", \"params\": {\"limit\": 5}}"))?;
+        .ok_or_else(|| anyhow!(r#"Missing or invalid 'action' field. Required fields: 'action' and 'params'.\nExample: {{"action": "get_top_tags", "params": {{"limit": 5}} }}"#))?;
 
     let action_params = params.arguments.get("params")
         .ok_or_else(|| {
