@@ -503,7 +503,7 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
                     session: {
                         tools: tools,
                         tool_choice: "auto",
-                        modalities: ["text"],
+                        modalities: ["text", "audio"],
                         instructions: `You are a proactive assistant with access to tools. Create knowledge graph nodes for user information, preferences, problems, goals, experiences, skills, relationships and decisions. Use tools to search for relevant information and suggest resources. Keep the knowledge graph current by connecting new information to existing nodes.
 
 Key behaviors:
@@ -522,7 +522,7 @@ When using information from the knowledge graph, incorporate it naturally withou
                 const responseCreate = {
                     type: "response.create",
                     response: {
-                        modalities: ["text"],
+                        modalities: ["text", "audio"],
                         instructions: "I'm ready to help you. What would you like to do?"
                     }
                 };
