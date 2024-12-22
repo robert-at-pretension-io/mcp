@@ -239,8 +239,9 @@ fn initialize_tools() -> Result<ToolRegistry> {
     // Create tool instances
     let tools: Vec<Arc<dyn Tool>> = vec![
         Arc::new(GraphTool::new(graph_manager)),
-        Arc::new(BraveSearchTool::new(brave_api_key)),
-        Arc::new(ScrapingBeeTool::new(scrapingbee_api_key)),
+        // Temporarily disabled tools:
+        // Arc::new(BraveSearchTool::new(brave_api_key)),
+        // Arc::new(ScrapingBeeTool::new(scrapingbee_api_key)),
         // Add more tools here
     ];
 
