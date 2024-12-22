@@ -76,8 +76,7 @@ impl GraphTool {
     }
 }
 
-#[async_trait]
-const MAX_DESCRIPTION_LENGTH: usize = 1024;
+pub const MAX_DESCRIPTION_LENGTH: usize = 1024;
 
 fn validate_tool_description(name: &str, description: &Option<String>) {
     if let Some(desc) = description {
@@ -90,18 +89,8 @@ fn validate_tool_description(name: &str, description: &Option<String>) {
     }
 }
 
-const MAX_DESCRIPTION_LENGTH: usize = 1024;
 
-fn validate_tool_description(name: &str, description: &Option<String>) {
-    if let Some(desc) = description {
-        if desc.len() > MAX_DESCRIPTION_LENGTH {
-            panic!(
-                "Tool '{}' description exceeds maximum length of {} characters (current length: {})",
-                name, MAX_DESCRIPTION_LENGTH, desc.len()
-            );
-        }
-    }
-}
+
 
 #[async_trait]
 impl Tool for GraphTool {
@@ -194,7 +183,7 @@ struct SessionQuery {
 // Handler functions
 async fn handle_tools_call(
     Json(payload): Json<ToolCallRequest>,
-    _state: Arc<AppState>,
+    state: Arc<AppState>,
 ) -> impl IntoResponse {
     debug!("Incoming tool call: {}", serde_json::to_string_pretty(&payload).unwrap_or_default());
 
