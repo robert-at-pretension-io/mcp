@@ -12,15 +12,15 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use shared_protocol_objects::{
-    CallToolParams, JsonRpcError, ListToolsResult, ToolInfo,
+    CallToolParams, ListToolsResult, ToolInfo,
     success_response, error_response, JsonRpcResponse,
     INTERNAL_ERROR, INVALID_PARAMS,
 };
 
-use mcp_tools::graph_database::{graph_tool_info, handle_graph_tool_call, GraphManager, DEFAULT_GRAPH_DIR};
+use mcp_tools::graph_database::{graph_tool_info, handle_graph_tool_call, GraphManager};
 use mcp_tools::brave_search::{search_tool_info, BraveSearchClient};
 use mcp_tools::scraping_bee::{scraping_tool_info, ScrapingBeeClient};
 
@@ -90,6 +90,20 @@ fn validate_tool_description(name: &str, description: &Option<String>) {
     }
 }
 
+const MAX_DESCRIPTION_LENGTH: usize = 1024;
+
+fn validate_tool_description(name: &str, description: &Option<String>) {
+    if let Some(desc) = description {
+        if desc.len() > MAX_DESCRIPTION_LENGTH {
+            panic!(
+                "Tool '{}' description exceeds maximum length of {} characters (current length: {})",
+                name, MAX_DESCRIPTION_LENGTH, desc.len()
+            );
+        }
+    }
+}
+
+#[async_trait]
 impl Tool for GraphTool {
     fn info(&self) -> ToolInfo {
         let info = graph_tool_info();
@@ -117,6 +131,7 @@ impl BraveSearchTool {
 }
 
 #[async_trait]
+#[async_trait]
 impl Tool for BraveSearchTool {
     fn info(&self) -> ToolInfo {
         let info = search_tool_info();
@@ -124,9 +139,8 @@ impl Tool for BraveSearchTool {
         info
     }
 
-    async fn execute(&self, params: CallToolParams) -> Result<JsonRpcResponse> {
-        // Implementation here - will be added later
-        todo!()
+    async fn execute(&self, _params: CallToolParams) -> Result<JsonRpcResponse> {
+        todo!("BraveSearchTool execute not yet implemented")
     }
 }
 
@@ -144,6 +158,7 @@ impl ScrapingBeeTool {
 }
 
 #[async_trait]
+#[async_trait]
 impl Tool for ScrapingBeeTool {
     fn info(&self) -> ToolInfo {
         let info = scraping_tool_info();
@@ -151,9 +166,8 @@ impl Tool for ScrapingBeeTool {
         info
     }
 
-    async fn execute(&self, params: CallToolParams) -> Result<JsonRpcResponse> {
-        // Implementation here - will be added later
-        todo!()
+    async fn execute(&self, _params: CallToolParams) -> Result<JsonRpcResponse> {
+        todo!("ScrapingBeeTool execute not yet implemented") 
     }
 }
 
@@ -180,7 +194,7 @@ struct SessionQuery {
 // Handler functions
 async fn handle_tools_call(
     Json(payload): Json<ToolCallRequest>,
-    state: Arc<AppState>,
+    _state: Arc<AppState>,
 ) -> impl IntoResponse {
     debug!("Incoming tool call: {}", serde_json::to_string_pretty(&payload).unwrap_or_default());
 
@@ -263,8 +277,8 @@ fn initialize_tools() -> Result<ToolRegistry> {
             .to_string())
     ));
     
-    let brave_api_key = std::env::var("BRAVE_API_KEY")?;
-    let scrapingbee_api_key = std::env::var("SCRAPINGBEE_API_KEY")?;
+    let _brave_api_key = std::env::var("BRAVE_API_KEY")?;
+    let _scrapingbee_api_key = std::env::var("SCRAPINGBEE_API_KEY")?;
     
     // Create tool instances
     let tools: Vec<Arc<dyn Tool>> = vec![
