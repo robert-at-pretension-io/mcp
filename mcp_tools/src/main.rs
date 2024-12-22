@@ -200,8 +200,7 @@ impl Tool for ScrapingBeeTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing or invalid 'url' parameter"))?;
 
-        let mut client = self.client.as_ref().clone();
-        let scraping_response = client
+        let scraping_response = self.client.as_ref()
             .url(url)
             .render_js(true)
             .execute()

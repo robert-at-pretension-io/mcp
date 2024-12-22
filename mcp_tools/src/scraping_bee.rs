@@ -72,7 +72,7 @@ impl ScrapingBeeClient {
         self
     }
 
-    pub async fn execute(self) -> Result<ScrapingBeeResponse> {
+    pub async fn execute(&self) -> Result<ScrapingBeeResponse> {
         info!("Starting ScrapingBee request execution");
         let url = self.url.ok_or_else(|| {
             error!("URL not set for ScrapingBee request");
