@@ -120,7 +120,6 @@ impl BraveSearchTool {
 }
 
 #[async_trait]
-#[async_trait]
 impl Tool for BraveSearchTool {
     fn info(&self) -> ToolInfo {
         let info = search_tool_info();
@@ -133,20 +132,27 @@ impl Tool for BraveSearchTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing or invalid 'query' parameter"))?;
 
-        let search_response = self.client.search(query).await?;
+        let search_response = self.client.search(query).await
+            .map_err(|e| anyhow::anyhow!("Search request failed: {}", e))?;
         
         let formatted_results = if let Some(web) = search_response.web {
-            web.results.iter()
-                .map(|result| {
-                    format!(
-                        "Title: {}\nURL: {}\nDescription: {}\n",
-                        result.title,
-                        result.url,
-                        result.description.as_deref().unwrap_or("No description available")
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n---\n")
+            if web.results.is_empty() {
+                "No results found for this query.".to_string()
+            } else {
+                web.results.iter()
+                    .map(|result| {
+                        format!(
+                            "Title: {}\nURL: {}\nDescription: {}\nLanguage: {}\nAge: {}\n",
+                            result.title,
+                            result.url,
+                            result.description.as_deref().unwrap_or("No description available"),
+                            result.language.as_deref().unwrap_or("unknown"),
+                            result.page_age.as_deref().unwrap_or("unknown")
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n---\n")
+            }
         } else {
             "No web results found".to_string()
         };
@@ -181,7 +187,6 @@ impl ScrapingBeeTool {
 }
 
 #[async_trait]
-#[async_trait]
 impl Tool for ScrapingBeeTool {
     fn info(&self) -> ToolInfo {
         let info = scraping_tool_info();
@@ -198,10 +203,21 @@ impl Tool for ScrapingBeeTool {
             .url(url)
             .render_js(true)
             .execute()
-            .await?;
+            .await
+            .map_err(|e| anyhow::anyhow!("Scraping request failed: {}", e))?;
 
         let content = match scraping_response {
-            ScrapingBeeResponse::Text(text) => text,
+            ScrapingBeeResponse::Text(text) => {
+                if text.trim().is_empty() {
+                    return Err(anyhow::anyhow!("Received empty response from URL"));
+                }
+                // Truncate very long responses
+                if text.len() > 50000 {
+                    format!("{}... (truncated {} characters)", &text[..50000], text.len() - 50000)
+                } else {
+                    text
+                }
+            },
             ScrapingBeeResponse::Binary(_) => return Err(anyhow::anyhow!("Received binary response, expected text")),
         };
 
