@@ -653,11 +653,15 @@ Remember: Every interaction is an opportunity to enrich the knowledge graph. Be 
                                 }
                             }));
 
-                            // Request a response from the AI
+                            // Request a response from the AI with instructions to run more functions if needed
                             dc.send(JSON.stringify({
                                 type: "response.create",
                                 response: {
-                                    modalities: ["text", "audio"]
+                                    modalities: ["text", "audio"],
+                                    instructions: `Based on the function call result I just shared:
+1. First analyze if there are opportunities to gather more information using other function calls
+2. If yes, make those function calls to build a more complete understanding
+3. Only then provide your final response incorporating all the gathered information`
                                 }
                             }));
                         } catch(err) {
