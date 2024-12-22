@@ -327,15 +327,14 @@ fn initialize_tools() -> Result<ToolRegistry> {
             .to_string())
     ));
     
-    let _brave_api_key = std::env::var("BRAVE_API_KEY")?;
-    let _scrapingbee_api_key = std::env::var("SCRAPINGBEE_API_KEY")?;
+    let brave_api_key = std::env::var("BRAVE_API_KEY")?;
+    let scrapingbee_api_key = std::env::var("SCRAPINGBEE_API_KEY")?;
     
     // Create tool instances
     let tools: Vec<Arc<dyn Tool>> = vec![
         Arc::new(GraphTool::new(graph_manager)),
-        // Temporarily disabled tools:
-        // Arc::new(BraveSearchTool::new(brave_api_key)),
-        // Arc::new(ScrapingBeeTool::new(scrapingbee_api_key)),
+        Arc::new(BraveSearchTool::new(brave_api_key)),
+        Arc::new(ScrapingBeeTool::new(scrapingbee_api_key)),
         // Add more tools here
     ];
 
