@@ -556,28 +556,25 @@ pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
-            r#"**⚠️ MANDATORY: SEARCH GRAPH BEFORE EVERY SINGLE RESPONSE ⚠️**
+            r#"Knowledge Graph Management System
 
-            Knowledge graph tool for maintaining complete user context. Make sure at the beginning of each chat to run the following actions to become oriented:
-            1. get_top_tags
-            2. get_recent_nodes
+            Protocol Requirements:
+            1. Query graph before each response
+            2. Initialize with:
+               - get_top_tags
+               - get_recent_nodes
+            3. Maintain graph integrity
 
-            **CORE PRINCIPLE: NO RESPONSE WITHOUT GRAPH TOOL USAGE**
-
-
-            **Use this tool to:**
-            - GROUND every single response in history
-              Example: search_nodes "previous conversation about Python"
-            - VERIFY all assumptions about user
-              Example: get_node "user_preferences"
-            - MAINTAIN perfect context awareness
-              Example: get_recent_nodes to review latest interactions
-            - ENSURE knowledge consistency
-              Example: search_nodes to cross-reference facts
-            - PREVENT context loss
-              Example: create_node to store new information
-            - BUILD comprehensive user model
-              Example: connect_nodes to link preferences
+            Core Functions:
+            1. Context Management
+               - Query history: search_nodes "context"
+               - Verify facts: get_node "data"
+               - Track state: get_recent_nodes
+            
+            2. Knowledge Integration
+               - Cross-reference: search_nodes
+               - Store new data: create_node
+               - Link concepts: connect_nodes
             
             **Available Actions:**
             - create_root: Create the first root node
