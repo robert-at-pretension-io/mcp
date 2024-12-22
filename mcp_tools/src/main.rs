@@ -217,6 +217,14 @@ async fn get_ephemeral_token(
     Json(result)
 }
 
+// Handler for client-side logs
+async fn handle_log(Json(payload): Json<Value>) -> impl IntoResponse {
+    if let Some(msg) = payload.get("message") {
+        info!("Client log: {}", msg);
+    }
+    Json(json!({"status": "ok"}))
+}
+
 async fn index_page() -> Html<&'static str> {
     Html(INDEX_HTML)
 }
@@ -266,6 +274,24 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
     </div>
     <button id="btn-start">Start RTC</button>
     <script>
+    // Override console.log to send logs to server
+    const originalLog = console.log;
+    console.log = function(...args) {
+        // Call original console.log
+        originalLog.apply(console, args);
+        
+        // Send to server
+        fetch('/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: args.map(arg => 
+                    typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+                ).join(' ')
+            })
+        }).catch(err => originalLog('Error sending log:', err));
+    };
+
     const toolsList = document.getElementById('tools-list');
     const callHistory = document.getElementById('call-history');
     const btn = document.getElementById('btn-start');
@@ -612,7 +638,8 @@ async fn main() -> Result<()> {
         .route("/tools/call", post({
             let st = state.clone();
             move |body| handle_tools_call(body, st)
-        }));
+        }))
+        .route("/log", post(handle_log));
 
     // Start server
     let addr = "0.0.0.0:3000";
