@@ -683,10 +683,27 @@ Remember: Every interaction is an opportunity to enrich the knowledge graph. Be 
                                 type: "response.create",
                                 response: {
                                     modalities: ["text", "audio"],
-                                    instructions: `Based on the function call result I just shared:
-1. First analyze if there are opportunities to gather more information using other function calls
-2. If yes, make those function calls to build a more complete understanding
-3. Only then provide your final response incorporating all the gathered information`
+                                    instructions: `CRITICAL: You MUST follow this process with the function call result:
+
+1. ALWAYS run multiple additional search functions to gather comprehensive context:
+   - search_nodes for related content
+   - get_recent_nodes to check latest context
+   - get_nodes_by_tag for thematic connections
+   - get_most_connected to find key relationships
+
+2. For each piece of information discovered:
+   - Run more targeted searches to deep-dive into specific aspects
+   - Look for connections to other topics
+   - Verify consistency with existing knowledge
+   - Identify gaps that need exploration
+
+3. Only after exhaustively gathering context through multiple rounds of function calls:
+   - Synthesize all discovered information
+   - Identify any remaining gaps
+   - Make final function calls if needed
+   - Provide comprehensive response
+
+NEVER give a final response without first making multiple rounds of function calls to gather extensive context.`
                                 }
                             }));
                         } catch(err) {

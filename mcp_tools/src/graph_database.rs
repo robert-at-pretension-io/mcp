@@ -550,23 +550,34 @@ pub fn graph_tool_info() -> ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
             r#"Knowledge Graph Tool
-IT IS IMPERATIVE THAT YOU search recent nodes and top tags at the beginning of the conversation to ground the conversation.
 
-Purpose: Maintain complete user context and conversation history.
-Core Functions:
+CRITICAL WORKFLOW REQUIREMENTS:
+1. ALWAYS START by running multiple search functions:
+   - get_recent_nodes to understand latest context
+   - get_top_tags for key themes
+   - search_nodes for relevant existing information
+   - get_most_connected to identify central concepts
 
-Query and verify historical context
-Store and link new information
+2. FOR EVERY USER INPUT:
+   - Run multiple search functions to gather ALL relevant context
+   - Cross-reference information across different nodes
+   - Look for connections between topics
+   - Verify consistency with existing knowledge
 
-Key Actions:
+3. BEFORE CREATING NEW NODES:
+   - Search extensively to avoid duplicates
+   - Find related nodes to connect to
+   - Gather context from multiple perspectives
 
-Create/update/delete nodes
-Connect related concepts
-Search and retrieve content
-Analyze graph patterns
+4. AFTER ANY OPERATION:
+   - Verify changes with additional searches
+   - Look for opportunities to make new connections
+   - Check for related information to incorporate
+
+Purpose: Build and maintain comprehensive user context through aggressive information gathering and cross-referencing.
 
 Returns: Structured node data including metadata.
-Use continuously throughout conversation."#
+NEVER respond without first gathering extensive context through multiple function calls."#
         .into()),
         input_schema: json!({
             "type": "object",
