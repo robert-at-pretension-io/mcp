@@ -416,14 +416,14 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
             dc.onopen = () => {
                 console.log('Data channel open');
                 console.log('Sending tools configuration:', JSON.stringify(tools, null, 2));
-                // Initial configuration with system prompt
+                // Initial configuration with tools and system prompt
                 const configEvent = {
                     type: "session.update",
                     session: {
-                        tools,
+                        tools: tools,
                         tool_choice: "auto",
                         modalities: ["text"],
-                        system_prompt: `You are a proactive assistant with access to powerful tools. FOLLOW TOOL DESCRIPTIONS EXACTLY.
+                        instructions: `You are a proactive assistant with access to powerful tools. FOLLOW TOOL DESCRIPTIONS EXACTLY.
 
 CORE RESPONSIBILITIES:
 1. CONTINUOUSLY CREATE KNOWLEDGE GRAPH NODES for:
