@@ -271,9 +271,15 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
 
     // Function to display tools info
     function displayTools(tools) {
-        const toolsInfo = tools.map(tool => 
-            `Tool: ${tool.name}\nDescription: ${tool.description}\nParameters: ${JSON.stringify(tool.parameters, null, 2)}\n`
-        ).join('\n---\n');
+        const toolsInfo = tools.map(tool => {
+            const schema = tool.parameters || {};
+            const properties = schema.properties || {};
+            const paramDesc = Object.entries(properties)
+                .map(([key, value]) => `  ${key}: ${value.type}${value.description ? ` - ${value.description}` : ''}`)
+                .join('\n');
+            
+            return `Tool: ${tool.name}\nDescription: ${tool.description}\nParameters:\n${paramDesc}\n`;
+        }).join('\n---\n');
         toolsList.textContent = toolsInfo;
     }
 
@@ -299,9 +305,10 @@ const INDEX_HTML: &str = r#"<!DOCTYPE html>
         const tools = toolsData.result.tools.map(tool => ({
             type: "function",
             name: tool.name,
-            description: tool.description,
+            description: tool.description || '',
             parameters: tool.input_schema
         }));
+        console.log('Available tools:', tools); // Debug logging
 
         // Display available tools
         displayTools(tools);
