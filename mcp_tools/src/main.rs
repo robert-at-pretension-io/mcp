@@ -261,7 +261,7 @@ struct SessionQuery {
 // Handler functions
 async fn handle_tools_call(
     Json(payload): Json<ToolCallRequest>,
-    _state: Arc<AppState>,
+    state: Arc<AppState>,
 ) -> impl IntoResponse {
     debug!("Incoming tool call: {}", serde_json::to_string_pretty(&payload).unwrap_or_default());
 
