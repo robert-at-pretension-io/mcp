@@ -232,18 +232,16 @@ async fn index_page() -> Html<&'static str> {
 // Initialize tools and create app state
 fn initialize_tools() -> Result<ToolRegistry> {
     // Load configuration and create tools
-    let graph_dir = std::env::var("KNOWLEDGE_GRAPH_DIR").unwrap_or_else(|_| {
-        dirs::home_dir()
-            .expect("Could not find home directory")
-            .to_str()
-            .expect("Invalid home directory path")
-            .to_string()
-    });
-    let graph_path = std::path::PathBuf::from(&graph_dir)
-        .join("knowledge_graph.json");
+    let home_dir = dirs::home_dir()
+        .expect("Could not find home directory");
+    let graph_path = home_dir.join("knowledge_graph.json");
+    
+    debug!("Using knowledge graph at: {}", graph_path.display());
     
     let graph_manager = Arc::new(Mutex::new(
-        GraphManager::new(graph_path.to_str().unwrap().to_string())
+        GraphManager::new(graph_path.to_str()
+            .expect("Invalid path to knowledge graph")
+            .to_string())
     ));
     
     let brave_api_key = std::env::var("BRAVE_API_KEY")?;

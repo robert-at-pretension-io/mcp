@@ -107,22 +107,15 @@ impl GraphManager {
     }
 
     pub fn new(filename: String) -> Self {
-        // Get graph directory from env var or use default
-        let graph_dir = std::env::var("KNOWLEDGE_GRAPH_DIR")
-            .unwrap_or_else(|_| DEFAULT_GRAPH_DIR.to_string());
-
-        // Build absolute path for graph file
-        let path = std::path::PathBuf::from(graph_dir.clone()).join(filename);
-
-        // Create directory if it doesn't exist, ignoring "already exists" error
-        if let Err(e) = std::fs::create_dir_all(&graph_dir) {
-            if e.kind() != std::io::ErrorKind::AlreadyExists {
-                panic!("Failed to create knowledge graph directory: {}", e);
-            }
-        }
+        debug!("Creating new GraphManager with filename: {}", filename);
+        
+        // Use the filename directly since it should already be a full path
+        let path = std::path::PathBuf::from(filename);
+        debug!("Using graph path: {}", path.display());
 
         // Try loading existing graph first
         let graph = if path.exists() {
+            debug!("Found existing graph file at {}", path.display());
             debug!("Found existing graph file at {}", path.display());
             let serializable = match fs::read_to_string(&path) {
                 Ok(data) => {
