@@ -232,8 +232,13 @@ async fn index_page() -> Html<&'static str> {
 // Initialize tools and create app state
 fn initialize_tools() -> Result<ToolRegistry> {
     // Load configuration and create tools
-    let graph_dir = std::env::var("KNOWLEDGE_GRAPH_DIR")
-        .unwrap_or_else(|_| DEFAULT_GRAPH_DIR.to_string());
+    let graph_dir = std::env::var("KNOWLEDGE_GRAPH_DIR").unwrap_or_else(|_| {
+        dirs::home_dir()
+            .expect("Could not find home directory")
+            .to_str()
+            .expect("Invalid home directory path")
+            .to_string()
+    });
     let graph_path = std::path::PathBuf::from(&graph_dir)
         .join("knowledge_graph.json");
     
