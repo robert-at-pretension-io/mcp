@@ -145,7 +145,7 @@ pub struct AppState {
 }
 
 // Request/Response structures
-#[derive(Deserialize, Debug)]
+#[derive(Serialize,Deserialize, Debug)]
 pub struct ToolCallRequest {
     pub jsonrpc: String,
     pub id: Option<Value>,
