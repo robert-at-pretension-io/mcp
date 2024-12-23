@@ -1,14 +1,15 @@
 use anyhow::Result;
-use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 use std::env;
 use mcp_host::streaming::parse_sse_stream;
-mod mcp_host;
+use mcp_host::ai_client::StreamEvent;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Initialize logging
+    env_logger::init();
     let api_key = env::var("ANTHROPIC_API_KEY")?;
     let client = Client::new();
 
@@ -28,22 +29,22 @@ async fn main() -> Result<()> {
         .await?;
 
     // Convert response to event stream
-    let event_stream = response.bytes_stream().eventsource();
+    let event_stream = response.bytes_stream();
     let mut stream = parse_sse_stream(event_stream);
 
     // Process the stream
     while let Some(event) = stream.next().await {
         match event {
             Ok(event) => match event {
-                mcp_host::ai_client::StreamEvent::ContentDelta { text, .. } => {
+                StreamEvent::ContentDelta { text, .. } => {
                     print!("{}", text);
                     std::io::Write::flush(&mut std::io::stdout())?;
                 }
-                mcp_host::ai_client::StreamEvent::Error { error_type, message } => {
+                StreamEvent::Error { error_type, message } => {
                     eprintln!("Error {}: {}", error_type, message);
                     break;
                 }
-                mcp_host::ai_client::StreamEvent::MessageStop => {
+                StreamEvent::MessageStop => {
                     println!("\n[Message Complete]");
                     break;
                 }
