@@ -5,6 +5,7 @@ use reqwest::Client;
 use serde_json::json;
 use std::env;
 use mcp_host::streaming::parse_sse_stream;
+mod mcp_host;
 
 #[tokio::main]
 async fn main() -> Result<()> {
