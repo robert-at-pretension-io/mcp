@@ -74,7 +74,7 @@ impl ScrapingBeeClient {
 
     pub async fn execute(&self) -> Result<ScrapingBeeResponse> {
         info!("Starting ScrapingBee request execution");
-        let url = self.url.ok_or_else(|| {
+        let url = self.url.as_ref().ok_or_else(|| {
             error!("URL not set for ScrapingBee request");
             anyhow!("URL not set")
         })?;
@@ -83,7 +83,7 @@ impl ScrapingBeeClient {
         debug!("Request parameters: render_js={}", self.render_js);
 
         let request_body = ScrapingBeeRequest {
-            url: url.clone(),
+            url: url.to_string(),
             render_js: self.render_js,
         };
 

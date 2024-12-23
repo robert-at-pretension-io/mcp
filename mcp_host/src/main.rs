@@ -616,7 +616,7 @@ When you get information, don't mention it. Just use it to subtly inform the con
         // let client = GeminiClient::new(api_key, model_name);
         // let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
-        let model_name = "gpt-4o-mini".to_string();
+        let model_name = "gpt-4o".to_string();
         info!("Initializing OpenAI client with model: {}", model_name);
 
         // Retrieve the OpenAI API key from an environment variable
@@ -628,52 +628,6 @@ When you get information, don't mention it. Just use it to subtly inform the con
         let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
 
-        // Initialize the appropriate AI client based on provider
-        // let ai_client = match ai_provider.as_str() {
-        //     "openai" => {
-        //         if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
-        //             info!("Initializing OpenAI client with model: {}", model_name);
-        //             let client = OpenAIClient::new(api_key.clone(), model_name);
-        //             match tokio::time::timeout(
-        //                 std::time::Duration::from_secs(10),
-        //                 client.builder()
-        //                     .system("Test message".to_string())
-        //                     .user("Echo test".to_string())
-        //                     .execute()
-        //             ).await {
-        //                 Ok(Ok(_)) => {
-        //                     info!("Successfully validated OpenAI API key");
-        //                     Some(Box::new(client) as Box<dyn AIClient>)
-        //                 }
-        //                 Ok(Err(e)) => {
-        //                     info!("Warning: OpenAI API key validation failed: {}", e);
-        //                     Some(Box::new(client) as Box<dyn AIClient>)
-        //                 }
-        //                 Err(_) => {
-        //                     info!("Warning: OpenAI API key validation timed out");
-        //                     Some(Box::new(client) as Box<dyn AIClient>)
-        //                 }
-        //             }
-        //         } else {
-        //             info!("OPENAI_API_KEY not found in environment");
-        //             None
-        //         }
-        //     }
-        //     "gemini" => {
-        //         if let Ok(api_key) = std::env::var("GEMINI_API_KEY") {
-        //             info!("Initializing Gemini client with model: {}", model_name);
-        //             let client = GeminiClient::new(api_key, model_name);
-        //             Some(Box::new(client) as Box<dyn AIClient>)
-        //         } else {
-        //             info!("GEMINI_API_KEY not found in environment");
-        //             None
-        //         }
-        //     }
-        //     _ => {
-        //         info!("Unsupported AI provider: {}. Using OpenAI as fallback.", ai_provider);
-        //         None
-        //     }
-        // };
 
         if ai_client.is_none() {
             info!("No AI client configured. Set MCP_AI_PROVIDER and corresponding API key (OPENAI_API_KEY or GEMINI_API_KEY)");
