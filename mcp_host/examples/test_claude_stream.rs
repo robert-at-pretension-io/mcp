@@ -3,8 +3,10 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 use std::env;
-use mcp_host::streaming::parse_sse_stream;
-use mcp_host::ai_client::StreamEvent;
+use crate::streaming::parse_sse_stream;
+use crate::ai_client::StreamEvent;
+
+use mcp_host as crate;
 
 #[tokio::main]
 async fn main() -> Result<()> {
