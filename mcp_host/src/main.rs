@@ -1288,11 +1288,7 @@ async fn main() -> Result<()> {
         
         let host = Arc::new(host);
         let app_state = web_interface::WebAppState::new(Arc::clone(&host));
-        let app = Router::new()
-            .route("/", axum::routing::get(web_interface::root))
-            .route("/ask", axum::routing::post(web_interface::ask))
-            .route("/sse/:session_id", axum::routing::get(web_interface::sse_handler))
-            .with_state(app_state)
+        let app = web_interface::create_router(app_state)
             .layer(TraceLayer::new_for_http());
 
         let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
