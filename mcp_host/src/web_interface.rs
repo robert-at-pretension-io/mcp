@@ -130,6 +130,8 @@ document.getElementById('askForm').addEventListener('submit', function(evt) {
 
     eventSource.onopen = function(e) {
       console.log('SSE connection opened');
+      console.log('Connection readyState:', eventSource.readyState);
+      streamArea.innerHTML = "<em style='color:green;'>Connected successfully...</em><br>";
     };
 
     eventSource.onmessage = function(e) {
@@ -145,9 +147,26 @@ document.getElementById('askForm').addEventListener('submit', function(evt) {
 
     eventSource.onerror = function(e) {
       console.error('SSE error occurred:', e);
-      streamArea.innerHTML += "<br><strong style='color:red;'>[Stream error occurred]</strong>";
+      // Log additional error details if available
+      if (e.target.readyState === EventSource.CLOSED) {
+        console.error('SSE connection closed unexpectedly');
+      } else if (e.target.readyState === EventSource.CONNECTING) {
+        console.error('SSE connection attempting to reconnect');
+      }
+      
+      // Add more detailed error message to the stream area
+      streamArea.innerHTML += "<br><strong style='color:red;'>[Stream error: Connection interrupted. Please try again.]</strong>";
+      
+      // Close the connection and clean up
       eventSource.close();
       console.log('Closed SSE connection due to error');
+      
+      // Optionally attempt to reconnect after a delay
+      setTimeout(() => {
+        console.log('Attempting to reconnect...');
+        streamArea.innerHTML += "<br><em>Attempting to reconnect...</em>";
+        // Trigger form resubmission or other recovery logic here
+      }, 3000);
     };
   }).catch(err => {
     console.error('Request failed:', err);
