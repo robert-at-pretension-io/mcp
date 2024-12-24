@@ -39,13 +39,14 @@ struct ErrorContent {
 
 pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<StreamEvent>> + Send>>
 where
-    S: Stream<Item = Result<String>> + Send + 'static,
+    S: Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 {
     Box::pin(stream.filter_map(|line_result| async move {
         match line_result {
             Ok(line) => {
-                if line.starts_with("data: ") {
-                    let data = line.trim_start_matches("data: ");
+                if let Ok(line) = String::from_utf8(line?.to_vec()) {
+                    if line.starts_with("data: ") {
+                        let data = line.trim_start_matches("data: ");
                     match serde_json::from_str::<StreamingMessage>(data) {
                         Ok(msg) => Some(parse_streaming_message(msg)),
                         Err(e) => Some(Err(anyhow!("Failed to parse SSE message: {}", e))),
