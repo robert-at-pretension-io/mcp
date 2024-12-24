@@ -1,33 +1,36 @@
 use axum::{
-    extract::{Form, State},
-    response::{Html, IntoResponse, Sse},
+    extract::{Form, Path, State},
+    response::{Html, IntoResponse, Sse, sse::Event},
     http::StatusCode,
     Json, Router,
 };
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
+    convert::Infallible,
 };
 use uuid::Uuid;
 use anyhow::Result;
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
+use serde::Deserialize;
 use crate::{
     ai_client::{AIClient, StreamResult},
     conversation_state::ConversationState,
     shared_protocol_objects::Role,
+    MCPHost,
 };
 
 #[derive(Clone)]
 pub struct WebAppState {
     pub sessions: Arc<Mutex<HashMap<Uuid, ConversationState>>>,
-    pub ai_client: Arc<dyn AIClient + Send + Sync>,
+    pub host: Arc<MCPHost>,
 }
 
 impl WebAppState {
-    pub fn new(ai_client: Arc<dyn AIClient + Send + Sync>) -> Self {
+    pub fn new(host: Arc<MCPHost>) -> Self {
         WebAppState {
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            ai_client,
+            host,
         }
     }
 }
@@ -162,33 +165,31 @@ pub async fn ask(
 
 pub async fn sse_handler(
     State(app_state): State<WebAppState>,
-    axum::extract::Path(session_id): axum::extract::Path<Uuid>,
-) -> Result<Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>, (StatusCode, String)> {
-    let mut session_guard = app_state.sessions.lock().unwrap();
-    let conversation = match session_guard.get_mut(&session_id) {
-        Some(conv) => conv.clone(),
-        None => {
-            return Err((StatusCode::BAD_REQUEST, "Session not found".to_string()));
-        }
+    Path(session_id): Path<Uuid>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
+    let mut sessions = app_state.sessions.lock().unwrap();
+    let state = match sessions.get_mut(&session_id) {
+        Some(conv) => conv,
+        None => return Err((StatusCode::BAD_REQUEST, "Session not found".to_string())),
     };
 
-    let mut builder = app_state.ai_client.raw_builder().streaming(true);
+    // Get the last user message from the conversation
+    let last_user_msg = state.messages.iter()
+        .rev()
+        .find(|msg| matches!(msg.role, Role::User))
+        .map(|msg| msg.content.clone())
+        .unwrap_or_default();
 
-    for msg in &conversation.messages {
-        match msg.role {
-            Role::System => { builder = builder.system(msg.content.clone()); },
-            Role::User => { builder = builder.user(msg.content.clone()); },
-            Role::Assistant => { builder = builder.assistant(msg.content.clone()); },
+    // Process the message using the host's unified logic
+    match app_state.host.process_user_message(state, "default", &last_user_msg).await {
+        Ok(final_response) => {
+            let stream = futures::stream::once(async move {
+                Ok(Event::default().data(final_response))
+            });
+            Ok(Sse::new(stream))
         }
-    }
-
-    match builder.execute_streaming().await {
-        Ok(stream_result) => {
-            let sse_stream = stream_result_to_sse(stream_result);
-            Ok(Sse::new(sse_stream))
-        }
-        Err(err) => {
-            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("AI error: {}", err)))
+        Err(e) => {
+            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("AI error: {}", e)))
         }
     }
 }

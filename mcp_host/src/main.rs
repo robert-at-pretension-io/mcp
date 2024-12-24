@@ -1297,10 +1297,8 @@ async fn main() -> Result<()> {
     if args.len() > 1 && args[1] == "web" {
         info!("Starting web interface");
         
-        let ai_client = host.ai_client.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No AI client configured"))?;
-
-        let app_state = web_interface::WebAppState::new(Arc::new(ai_client));
+        let host = Arc::new(host);
+        let app_state = web_interface::WebAppState::new(Arc::clone(&host));
         let app = Router::new()
             .route("/", axum::routing::get(web_interface::root))
             .route("/ask", axum::routing::post(web_interface::ask))
