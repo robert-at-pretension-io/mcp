@@ -41,6 +41,11 @@ impl ToolChainLibrary {
         .join("\n---\n\n")
     }
 }
+mod ai_client;
+mod anthropic;
+mod gemini;
+mod streaming;
+
 use log::{info,warn};
 use tokio::time::Duration;
 
