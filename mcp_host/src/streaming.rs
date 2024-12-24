@@ -66,22 +66,9 @@ pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<Stream
 
                                 // Parse all messages uniformly
 
-                                match serde_json::from_str::<StreamingMessage>(data) {
-                                    Ok(msg) => {
-                                        log::debug!("[SSE] Successfully parsed message: {:?}", msg);
-                                        Some(parse_streaming_message(msg))
-                                    }
-                                    Err(e) => {
-                                        log::error!("Failed to parse SSE message: {}", e);
-                                        Some(Err(anyhow!("Failed to parse SSE message: {}", e)))
-                                    }
-                                }
                             } else {
-                                // For other event types, still try to parse but log the type
-                                log::debug!(
-                                    "[SSE] Processing non-content-delta event: {}",
-                                    current_event_type
-                                );
+                                // Ignore other lines like empty lines or comment lines
+                                None
                                 match serde_json::from_str::<StreamingMessage>(data) {
                                     Ok(msg) => {
                                         log::debug!("[SSE] Successfully parsed message: {:?}", msg);
