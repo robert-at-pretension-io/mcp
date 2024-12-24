@@ -43,7 +43,7 @@ pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<Stream
     log::debug!("[SSE] Starting SSE stream parsing");
 
     Box::pin(
-        stream.filter_map(move |line_result| {
+        stream.filter_map( |line_result|  async  move{
             futures::future::ready(match line_result {
                 Ok(bytes) => {
                     match String::from_utf8(bytes.to_vec()) {
@@ -68,21 +68,18 @@ pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<Stream
                                     log::error!("Failed to parse SSE message: {}", e);
                                     Some(Err(anyhow!("Failed to parse SSE message: {}", e)))
                                 }
-                                    }
-                                    Err(e) => {
-                                        log::error!("Failed to parse SSE message: {}", e);
-                                        Some(Err(anyhow!("Failed to parse SSE message: {}", e)))
-                                    }
+                                    
+                                   
                                 }
                             }
-                        }
+                        
                         Err(e) => Some(Err(anyhow!("Invalid UTF-8 in SSE stream: {}", e))),
-                    }
+                        }
                 }
                 Err(e) => Some(Err(anyhow::anyhow!(e))),
-            });
+            })
         })
-    );
+    )
 }
 
 fn parse_streaming_message(msg: StreamingMessage) -> Result<StreamEvent> {
