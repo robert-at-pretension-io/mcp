@@ -5,6 +5,7 @@ use axum::{
     Json,
     routing::{post, Router, get},
 };
+use serde_json::Value;
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -70,6 +71,21 @@ pub fn create_router(app_state: WebAppState) -> Router {
         .route("/sse/:session_id", get(sse_handler))
         .route("/frontend-log", post(receive_frontend_log))
         .with_state(app_state)
+}
+
+async fn receive_frontend_log(Json(payload): Json<Value>) -> impl IntoResponse {
+    if let Some(level) = payload.get("level").and_then(|v| v.as_str()) {
+        if let Some(msg) = payload.get("message").and_then(|v| v.as_str()) {
+            match level {
+                "debug" => log::debug!("[Frontend] {}", msg),
+                "info" => log::info!("[Frontend] {}", msg),
+                "warn" => log::warn!("[Frontend] {}", msg),
+                "error" => log::error!("[Frontend] {}", msg),
+                _ => log::info!("[Frontend] {}", msg),
+            }
+        }
+    }
+    StatusCode::OK
 }
 
 pub async fn root() -> impl IntoResponse {
