@@ -67,7 +67,6 @@ use anthropic::AnthropicClient;
 use ai_client::AIClient;
 
 
-use shared_protocol_objects::Role;
 mod conversation_state;
 use conversation_state::ConversationState;
 use std::io;
@@ -280,7 +279,7 @@ fn parse_tool_call(response: &str) -> Option<(String, Value)> {
 
 use shared_protocol_objects::{
     JsonRpcRequest, JsonRpcResponse, ServerCapabilities, Implementation,
-    ToolInfo, CallToolResult, RequestId, ListToolsResult
+    ToolInfo, CallToolResult, RequestId, ListToolsResult, Role
 };
 
 // Server Management Types
@@ -1255,7 +1254,6 @@ mod web_interface;
 use axum::Router;
 use tower_http::trace::TraceLayer;
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
