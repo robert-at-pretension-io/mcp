@@ -1297,7 +1297,7 @@ async fn main() -> Result<()> {
     if args.len() > 1 && args[1] == "web" {
         info!("Starting web interface");
         
-        let ai_client = host.ai_client.clone()
+        let ai_client = host.ai_client.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No AI client configured"))?;
 
         let app_state = web_interface::WebAppState::new(Arc::new(ai_client));
@@ -1311,9 +1311,11 @@ async fn main() -> Result<()> {
         let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
         println!("Web interface running at http://{}", addr);
 
-        axum::Server::bind(&addr)
-            .serve(app.into_make_service())
-            .await?;
+        axum::serve(
+            tokio::net::TcpListener::bind(&addr).await?,
+            app.into_make_service(),
+        )
+        .await?;
     } else {
         // Run in CLI mode
         info!("Starting CLI interface");

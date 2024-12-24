@@ -200,8 +200,8 @@ pub async fn sse_handler(
 fn stream_result_to_sse(
     mut stream_result: StreamResult
 ) -> impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> {
-    tokio_stream::wrappers::StreamExt::map(
-        tokio_stream::wrappers::StreamExt::boxed(&mut stream_result),
+    StreamExt::map(
+        Box::pin(&mut stream_result),
         |chunk_result| {
             match chunk_result {
                 Ok(event) => {
