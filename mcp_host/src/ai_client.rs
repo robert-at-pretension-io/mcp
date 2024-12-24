@@ -145,7 +145,7 @@ impl AIClientFactory {
             "gemini" => {
                 let api_key = config["api_key"].as_str()
                     .ok_or_else(|| anyhow::anyhow!("Gemini API key not provided"))?;
-                let client = mcp_host::gemini::GeminiClient::new(api_key.to_string(), "gemini-pro".to_string());
+                let client = super::gemini::GeminiClient::new(api_key.to_string(), "gemini-pro".to_string());
                 Ok(Box::new(client))
             }
             "anthropic" => {
