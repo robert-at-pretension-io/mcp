@@ -19,8 +19,7 @@ use crate::{
     MCPHost,
 };
 
-mod shared_protocol_objects;
-use shared_protocol_objects::Role;
+use crate::shared_protocol_objects::Role;
 
 #[derive(Clone)]
 pub struct WebAppState {
@@ -165,6 +164,7 @@ pub async fn ask(
     Json(result)
 }
 
+#[axum::debug_handler]
 pub async fn sse_handler(
     State(app_state): State<WebAppState>,
     Path(session_id): Path<Uuid>,
@@ -224,7 +224,7 @@ fn stream_result_to_sse(
     mut stream_result: StreamResult
 ) -> impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> {
     StreamExt::map(
-        Box::pin(&mut stream_result),
+        stream_result,
         |chunk_result| {
             match chunk_result {
                 Ok(event) => {
