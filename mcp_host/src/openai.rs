@@ -5,6 +5,8 @@ use serde_json::{json, Value};
 use log::{debug, error, info, warn};
 use std::path::Path;
 use reqwest;
+use crate::ai_client::StreamResult;
+
 
 #[derive(Debug, Clone)]
 pub struct OpenAIClient {

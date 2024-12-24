@@ -123,7 +123,7 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
         let response = client
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.client.api_key)
-            .header("anthropic-version", "2024-01-01")
+            .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")
             .json(&payload)
             .send()
@@ -176,7 +176,7 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
         let response = client
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.client.api_key)
-            .header("anthropic-version", "2024-01-01")
+            .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")
             .json(&payload)
             .send()
