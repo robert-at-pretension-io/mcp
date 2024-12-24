@@ -6,9 +6,10 @@ use axum::{
 };
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::Arc,
     convert::Infallible,
 };
+use tokio::sync::Mutex;
 use uuid::Uuid;
 use anyhow::Result;
 use futures::{Stream, StreamExt};
@@ -164,6 +165,7 @@ pub async fn ask(
     Json(result)
 }
 
+#[axum::debug_handler]
 #[axum::debug_handler]
 pub async fn sse_handler(
     State(app_state): State<WebAppState>,
