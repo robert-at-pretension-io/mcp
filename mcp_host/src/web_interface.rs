@@ -145,28 +145,54 @@ document.getElementById('askForm').addEventListener('submit', function(evt) {
       console.log('Updated stream area with new content');
     };
 
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 3;
+    const RECONNECT_DELAY = 2000;
+
     eventSource.onerror = function(e) {
       console.error('SSE error occurred:', e);
-      // Log additional error details if available
+      reconnectAttempts++;
+      
+      // Log detailed error information
       if (e.target.readyState === EventSource.CLOSED) {
         console.error('SSE connection closed unexpectedly');
       } else if (e.target.readyState === EventSource.CONNECTING) {
         console.error('SSE connection attempting to reconnect');
       }
       
-      // Add more detailed error message to the stream area
-      streamArea.innerHTML += "<br><strong style='color:red;'>[Stream error: Connection interrupted. Please try again.]</strong>";
-      
-      // Close the connection and clean up
+      // Close the existing connection
       eventSource.close();
       console.log('Closed SSE connection due to error');
       
-      // Optionally attempt to reconnect after a delay
-      setTimeout(() => {
-        console.log('Attempting to reconnect...');
-        streamArea.innerHTML += "<br><em>Attempting to reconnect...</em>";
-        // Trigger form resubmission or other recovery logic here
-      }, 3000);
+      if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+        // Show reconnection attempt message
+        streamArea.innerHTML += `<br><strong style='color:orange;'>[Connection interrupted. Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...]</strong>`;
+        
+        // Attempt to reconnect with exponential backoff
+        setTimeout(() => {
+          console.log(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+          fetch('/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(new FormData(form))
+          }).then(response => {
+            if (!response.ok) throw new Error(`Server error: ${response.status}`);
+            return response.json();
+          }).then(data => {
+            if (!data || !data.ok) throw new Error('Invalid response data');
+            eventSource = new EventSource(data.sse_url);
+            console.log('Reconnected to new EventSource:', data.sse_url);
+            streamArea.innerHTML += "<br><em style='color:green;'>Reconnected successfully.</em>";
+          }).catch(err => {
+            console.error('Reconnection failed:', err);
+            streamArea.innerHTML += "<br><strong style='color:red;'>[Reconnection failed. Please refresh the page.]</strong>";
+          });
+        }, RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1));
+      } else {
+        // Max reconnection attempts reached
+        streamArea.innerHTML += "<br><strong style='color:red;'>[Maximum reconnection attempts reached. Please refresh the page.]</strong>";
+        console.error('Maximum reconnection attempts reached');
+      }
     };
   }).catch(err => {
     console.error('Request failed:', err);
