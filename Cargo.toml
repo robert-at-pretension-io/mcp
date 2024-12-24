@@ -5,6 +5,7 @@ members = [
     "mcp_host", 
     "mcp_tools", "realtime_test",
 ]
+default-members = ["mcp_host"]
 
 [workspace.dependencies]
 env_logger = "0.10"
