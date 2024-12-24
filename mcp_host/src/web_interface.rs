@@ -18,6 +18,7 @@ use crate::{
     ai_client::StreamResult,
     conversation_state::ConversationState,
     MCPHost,
+    conversation_service::handle_assistant_response,
 };
 
 use shared_protocol_objects::Role;
@@ -293,7 +294,21 @@ pub async fn sse_handler(
     match builder.execute_streaming().await {
         Ok(stream_result) => {
             log::info!("Started streaming response for session: {}", session_id);
-            let event_stream = stream_result_to_sse(stream_result);
+            let event_stream = stream_result_to_sse(stream_result, state, &app_state);
+            
+            // After streaming completes, process any tool calls
+            if let Some(client) = &app_state.host.ai_client {
+                if let Err(e) = handle_assistant_response(
+                    &app_state.host,
+                    &state.messages.last().unwrap().content,
+                    "default",
+                    state,
+                    client
+                ).await {
+                    log::error!("Error in handle_assistant_response: {}", e);
+                }
+            }
+            
             Ok(Sse::new(event_stream))
         }
         Err(e) => {
@@ -304,7 +319,9 @@ pub async fn sse_handler(
 }
 
 fn stream_result_to_sse(
-    stream_result: StreamResult
+    stream_result: StreamResult,
+    state: &mut ConversationState,
+    app_state: &WebAppState,
 ) -> impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> {
     log::debug!("Converting stream result to SSE events");
     StreamExt::map(

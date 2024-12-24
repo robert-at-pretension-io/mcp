@@ -45,6 +45,7 @@ mod ai_client;
 mod anthropic;
 mod gemini;
 mod streaming;
+mod conversation_service;
 
 use log::{info,warn};
 use tokio::time::Duration;
