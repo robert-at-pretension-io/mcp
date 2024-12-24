@@ -221,8 +221,12 @@ pub async fn ask(
     State(app_state): State<WebAppState>,
     Form(query): Form<UserQuery>,
 ) -> impl IntoResponse {
+    log::info!("[ask] Received user_input: {:?}, session_id: {:?}", query.user_input, query.session_id);
+    
     let user_input = query.user_input.trim().to_string();
     let session_id_str = query.session_id.clone();
+    
+    log::debug!("[ask] after trim, user_input='{}'", user_input);
 
     let session_id = if session_id_str.is_empty() {
         Uuid::new_v4()
@@ -255,11 +259,17 @@ pub async fn sse_handler(
     State(app_state): State<WebAppState>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
-    log::info!("SSE connection established for session: {}", session_id);
+    log::info!("[sse_handler] SSE connection established for session: {}", session_id);
     let mut sessions = app_state.sessions.lock().await;
     let state = match sessions.get_mut(&session_id) {
-        Some(conv) => conv,
-        None => return Err((StatusCode::BAD_REQUEST, "Session not found".to_string())),
+        Some(conv) => {
+            log::debug!("[sse_handler] Found conversation with {} messages", conv.messages.len());
+            conv
+        },
+        None => {
+            log::error!("[sse_handler] Session {} not found in sessions map", session_id);
+            return Err((StatusCode::BAD_REQUEST, "Session not found".to_string()))
+        },
     };
 
     // Get the last user message from the conversation
