@@ -3,6 +3,7 @@ use axum::{
     response::{Html, IntoResponse, Sse, sse::Event},
     http::StatusCode,
     Json,
+    routing::post,
 };
 use std::{
     collections::HashMap,
@@ -44,6 +45,24 @@ pub struct UserQuery {
     session_id: String,
 }
 
+// New endpoint to receive frontend logs
+pub async fn receive_frontend_log(
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    if let Some(level) = payload.get("level").and_then(|v| v.as_str()) {
+        if let Some(msg) = payload.get("message").and_then(|v| v.as_str()) {
+            match level {
+                "debug" => log::debug!("[Frontend] {}", msg),
+                "info" => log::info!("[Frontend] {}", msg),
+                "warn" => log::warn!("[Frontend] {}", msg),
+                "error" => log::error!("[Frontend] {}", msg),
+                _ => log::info!("[Frontend] {}", msg),
+            }
+        }
+    }
+    StatusCode::OK
+}
+
 pub async fn root() -> impl IntoResponse {
     let html = r#"
 <!DOCTYPE html>
@@ -52,6 +71,55 @@ pub async fn root() -> impl IntoResponse {
   <meta charset="UTF-8">
   <title>HTMX + AI Streaming Demo</title>
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.2"></script>
+  <script>
+    // Override console logging
+    (function() {
+        const originalConsole = {
+            log: console.log,
+            debug: console.debug,
+            info: console.info,
+            warn: console.warn,
+            error: console.error
+        };
+
+        function sendToBackend(level, args) {
+            const message = Array.from(args).map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+            ).join(' ');
+
+            fetch('/frontend-log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ level, message })
+            }).catch(err => originalConsole.error('Failed to send log to backend:', err));
+        }
+
+        console.log = function(...args) {
+            originalConsole.log.apply(console, args);
+            sendToBackend('info', args);
+        };
+
+        console.debug = function(...args) {
+            originalConsole.debug.apply(console, args);
+            sendToBackend('debug', args);
+        };
+
+        console.info = function(...args) {
+            originalConsole.info.apply(console, args);
+            sendToBackend('info', args);
+        };
+
+        console.warn = function(...args) {
+            originalConsole.warn.apply(console, args);
+            sendToBackend('warn', args);
+        };
+
+        console.error = function(...args) {
+            originalConsole.error.apply(console, args);
+            sendToBackend('error', args);
+        };
+    })();
+  </script>
 </head>
 <body>
   <h1>HTMX + AI Streaming Demo</h1>
