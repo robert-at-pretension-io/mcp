@@ -43,16 +43,20 @@ where
 {
     Box::pin(stream.filter_map(|line_result| async move {
         match line_result {
-            Ok(line) => {
-                if let Ok(line) = String::from_utf8(line?.to_vec()) {
-                    if line.starts_with("data: ") {
-                        let data = line.trim_start_matches("data: ");
-                    match serde_json::from_str::<StreamingMessage>(data) {
-                        Ok(msg) => Some(parse_streaming_message(msg)),
-                        Err(e) => Some(Err(anyhow!("Failed to parse SSE message: {}", e))),
+            Ok(bytes) => {
+                match String::from_utf8(bytes.to_vec()) {
+                    Ok(line) => {
+                        if line.starts_with("data: ") {
+                            let data = line.trim_start_matches("data: ");
+                            match serde_json::from_str::<StreamingMessage>(data) {
+                                Ok(msg) => Some(parse_streaming_message(msg)),
+                                Err(e) => Some(Err(anyhow!("Failed to parse SSE message: {}", e))),
+                            }
+                        } else {
+                            None
+                        }
                     }
-                } else {
-                    None
+                    Err(e) => Some(Err(anyhow!("Invalid UTF-8 in SSE stream: {}", e)))
                 }
             }
             Err(e) => Some(Err(anyhow::anyhow!(e))),
