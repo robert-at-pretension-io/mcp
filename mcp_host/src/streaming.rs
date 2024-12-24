@@ -45,9 +45,11 @@ where
     
     
     
-    Box::pin(stream.filter_map(|line_result| async move {
-        // Create a buffer to store the current event type
-        let mut current_event_type = String::new();
+    // Create a buffer to store the current event type outside the closure
+    let mut current_event_type = String::new();
+    
+    Box::pin(stream.filter_map(move |line_result| {
+        let event_type = &mut current_event_type;
         match line_result {
             Ok(bytes) => {
                 match String::from_utf8(bytes.to_vec()) {
@@ -56,8 +58,8 @@ where
                         
                         // Handle event type lines
                         if line.starts_with("event: ") {
-                            current_event_type = line.trim_start_matches("event: ").to_string();
-                            log::debug!("[SSE] Set current event type: {}", current_event_type);
+                            *event_type = line.trim_start_matches("event: ").to_string();
+                            log::debug!("[SSE] Set current event type: {}", event_type);
                             None
                         }
                         // Handle data lines
@@ -66,7 +68,8 @@ where
                             log::debug!("[SSE] Parsing data for event type '{}': {}", current_event_type, data);
                             
                             // Special handling for content_block_delta events
-                            if current_event_type == "content_block_delta" {
+                            if event_type == "content_block_delta" {
+                                log::debug!("[SSE] Processing content_block_delta with data: {}", data);
                                 match serde_json::from_str::<StreamingMessage>(data) {
                                     Ok(msg) => {
                                         log::debug!("[SSE] Successfully parsed message: {:?}", msg);

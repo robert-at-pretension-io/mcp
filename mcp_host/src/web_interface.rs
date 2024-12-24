@@ -373,20 +373,23 @@ pub async fn sse_handler(
     Path(session_id): Path<Uuid>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
     log::info!(
-        "[sse_handler] SSE connection established for session: {}",
+        "[sse_handler] SSE connection request for session: {}",
         session_id
     );
-    let mut sessions = app_state.sessions.lock().await;
-    let state = match sessions.get_mut(&session_id) {
-        Some(conv) => {
-            log::debug!("[sse_handler] Found conversation with {} messages", conv.messages.len());
-            conv
-        },
-        None => {
+
+    // First check if session exists without holding the lock
+    {
+        let sessions = app_state.sessions.lock().await;
+        if !sessions.contains_key(&session_id) {
             log::error!("[sse_handler] Session {} not found in sessions map", session_id);
-            return Err((StatusCode::BAD_REQUEST, "Session not found".to_string()))
-        },
-    };
+            return Err((StatusCode::NOT_FOUND, "Session not found".to_string()));
+        }
+    }
+
+    // Get mutable access to the session
+    let mut sessions = app_state.sessions.lock().await;
+    let state = sessions.get_mut(&session_id).unwrap(); // Safe because we checked above
+    log::debug!("[sse_handler] Found conversation with {} messages", state.messages.len());
 
     // Get the last user message from the conversation
 
