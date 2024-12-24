@@ -16,9 +16,11 @@ use serde::Deserialize;
 use crate::{
     ai_client::{AIClient, StreamResult},
     conversation_state::ConversationState,
-    shared_protocol_objects::Role,
     MCPHost,
 };
+
+mod shared_protocol_objects;
+use shared_protocol_objects::Role;
 
 #[derive(Clone)]
 pub struct WebAppState {
