@@ -65,7 +65,7 @@ where
                         // Handle data lines
                         else if line.starts_with("data: ") {
                             let data = line.trim_start_matches("data: ");
-                            log::debug!("[SSE] Parsing data for event type '{}': {}", current_event_type, data);
+                            log::debug!("[SSE] Parsing data for event type '{}': {}", &current_event_type, data);
                             
                             // Special handling for content_block_delta events
                             if event_type == "content_block_delta" {
