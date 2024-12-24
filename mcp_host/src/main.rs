@@ -1264,7 +1264,7 @@ async fn main() -> Result<()> {
     let host = MCPHost::new().await?;
     info!("MCPHost initialized successfully");
 
-    let args: Vec<String> = std::env::args().collect();
+    let mut args: Vec<String> = std::env::args().collect();
     
     // Handle load_config argument if present
     if args.len() > 2 && args[1] == "load_config" {
