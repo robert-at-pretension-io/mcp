@@ -1,6 +1,5 @@
 use anyhow::{Result, Context};
 use async_trait::async_trait;
-use futures::stream::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, Role, StreamResult};

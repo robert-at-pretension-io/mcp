@@ -581,7 +581,7 @@ When you get information, don't mention it. Just use it to subtly inform the con
 
     pub async fn new() -> Result<Self> {
         // Try to get the AI provider from environment
-        let ai_provider = std::env::var("MCP_AI_PROVIDER").unwrap_or_else(|_| {
+        let _ai_provider = std::env::var("MCP_AI_PROVIDER").unwrap_or_else(|_| {
             info!("MCP_AI_PROVIDER not set, defaulting to 'gemini'");
             "gemini".to_string()
         });

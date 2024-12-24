@@ -2,7 +2,7 @@ use axum::{
     extract::{Form, Path, State},
     response::{Html, IntoResponse, Sse, sse::Event},
     http::StatusCode,
-    Json, Router,
+    Json,
 };
 use std::{
     collections::HashMap,
@@ -15,7 +15,7 @@ use anyhow::Result;
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use crate::{
-    ai_client::{AIClient, StreamResult},
+    ai_client::StreamResult,
     conversation_state::ConversationState,
     MCPHost,
 };
@@ -262,11 +262,6 @@ pub async fn sse_handler(
     };
 
     // Get the last user message from the conversation
-    let last_user_msg = state.messages.iter()
-        .rev()
-        .find(|msg| matches!(msg.role, Role::User))
-        .map(|msg| msg.content.clone())
-        .unwrap_or_default();
 
     // Process the message using the host's unified logic
     // Get the AI client
@@ -309,7 +304,7 @@ pub async fn sse_handler(
 }
 
 fn stream_result_to_sse(
-    mut stream_result: StreamResult
+    stream_result: StreamResult
 ) -> impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> {
     log::debug!("Converting stream result to SSE events");
     StreamExt::map(
