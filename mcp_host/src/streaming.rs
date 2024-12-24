@@ -1,6 +1,6 @@
 use crate::ai_client::StreamEvent;
 use anyhow::{Result, anyhow};
-use futures::Stream;
+use futures::{Stream, future};
 use serde::Deserialize;
 use serde_json::Value;
 use std::pin::Pin;
@@ -50,7 +50,7 @@ where
     
     Box::pin(stream.filter_map(move |line_result| {
         let event_type = &mut current_event_type;
-        match line_result {
+        futures::future::ready(match line_result {
             Ok(bytes) => {
                 match String::from_utf8(bytes.to_vec()) {
                     Ok(line) => {
@@ -110,7 +110,7 @@ where
                 }
             }
             Err(e) => Some(Err(anyhow::anyhow!(e))),
-        }
+        })
     }))
 }
 
