@@ -76,74 +76,74 @@ pub async fn root() -> impl IntoResponse {
 
 <script>
 // Initialize logging
-console.log('Initializing web interface...');
+console.log('[DEBUG] Initializing web interface...');
 
 document.getElementById('askForm').addEventListener('submit', function(evt) {
-  console.log('Form submission started');
+  console.log('[DEBUG] askForm submit event triggered');
   evt.preventDefault();
 
   let form = evt.target;
-  let user_input = form.user_input.value;
-  console.log('User input:', user_input);
+  let user_input = form.user_input.value.trim();
+  console.log('[DEBUG] user_input:', user_input);
   
-  if (!user_input.trim()) {
-    console.warn('Empty input detected, canceling submission');
+  if (!user_input) {
+    console.log('[DEBUG] user_input is empty, not sending request.');
     return;
   }
 
   let sessionElem = document.getElementById('sessionId');
   if (!sessionElem.value) {
-    console.log('No session ID found, generating new one');
+    console.log('[DEBUG] No sessionId found, generating...');
     sessionElem.value = crypto.randomUUID();
-    console.log('Generated session ID:', sessionElem.value);
+    console.log('[DEBUG] Generated new sessionId:', sessionElem.value);
   } else {
-    console.log('Using existing session ID:', sessionElem.value);
+    console.log('[DEBUG] Using existing sessionId:', sessionElem.value);
   }
 
   form.session_id.value = sessionElem.value;
-  console.log('Preparing fetch request to /ask endpoint');
+  console.log(`[DEBUG] Submitting /ask with user_input='${user_input}', session_id='${sessionElem.value}'`);
 
   fetch('/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(new FormData(form))
   }).then(response => {
-    console.log('Received response from /ask:', response.status);
+    console.log('[DEBUG] /ask response status:', response.status);
     if (!response.ok) {
-      console.error('Server error:', response.status);
+      console.error('[ERROR] /ask returned non-OK status:', response.status);
       alert("Error from server: " + response.status);
       return;
     }
     return response.json();
   }).then(data => {
-    console.log('Parsed response data:', data);
+    console.log('[DEBUG] /ask JSON response:', data);
     if (!data || !data.ok) {
-      console.error('Invalid response data:', data);
-      alert("No valid SSE path returned");
+      console.warn('[DEBUG] Data was not ok or missing:', data);
+      alert("No valid SSE path returned from /ask");
       return;
     }
-
-    console.log('Initializing EventSource with URL:', data.sse_url);
-    let eventSource = new EventSource(data.sse_url);
+    
+    let sseUrl = data.sse_url;
+    console.log('[DEBUG] Creating EventSource for SSE at', sseUrl);
+    let eventSource = new EventSource(sseUrl);
     let streamArea = document.getElementById('streamArea');
     streamArea.innerHTML = "";
-    console.log('Cleared stream area');
+    console.log('[DEBUG] Cleared streamArea');
 
-    eventSource.onopen = function(e) {
-      console.log('SSE connection opened');
-      console.log('Connection readyState:', eventSource.readyState);
+    eventSource.onopen = (e) => {
+      console.log('[DEBUG] SSE connection opened (readyState):', eventSource.readyState);
       streamArea.innerHTML = "<em style='color:green;'>Connected successfully...</em><br>";
     };
 
-    eventSource.onmessage = function(e) {
-      console.log('Received SSE message:', e.data);
+    eventSource.onmessage = (e) => {
+      console.log('[DEBUG] SSE onmessage event data:', e.data);
       if (e.data === "[DONE]") {
-        console.log('Received DONE signal, closing connection');
+        console.log('[DEBUG] SSE [DONE] signal => closing eventSource');
         eventSource.close();
         return;
       }
       streamArea.innerHTML += e.data;
-      console.log('Updated stream area with new content');
+      console.log('[DEBUG] Updated streamArea with new content');
     };
 
     let reconnectAttempts = 0;
