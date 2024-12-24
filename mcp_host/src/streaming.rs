@@ -64,8 +64,16 @@ pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<Stream
                                 let data = line.trim_start_matches("data: ");
                                 log::debug!("[SSE] Parsing data: {}", data);
 
-                                // Parse all messages uniformly
-
+                                match serde_json::from_str::<StreamingMessage>(data) {
+                                    Ok(msg) => {
+                                        log::debug!("[SSE] Successfully parsed message: {:?}", msg);
+                                        Some(parse_streaming_message(msg))
+                                    }
+                                    Err(e) => {
+                                        log::error!("Failed to parse SSE message: {}", e);
+                                        Some(Err(anyhow!("Failed to parse SSE message: {}", e)))
+                                    }
+                                }
                             } else {
                                 // Ignore other lines like empty lines or comment lines
                                 None
