@@ -76,7 +76,7 @@ pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<Stream
                                 }
                             } else {
                                 // Ignore other lines like empty lines or comment lines
-                                None
+                                None;
                                 match serde_json::from_str::<StreamingMessage>(data) {
                                     Ok(msg) => {
                                         log::debug!("[SSE] Successfully parsed message: {:?}", msg);
