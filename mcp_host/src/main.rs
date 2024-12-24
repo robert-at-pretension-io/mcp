@@ -1250,9 +1250,15 @@ When you get information, don't mention it. Just use it to subtly inform the con
     }
 }
 
+mod web_interface;
+
+use axum::Router;
+use tower_http::trace::TraceLayer;
+use std::net::SocketAddr;
+use std::sync::Arc;
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging with env_logger
     env_logger::init();
     info!("Starting mcp_host application");
 
@@ -1260,7 +1266,6 @@ async fn main() -> Result<()> {
     let host = MCPHost::new().await?;
     info!("MCPHost initialized successfully");
 
-    // Get command line arguments
     let args: Vec<String> = std::env::args().collect();
     
     // If arguments are provided, handle them first
@@ -1288,13 +1293,37 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Start the interactive CLI loop
-    host.run_cli().await?;
+    // Check if we should run in web mode
+    if args.len() > 1 && args[1] == "web" {
+        info!("Starting web interface");
+        
+        let ai_client = host.ai_client.clone()
+            .ok_or_else(|| anyhow::anyhow!("No AI client configured"))?;
 
-    // Stop all servers before exit
-    let servers = host.servers.lock().await;
-    for name in servers.keys() {
-        let _ = host.stop_server(name).await;
+        let app_state = web_interface::WebAppState::new(Arc::new(ai_client));
+        let app = Router::new()
+            .route("/", axum::routing::get(web_interface::root))
+            .route("/ask", axum::routing::post(web_interface::ask))
+            .route("/sse/:session_id", axum::routing::get(web_interface::sse_handler))
+            .with_state(app_state)
+            .layer(TraceLayer::new_for_http());
+
+        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+        println!("Web interface running at http://{}", addr);
+
+        axum::Server::bind(&addr)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        // Run in CLI mode
+        info!("Starting CLI interface");
+        host.run_cli().await?;
+
+        // Stop all servers before exit
+        let servers = host.servers.lock().await;
+        for name in servers.keys() {
+            let _ = host.stop_server(name).await;
+        }
     }
 
     Ok(())
