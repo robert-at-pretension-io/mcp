@@ -9,18 +9,15 @@ use serde_json::Value;
 use std::{
     collections::HashMap,
     sync::Arc,
-    convert::Infallible,
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
 use anyhow::Result;
-use futures::{Stream, StreamExt};
-use serde::Deserialize;
+use futures::StreamExt;
 use crate::{
-    ai_client::StreamResult,
+    ai_client::StreamEvent,
     conversation_state::ConversationState,
     MCPHost,
-    conversation_service::handle_assistant_response,
 };
 
 use shared_protocol_objects::Role;
@@ -426,7 +423,7 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
 
 async fn resolve_session_id(
     provided: Option<String>,
-    app_state: &WebAppState,
+    _app_state: &WebAppState,
 ) -> Uuid {
     if let Some(sid) = provided {
         if let Ok(parsed) = Uuid::parse_str(&sid) {
