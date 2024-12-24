@@ -158,7 +158,38 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
     }
 
     async fn execute_streaming(self: Box<Self>) -> Result<StreamResult> {
-        Err(anyhow::anyhow!("Streaming not yet implemented for Gemini"))
+        let mut config = self.generation_config.unwrap_or_default();
+        if config.top_p.is_none() {
+            config.top_p = Some(0.95);
+        }
+    
+        let request = GeminiRequest {
+            contents: self.contents,
+            system_instruction: self.system_instruction.clone(),
+            generation_config: Some(config),
+            safety_settings: Some(GeminiClient::default_safety_settings()),
+        };
+    
+        debug!("Sending streaming request to Gemini API");
+        let client = reqwest::Client::new();
+        let response = client
+            .post(&self.client.endpoint)
+            .header("Content-Type", "application/json") 
+            .header("Authorization", format!("Bearer {}", &self.client.api_key))
+            .json(&request)
+            .send()
+            .await?;
+    
+        debug!("Response received, status: {}", response.status());
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            error!("API error response: {}", error_text);
+            return Err(anyhow::anyhow!("API request failed with status {}: {}", 
+                response.status(), error_text));
+        }
+
+        let stream = response.bytes_stream();
+        Ok(crate::streaming::parse_sse_stream(stream))
     }
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         let system_instruction = GeminiSystemInstruction {
