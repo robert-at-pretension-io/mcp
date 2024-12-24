@@ -4,7 +4,7 @@ use futures::Stream;
 use serde::Deserialize;
 use serde_json::Value;
 use std::pin::Pin;
-use futures::stream::{self, StreamExt};
+use futures::stream::StreamExt;
 
 #[derive(Debug, Deserialize)]
 struct StreamingMessage {

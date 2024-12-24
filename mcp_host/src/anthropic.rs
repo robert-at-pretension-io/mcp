@@ -4,7 +4,7 @@ use futures::stream::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, Role, StreamResult};
-use crate::streaming::parse_sse_stream;
+use super::streaming::parse_sse_stream;
 
 #[derive(Debug, Clone)]
 pub struct AnthropicClient {

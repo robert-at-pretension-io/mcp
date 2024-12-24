@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, Context};
-use log::{debug, error, info, warn};
+use log::{debug, error};
 use crate::ai_client::{AIClient, AIRequestBuilder,GenerationConfig};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
