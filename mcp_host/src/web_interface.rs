@@ -149,7 +149,7 @@ pub async fn ask(
     };
 
     {
-        let mut sessions = app_state.sessions.lock().unwrap();
+        let mut sessions = app_state.sessions.lock().await;
         let entry = sessions.entry(session_id).or_insert_with(|| {
             ConversationState::new("Welcome to the HTMX + AI Demo!".to_string(), vec![])
         });
@@ -166,12 +166,11 @@ pub async fn ask(
 }
 
 #[axum::debug_handler]
-#[axum::debug_handler]
 pub async fn sse_handler(
     State(app_state): State<WebAppState>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
-    let mut sessions = app_state.sessions.lock().unwrap();
+    let mut sessions = app_state.sessions.lock().await;
     let state = match sessions.get_mut(&session_id) {
         Some(conv) => conv,
         None => return Err((StatusCode::BAD_REQUEST, "Session not found".to_string())),
