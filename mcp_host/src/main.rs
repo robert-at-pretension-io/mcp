@@ -628,7 +628,7 @@ When you get information, don't mention it. Just use it to subtly inform the con
         // let client = OpenAIClient::new(api_key, model_name);
         // let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
-        let model_name = "claude-3-sonnet-20240229".to_string();
+        let model_name = "claude-3-5-sonnet-20241022".to_string();
         info!("Initializing Anthropic client with model: {}", model_name);
 
         // Retrieve the Anthropic API key from an environment variable
