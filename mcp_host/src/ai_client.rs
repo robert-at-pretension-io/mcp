@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::path::Path;
 use futures::Stream;
 use std::pin::Pin;
-
+use shared_protocol_objects::Role;
 
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
@@ -33,14 +33,6 @@ pub enum StreamEvent {
 }
 
 pub type StreamResult = Pin<Box<dyn Stream<Item = Result<StreamEvent>> + Send>>;
-
-/// Role of a message in a conversation
-#[derive(Debug, Clone, PartialEq)]
-pub enum Role {
-    System,
-    User,
-    Assistant,
-}
 
 /// Content types that can be sent to AI models
 #[derive(Debug, Clone)]

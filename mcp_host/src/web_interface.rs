@@ -297,10 +297,15 @@ pub async fn sse_handler(
             let event_stream = stream_result_to_sse(stream_result, state, &app_state);
             
             // After streaming completes, process any tool calls
+            // Get the last message content before mutable borrow
+            let last_msg_content = state.messages.last()
+                .map(|m| m.content.clone())
+                .unwrap_or_default();
+
             if let Some(client) = &app_state.host.ai_client {
                 if let Err(e) = handle_assistant_response(
                     &app_state.host,
-                    &state.messages.last().unwrap().content,
+                    &last_msg_content,
                     "default",
                     state,
                     client
