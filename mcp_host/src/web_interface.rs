@@ -241,7 +241,7 @@ pub async fn ask(
     let user_input = query.user_input.trim().to_string();
     let session_id_str = query.session_id.clone();
     
-    log::debug!("[ask] after trim, user_input='{}'", user_input);
+    log::debug!("[ask] user_input after trim => '{}'", user_input);
 
     let session_id = if session_id_str.is_empty() {
         let generated = Uuid::new_v4();
@@ -378,7 +378,7 @@ fn stream_result_to_sse(
     state: &mut ConversationState,
     app_state: &WebAppState,
 ) -> impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> {
-    log::debug!("Converting stream result to SSE events");
+    log::debug!("[stream_result_to_sse] Converting stream result to SSE events");
     StreamExt::map(
         stream_result,
         |chunk_result| {
