@@ -254,6 +254,7 @@ pub async fn sse_handler(
     State(app_state): State<WebAppState>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
+    log::info!("SSE connection established for session: {}", session_id);
     let mut sessions = app_state.sessions.lock().await;
     let state = match sessions.get_mut(&session_id) {
         Some(conv) => conv,
@@ -296,10 +297,12 @@ pub async fn sse_handler(
     // Execute streaming request
     match builder.execute_streaming().await {
         Ok(stream_result) => {
+            log::info!("Started streaming response for session: {}", session_id);
             let event_stream = stream_result_to_sse(stream_result);
             Ok(Sse::new(event_stream))
         }
         Err(e) => {
+            log::error!("Failed to start streaming for session {}: {}", session_id, e);
             Err((StatusCode::INTERNAL_SERVER_ERROR, format!("AI error: {}", e)))
         }
     }
@@ -308,11 +311,13 @@ pub async fn sse_handler(
 fn stream_result_to_sse(
     mut stream_result: StreamResult
 ) -> impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> {
+    log::debug!("Converting stream result to SSE events");
     StreamExt::map(
         stream_result,
         |chunk_result| {
             match chunk_result {
                 Ok(event) => {
+                    log::debug!("Processing stream event: {:?}", event);
                     use crate::ai_client::StreamEvent;
                     match event {
                         StreamEvent::MessageStart { .. } => {
