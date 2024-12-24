@@ -42,26 +42,63 @@ where
     S: Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 {
     log::debug!("[SSE] Starting SSE stream parsing");
+    
+    // Create a buffer to store the current event type
+    let mut current_event_type = String::new();
+    
     Box::pin(stream.filter_map(|line_result| async move {
         match line_result {
             Ok(bytes) => {
                 match String::from_utf8(bytes.to_vec()) {
                     Ok(line) => {
                         log::debug!("[SSE] Received raw line: {}", line);
-                        if line.starts_with("data: ") {
+                        
+                        // Handle event type lines
+                        if line.starts_with("event: ") {
+                            current_event_type = line.trim_start_matches("event: ").to_string();
+                            log::debug!("[SSE] Set current event type: {}", current_event_type);
+                            None
+                        }
+                        // Handle data lines
+                        else if line.starts_with("data: ") {
                             let data = line.trim_start_matches("data: ");
-                            log::debug!("[SSE] Parsing data: {}", data);
-                            match serde_json::from_str::<StreamingMessage>(data) {
-                                Ok(msg) => {
-                                    log::debug!("[SSE] Successfully parsed message: {:?}", msg);
-                                    Some(parse_streaming_message(msg))
-                                },
-                                Err(e) => {
-                                    log::error!("Failed to parse SSE message: {}", e);
-                                    Some(Err(anyhow!("Failed to parse SSE message: {}", e)))
-                                },
+                            log::debug!("[SSE] Parsing data for event type '{}': {}", current_event_type, data);
+                            
+                            // Special handling for content_block_delta events
+                            if current_event_type == "content_block_delta" {
+                                match serde_json::from_str::<StreamingMessage>(data) {
+                                    Ok(msg) => {
+                                        log::debug!("[SSE] Successfully parsed message: {:?}", msg);
+                                        Some(parse_streaming_message(msg))
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to parse SSE message: {}", e);
+                                        Some(Err(anyhow!("Failed to parse SSE message: {}", e)))
+                                    },
+                                }
+                            } else {
+                                // For other event types, still try to parse but log the type
+                                log::debug!("[SSE] Processing non-content-delta event: {}", current_event_type);
+                                match serde_json::from_str::<StreamingMessage>(data) {
+                                    Ok(msg) => {
+                                        log::debug!("[SSE] Successfully parsed message: {:?}", msg);
+                                        Some(parse_streaming_message(msg))
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to parse SSE message: {}", e);
+                                        Some(Err(anyhow!("Failed to parse SSE message: {}", e)))
+                                    },
+                                }
                             }
-                        } else {
+                        }
+                        // Handle empty lines (event boundaries)
+                        else if line.trim().is_empty() {
+                            log::debug!("[SSE] Received event boundary");
+                            None
+                        }
+                        // Ignore other lines
+                        else {
+                            log::debug!("[SSE] Ignoring unknown line format: {}", line);
                             None
                         }
                     }
