@@ -19,7 +19,7 @@ use crate::{
     MCPHost,
 };
 
-use crate::shared_protocol_objects::Role;
+use shared_protocol_objects::Role;
 
 #[derive(Clone)]
 pub struct WebAppState {
