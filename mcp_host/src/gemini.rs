@@ -125,6 +125,7 @@ impl<'a> AIClient for GeminiClient {
             system_instruction: None,
             contents: Vec::new(),
             generation_config: None,
+            stream: false,
         })
     }
 
@@ -134,6 +135,7 @@ impl<'a> AIClient for GeminiClient {
             system_instruction: None,
             contents: Vec::new(),
             generation_config: None,
+            stream: false,
         })
     }
 }
@@ -144,10 +146,19 @@ pub struct GeminiCompletionBuilder {
     contents: Vec<GeminiContent>,
     system_instruction: Option<GeminiSystemInstruction>,
     generation_config: Option<GeminiGenerationConfig>,
+    stream: bool,
 }
 
 #[async_trait]
 impl AIRequestBuilder for GeminiCompletionBuilder {
+    fn streaming(mut self: Box<Self>, enabled: bool) -> Box<dyn AIRequestBuilder> {
+        self.stream = enabled;
+        self
+    }
+
+    async fn execute_streaming(self: Box<Self>) -> Result<StreamResult> {
+        Err(anyhow::anyhow!("Streaming not yet implemented for Gemini"))
+    }
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         let system_instruction = GeminiSystemInstruction {
             parts: vec![GeminiContentPart {

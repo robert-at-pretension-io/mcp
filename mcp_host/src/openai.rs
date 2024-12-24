@@ -56,6 +56,7 @@ impl AIClient for OpenAIClient {
             client: self.clone(),
             messages: Vec::new(),
             config: None,
+            stream: false,
         })
     }
 
@@ -64,6 +65,7 @@ impl AIClient for OpenAIClient {
             client: self.clone(),
             messages: Vec::new(),
             config: None,
+            stream: false,
         })
     }
 }
@@ -73,10 +75,19 @@ pub struct OpenAICompletionBuilder {
     client: OpenAIClient,
     messages: Vec<(Role, String)>,
     config: Option<GenerationConfig>,
+    stream: bool,
 }
 
 #[async_trait]
 impl AIRequestBuilder for OpenAICompletionBuilder {
+    fn streaming(mut self: Box<Self>, enabled: bool) -> Box<dyn AIRequestBuilder> {
+        self.stream = enabled;
+        self
+    }
+
+    async fn execute_streaming(self: Box<Self>) -> Result<StreamResult> {
+        Err(anyhow::anyhow!("Streaming not yet implemented for OpenAI"))
+    }
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.messages.push((Role::System, content));
         self
