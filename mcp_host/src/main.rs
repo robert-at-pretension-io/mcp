@@ -1266,29 +1266,19 @@ async fn main() -> Result<()> {
 
     let args: Vec<String> = std::env::args().collect();
     
-    // If arguments are provided, handle them first
-    if args.len() > 1 {
-        info!("Processing command line arguments: {:?}", &args[1..]);
-        match args[1].as_str() {
-            "load_config" if args.len() == 3 => {
-                let config_path = &args[2];
-                match host.load_config(config_path).await {
-                    Ok(()) => {
-                        info!("Successfully loaded configuration from {}", config_path);
-                        // Continue to CLI after successful config load
-                    }
-                    Err(e) => {
-                        warn!("Error loading configuration: {}. Starting with empty config.", e);
-                        // Continue to CLI even if config load failed
-                    }
-                }
+    // Handle load_config argument if present
+    if args.len() > 2 && args[1] == "load_config" {
+        let config_path = &args[2];
+        match host.load_config(config_path).await {
+            Ok(()) => {
+                info!("Successfully loaded configuration from {}", config_path);
             }
-            _ => {
-                info!("Invalid command line arguments");
-                info!("Usage: {} load_config <config_file>", args[0]);
-                return Ok(());
+            Err(e) => {
+                warn!("Error loading configuration: {}. Starting with empty config.", e);
             }
         }
+        // Remove the load_config arguments to process remaining args
+        args.drain(1..3);
     }
 
     // Check if we should run in web mode
