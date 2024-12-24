@@ -3,7 +3,7 @@ use axum::{
     response::{Html, IntoResponse, Sse, sse::Event},
     http::StatusCode,
     Json,
-    routing::post,
+    routing::{post, Router, get},
 };
 use std::{
     collections::HashMap,
@@ -46,7 +46,7 @@ pub struct UserQuery {
 }
 
 // New endpoint to receive frontend logs
-pub async fn receive_frontend_log(
+async fn receive_frontend_log(
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     if let Some(level) = payload.get("level").and_then(|v| v.as_str()) {
@@ -63,7 +63,16 @@ pub async fn receive_frontend_log(
     StatusCode::OK
 }
 
-pub async fn root() -> impl IntoResponse {
+pub fn create_router(app_state: WebAppState) -> Router {
+    Router::new()
+        .route("/", get(root))
+        .route("/ask", post(ask))
+        .route("/sse/:session_id", get(sse_handler))
+        .route("/frontend-log", post(receive_frontend_log))
+        .with_state(app_state)
+}
+
+async fn root() -> impl IntoResponse {
     let html = r#"
 <!DOCTYPE html>
 <html>
