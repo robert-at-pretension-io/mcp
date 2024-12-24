@@ -156,7 +156,7 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
                     "content": content
                 })
             }).collect::<Vec<_>>(),
-            "stream": false,
+            "stream": self.stream,
             "max_tokens": 1024
         });
 

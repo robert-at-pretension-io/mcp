@@ -181,12 +181,36 @@ pub async fn sse_handler(
         .unwrap_or_default();
 
     // Process the message using the host's unified logic
-    match app_state.host.process_user_message(state, "default", &last_user_msg).await {
-        Ok(final_response) => {
-            let stream = futures::stream::once(async move {
-                Ok(Event::default().data(final_response))
-            });
-            Ok(Sse::new(stream))
+    // Get the AI client
+    let Some(client) = &app_state.host.ai_client else {
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, "No AI client configured".to_string()));
+    };
+
+    // Build the request with streaming enabled
+    let mut builder = client.raw_builder();
+    
+    // Add system messages
+    for msg in state.messages.iter().filter(|m| matches!(m.role, Role::System)) {
+        builder = builder.system(msg.content.clone());
+    }
+    
+    // Add conversation messages
+    for msg in state.messages.iter().filter(|m| !matches!(m.role, Role::System)) {
+        match msg.role {
+            Role::User => builder = builder.user(msg.content.clone()),
+            Role::Assistant => builder = builder.assistant(msg.content.clone()),
+            _ => {}
+        }
+    }
+
+    // Enable streaming
+    builder = builder.streaming(true);
+
+    // Execute streaming request
+    match builder.execute_streaming().await {
+        Ok(stream_result) => {
+            let event_stream = stream_result_to_sse(stream_result);
+            Ok(Sse::new(event_stream))
         }
         Err(e) => {
             Err((StatusCode::INTERNAL_SERVER_ERROR, format!("AI error: {}", e)))
