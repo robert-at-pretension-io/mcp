@@ -1,6 +1,6 @@
 use axum::{
-    extract::{Form, Path, State},
-    response::{Html, IntoResponse, Sse, sse::Event},
+    extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
+    response::{Html, IntoResponse},
     http::StatusCode,
     Json,
     routing::{post, Router, get},
@@ -40,10 +40,10 @@ impl WebAppState {
     }
 }
 
-#[derive(Deserialize)]
-pub struct UserQuery {
+#[derive(Debug, serde::Deserialize)]
+struct WsRequest {
+    session_id: Option<String>,
     user_input: String,
-    session_id: String,
 }
 
 
@@ -312,224 +312,129 @@ window.addEventListener('load', function() {
     Html(html)
 }
 
-pub async fn ask(
+pub async fn ws_handler(
+    ws: WebSocketUpgrade,
     State(app_state): State<WebAppState>,
-    Form(query): Form<UserQuery>,
 ) -> impl IntoResponse {
-    log::info!("[ask] Received user_input: {:?}, session_id: {:?}", query.user_input, query.session_id);
-    
-    let user_input = query.user_input.trim().to_string();
-    let session_id_str = query.session_id.clone();
-    
-    log::debug!("[ask] user_input after trim => '{}'", user_input);
-
-    let session_id = if session_id_str.is_empty() {
-        let generated = Uuid::new_v4();
-        log::debug!(
-            "[ask] session_id was empty; generating new UUID => {}",
-            generated
-        );
-        generated
-    } else {
-        match Uuid::parse_str(&session_id_str) {
-            Ok(id) => {
-                log::debug!("[ask] using existing session_id => {}", id);
-                id
-            },
-            Err(e) => {
-                log::warn!(
-                    "[ask] provided session_id was invalid UUID ({}), generating new ID",
-                    e
-                );
-                Uuid::new_v4()
-            },
+    ws.on_upgrade(|socket| async move {
+        if let Err(e) = handle_ws(socket, app_state).await {
+            log::error!("[ws_handler] WebSocket error: {:?}", e);
         }
-    };
-
-    let mut sessions = app_state.sessions.lock().await;
-    let conversation = if sessions.contains_key(&session_id) {
-        log::debug!("[ask] Using existing session {}", session_id);
-        sessions.get_mut(&session_id).unwrap()
-    } else {
-        log::debug!("[ask] Creating new ConversationState for session_id {}", session_id);
-        sessions.entry(session_id).or_insert_with(|| {
-            ConversationState::new("Welcome to the HTMX + AI Demo!".to_string(), vec![])
-        })
-    };
-    
-    log::debug!("[ask] Adding user message '{}' to session {}", user_input, session_id);
-    conversation.add_user_message(&user_input);
-    drop(sessions);
-
-    let sse_url = format!("/sse/{}", session_id);
-    log::info!(
-        "[ask] Returning SSE URL => '{}' for session {}",
-        sse_url,
-        session_id
-    );
-
-    let result = serde_json::json!({
-        "ok": true,
-        "sse_url": sse_url,
-    });
-
-    Json(result)
+    })
 }
 
-#[axum::debug_handler]
-pub async fn sse_handler(
-    State(app_state): State<WebAppState>,
-    Path(session_id): Path<Uuid>,
-) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
-    log::info!(
-        "[sse_handler] SSE connection request for session: {}",
-        session_id
-    );
+async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> {
+    log::info!("[WS] New WebSocket connection");
 
-    // First check if session exists without holding the lock
-    {
-        let sessions = app_state.sessions.lock().await;
-        if !sessions.contains_key(&session_id) {
-            log::error!("[sse_handler] Session {} not found in sessions map", session_id);
-            return Err((StatusCode::NOT_FOUND, "Session not found".to_string()));
-        }
-    }
-
-    // Get mutable access to the session
-    let mut sessions = app_state.sessions.lock().await;
-    let state = sessions.get_mut(&session_id).unwrap(); // Safe because we checked above
-    log::debug!("[sse_handler] Found conversation with {} messages", state.messages.len());
-
-    // Add a flag to track if this session has been streamed
-    let is_first_stream = !state.messages.iter().any(|msg| msg.role == Role::Assistant);
-    
-    // Process the message using the host's unified logic
-    let Some(client) = &app_state.host.ai_client else {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, "No AI client configured".to_string()));
-    };
-
-    // Build the request with streaming enabled
-    let mut builder = client.raw_builder();
-    
-    if is_first_stream {
-        // Add system messages for first stream
-        for msg in state.messages.iter().filter(|m| matches!(m.role, Role::System)) {
-            builder = builder.system(msg.content.clone());
-        }
-        
-        // Add all conversation messages
-        for msg in state.messages.iter().filter(|m| !matches!(m.role, Role::System)) {
-            match msg.role {
-                Role::User => builder = builder.user(msg.content.clone()),
-                Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                _ => {}
-            }
-        }
-    } else {
-        // For reconnects, only stream the last message pair
-        if let Some(last_user) = state.messages.iter().rev().find(|m| matches!(m.role, Role::User)) {
-            builder = builder.user(last_user.content.clone());
-        }
-        if let Some(last_assistant) = state.messages.iter().rev().find(|m| matches!(m.role, Role::Assistant)) {
-            builder = builder.assistant(last_assistant.content.clone());
-        }
-    }
-
-    // Enable streaming
-    builder = builder.streaming(true);
-
-    // Execute streaming request
-    match builder.execute_streaming().await {
-        Ok(stream_result) => {
-            log::info!("[sse_handler] Started streaming response for session: {}", session_id);
-            log::debug!("[sse_handler] Stream result initialized successfully");
-            let event_stream = stream_result_to_sse(stream_result, state, &app_state);
-            
-            // After streaming completes, process any tool calls
-            // Get the last message content before mutable borrow
-            let last_msg_content = state.messages.last()
-                .map(|m| m.content.clone())
-                .unwrap_or_default();
-
-            if let Some(client) = &app_state.host.ai_client {
-                if let Err(e) = handle_assistant_response(
-                    &app_state.host,
-                    &last_msg_content,
-                    "default",
-                    state,
-                    client
-                ).await {
-                    log::error!("Error in handle_assistant_response: {}", e);
+    while let Some(Ok(msg)) = socket.recv().await {
+        if let Message::Text(text) = msg {
+            let parsed: WsRequest = match serde_json::from_str(&text) {
+                Ok(req) => req,
+                Err(e) => {
+                    log::error!("[WS] Could not parse JSON request: {}", e);
+                    continue;
                 }
-            }
-            
-            Ok(Sse::new(event_stream))
-        }
-        Err(e) => {
-            log::error!("Failed to start streaming for session {}: {}", session_id, e);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("AI error: {}", e)))
-        }
-    }
-}
+            };
 
-fn stream_result_to_sse(
-    stream_result: StreamResult,
-    _state: &mut ConversationState,
-    _app_state: &WebAppState,
-) -> impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> {
-    log::debug!("[stream_result_to_sse] Converting stream result to SSE events");
-    
-    let mut stream_ended = false;
-    
-    StreamExt::map(
-        stream_result,
-        move |chunk_result| {
-            match chunk_result {
-                Ok(event) => {
-                    log::debug!("Processing stream event: {:?}", event);
-                    use crate::ai_client::StreamEvent;
-                    match event {
-                        StreamEvent::MessageStart { .. } => {
-                            Ok(axum::response::sse::Event::default().data(""))
-                        },
-                        StreamEvent::ContentBlockStart { .. } => {
-                            Ok(axum::response::sse::Event::default().data(""))
-                        },
-                        StreamEvent::ContentDelta { text, .. } => {
-                            Ok(axum::response::sse::Event::default().data(text))
-                        },
-                        StreamEvent::ContentBlockStop { .. } => {
-                            Ok(axum::response::sse::Event::default().data(""))
-                        },
-                        StreamEvent::MessageDelta { stop_reason, .. } => {
-                            if let Some(reason) = stop_reason {
-                                if reason.to_uppercase().contains("STOP") {
-                                    return Ok(axum::response::sse::Event::default().data("[DONE]"));
+            let session_id = resolve_session_id(parsed.session_id, &app_state).await;
+            let user_input = parsed.user_input.trim().to_string();
+
+            {
+                let mut sessions = app_state.sessions.lock().await;
+                let convo = sessions
+                    .entry(session_id)
+                    .or_insert_with(|| ConversationState::new("Welcome!".to_string(), vec![]));
+                convo.add_user_message(&user_input);
+            }
+
+            let stream_result = {
+                let sessions = app_state.sessions.lock().await;
+                let convo = sessions.get(&session_id).unwrap();
+                let client = app_state
+                    .host
+                    .ai_client
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No AI client configured"))?;
+
+                let mut builder = client.raw_builder().streaming(true);
+                for m in &convo.messages {
+                    match m.role {
+                        Role::System => {
+                            builder = builder.system(m.content.clone());
+                        }
+                        Role::User => {
+                            builder = builder.user(m.content.clone());
+                        }
+                        Role::Assistant => {
+                            builder = builder.assistant(m.content.clone());
+                        }
+                    }
+                }
+                builder.execute_streaming().await
+            };
+
+            match stream_result {
+                Ok(mut s) => {
+                    while let Some(chunk_res) = s.next().await {
+                        match chunk_res {
+                            Ok(event) => {
+                                match event {
+                                    StreamEvent::ContentDelta{ text, .. } => {
+                                        let json_msg = serde_json::json!({
+                                            "type": "token",
+                                            "data": text
+                                        });
+                                        if socket.send(Message::Text(json_msg.to_string())).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                    StreamEvent::MessageStop => {
+                                        let done_msg = serde_json::json!({"type":"done"});
+                                        let _ = socket.send(Message::Text(done_msg.to_string())).await;
+                                        break;
+                                    }
+                                    _ => {}
                                 }
                             }
-                            Ok(axum::response::sse::Event::default().data(""))
-                        },
-                        StreamEvent::MessageStop => {
-                            if !stream_ended {
-                                stream_ended = true;
-                                Ok(axum::response::sse::Event::default()
-                                    .event("close")
-                                    .data("[DONE]"))
-                            } else {
-                                Ok(axum::response::sse::Event::default().data(""))
+                            Err(e) => {
+                                log::error!("Error in streaming: {}", e);
+                                let err_msg = serde_json::json!({
+                                    "type": "error",
+                                    "data": e.to_string()
+                                });
+                                let _ = socket.send(Message::Text(err_msg.to_string())).await;
+                                break;
                             }
-                        },
-                        StreamEvent::Error { message, .. } => {
-                            let msg = format!("[ERROR] {}", message);
-                            Ok(axum::response::sse::Event::default().data(msg))
-                        },
+                        }
                     }
                 }
                 Err(e) => {
-                    let msg = format!("[ERROR] {}", e);
-                    Ok(axum::response::sse::Event::default().data(msg))
+                    log::error!("AI client error: {}", e);
+                    let err_msg = serde_json::json!({
+                        "type": "error",
+                        "data": e.to_string()
+                    });
+                    let _ = socket.send(Message::Text(err_msg.to_string())).await;
                 }
             }
         }
-    )
+    }
+
+    log::info!("[WS] WebSocket closed");
+    Ok(())
 }
+
+async fn resolve_session_id(
+    provided: Option<String>,
+    app_state: &WebAppState,
+) -> Uuid {
+    if let Some(sid) = provided {
+        if let Ok(parsed) = Uuid::parse_str(&sid) {
+            return parsed;
+        }
+    }
+    let new_id = Uuid::new_v4();
+    log::info!("[WS] Generating new session_id: {}", new_id);
+    new_id
+}
+
