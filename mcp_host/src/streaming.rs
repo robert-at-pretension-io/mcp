@@ -55,7 +55,7 @@ where
                     None
                 }
             }
-            Err(e) => Some(Err(e)),
+            Err(e) => Some(Err(anyhow::anyhow!(e))),
         }
     }))
 }
