@@ -958,13 +958,13 @@ When you get information, don't mention it. Just use it to subtly inform the con
                         match self.call_tool(server_name, &tool_name, args).await {
                             Ok(result) => {
                                 println!("{}", conversation_state::format_tool_response(&tool_name, &result));
-                                // Instead of adding as a system message, add as a user message:
-                                state.add_user_message(&result);
+                                // Add tool response as assistant message
+                                state.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result));
                             }
                             Err(e) => {
                                 println!("{}: {}\n", style("Error").red().bold(), e);
-                                // In case of error, we might also add as a user message to prompt the AI to handle it gracefully
-                                state.add_user_message(&format!("Error: {}", e));
+                                // Add error as assistant message to handle gracefully
+                                state.add_assistant_message(&format!("Tool '{}' error: {}", tool_name, e));
                             }
                         }
                     }
