@@ -419,7 +419,8 @@ pub async fn sse_handler(
     // Execute streaming request
     match builder.execute_streaming().await {
         Ok(stream_result) => {
-            log::info!("Started streaming response for session: {}", session_id);
+            log::info!("[sse_handler] Started streaming response for session: {}", session_id);
+            log::debug!("[sse_handler] Stream result initialized successfully");
             let event_stream = stream_result_to_sse(stream_result, state, &app_state);
             
             // After streaming completes, process any tool calls

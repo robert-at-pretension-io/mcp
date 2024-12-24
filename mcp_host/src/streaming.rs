@@ -41,17 +41,19 @@ pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<Stream
 where
     S: Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 {
-    log::debug!("Starting SSE stream parsing");
+    log::debug!("[SSE] Starting SSE stream parsing");
     Box::pin(stream.filter_map(|line_result| async move {
         match line_result {
             Ok(bytes) => {
                 match String::from_utf8(bytes.to_vec()) {
                     Ok(line) => {
+                        log::debug!("[SSE] Received raw line: {}", line);
                         if line.starts_with("data: ") {
                             let data = line.trim_start_matches("data: ");
+                            log::debug!("[SSE] Parsing data: {}", data);
                             match serde_json::from_str::<StreamingMessage>(data) {
                                 Ok(msg) => {
-                                    log::debug!("Parsed SSE message: {:?}", msg);
+                                    log::debug!("[SSE] Successfully parsed message: {:?}", msg);
                                     Some(parse_streaming_message(msg))
                                 },
                                 Err(e) => {

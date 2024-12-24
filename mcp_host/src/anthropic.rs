@@ -87,9 +87,14 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
     }
 
     async fn execute_streaming(self: Box<Self>) -> Result<StreamResult> {
+        log::debug!("[Anthropic] Starting streaming execution");
+        
         // Extract system message if present
         let (system_message, other_messages): (Vec<_>, Vec<_>) = self.messages.iter()
             .partition(|(role, _)| matches!(role, Role::System));
+        
+        log::debug!("[Anthropic] System messages: {:?}", system_message);
+        log::debug!("[Anthropic] Other messages: {:?}", other_messages);
 
         // Build the payload
         let mut payload = json!({
@@ -120,6 +125,8 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
             }
         }
 
+        log::debug!("[Anthropic] Sending streaming request with payload: {:?}", payload);
+        
         let client = Client::new();
         let response = client
             .post("https://api.anthropic.com/v1/messages")
@@ -129,6 +136,8 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
             .json(&payload)
             .send()
             .await?;
+
+        log::debug!("[Anthropic] Got response with status: {}", response.status());
 
         if !response.status().is_success() {
             let error = response.text().await?;
