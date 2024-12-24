@@ -43,7 +43,7 @@ pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<Stream
     log::debug!("[SSE] Starting SSE stream parsing");
 
     Box::pin(
-        stream.filter_map( |line_result|  async  move{
+        stream.filter_map(|line_result| {
             futures::future::ready(match line_result {
                 Ok(bytes) => {
                     match String::from_utf8(bytes.to_vec()) {
