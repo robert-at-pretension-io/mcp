@@ -243,47 +243,50 @@ document.getElementById('askForm').addEventListener('submit', function(evt) {
 
     eventSource.onerror = function(e) {
       console.error('SSE error occurred:', e);
-      reconnectAttempts++;
       
-      // Log detailed error information
-      if (e.target.readyState === EventSource.CLOSED) {
-        console.error('SSE connection closed unexpectedly');
-      } else if (e.target.readyState === EventSource.CONNECTING) {
-        console.error('SSE connection attempting to reconnect');
+      // Check if the connection is already closed
+      if (eventSource.readyState === EventSource.CLOSED) {
+        console.log('SSE connection already closed, not reconnecting');
+        return;
       }
       
       // Close the existing connection
       eventSource.close();
       console.log('Closed SSE connection due to error');
       
-      if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
-        // Show reconnection attempt message
-        streamArea.innerHTML += `<br><strong style='color:orange;'>[Connection interrupted. Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...]</strong>`;
-        
-        // Attempt to reconnect with exponential backoff
-        setTimeout(() => {
-          console.log(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
-          fetch('/ask', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams(new FormData(form))
-          }).then(response => {
-            if (!response.ok) throw new Error(`Server error: ${response.status}`);
-            return response.json();
-          }).then(data => {
-            if (!data || !data.ok) throw new Error('Invalid response data');
-            eventSource = new EventSource(data.sse_url);
-            console.log('Reconnected to new EventSource:', data.sse_url);
-            streamArea.innerHTML += "<br><em style='color:green;'>Reconnected successfully.</em>";
-          }).catch(err => {
-            console.error('Reconnection failed:', err);
-            streamArea.innerHTML += "<br><strong style='color:red;'>[Reconnection failed. Please refresh the page.]</strong>";
-          });
-        }, RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1));
+      // Only attempt reconnect for network-related errors
+      if (e.target.readyState === EventSource.CONNECTING) {
+        reconnectAttempts++;
+        if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+          console.log(`Attempting reconnect ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
+          streamArea.innerHTML += `<br><strong style='color:orange;'>[Connection interrupted. Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...]</strong>`;
+          
+          setTimeout(() => {
+            console.log(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+            fetch('/ask', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams(new FormData(form))
+            }).then(response => {
+              if (!response.ok) throw new Error(`Server error: ${response.status}`);
+              return response.json();
+            }).then(data => {
+              if (!data || !data.ok) throw new Error('Invalid response data');
+              eventSource = new EventSource(data.sse_url);
+              console.log('Reconnected to new EventSource:', data.sse_url);
+              streamArea.innerHTML += "<br><em style='color:green;'>Reconnected successfully.</em>";
+            }).catch(err => {
+              console.error('Reconnection failed:', err);
+              streamArea.innerHTML += "<br><strong style='color:red;'>[Reconnection failed. Please refresh the page.]</strong>";
+            });
+          }, RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1));
+        } else {
+          streamArea.innerHTML += "<br><strong style='color:red;'>[Maximum reconnection attempts reached. Please refresh the page.]</strong>";
+          console.error('Maximum reconnection attempts reached');
+        }
       } else {
-        // Max reconnection attempts reached
-        streamArea.innerHTML += "<br><strong style='color:red;'>[Maximum reconnection attempts reached. Please refresh the page.]</strong>";
-        console.error('Maximum reconnection attempts reached');
+        console.log('Non-recoverable error, not attempting reconnect');
+        streamArea.innerHTML += "<br><strong style='color:red;'>[Connection terminated. Please refresh the page.]</strong>";
       }
     };
   }).catch(err => {
@@ -396,10 +399,10 @@ pub async fn sse_handler(
     let state = sessions.get_mut(&session_id).unwrap(); // Safe because we checked above
     log::debug!("[sse_handler] Found conversation with {} messages", state.messages.len());
 
-    // Get the last user message from the conversation
-
+    // Add a flag to track if this session has been streamed
+    let is_first_stream = !state.messages.iter().any(|msg| msg.role == Role::Assistant);
+    
     // Process the message using the host's unified logic
-    // Get the AI client
     let Some(client) = &app_state.host.ai_client else {
         return Err((StatusCode::INTERNAL_SERVER_ERROR, "No AI client configured".to_string()));
     };
@@ -407,17 +410,27 @@ pub async fn sse_handler(
     // Build the request with streaming enabled
     let mut builder = client.raw_builder();
     
-    // Add system messages
-    for msg in state.messages.iter().filter(|m| matches!(m.role, Role::System)) {
-        builder = builder.system(msg.content.clone());
-    }
-    
-    // Add conversation messages
-    for msg in state.messages.iter().filter(|m| !matches!(m.role, Role::System)) {
-        match msg.role {
-            Role::User => builder = builder.user(msg.content.clone()),
-            Role::Assistant => builder = builder.assistant(msg.content.clone()),
-            _ => {}
+    if is_first_stream {
+        // Add system messages for first stream
+        for msg in state.messages.iter().filter(|m| matches!(m.role, Role::System)) {
+            builder = builder.system(msg.content.clone());
+        }
+        
+        // Add all conversation messages
+        for msg in state.messages.iter().filter(|m| !matches!(m.role, Role::System)) {
+            match msg.role {
+                Role::User => builder = builder.user(msg.content.clone()),
+                Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                _ => {}
+            }
+        }
+    } else {
+        // For reconnects, only stream the last message pair
+        if let Some(last_user) = state.messages.iter().rev().find(|m| matches!(m.role, Role::User)) {
+            builder = builder.user(last_user.content.clone());
+        }
+        if let Some(last_assistant) = state.messages.iter().rev().find(|m| matches!(m.role, Role::Assistant)) {
+            builder = builder.assistant(last_assistant.content.clone());
         }
     }
 
@@ -464,6 +477,9 @@ fn stream_result_to_sse(
     app_state: &WebAppState,
 ) -> impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> {
     log::debug!("[stream_result_to_sse] Converting stream result to SSE events");
+    
+    let mut stream_ended = false;
+    
     StreamExt::map(
         stream_result,
         |chunk_result| {
@@ -493,7 +509,14 @@ fn stream_result_to_sse(
                             Ok(axum::response::sse::Event::default().data(""))
                         },
                         StreamEvent::MessageStop => {
-                            Ok(axum::response::sse::Event::default().data("[DONE]"))
+                            if !stream_ended {
+                                stream_ended = true;
+                                Ok(axum::response::sse::Event::default()
+                                    .event("close")
+                                    .data("[DONE]"))
+                            } else {
+                                Ok(axum::response::sse::Event::default().data(""))
+                            }
                         },
                         StreamEvent::Error { message, .. } => {
                             let msg = format!("[ERROR] {}", message);
