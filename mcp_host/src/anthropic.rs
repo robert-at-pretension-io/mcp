@@ -103,7 +103,8 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
                     "content": content
                 })
             }).collect::<Vec<_>>(),
-            "stream": true
+            "stream": true,
+            "max_tokens": 1024
         });
 
         // Add system message if present
@@ -155,7 +156,8 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
                     "content": content
                 })
             }).collect::<Vec<_>>(),
-            "stream": false
+            "stream": false,
+            "max_tokens": 1024
         });
 
         // Add system message if present
@@ -174,7 +176,7 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
         let response = client
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.client.api_key)
-            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-version", "2024-01-01")
             .header("content-type", "application/json")
             .json(&payload)
             .send()
