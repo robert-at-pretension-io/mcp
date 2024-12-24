@@ -33,7 +33,7 @@ impl From<RequestId> for Value {
 }
 
 /// Role enum for message senders/recipients
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     Assistant,

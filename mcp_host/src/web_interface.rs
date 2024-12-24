@@ -473,8 +473,8 @@ pub async fn sse_handler(
 
 fn stream_result_to_sse(
     stream_result: StreamResult,
-    state: &mut ConversationState,
-    app_state: &WebAppState,
+    _state: &mut ConversationState,
+    _app_state: &WebAppState,
 ) -> impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>> {
     log::debug!("[stream_result_to_sse] Converting stream result to SSE events");
     
@@ -482,7 +482,7 @@ fn stream_result_to_sse(
     
     StreamExt::map(
         stream_result,
-        |chunk_result| {
+        move |chunk_result| {
             match chunk_result {
                 Ok(event) => {
                     log::debug!("Processing stream event: {:?}", event);
