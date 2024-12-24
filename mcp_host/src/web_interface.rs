@@ -131,19 +131,34 @@ document.getElementById('askForm').addEventListener('submit', function(evt) {
     console.log('[DEBUG] Cleared streamArea');
 
     eventSource.onopen = (e) => {
-      console.log('[DEBUG] SSE connection opened (readyState):', eventSource.readyState);
+      console.log('[DEBUG] SSE onopen => readyState:', eventSource.readyState);
+      console.log('[DEBUG] SSE connection details:', {
+        url: eventSource.url,
+        readyState: eventSource.readyState,
+        withCredentials: eventSource.withCredentials
+      });
       streamArea.innerHTML = "<em style='color:green;'>Connected successfully...</em><br>";
     };
 
     eventSource.onmessage = (e) => {
-      console.log('[DEBUG] SSE onmessage event data:', e.data);
+      console.log('[DEBUG] SSE onmessage => data:', e.data);
       if (e.data === "[DONE]") {
-        console.log('[DEBUG] SSE [DONE] signal => closing eventSource');
+        console.log('[DEBUG] SSE [DONE] signal received, closing eventSource');
         eventSource.close();
+        console.log('[DEBUG] EventSource closed, final readyState:', eventSource.readyState);
         return;
       }
       streamArea.innerHTML += e.data;
-      console.log('[DEBUG] Updated streamArea with new content');
+      console.log('[DEBUG] Updated streamArea, content length:', streamArea.innerHTML.length);
+    };
+
+    // Add onclose handler
+    eventSource.onclose = (e) => {
+      console.log('[DEBUG] SSE onclose event:', e);
+      console.log('[DEBUG] SSE final state:', {
+        readyState: eventSource.readyState,
+        reconnection: false
+      });
     };
 
     let reconnectAttempts = 0;
@@ -229,23 +244,45 @@ pub async fn ask(
     log::debug!("[ask] after trim, user_input='{}'", user_input);
 
     let session_id = if session_id_str.is_empty() {
-        Uuid::new_v4()
+        let generated = Uuid::new_v4();
+        log::debug!(
+            "[ask] session_id was empty; generating new UUID => {}",
+            generated
+        );
+        generated
     } else {
         match Uuid::parse_str(&session_id_str) {
-            Ok(id) => id,
-            Err(_) => Uuid::new_v4(),
+            Ok(id) => {
+                log::debug!("[ask] using existing session_id => {}", id);
+                id
+            },
+            Err(e) => {
+                log::warn!(
+                    "[ask] provided session_id was invalid UUID ({}), generating new ID",
+                    e
+                );
+                Uuid::new_v4()
+            },
         }
     };
 
     {
         let mut sessions = app_state.sessions.lock().await;
-        let entry = sessions.entry(session_id).or_insert_with(|| {
+        let conversation = sessions.entry(session_id).or_insert_with(|| {
+            log::debug!("[ask] Creating new ConversationState for session_id {}", session_id);
             ConversationState::new("Welcome to the HTMX + AI Demo!".to_string(), vec![])
         });
-        entry.add_user_message(&user_input);
+        log::debug!("[ask] Adding user message '{}' to session {}", user_input, session_id);
+        conversation.add_user_message(&user_input);
     }
 
     let sse_url = format!("/sse/{}", session_id);
+    log::info!(
+        "[ask] Returning SSE URL => '{}' for session {}",
+        sse_url,
+        session_id
+    );
+
     let result = serde_json::json!({
         "ok": true,
         "sse_url": sse_url,
@@ -259,7 +296,10 @@ pub async fn sse_handler(
     State(app_state): State<WebAppState>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
-    log::info!("[sse_handler] SSE connection established for session: {}", session_id);
+    log::info!(
+        "[sse_handler] SSE connection established for session: {}",
+        session_id
+    );
     let mut sessions = app_state.sessions.lock().await;
     let state = match sessions.get_mut(&session_id) {
         Some(conv) => {
