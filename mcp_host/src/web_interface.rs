@@ -74,55 +74,94 @@ pub async fn root() -> impl IntoResponse {
   </div>
 
 <script>
+// Initialize logging
+console.log('Initializing web interface...');
+
 document.getElementById('askForm').addEventListener('submit', function(evt) {
+  console.log('Form submission started');
   evt.preventDefault();
 
   let form = evt.target;
   let user_input = form.user_input.value;
-  if (!user_input.trim()) return;
+  console.log('User input:', user_input);
+  
+  if (!user_input.trim()) {
+    console.warn('Empty input detected, canceling submission');
+    return;
+  }
 
   let sessionElem = document.getElementById('sessionId');
   if (!sessionElem.value) {
+    console.log('No session ID found, generating new one');
     sessionElem.value = crypto.randomUUID();
+    console.log('Generated session ID:', sessionElem.value);
+  } else {
+    console.log('Using existing session ID:', sessionElem.value);
   }
 
   form.session_id.value = sessionElem.value;
+  console.log('Preparing fetch request to /ask endpoint');
 
   fetch('/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(new FormData(form))
   }).then(response => {
+    console.log('Received response from /ask:', response.status);
     if (!response.ok) {
+      console.error('Server error:', response.status);
       alert("Error from server: " + response.status);
       return;
     }
     return response.json();
   }).then(data => {
+    console.log('Parsed response data:', data);
     if (!data || !data.ok) {
+      console.error('Invalid response data:', data);
       alert("No valid SSE path returned");
       return;
     }
 
+    console.log('Initializing EventSource with URL:', data.sse_url);
     let eventSource = new EventSource(data.sse_url);
     let streamArea = document.getElementById('streamArea');
     streamArea.innerHTML = "";
+    console.log('Cleared stream area');
+
+    eventSource.onopen = function(e) {
+      console.log('SSE connection opened');
+    };
 
     eventSource.onmessage = function(e) {
+      console.log('Received SSE message:', e.data);
       if (e.data === "[DONE]") {
+        console.log('Received DONE signal, closing connection');
         eventSource.close();
         return;
       }
       streamArea.innerHTML += e.data;
+      console.log('Updated stream area with new content');
     };
 
     eventSource.onerror = function(e) {
+      console.error('SSE error occurred:', e);
       streamArea.innerHTML += "<br><strong style='color:red;'>[Stream error occurred]</strong>";
       eventSource.close();
+      console.log('Closed SSE connection due to error');
     };
   }).catch(err => {
+    console.error('Request failed:', err);
     alert("Request error: " + err);
   });
+  
+  console.log('Form submission handler completed');
+});
+
+// Log when the page is fully loaded
+window.addEventListener('load', function() {
+  console.log('Page fully loaded');
+  console.log('Session ID element:', document.getElementById('sessionId'));
+  console.log('Stream area element:', document.getElementById('streamArea'));
 });
 </script>
 </body>
