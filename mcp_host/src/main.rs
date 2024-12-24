@@ -1269,11 +1269,16 @@ async fn main() -> Result<()> {
         match args[1].as_str() {
             "load_config" if args.len() == 3 => {
                 let config_path = &args[2];
-                if let Err(e) = host.load_config(config_path).await {
-                    info!("Error loading configuration: {}", e);
-                    return Ok(());
+                match host.load_config(config_path).await {
+                    Ok(()) => {
+                        info!("Successfully loaded configuration from {}", config_path);
+                        // Continue to CLI after successful config load
+                    }
+                    Err(e) => {
+                        warn!("Error loading configuration: {}. Starting with empty config.", e);
+                        // Continue to CLI even if config load failed
+                    }
                 }
-                info!("Successfully loaded configuration from {}", config_path);
             }
             _ => {
                 info!("Invalid command line arguments");
