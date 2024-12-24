@@ -56,8 +56,10 @@ struct Config {
     #[serde(rename = "mcpServers")]
     servers: HashMap<String, ServerConfig>,
 }
-mod openai;
-use openai::OpenAIClient;
+// mod openai;
+// use openai::OpenAIClient;
+mod anthropic;
+use anthropic::AnthropicClient;
 
 mod ai_client;
 mod gemini;
@@ -616,15 +618,26 @@ When you get information, don't mention it. Just use it to subtly inform the con
         // let client = GeminiClient::new(api_key, model_name);
         // let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
-        let model_name = "gpt-4o".to_string();
-        info!("Initializing OpenAI client with model: {}", model_name);
+        // let model_name = "gpt-4o".to_string();
+        // info!("Initializing OpenAI client with model: {}", model_name);
 
-        // Retrieve the OpenAI API key from an environment variable
-        let api_key = std::env::var("OPENAI_API_KEY")
-            .expect("OPENAI_API_KEY not set. Please provide it in the environment.");
+        // // Retrieve the OpenAI API key from an environment variable
+        // let api_key = std::env::var("OPENAI_API_KEY")
+        //     .expect("OPENAI_API_KEY not set. Please provide it in the environment.");
 
-        info!("Got OpenAI API key: {}", api_key);
-        let client = OpenAIClient::new(api_key, model_name);
+        // info!("Got OpenAI API key: {}", api_key);
+        // let client = OpenAIClient::new(api_key, model_name);
+        // let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
+
+        let model_name = "claude-3-sonnet-20240229".to_string();
+        info!("Initializing Anthropic client with model: {}", model_name);
+
+        // Retrieve the Anthropic API key from an environment variable
+        let api_key = std::env::var("ANTHROPIC_API_KEY")
+            .expect("ANTHROPIC_API_KEY not set. Please provide it in the environment.");
+
+        info!("Got Anthropic API key: {}", api_key);
+        let client = AnthropicClient::new(api_key, model_name);
         let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
 
