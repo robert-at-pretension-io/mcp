@@ -342,11 +342,9 @@ pub async fn ask(
         }
     };
 
-    {
+    let conversation = {
         let mut sessions = app_state.sessions.lock().await;
-        
-        // First check if session exists
-        let conversation = if sessions.contains_key(&session_id) {
+        if sessions.contains_key(&session_id) {
             log::debug!("[ask] Using existing session {}", session_id);
             sessions.get_mut(&session_id).unwrap()
         } else {
@@ -354,11 +352,11 @@ pub async fn ask(
             sessions.entry(session_id).or_insert_with(|| {
                 ConversationState::new("Welcome to the HTMX + AI Demo!".to_string(), vec![])
             })
-        };
-        
-        log::debug!("[ask] Adding user message '{}' to session {}", user_input, session_id);
-        conversation.add_user_message(&user_input);
-    }
+        }
+    };
+    
+    log::debug!("[ask] Adding user message '{}' to session {}", user_input, session_id);
+    conversation.add_user_message(&user_input);
 
     let sse_url = format!("/sse/{}", session_id);
     log::info!(
