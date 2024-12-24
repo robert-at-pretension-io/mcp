@@ -43,10 +43,11 @@ where
 {
     log::debug!("[SSE] Starting SSE stream parsing");
     
-    // Create a buffer to store the current event type
-    let mut current_event_type = String::new();
+    
     
     Box::pin(stream.filter_map(|line_result| async move {
+        // Create a buffer to store the current event type
+        let mut current_event_type = String::new();
         match line_result {
             Ok(bytes) => {
                 match String::from_utf8(bytes.to_vec()) {
