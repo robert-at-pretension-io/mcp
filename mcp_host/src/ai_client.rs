@@ -4,7 +4,6 @@ use serde_json::Value;
 use std::path::Path;
 use futures::Stream;
 use std::pin::Pin;
-mod mcp_host;
 
 
 #[derive(Debug, Clone)]
@@ -147,7 +146,7 @@ impl AIClientFactory {
             "gemini" => {
                 let api_key = config["api_key"].as_str()
                     .ok_or_else(|| anyhow::anyhow!("Gemini API key not provided"))?;
-                let client = mcp_host::gemini::GeminiClient::new(api_key.to_string(), "gemini-pro".to_string());
+                let client = crate::gemini::GeminiClient::new(api_key.to_string(), "gemini-pro".to_string());
                 Ok(Box::new(client))
             }
             "anthropic" => {
