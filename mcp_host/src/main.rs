@@ -958,13 +958,13 @@ When you get information, don't mention it. Just use it to subtly inform the con
                         match self.call_tool(server_name, &tool_name, args).await {
                             Ok(result) => {
                                 println!("{}", conversation_state::format_tool_response(&tool_name, &result));
-                                // Add tool response as assistant message
-                                state.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result));
+                                // Add tool response as assistant message, trimming whitespace
+                                state.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result.trim()));
                             }
                             Err(e) => {
                                 println!("{}: {}\n", style("Error").red().bold(), e);
-                                // Add error as assistant message to handle gracefully
-                                state.add_assistant_message(&format!("Tool '{}' error: {}", tool_name, e));
+                                // Add error as assistant message to handle gracefully, trimming whitespace
+                                state.add_assistant_message(&format!("Tool '{}' error: {}", tool_name, e).trim());
                             }
                         }
                     }
