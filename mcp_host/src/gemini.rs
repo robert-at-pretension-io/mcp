@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::path::Path;
 use std::fs;
+use crate::ai_client::StreamResult;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeminiContentPart {
