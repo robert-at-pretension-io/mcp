@@ -46,23 +46,6 @@ pub struct UserQuery {
     session_id: String,
 }
 
-// New endpoint to receive frontend logs
-async fn receive_frontend_log(
-    Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    if let Some(level) = payload.get("level").and_then(|v| v.as_str()) {
-        if let Some(msg) = payload.get("message").and_then(|v| v.as_str()) {
-            match level {
-                "debug" => log::debug!("[Frontend] {}", msg),
-                "info" => log::info!("[Frontend] {}", msg),
-                "warn" => log::warn!("[Frontend] {}", msg),
-                "error" => log::error!("[Frontend] {}", msg),
-                _ => log::info!("[Frontend] {}", msg),
-            }
-        }
-    }
-    StatusCode::OK
-}
 
 pub fn create_router(app_state: WebAppState) -> Router {
     Router::new()

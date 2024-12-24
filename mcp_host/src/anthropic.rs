@@ -2,8 +2,10 @@ use anyhow::{Result, Context};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
-use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, Role, StreamResult};
+use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, StreamResult};
 use crate::streaming::parse_sse_stream;
+
+use shared_protocol_objects::Role;
 
 #[derive(Debug, Clone)]
 pub struct AnthropicClient {
