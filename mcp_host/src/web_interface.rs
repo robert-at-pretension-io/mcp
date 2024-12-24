@@ -47,11 +47,12 @@ pub struct UserQuery {
 }
 
 
+
+
 pub fn create_router(app_state: WebAppState) -> Router {
     Router::new()
         .route("/", get(root))
-        .route("/ask", post(ask))
-        .route("/sse/:session_id", get(sse_handler))
+        .route("/ws", get(ws_handler))
         .route("/frontend-log", post(receive_frontend_log))
         .with_state(app_state)
 }
