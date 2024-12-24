@@ -72,7 +72,7 @@ pub fn create_router(app_state: WebAppState) -> Router {
         .with_state(app_state)
 }
 
-async fn root() -> impl IntoResponse {
+pub async fn root() -> impl IntoResponse {
     let html = r#"
 <!DOCTYPE html>
 <html>
