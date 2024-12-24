@@ -1,25 +1,21 @@
 use axum::{
     extract::{Form, State},
     response::{Html, IntoResponse, Sse},
-    routing::{get, post},
     http::StatusCode,
-    Json,
+    Json, Router,
 };
-use serde::Deserialize;
-use tokio_stream::StreamExt;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 use uuid::Uuid;
-use futures::stream::BoxStream;
 use anyhow::Result;
+use futures::StreamExt;
 use crate::{
-    ai_client::{AIClient, AIRequestBuilder, StreamResult},
-    conversation_state::{ConversationState, Message},
+    ai_client::{AIClient, StreamResult},
+    conversation_state::ConversationState,
     shared_protocol_objects::Role,
 };
-use axum::Router;
 
 #[derive(Clone)]
 pub struct WebAppState {
