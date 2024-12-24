@@ -86,20 +86,31 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
     }
 
     async fn execute_streaming(self: Box<Self>) -> Result<StreamResult> {
+        // Extract system message if present
+        let (system_message, other_messages): (Vec<_>, Vec<_>) = self.messages.iter()
+            .partition(|(role, _)| matches!(role, Role::System));
+
+        // Build the payload
         let mut payload = json!({
             "model": self.client.model,
-            "messages": self.messages.iter().map(|(role, content)| {
+            "messages": other_messages.iter().map(|(role, content)| {
                 json!({
                     "role": match role {
-                        Role::System => "system",
                         Role::User => "user",
-                        Role::Assistant => "assistant"
+                        Role::Assistant => "assistant",
+                        _ => unreachable!()
                     },
                     "content": content
                 })
             }).collect::<Vec<_>>(),
             "stream": true
         });
+
+        // Add system message if present
+        if let Some((_, system_content)) = system_message.first() {
+            payload.as_object_mut().unwrap()
+                .insert("system".to_string(), json!(system_content));
+        }
 
         if let Some(cfg) = &self.config {
             if let Some(max_tokens) = cfg.max_tokens {
@@ -111,7 +122,7 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
         let response = client
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.client.api_key)
-            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-version", "2024-01-01")
             .header("content-type", "application/json")
             .json(&payload)
             .send()
@@ -127,20 +138,31 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
     }
 
     async fn execute(self: Box<Self>) -> Result<String> {
+        // Extract system message if present
+        let (system_message, other_messages): (Vec<_>, Vec<_>) = self.messages.iter()
+            .partition(|(role, _)| matches!(role, Role::System));
+
+        // Build the payload
         let mut payload = json!({
             "model": self.client.model,
-            "messages": self.messages.iter().map(|(role, content)| {
+            "messages": other_messages.iter().map(|(role, content)| {
                 json!({
                     "role": match role {
-                        Role::System => "system",
                         Role::User => "user",
-                        Role::Assistant => "assistant"
+                        Role::Assistant => "assistant",
+                        _ => unreachable!()
                     },
                     "content": content
                 })
             }).collect::<Vec<_>>(),
             "stream": false
         });
+
+        // Add system message if present
+        if let Some((_, system_content)) = system_message.first() {
+            payload.as_object_mut().unwrap()
+                .insert("system".to_string(), json!(system_content));
+        }
 
         if let Some(cfg) = &self.config {
             if let Some(max_tokens) = cfg.max_tokens {
