@@ -56,14 +56,9 @@ struct Config {
     #[serde(rename = "mcpServers")]
     servers: HashMap<String, ServerConfig>,
 }
-// mod openai;
-// use openai::OpenAIClient;
+mod ai_client;
 mod anthropic;
 use anthropic::AnthropicClient;
-
-mod ai_client;
-mod gemini;
-use gemini::{GeminiClient};
 
 use ai_client::AIClient;
 

@@ -142,12 +142,6 @@ pub struct AIClientFactory;
 impl AIClientFactory {
     pub fn create(provider: &str, config: Value) -> Result<Box<dyn AIClient>> {
         match provider {
-            "openai" => {
-                let api_key = config["api_key"].as_str()
-                    .ok_or_else(|| anyhow::anyhow!("OpenAI API key not provided"))?;
-                let client = crate::openai::OpenAIClient::new(api_key.to_string(), "gpt-4-1106-preview".to_string());
-                Ok(Box::new(client))
-            }
             "gemini" => {
                 let api_key = config["api_key"].as_str()
                     .ok_or_else(|| anyhow::anyhow!("Gemini API key not provided"))?;
