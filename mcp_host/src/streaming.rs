@@ -50,37 +50,24 @@ pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<Stream
                         Ok(line) => {
                             log::debug!("[SSE] Received raw line: {}", line);
 
-                            // Handle event type lines
-                            if line.starts_with("event: ") {
-                                log::debug!(
-                                    "[SSE] Received event type: {}",
-                                    line.trim_start_matches("event: ")
-                                );
-                                None
-                            } else if
-                                // Handle data lines
-                                line.starts_with("data: ")
-                            {
-                                let data = line.trim_start_matches("data: ");
-                                log::debug!("[SSE] Parsing data: {}", data);
+                            if !line.starts_with("data: ") {
+                                // This line might be a comment, empty, or some non-data event
+                                return None;
+                            }
 
-                                match serde_json::from_str::<StreamingMessage>(data) {
-                                    Ok(msg) => {
-                                        log::debug!("[SSE] Successfully parsed message: {:?}", msg);
-                                        Some(parse_streaming_message(msg))
-                                    }
-                                    Err(e) => {
-                                        log::error!("Failed to parse SSE message: {}", e);
-                                        Some(Err(anyhow!("Failed to parse SSE message: {}", e)))
-                                    }
+                            // Strip off the leading "data: "
+                            let data = line.trim_start_matches("data: ").trim();
+                            log::debug!("[SSE] Parsing data: {}", data);
+
+                            match serde_json::from_str::<StreamingMessage>(data) {
+                                Ok(msg) => {
+                                    log::debug!("[SSE] Successfully parsed message: {:?}", msg);
+                                    Some(parse_streaming_message(msg))
                                 }
-                            } else {
-                                // Ignore other lines like empty lines or comment lines
-                                None;
-                                match serde_json::from_str::<StreamingMessage>(data) {
-                                    Ok(msg) => {
-                                        log::debug!("[SSE] Successfully parsed message: {:?}", msg);
-                                        Some(parse_streaming_message(msg))
+                                Err(e) => {
+                                    log::error!("Failed to parse SSE message: {}", e);
+                                    Some(Err(anyhow!("Failed to parse SSE message: {}", e)))
+                                }
                                     }
                                     Err(e) => {
                                         log::error!("Failed to parse SSE message: {}", e);
