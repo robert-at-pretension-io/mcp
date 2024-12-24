@@ -61,8 +61,7 @@ struct Config {
     #[serde(rename = "mcpServers")]
     servers: HashMap<String, ServerConfig>,
 }
-mod ai_client;
-mod anthropic;
+
 use anthropic::AnthropicClient;
 
 use ai_client::AIClient;
@@ -643,7 +642,7 @@ When you get information, don't mention it. Just use it to subtly inform the con
 
 
         if ai_client.is_none() {
-            info!("No AI client configured. Set MCP_AI_PROVIDER and corresponding API key (OPENAI_API_KEY or GEMINI_API_KEY)");
+            info!("No AI client configured. Set MCP_AI_PROVIDER and corresponding API key (OPENAI_API_KEY or GEMINI_API_KEY or ANTHROPIC_API_KEY)");
         }
 
         Ok(Self {
