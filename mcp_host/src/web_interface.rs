@@ -1,16 +1,15 @@
 use axum::{
-    extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
+    extract::State,
     response::{Html, IntoResponse},
+    routing::{get, post, Router},
     http::StatusCode,
     Json,
-    routing::{post, get, Router},
+    extract::ws::{Message, WebSocket, WebSocketUpgrade},
 };
-use serde_json::Value;
-use std::{
-    collections::HashMap,
-    sync::Arc,
-};
+use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::Mutex;
+use serde_json::Value;
 use uuid::Uuid;
 use anyhow::Result;
 use futures::StreamExt;
@@ -76,61 +75,107 @@ async fn receive_frontend_log(Json(payload): Json<Value>) -> impl IntoResponse {
 // CHANGED: root() now includes simple WebSocket-based HTML
 // ---------------------------------------------------------------------------
 pub async fn root() -> impl IntoResponse {
+    // We use a <div> (#chatContainer) to hold messages, each in its own <div>.
+    // We include "marked" from CDN to parse markdown for each chunk.
+    // Pressing Enter sends the message. No custom CSS is used, just basic HTML.
     let html = r#"
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <title>WebSocket + AI Demo</title>
+  <!-- Markdown library from a CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
   <h1>WebSocket Demo</h1>
-  <textarea id="chatLog" cols="80" rows="15" readonly></textarea><br>
-  <input id="userInput" type="text" placeholder="Type a message..." />
-  <button onclick="sendMsg()">Send</button>
+
+  <!-- Container for chat messages -->
+  <div id="chatContainer" style="border:1px solid #ccc; width:600px; height:300px; overflow:auto; padding:5px;"></div>
+
+  <!-- Input field -->
+  <input id="userInput" type="text" placeholder="Type a message..." style="width:600px;"/>
+  <button id="sendBtn">Send</button>
 
   <script>
-    // Setup logs
     console.log('[INFO] Starting WebSocket demo');
 
+    // Connect to WebSocket
     const ws = new WebSocket(`ws://${location.host}/ws`);
+
+    // Logging
     ws.onopen = () => {
       console.log('WebSocket connected');
     };
+    ws.onclose = () => {
+      console.log('WebSocket closed');
+    };
+    ws.onerror = (err) => {
+      console.error('WebSocket error:', err);
+    };
+
+    // We display messages in #chatContainer, each in its own <div>
+    // We'll parse text as markdown (via "marked") to convert to HTML.
+    const chatContainer = document.getElementById("chatContainer");
+    function addMessage(text, from='assistant') {
+      const msgDiv = document.createElement('div');
+      // Use marked to parse the string as markdown
+      msgDiv.innerHTML = marked.parse(text);
+      msgDiv.style.borderTop = "1px solid #ccc";
+      msgDiv.style.margin = "4px 0";
+      chatContainer.appendChild(msgDiv);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // On receiving server messages, we parse them as JSON
     ws.onmessage = (evt) => {
       try {
         const msg = JSON.parse(evt.data);
         if(msg.type === "token") {
-          chatLog.value += msg.data;
+          // We'll treat each token chunk as part of a single response
+          addMessage(msg.data, 'assistant');
         } else if(msg.type === "done") {
-          chatLog.value += "\n[Done]\n";
+          // End of message
+          addMessage('[Done]', 'assistant');
         } else if(msg.type === "error") {
-          chatLog.value += "\n[ERROR] " + msg.data + "\n";
+          addMessage('[ERROR] ' + msg.data, 'assistant');
         }
       } catch(e) {
         console.error('Invalid JSON from server:', evt.data);
       }
     };
-    ws.onclose = () => {
-      console.log('WebSocket closed');
-    };
 
-    const chatLog = document.getElementById("chatLog");
+    // Pressing Enter also sends the message
+    const inputField = document.getElementById("userInput");
+    const sendBtn = document.getElementById("sendBtn");
 
-    let sessionId = null; // We can generate if needed
     function sendMsg() {
-      const input = document.getElementById("userInput");
-      const text = input.value.trim();
+      const text = inputField.value.trim();
       if(!text) return;
+      // We'll let the server generate a session if needed
+      if(!window.sessionId) window.sessionId = crypto.randomUUID();
+      const payload = { session_id: window.sessionId, user_input: text };
 
-      if(!sessionId) sessionId = crypto.randomUUID();
-      const payload = {
-        session_id: sessionId,
-        user_input: text
-      };
+      // Add user message to chat
+      addMessage(text, 'user');
+      inputField.value = "";
+
+      // Send to WebSocket
       ws.send(JSON.stringify(payload));
-      input.value = "";
     }
+
+    // Press Enter to send
+    inputField.addEventListener("keydown", function(e) {
+      if(e.key === "Enter") {
+        e.preventDefault();
+        sendMsg();
+      }
+    });
+
+    // Clicking button also sends
+    sendBtn.onclick = () => {
+      sendMsg();
+    };
   </script>
 </body>
 </html>
