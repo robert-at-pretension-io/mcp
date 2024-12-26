@@ -145,9 +145,9 @@ fn handle_sse_message(msg: &StreamingMessage, out: &mut Vec<Result<StreamEvent>>
                 message: err.message.clone(),
             }));
         }
-        // Safely ignore unknown message types
+        // Log and ignore unknown message types
         other => {
-            out.push(Err(anyhow!("Unknown SSE message type: {}", other)));
+            log::debug!("Ignoring SSE message type: {}", other);
         }
     }
     Ok(())
