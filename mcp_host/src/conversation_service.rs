@@ -116,37 +116,44 @@ pub enum ToolCallResult {
 
 pub fn parse_tool_call(response: &str) -> ToolCallResult {
     lazy_static! {
-        // Single strict pattern
+        // Single strict pattern that handles both formats
         static ref TOOL_PATTERN: Regex = Regex::new(
-            r"(?s)Let me call ([a-zA-Z_][a-zA-Z0-9_]*)\n```json\n(\{.*?\})\n```"
+            r"(?s)Let me call ([a-zA-Z_][a-zA-Z0-9_]*)\s*\n```json\n(\{.*?\})\n```"
         ).unwrap();
 
         // "Near miss" patterns to provide helpful feedback
         static ref NEAR_MISS_PATTERNS: Vec<(Regex, &'static str)> = vec![
             (
                 Regex::new(r"`([^`]+)`").unwrap(),
-                "Tool name should not be in backticks. Use: Let me call tool_name",
+                "Tool name should not be in backticks. Use: Let me call tool_name"
             ),
             (
                 Regex::new(r"```\s*\{").unwrap(),
-                "JSON block must start with ```json on its own line",
+                "JSON block must start with ```json on its own line"
             ),
-            (Regex::new(r"\{.*\}\s*```").unwrap(), "JSON block must end with ``` on its own line"),
+            (
+                Regex::new(r"\{.*\}\s*```").unwrap(),
+                "JSON block must end with ``` on its own line"
+            ),
             (
                 Regex::new(r"Let me use|I'll use|Using the|Call the").unwrap(),
-                "Must start with exactly 'Let me call'",
-            )
+                "Must start with exactly 'Let me call'"
+            ),
         ];
     }
 
     // Try the strict pattern first
     if let Some(captures) = TOOL_PATTERN.captures(response) {
         let tool_name = captures[1].to_string();
+        log::debug!("Found tool call pattern for tool: {}", tool_name);
+        log::debug!("JSON content: {}", &captures[2]);
         if let Ok(args) = serde_json::from_str(&captures[2]) {
+            log::debug!("Successfully parsed JSON arguments");
             return ToolCallResult::Success(tool_name, args);
         } else {
-            log::warn!("Found tool call pattern but JSON parsing failed: {}", &captures[2]);
-            return ToolCallResult::NearMiss(vec!["JSON parsing failed".to_string()]);
+            let error = format!("Found tool call pattern but JSON parsing failed: {}", &captures[2]);
+            log::warn!("{}", error);
+            return ToolCallResult::NearMiss(vec![error]);
         }
     }
 
