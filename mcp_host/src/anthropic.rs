@@ -132,6 +132,7 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.client.api_key)
             .header("anthropic-version", "2023-06-01")
+            .header("accept", "text/event-stream")
             .header("content-type", "application/json")
             .json(&payload)
             .send()

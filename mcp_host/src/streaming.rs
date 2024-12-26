@@ -50,13 +50,17 @@ pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<Stream
                         Ok(line) => {
                             log::debug!("[SSE] Received raw line: {}", line);
 
-                            if !line.starts_with("data: ") {
-                                // This line might be a comment, empty, or some non-data event
+                            // Handle both SSE data: prefix and raw JSON
+                            let data = if line.starts_with("data: ") {
+                                line.trim_start_matches("data: ").trim()
+                            } else {
+                                line.trim()
+                            };
+
+                            // Skip empty lines
+                            if data.is_empty() {
                                 return None;
                             }
-
-                            // Strip off the leading "data: "
-                            let data = line.trim_start_matches("data: ").trim();
                             log::debug!("[SSE] Parsing data: {}", data);
 
                             match serde_json::from_str::<StreamingMessage>(data) {
