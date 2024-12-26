@@ -84,19 +84,40 @@ pub async fn root() -> impl IntoResponse {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>WebSocket + AI Demo</title>
-  <!-- Markdown library from a CDN -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Chat Interface</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/picocss/2.0.6/pico.classless.min.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    #chatContainer {
+      height: 70vh;
+      overflow-y: auto;
+      border: 1px solid var(--pico-muted-border-color);
+      border-radius: var(--pico-border-radius);
+      padding: 1rem;
+      margin-bottom: 1rem;
+      background: var(--pico-background-color);
+    }
+    .input-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .input-group input {
+      flex: 1;
+      margin-bottom: 0;
+    }
+  </style>
 </head>
 <body>
-  <h1>WebSocket Demo</h1>
+  <main class="container">
+    <h1>AI Chat Interface</h1>
+    
+    <div id="chatContainer"></div>
 
-  <!-- Container for chat messages -->
-  <div id="chatContainer" style="border:1px solid #ccc; width:600px; height:300px; overflow:auto; padding:5px;"></div>
-
-  <!-- Input field -->
-  <input id="userInput" type="text" placeholder="Type a message..." style="width:600px;"/>
-  <button id="sendBtn">Send</button>
+    <div class="input-group">
+      <input type="text" id="userInput" placeholder="Type your message..."/>
+      <button id="sendBtn">Send</button>
+    </div>
 
   <script>
     console.log('[INFO] Starting WebSocket demo');
@@ -122,8 +143,10 @@ pub async fn root() -> impl IntoResponse {
     function startNewAssistantMessage() {
       assistantMarkdown = ""; // reset
       currentAssistantDiv = document.createElement('div');
-      currentAssistantDiv.style.borderTop = "1px solid #ccc";
-      currentAssistantDiv.style.margin = "4px 0";
+      currentAssistantDiv.style.padding = "0.5rem";
+      currentAssistantDiv.style.margin = "0.5rem 0";
+      currentAssistantDiv.style.background = "var(--pico-card-background-color)";
+      currentAssistantDiv.style.borderRadius = "var(--pico-border-radius)";
       chatContainer.appendChild(currentAssistantDiv);
     }
 
@@ -142,8 +165,10 @@ pub async fn root() -> impl IntoResponse {
     function addUserMessage(text) {
       const msgDiv = document.createElement('div');
       msgDiv.innerHTML = marked.parse(text);
-      msgDiv.style.borderTop = "1px solid #ccc";
-      msgDiv.style.margin = "4px 0";
+      msgDiv.style.padding = "0.5rem";
+      msgDiv.style.margin = "0.5rem 0";
+      msgDiv.style.background = "var(--pico-form-element-background-color)";
+      msgDiv.style.borderRadius = "var(--pico-border-radius)";
       chatContainer.appendChild(msgDiv);
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
