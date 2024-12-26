@@ -1,10 +1,9 @@
 use crate::ai_client::StreamEvent;
 use anyhow::{ Result, anyhow };
-use futures::{ Stream, future };
+use futures::{ Stream, StreamExt };
 use serde::Deserialize;
 use serde_json::Value;
 use std::pin::Pin;
-use futures::stream::StreamExt;
 
 #[derive(Debug, Deserialize)]
 struct StreamingMessage {
@@ -38,93 +37,99 @@ struct ErrorContent {
 }
 
 pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<StreamEvent>> + Send>>
-    where S: Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static
+where
+    S: Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static
 {
-    log::debug!("[SSE] Starting SSE stream parsing");
-
-    Box::pin(
-        stream.filter_map(|line_result| async move{
-            match line_result {
-                Ok(bytes) => {
-                    match String::from_utf8(bytes.to_vec()) {
-                        Ok(line) => {
-                            log::debug!("[SSE] Received raw line: {}", line);
-
-                            // Handle both SSE data: prefix and raw JSON
-                            let data = if line.starts_with("data: ") {
-                                line.trim_start_matches("data: ").trim()
-                            } else {
-                                line.trim()
-                            };
-
-                            // Skip empty lines
-                            if data.is_empty() {
-                                return None;
-                            }
-                            log::debug!("[SSE] Parsing data: {}", data);
-
-                            match serde_json::from_str::<StreamingMessage>(data) {
-                                Ok(msg) => {
-                                    log::debug!("[SSE] Successfully parsed message: {:?}", msg);
-                                    Some(parse_streaming_message(msg))
+    Box::pin(stream.flat_map(|chunk_result| {
+        let mut out = Vec::new();
+        match chunk_result {
+            Ok(chunk) => {
+                // Convert raw bytes to string
+                match String::from_utf8(chunk.to_vec()) {
+                    Ok(chunk_str) => {
+                        // Split by newlines; each line might be `event: ...` or `data: ...`
+                        for line in chunk_str.lines() {
+                            // We only parse lines starting with `data: `
+                            if let Some(data) = line.strip_prefix("data: ") {
+                                let data = data.trim();
+                                // Ignore empty data lines
+                                if data.is_empty() {
+                                    continue;
                                 }
-                                Err(e) => {
-                                    log::error!("Failed to parse SSE message: {}", e);
-                                    Some(Err(anyhow!("Failed to parse SSE message: {}", e)))
-                                }
-                                    
-                                   
+                                match serde_json::from_str::<StreamingMessage>(data) {
+                                    Ok(msg) => {
+                                        if let Err(e) = handle_sse_message(&msg, &mut out) {
+                                            out.push(Err(e));
+                                        }
+                                    }
+                                    Err(e) => {
+                                        out.push(Err(anyhow!(
+                                            "Failed to parse SSE JSON: {} (line was: '{}')",
+                                            e, line
+                                        )));
+                                    }
                                 }
                             }
-                        
-                        Err(e) => Some(Err(anyhow!("Invalid UTF-8 in SSE stream: {}", e))),
                         }
+                    }
+                    Err(e) => {
+                        out.push(Err(anyhow!("Invalid UTF-8 in SSE stream: {}", e)));
+                    }
                 }
-                Err(e) => Some(Err(anyhow::anyhow!(e))),
             }
-        })
-    )
+            Err(e) => {
+                out.push(Err(anyhow!(e)));
+            }
+        }
+        futures::stream::iter(out)
+    }))
 }
 
-fn parse_streaming_message(msg: StreamingMessage) -> Result<StreamEvent> {
+fn handle_sse_message(msg: &StreamingMessage, out: &mut Vec<Result<StreamEvent>>) -> Result<()> {
     match msg.message_type.as_str() {
         "message_start" => {
-            let message_id = msg.message.ok_or_else(|| anyhow!("Missing message content"))?.id;
-            Ok(StreamEvent::MessageStart { message_id })
+            let message_id = msg
+                .message
+                .as_ref()
+                .ok_or_else(|| anyhow!("Missing message in 'message_start'"))?
+                .id
+                .clone();
+            out.push(Ok(StreamEvent::MessageStart { message_id }));
         }
         "content_block_start" => {
-            let index = msg.index.ok_or_else(|| anyhow!("Missing content block index"))?;
-            Ok(StreamEvent::ContentBlockStart { index })
+            let index = msg.index.ok_or_else(|| anyhow!("Missing index"))?;
+            out.push(Ok(StreamEvent::ContentBlockStart { index }));
         }
         "content_block_delta" => {
-            let index = msg.index.ok_or_else(|| anyhow!("Missing content delta index"))?;
-            let text = msg.delta.and_then(|d| d.text).unwrap_or_default();
-            Ok(StreamEvent::ContentDelta { index, text })
+            let index = msg.index.ok_or_else(|| anyhow!("Missing index"))?;
+            let text = msg.delta.as_ref().and_then(|d| d.text.clone()).unwrap_or_default();
+            out.push(Ok(StreamEvent::ContentDelta { index, text }));
         }
         "content_block_stop" => {
-            let index = msg.index.ok_or_else(|| anyhow!("Missing content block stop index"))?;
-            Ok(StreamEvent::ContentBlockStop { index })
+            let index = msg.index.ok_or_else(|| anyhow!("Missing index"))?;
+            out.push(Ok(StreamEvent::ContentBlockStop { index }));
         }
         "message_delta" => {
-            let delta = msg.delta.unwrap_or_else(|| DeltaContent {
-                delta_type: None,
-                text: None,
-                stop_reason: None,
-                usage: None,
-            });
-            Ok(StreamEvent::MessageDelta {
-                stop_reason: delta.stop_reason,
-                usage: delta.usage,
-            })
+            let delta = msg.delta.as_ref().ok_or_else(|| anyhow!("Missing delta"))?;
+            out.push(Ok(StreamEvent::MessageDelta {
+                stop_reason: delta.stop_reason.clone(),
+                usage: delta.usage.clone(),
+            }));
         }
-        "message_stop" => Ok(StreamEvent::MessageStop),
+        "message_stop" => {
+            out.push(Ok(StreamEvent::MessageStop));
+        }
         "error" => {
-            let error = msg.error.ok_or_else(|| anyhow!("Missing error content"))?;
-            Ok(StreamEvent::Error {
-                error_type: error.error_type,
-                message: error.message,
-            })
+            let err = msg.error.as_ref().ok_or_else(|| anyhow!("Missing error content"))?;
+            out.push(Ok(StreamEvent::Error {
+                error_type: err.error_type.clone(),
+                message: err.message.clone(),
+            }));
         }
-        _ => Err(anyhow!("Unknown message type: {}", msg.message_type)),
+        // Safely ignore unknown message types
+        other => {
+            out.push(Err(anyhow!("Unknown SSE message type: {}", other)));
+        }
     }
+    Ok(())
 }
