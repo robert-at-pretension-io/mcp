@@ -10,103 +10,6 @@ use regex::Regex;
 
 use shared_protocol_objects::Role;
 
-// Tool call parsing helpers
-pub fn extract_json_after_position(text: &str, pos: usize) -> Option<Value> {
-    if let Some(json_start) = text[pos..].find('{') {
-        let start_pos = pos + json_start;
-        let mut brace_count = 0;
-        let mut end_pos = start_pos;
-
-        for (i, c) in text[start_pos..].chars().enumerate() {
-            match c {
-                '{' => {
-                    brace_count += 1;
-                }
-                '}' => {
-                    brace_count -= 1;
-                    if brace_count == 0 {
-                        end_pos = start_pos + i + 1;
-                        break;
-                    }
-                }
-                _ => {
-                    continue;
-                }
-            }
-        }
-
-        if brace_count == 0 {
-            if let Ok(json) = serde_json::from_str(&text[start_pos..end_pos]) {
-                return Some(json);
-            }
-        }
-    }
-    None
-}
-
-pub fn find_any_json(text: &str) -> Option<Value> {
-    let mut start_indices: Vec<usize> = text
-        .match_indices('{')
-        .map(|(i, _)| i)
-        .collect();
-    start_indices.sort_unstable();
-
-    for start in start_indices {
-        let mut brace_count = 0;
-        let mut end_pos = start;
-
-        for (i, c) in text[start..].chars().enumerate() {
-            match c {
-                '{' => {
-                    brace_count += 1;
-                }
-                '}' => {
-                    brace_count -= 1;
-                    if brace_count == 0 {
-                        end_pos = start + i + 1;
-                        break;
-                    }
-                }
-                _ => {
-                    continue;
-                }
-            }
-        }
-
-        if brace_count == 0 {
-            if let Ok(json) = serde_json::from_str(&text[start..end_pos]) {
-                return Some(json);
-            }
-        }
-    }
-    None
-}
-
-pub fn infer_tool_from_json(json: &Value) -> Option<(String, Value)> {
-    if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
-        return Some((action.to_string(), json.clone()));
-    }
-    if json.get("query").is_some() {
-        return Some(("brave_search".to_string(), json.clone()));
-    }
-    if json.get("url").is_some() {
-        return Some(("scrape_url".to_string(), json.clone()));
-    }
-    if json.get("command").is_some() {
-        return Some(("bash".to_string(), json.clone()));
-    }
-    if json.get("sequential_thinking").is_some() {
-        return Some(("sequential_thinking".to_string(), json.clone()));
-    }
-    if json.get("memory").is_some() {
-        return Some(("memory".to_string(), json.clone()));
-    }
-    if json.get("task_planning").is_some() {
-        return Some(("task_planning".to_string(), json.clone()));
-    }
-    None
-}
-
 #[derive(Debug)]
 pub enum ToolCallResult {
     Success(String, Value),
@@ -114,74 +17,87 @@ pub enum ToolCallResult {
     NoMatch,
 }
 
+lazy_static! {
+    /// A regex that finds "Let me call <tool_name>" (or one of several synonyms) 
+    /// plus optional code fences, capturing the tool name and the starting brace.
+    static ref MASTER_REGEX: Regex = Regex::new(
+        r#"(?sx)
+        (?:Let\ me\ call|I(?:'|’)ll\ use|Using\ the)    # Phrases like "Let me call", "I'll use", "Using the"
+        \s+`?([a-zA-Z_][a-zA-Z0-9_]*)`?\s*(?:tool)?      # The tool name, optionally in backticks, optionally ending with "tool"
+        (?:\s*with\s+(?:these\s+)?parameters)?          # Possibly "with these parameters"
+        :?                                              # optional colon
+        \s*                                             # optional whitespace
+        (?:```(?:json)?\s*)?                            # Possibly triple-backtick plus "json"
+        (\{)                                            # Capture the STARTING brace for JSON in group 2
+        "#).unwrap();
+}
+
+/// Attempts to parse a single tool call from `response`.
 pub fn parse_tool_call(response: &str) -> ToolCallResult {
-    lazy_static! {
-        static ref TOOL_CALL_REGEXES: Vec<Regex> = vec![
-            // Pattern 1: Standard format with code fences
-            Regex::new(
-                r"(?s)(?:Let me call|I'll use|Using the)\s+`?([a-zA-Z_][a-zA-Z0-9_]*)`?\s*(?:tool)?(?:\s*with\s+(?:these\s+)?parameters)?:?\s*```(?:json)?\s*(\{.*?\})\s*```"
-            ).unwrap(),
-
-            // Pattern 2: No code fences, direct JSON after tool name
-            Regex::new(
-                r"(?s)(?:Let me call|I'll use|Using the)\s+`?([a-zA-Z_][a-zA-Z0-9_]*)`?\s*(?:tool)?(?:\s*with\s+(?:these\s+)?parameters)?:?\s*\n*(\{.*?\})"
-            ).unwrap(),
-
-            // Pattern 3: Fallback - tool name followed by JSON block
-            Regex::new(
-                r"(?s)`?([a-zA-Z_][a-zA-Z0-9_]*)`?\s*(?:tool)?:?\s*\n*(?:```(?:json)?\s*)?(\{.*?\})(?:\s*```)?",
-            ).unwrap(),
-        ];
-    }
-
     log::debug!("Parsing response for tool calls:\n{}", response);
 
-    // Try each pattern in turn
-    for (i, re) in TOOL_CALL_REGEXES.iter().enumerate() {
-        log::debug!("Trying pattern {}", i + 1);
-        
-        for caps in re.captures_iter(response) {
-            if caps.len() < 3 {
-                log::debug!("Pattern {} matched but without enough capture groups", i + 1);
-                continue;
-            }
+    // 1) Scan the entire response for a pattern: “Let me call <toolname> ... {”
+    //    The MASTER_REGEX returns two captures: 
+    //      capture 1 = the tool name
+    //      capture 2 = the literal “{” from which we will parse balanced braces.
+    if let Some(caps) = MASTER_REGEX.captures(response) {
+        let tool_name = caps[1].to_string();
+        let brace_start_index = caps.get(2).unwrap().start();
 
-            let tool_name = caps[1].trim().to_string();
-            let json_block = caps[2].trim();
-
-            log::debug!("Found potential tool call: {}", tool_name);
-            log::debug!("JSON block: {}", json_block);
-
-            // Try parsing the JSON
-            match serde_json::from_str::<Value>(json_block) {
-                Ok(args) => {
-                    log::debug!("Successfully parsed JSON for tool '{}'", tool_name);
-                    return ToolCallResult::Success(tool_name, args);
-                }
-                Err(e) => {
-                    let error = format!(
-                        "Found tool call pattern for '{}' but JSON parsing failed: {}\nJSON block was: {}",
-                        tool_name, e, json_block
-                    );
-                    log::warn!("{}", error);
-                    return ToolCallResult::NearMiss(vec![error]);
+        // 2) Attempt to extract a balanced JSON block from that point.
+        match extract_balanced_braces(response, brace_start_index) {
+            Some((json_str, _end_index)) => {
+                // 3) Attempt to parse that JSON
+                match serde_json::from_str::<Value>(&json_str) {
+                    Ok(obj) => {
+                        log::debug!("Successfully parsed JSON for tool '{}'", tool_name);
+                        ToolCallResult::Success(tool_name, obj)
+                    }
+                    Err(e) => {
+                        let msg = format!(
+                            "Found tool call for '{tool_name}', but JSON parse failed: {e}\nJSON block was: {json_str}"
+                        );
+                        log::warn!("{}", msg);
+                        ToolCallResult::NearMiss(vec![msg])
+                    }
                 }
             }
+            None => {
+                let msg = format!(
+                    "Found tool call for '{tool_name}', but could not read balanced braces from the text."
+                );
+                log::warn!("{}", msg);
+                ToolCallResult::NearMiss(vec![msg])
+            }
+        }
+    } else {
+        // If the MASTER_REGEX fails, we might do other fallback attempts, or return NoMatch:
+        log::debug!("No valid tool calls found in response");
+        ToolCallResult::NoMatch
+    }
+}
+
+/// Extract a balanced set of braces (from the first `{`) so that we get a complete JSON object
+/// even if it contains nested braces. Returns `(json_string, index_after_closing_brace)`.
+fn extract_balanced_braces(text: &str, open_brace_index: usize) -> Option<(String, usize)> {
+    let mut brace_count = 0;
+    let mut end_index = open_brace_index;
+    let chars: Vec<char> = text.chars().collect();
+    for (i, &ch) in chars[open_brace_index..].iter().enumerate() {
+        match ch {
+            '{' => brace_count += 1,
+            '}' => brace_count -= 1,
+            _ => {}
+        }
+        if brace_count == 0 {
+            // i is relative offset
+            end_index = open_brace_index + i;
+            // substring from open_brace_index..=end_index
+            let json_substring = &text[open_brace_index..=end_index];
+            return Some((json_substring.to_string(), end_index + 1));
         }
     }
-
-    // If we get here, try to find any valid JSON that might contain a tool call
-    log::debug!("No standard patterns matched, looking for any JSON blocks");
-    if let Some(json) = find_any_json(response) {
-        if let Some((tool_name, args)) = infer_tool_from_json(&json) {
-            log::debug!("Inferred tool '{}' from JSON content", tool_name);
-            return ToolCallResult::Success(tool_name, args);
-        }
-    }
-
-    // If we get here, no valid tool calls were found
-    log::debug!("No valid tool calls found in response");
-    ToolCallResult::NoMatch
+    None
 }
 
 pub async fn handle_assistant_response(
@@ -206,13 +122,9 @@ pub async fn handle_assistant_response(
         let chunks: Vec<&str> = current_response.split("```").collect();
         log::debug!("Split response into {} chunks", chunks.len());
         
-        for (i, chunk) in chunks.iter().enumerate() {
-            log::debug!("Processing chunk {} of length {}", i, chunk.len());
-            log::debug!("Chunk content:\n{}", chunk);
-            
-            if i % 2 == 1 {
-                log::debug!("Checking chunk {} for tool calls", i);
-                match parse_tool_call(chunk) {
+        // Process the entire response as a single unit
+        log::debug!("Checking response for tool calls");
+        match parse_tool_call(&current_response) {
                     ToolCallResult::Success(tool_name, args) => {
                         found_tool_call = true;
                         log::debug!("Found tool call in chunk {}:", i);
