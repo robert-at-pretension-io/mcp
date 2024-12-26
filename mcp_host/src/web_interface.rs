@@ -19,12 +19,10 @@ use serde_json::Value;
 use uuid::Uuid;
 use anyhow::Result;
 use futures::StreamExt;
-use crate::{
-    ai_client::StreamEvent,
-    conversation_state::ConversationState,
-    MCPHost,
-};
+
 use shared_protocol_objects::Role;
+
+
 
 // ---------------------------------------------------------------------------
 // No changes in the WebAppState or WsRequest structures
