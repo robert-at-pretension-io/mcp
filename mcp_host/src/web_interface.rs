@@ -447,18 +447,7 @@ async fn do_multi_tool_loop(
     let client = app_state.host.ai_client.as_ref()
         .ok_or_else(|| anyhow::anyhow!("No AI client configured"))?;
 
-    // Create a wrapper to handle WebSocket notifications
-    let mut ws_notifier = |event_type: &str, data: serde_json::Value| async move {
-        let msg = serde_json::json!({
-            "type": event_type,
-            "data": data
-        });
-        if let Err(e) = socket.send(Message::Text(msg.to_string())).await {
-            log::error!("Failed to send WebSocket message: {}", e);
-        }
-    };
-
-    // Use the existing handle_assistant_response with our WebSocket notifier
+    // Use handle_assistant_response directly
     match crate::conversation_service::handle_assistant_response(
         &app_state.host,
         partial_response,
@@ -472,9 +461,12 @@ async fn do_multi_tool_loop(
         },
         Err(e) => {
             log::error!("Error handling assistant response: {}", e);
-            ws_notifier("error", json!({
-                "message": format!("Error processing response: {}", e)
-            }));
+            // Send error directly through WebSocket
+            let err_msg = serde_json::json!({
+                "type": "error",
+                "data": format!("Error processing response: {}", e)
+            });
+            socket.send(Message::Text(err_msg.to_string())).await?;
             Err(anyhow::anyhow!(e))
         }
     }
