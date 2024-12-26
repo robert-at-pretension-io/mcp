@@ -3,7 +3,7 @@ use axum::{
     response::{Html, IntoResponse},
     http::StatusCode,
     Json,
-    routing::{post, Router, get},
+    routing::{post, get, Router},
 };
 use serde_json::Value;
 use std::{
@@ -19,9 +19,11 @@ use crate::{
     conversation_state::ConversationState,
     MCPHost,
 };
-
 use shared_protocol_objects::Role;
 
+// ---------------------------------------------------------------------------
+// No changes in the WebAppState or WsRequest structures
+// ---------------------------------------------------------------------------
 #[derive(Clone)]
 pub struct WebAppState {
     pub sessions: Arc<Mutex<HashMap<Uuid, ConversationState>>>,
@@ -43,10 +45,11 @@ struct WsRequest {
     user_input: String,
 }
 
-
-
-
+// ---------------------------------------------------------------------------
+// CHANGED: Create router without SSE-based endpoints
+// ---------------------------------------------------------------------------
 pub fn create_router(app_state: WebAppState) -> Router {
+    // Removed any .route("/ask") or SSE routes
     Router::new()
         .route("/", get(root))
         .route("/ws", get(ws_handler))
@@ -69,239 +72,66 @@ async fn receive_frontend_log(Json(payload): Json<Value>) -> impl IntoResponse {
     StatusCode::OK
 }
 
+// ---------------------------------------------------------------------------
+// CHANGED: root() now includes simple WebSocket-based HTML
+// ---------------------------------------------------------------------------
 pub async fn root() -> impl IntoResponse {
     let html = r#"
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>HTMX + AI Streaming Demo</title>
-  <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.2"></script>
-  <script>
-    // Override console logging
-    (function() {
-        const originalConsole = {
-            log: console.log,
-            debug: console.debug,
-            info: console.info,
-            warn: console.warn,
-            error: console.error
-        };
-
-        function sendToBackend(level, args) {
-            const message = Array.from(args).map(arg => 
-                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-            ).join(' ');
-
-            fetch('/frontend-log', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ level, message })
-            }).catch(err => originalConsole.error('Failed to send log to backend:', err));
-        }
-
-        console.log = function(...args) {
-            originalConsole.log.apply(console, args);
-            sendToBackend('info', args);
-        };
-
-        console.debug = function(...args) {
-            originalConsole.debug.apply(console, args);
-            sendToBackend('debug', args);
-        };
-
-        console.info = function(...args) {
-            originalConsole.info.apply(console, args);
-            sendToBackend('info', args);
-        };
-
-        console.warn = function(...args) {
-            originalConsole.warn.apply(console, args);
-            sendToBackend('warn', args);
-        };
-
-        console.error = function(...args) {
-            originalConsole.error.apply(console, args);
-            sendToBackend('error', args);
-        };
-    })();
-  </script>
+  <title>WebSocket + AI Demo</title>
 </head>
 <body>
-  <h1>HTMX + AI Streaming Demo</h1>
-  <div>
-    <label>Session ID:
-      <input type="text" id="sessionId" value="" placeholder="(auto-generated on first submit)">
-    </label>
-  </div>
+  <h1>WebSocket Demo</h1>
+  <textarea id="chatLog" cols="80" rows="15" readonly></textarea><br>
+  <input id="userInput" type="text" placeholder="Type a message..." />
+  <button onclick="sendMsg()">Send</button>
 
-  <form id="askForm"
-        hx-post="/ask"
-        hx-trigger="submit"
-        hx-swap="none"
-        style="margin-top: 1em;">
-    <input type="text" name="user_input" placeholder="Ask me something..." />
-    <input type="hidden" name="session_id" />
-    <button type="submit">Send</button>
-  </form>
+  <script>
+    // Setup logs
+    console.log('[INFO] Starting WebSocket demo');
 
-  <div id="streamArea" style="border: 1px solid #ccc; padding: 1em; margin-top: 1em;">
-  </div>
-
-<script>
-// Initialize logging
-console.log('[DEBUG] Initializing web interface...');
-
-document.getElementById('askForm').addEventListener('submit', function(evt) {
-  console.log('[DEBUG] askForm submit event triggered');
-  evt.preventDefault();
-
-  let form = evt.target;
-  let user_input = form.user_input.value.trim();
-  console.log('[DEBUG] user_input:', user_input);
-  
-  if (!user_input) {
-    console.log('[DEBUG] user_input is empty, not sending request.');
-    return;
-  }
-
-  let sessionElem = document.getElementById('sessionId');
-  if (!sessionElem.value) {
-    console.log('[DEBUG] No sessionId found, generating...');
-    sessionElem.value = crypto.randomUUID();
-    console.log('[DEBUG] Generated new sessionId:', sessionElem.value);
-  } else {
-    console.log('[DEBUG] Using existing sessionId:', sessionElem.value);
-  }
-
-  form.session_id.value = sessionElem.value;
-  console.log(`[DEBUG] Submitting /ask with user_input='${user_input}', session_id='${sessionElem.value}'`);
-
-  fetch('/ask', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(new FormData(form))
-  }).then(response => {
-    console.log('[DEBUG] /ask response status:', response.status);
-    if (!response.ok) {
-      console.error('[ERROR] /ask returned non-OK status:', response.status);
-      alert("Error from server: " + response.status);
-      return;
-    }
-    return response.json();
-  }).then(data => {
-    console.log('[DEBUG] /ask JSON response:', data);
-    if (!data || !data.ok) {
-      console.warn('[DEBUG] Data was not ok or missing:', data);
-      alert("No valid SSE path returned from /ask");
-      return;
-    }
-    
-    let sseUrl = data.sse_url;
-    console.log('[DEBUG] Creating EventSource for SSE at', sseUrl);
-    let eventSource = new EventSource(sseUrl);
-    let streamArea = document.getElementById('streamArea');
-    streamArea.innerHTML = "";
-    console.log('[DEBUG] Cleared streamArea');
-
-    eventSource.onopen = (e) => {
-      console.log('[DEBUG] SSE onopen => readyState:', eventSource.readyState);
-      console.log('[DEBUG] SSE connection details:', {
-        url: eventSource.url,
-        readyState: eventSource.readyState,
-        withCredentials: eventSource.withCredentials
-      });
-      streamArea.innerHTML = "<em style='color:green;'>Connected successfully...</em><br>";
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onopen = () => {
+      console.log('WebSocket connected');
     };
-
-    eventSource.onmessage = (e) => {
-      console.log('[DEBUG] SSE onmessage => data:', e.data);
-      if (e.data === "[DONE]") {
-        console.log('[DEBUG] SSE [DONE] signal received, closing eventSource');
-        eventSource.close();
-        console.log('[DEBUG] EventSource closed, final readyState:', eventSource.readyState);
-        return;
-      }
-      streamArea.innerHTML += e.data;
-      console.log('[DEBUG] Updated streamArea, content length:', streamArea.innerHTML.length);
-    };
-
-    // Add onclose handler
-    eventSource.onclose = (e) => {
-      console.log('[DEBUG] SSE onclose event:', e);
-      console.log('[DEBUG] SSE final state:', {
-        readyState: eventSource.readyState,
-        reconnection: false
-      });
-    };
-
-    let reconnectAttempts = 0;
-    const MAX_RECONNECT_ATTEMPTS = 3;
-    const RECONNECT_DELAY = 2000;
-
-    eventSource.onerror = function(e) {
-      console.error('SSE error occurred:', e);
-      
-      // Check if the connection is already closed
-      if (eventSource.readyState === EventSource.CLOSED) {
-        console.log('SSE connection already closed, not reconnecting');
-        return;
-      }
-      
-      // Close the existing connection
-      eventSource.close();
-      console.log('Closed SSE connection due to error');
-      
-      // Only attempt reconnect for network-related errors
-      if (e.target.readyState === EventSource.CONNECTING) {
-        reconnectAttempts++;
-        if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
-          console.log(`Attempting reconnect ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
-          streamArea.innerHTML += `<br><strong style='color:orange;'>[Connection interrupted. Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...]</strong>`;
-          
-          setTimeout(() => {
-            console.log(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
-            fetch('/ask', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams(new FormData(form))
-            }).then(response => {
-              if (!response.ok) throw new Error(`Server error: ${response.status}`);
-              return response.json();
-            }).then(data => {
-              if (!data || !data.ok) throw new Error('Invalid response data');
-              eventSource = new EventSource(data.sse_url);
-              console.log('Reconnected to new EventSource:', data.sse_url);
-              streamArea.innerHTML += "<br><em style='color:green;'>Reconnected successfully.</em>";
-            }).catch(err => {
-              console.error('Reconnection failed:', err);
-              streamArea.innerHTML += "<br><strong style='color:red;'>[Reconnection failed. Please refresh the page.]</strong>";
-            });
-          }, RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1));
-        } else {
-          streamArea.innerHTML += "<br><strong style='color:red;'>[Maximum reconnection attempts reached. Please refresh the page.]</strong>";
-          console.error('Maximum reconnection attempts reached');
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if(msg.type === "token") {
+          chatLog.value += msg.data;
+        } else if(msg.type === "done") {
+          chatLog.value += "\n[Done]\n";
+        } else if(msg.type === "error") {
+          chatLog.value += "\n[ERROR] " + msg.data + "\n";
         }
-      } else {
-        console.log('Non-recoverable error, not attempting reconnect');
-        streamArea.innerHTML += "<br><strong style='color:red;'>[Connection terminated. Please refresh the page.]</strong>";
+      } catch(e) {
+        console.error('Invalid JSON from server:', evt.data);
       }
     };
-  }).catch(err => {
-    console.error('Request failed:', err);
-    alert("Request error: " + err);
-  });
-  
-  console.log('Form submission handler completed');
-});
+    ws.onclose = () => {
+      console.log('WebSocket closed');
+    };
 
-// Log when the page is fully loaded
-window.addEventListener('load', function() {
-  console.log('Page fully loaded');
-  console.log('Session ID element:', document.getElementById('sessionId'));
-  console.log('Stream area element:', document.getElementById('streamArea'));
-});
-</script>
+    const chatLog = document.getElementById("chatLog");
+
+    let sessionId = null; // We can generate if needed
+    function sendMsg() {
+      const input = document.getElementById("userInput");
+      const text = input.value.trim();
+      if(!text) return;
+
+      if(!sessionId) sessionId = crypto.randomUUID();
+      const payload = {
+        session_id: sessionId,
+        user_input: text
+      };
+      ws.send(JSON.stringify(payload));
+      input.value = "";
+    }
+  </script>
 </body>
 </html>
 "#;
@@ -309,6 +139,9 @@ window.addEventListener('load', function() {
     Html(html)
 }
 
+// ---------------------------------------------------------------------------
+// WebSocket route (unchanged except references to SSE are gone)
+// ---------------------------------------------------------------------------
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(app_state): State<WebAppState>,
@@ -344,6 +177,7 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                 convo.add_user_message(&user_input);
             }
 
+            // Stream from AI client
             let stream_result = {
                 let sessions = app_state.sessions.lock().await;
                 let convo = sessions.get(&session_id).unwrap();
@@ -434,4 +268,3 @@ async fn resolve_session_id(
     log::info!("[WS] Generating new session_id: {}", new_id);
     new_id
 }
-
