@@ -72,8 +72,8 @@ pub fn find_any_json(text: &str) -> Option<Value> {
 }
 
 pub fn infer_tool_from_json(json: &Value) -> Option<(String, Value)> {
-    if json.get("action").is_some() {
-        return Some(("graph_tool".to_string(), json.clone()));
+    if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
+        return Some((action.to_string(), json.clone()));
     }
     if json.get("query").is_some() {
         return Some(("brave_search".to_string(), json.clone()));
@@ -126,6 +126,9 @@ pub fn parse_tool_call(response: &str) -> Option<(String, Value)> {
             match captures.len() {
                 2 => {
                     if let Ok(json) = serde_json::from_str(&captures[1]) {
+                        if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
+                            return Some((action.to_string(), json));
+                        }
                         return infer_tool_from_json(&json);
                     }
                 },
@@ -142,6 +145,9 @@ pub fn parse_tool_call(response: &str) -> Option<(String, Value)> {
 
     // If no explicit pattern matched, try to find any JSON and infer tool
     if let Some(json) = find_any_json(response) {
+        if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
+            return Some((action.to_string(), json));
+        }
         return infer_tool_from_json(&json);
     }
 
