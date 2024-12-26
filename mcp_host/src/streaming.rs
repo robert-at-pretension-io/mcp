@@ -36,53 +36,72 @@ struct ErrorContent {
     message: String,
 }
 
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
 pub fn parse_sse_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<StreamEvent>> + Send>>
 where
     S: Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static
 {
-    Box::pin(stream.flat_map(|chunk_result| {
-        let mut out = Vec::new();
-        match chunk_result {
-            Ok(chunk) => {
-                // Convert raw bytes to string
-                match String::from_utf8(chunk.to_vec()) {
-                    Ok(chunk_str) => {
-                        // Split by newlines; each line might be `event: ...` or `data: ...`
-                        for line in chunk_str.lines() {
-                            // We only parse lines starting with `data: `
-                            if let Some(data) = line.strip_prefix("data: ") {
-                                let data = data.trim();
-                                // Ignore empty data lines
-                                if data.is_empty() {
-                                    continue;
-                                }
-                                match serde_json::from_str::<StreamingMessage>(data) {
-                                    Ok(msg) => {
-                                        if let Err(e) = handle_sse_message(&msg, &mut out) {
-                                            out.push(Err(e));
+    // Buffer for incomplete messages
+    let buffer = Arc::new(Mutex::new(String::new()));
+    
+    Box::pin(stream.flat_map(move |chunk_result| {
+        let buffer = buffer.clone();
+        async move {
+            let mut out = Vec::new();
+            match chunk_result {
+                Ok(chunk) => {
+                    match String::from_utf8(chunk.to_vec()) {
+                        Ok(chunk_str) => {
+                            let mut buffer = buffer.lock().await;
+                            buffer.push_str(&chunk_str);
+
+                            // Process complete messages
+                            while let Some((message, remaining)) = extract_complete_message(&buffer) {
+                                *buffer = remaining;
+                                
+                                if let Some(data) = message.strip_prefix("data: ") {
+                                    let data = data.trim();
+                                    if !data.is_empty() {
+                                        match serde_json::from_str::<StreamingMessage>(data) {
+                                            Ok(msg) => {
+                                                if let Err(e) = handle_sse_message(&msg, &mut out) {
+                                                    out.push(Err(e));
+                                                }
+                                            }
+                                            Err(e) => {
+                                                out.push(Err(anyhow!(
+                                                    "Failed to parse SSE JSON: {} (data was: '{}')",
+                                                    e, data
+                                                )));
+                                            }
                                         }
-                                    }
-                                    Err(e) => {
-                                        out.push(Err(anyhow!(
-                                            "Failed to parse SSE JSON: {} (line was: '{}')",
-                                            e, line
-                                        )));
                                     }
                                 }
                             }
                         }
-                    }
-                    Err(e) => {
-                        out.push(Err(anyhow!("Invalid UTF-8 in SSE stream: {}", e)));
+                        Err(e) => {
+                            out.push(Err(anyhow!("Invalid UTF-8 in SSE stream: {}", e)));
+                        }
                     }
                 }
+                Err(e) => {
+                    out.push(Err(anyhow!(e)));
+                }
             }
-            Err(e) => {
-                out.push(Err(anyhow!(e)));
-            }
+            futures::stream::iter(out)
         }
-        futures::stream::iter(out)
-    }))
+    }).flatten())
+}
+
+fn extract_complete_message(buffer: &str) -> Option<(String, String)> {
+    if let Some(newline_pos) = buffer.find('\n') {
+        let (message, rest) = buffer.split_at(newline_pos + 1);
+        Some((message.trim().to_string(), rest.to_string()))
+    } else {
+        None
+    }
 }
 
 fn handle_sse_message(msg: &StreamingMessage, out: &mut Vec<Result<StreamEvent>>) -> Result<()> {
