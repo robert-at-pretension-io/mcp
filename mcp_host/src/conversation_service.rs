@@ -120,6 +120,7 @@ pub fn parse_tool_call(response: &str) -> Option<(String, Value)> {
         ];
     }
 
+    // First try to match explicit tool call patterns
     for pattern in TOOL_PATTERNS.iter() {
         if let Some(captures) = pattern.captures(response) {
             match captures.len() {
@@ -131,7 +132,7 @@ pub fn parse_tool_call(response: &str) -> Option<(String, Value)> {
                 3 => {
                     let tool_name = captures[1].to_string();
                     if let Ok(args) = serde_json::from_str(&captures[2]) {
-                        return Some((tool_name, args));
+                        return Some((tool_name.trim().to_string(), args));
                     }
                 },
                 _ => continue,
@@ -139,15 +140,7 @@ pub fn parse_tool_call(response: &str) -> Option<(String, Value)> {
         }
     }
 
-    if let Some(tool_start) = response.find('`') {
-        if let Some(tool_end) = response[tool_start + 1..].find('`') {
-            let tool_name = response[tool_start + 1..tool_start + 1 + tool_end].to_string();
-            if let Some(json) = extract_json_after_position(response, tool_start + tool_end) {
-                return Some((tool_name, json));
-            }
-        }
-    }
-
+    // If no explicit pattern matched, try to find any JSON and infer tool
     if let Some(json) = find_any_json(response) {
         return infer_tool_from_json(&json);
     }
@@ -194,6 +187,8 @@ pub async fn handle_assistant_response(
                         Err(e) => {
                             println!("{}: {}\n", style("Error").red().bold(), e);
                             state.add_assistant_message(&format!("Tool '{}' error: {}", tool_name, e).trim());
+                            // Continue to next iteration even if tool call fails
+                            continue;
                         }
                     }
                 }
