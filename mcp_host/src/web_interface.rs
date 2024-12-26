@@ -432,44 +432,66 @@ async fn do_multi_tool_loop(
     const MAX_ITERATIONS: usize = 15;
 
     while iteration < MAX_ITERATIONS {
-        // Check for tool calls in the current response
-        let maybe_call = parse_tool_call(partial_response);
-        if maybe_call.is_none() {
-            break; // No more tool calls, exit the loop
+        log::debug!("[Tool Loop] Iteration {} - Current response: {}", iteration + 1, partial_response);
+        
+        // Only check for tool calls if we have a complete response
+        if partial_response.trim().ends_with("```") {
+            log::debug!("[Tool Loop] Checking for tool calls in complete response");
+            
+            let maybe_call = parse_tool_call(partial_response);
+            if maybe_call.is_none() {
+                log::debug!("[Tool Loop] No tool calls found, exiting loop");
+                break; // No more tool calls, exit the loop
+            }
+            
+            let (tool_name, args) = maybe_call.unwrap();
+            log::debug!("[Tool Loop] Found tool call: {} with args: {:?}", tool_name, args);
+
+            // Notify the frontend about tool execution
+            let tool_msg = serde_json::json!({
+                "type": "token",
+                "data": format!("\nExecuting tool '{}'...\n", tool_name)
+            });
+            socket.send(Message::Text(tool_msg.to_string())).await?;
+
+            // Call the tool
+            log::debug!("[Tool Loop] Calling tool: {}", tool_name);
+            let result = app_state.host.call_tool("api", &tool_name, args).await?;
+            log::debug!("[Tool Loop] Tool call completed with result: {}", result);
+
+            // Send tool result to the frontend
+            let result_msg = serde_json::json!({
+                "type": "token",
+                "data": format!("Tool '{}' returned: {}\n", tool_name, result)
+            });
+            socket.send(Message::Text(result_msg.to_string())).await?;
+
+            // Update conversation state with the tool result
+            let mut sessions = app_state.sessions.lock().await;
+            if let Some(convo) = sessions.get_mut(&session_id) {
+                log::debug!("[Tool Loop] Updating conversation state with tool result");
+                convo.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result));
+            }
+
+            // Re-invoke the model with the updated conversation
+            log::debug!("[Tool Loop] Re-invoking model with updated conversation");
+            let continued_response = run_single_stream_pass(app_state, session_id).await?;
+            log::debug!("[Tool Loop] Received continued response: {}", continued_response);
+
+            // Update the partial response for the next iteration
+            partial_response.clear();
+            partial_response.push_str(&continued_response);
+
+            iteration += 1;
+        } else {
+            log::debug!("[Tool Loop] Partial response detected, waiting for completion");
+            break;
         }
-        let (tool_name, args) = maybe_call.unwrap();
-
-        // Notify the frontend about tool execution
-        let tool_msg = serde_json::json!({
-            "type": "token",
-            "data": format!("\nExecuting tool '{}'...\n", tool_name)
-        });
-        socket.send(Message::Text(tool_msg.to_string())).await?;
-
-        // Call the tool
-        let result = app_state.host.call_tool("api", &tool_name, args).await?;
-
-        // Send tool result to the frontend
-        let result_msg = serde_json::json!({
-            "type": "token",
-            "data": format!("Tool '{}' returned: {}\n", tool_name, result)
-        });
-        socket.send(Message::Text(result_msg.to_string())).await?;
-
-        // Update conversation state with the tool result
-        let mut sessions = app_state.sessions.lock().await;
-        if let Some(convo) = sessions.get_mut(&session_id) {
-            convo.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result));
-        }
-
-        // Re-invoke the model with the updated conversation
-        let continued_response = run_single_stream_pass(app_state, session_id).await?;
-
-        // Update the partial response for the next iteration
-        partial_response.clear();
-        partial_response.push_str(&continued_response);
-
-        iteration += 1;
     }
+    
+    if iteration >= MAX_ITERATIONS {
+        log::warn!("[Tool Loop] Reached maximum number of iterations");
+    }
+    
     Ok(())
 }
