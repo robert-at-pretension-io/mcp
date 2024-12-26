@@ -115,26 +115,28 @@ pub async fn root() -> impl IntoResponse {
       console.error('WebSocket error:', err);
     };
 
-    // Track the current assistant message div
+    // Store the entire assistant's partial message as it streams in
+    let assistantMarkdown = "";
     let currentAssistantDiv = null;
 
-  function startNewAssistantMessage() {
-    currentAssistantDiv = document.createElement('div');
-    currentAssistantDiv.style.borderTop = "1px solid #ccc";
-    currentAssistantDiv.style.margin = "4px 0";
-    chatContainer.appendChild(currentAssistantDiv);
-  }
-
-  function appendToAssistantMessage(textChunk) {
-    if (!currentAssistantDiv) {
-      startNewAssistantMessage();
+    function startNewAssistantMessage() {
+      assistantMarkdown = ""; // reset
+      currentAssistantDiv = document.createElement('div');
+      currentAssistantDiv.style.borderTop = "1px solid #ccc";
+      currentAssistantDiv.style.margin = "4px 0";
+      chatContainer.appendChild(currentAssistantDiv);
     }
-    // Convert the partial chunk to HTML and append
-    // Use marked.parse for incremental updates
-    const currentHTML = currentAssistantDiv.innerHTML;
-    currentAssistantDiv.innerHTML = marked.parse(currentHTML + textChunk);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-  }
+
+    function appendToAssistantMessage(textChunk) {
+      // Add chunk to the ongoing buffer
+      assistantMarkdown += textChunk;
+      // Then do a full parse of the entire buffer
+      const html = marked.parse(assistantMarkdown);
+      
+      // Re-render the entire message in the same div
+      currentAssistantDiv.innerHTML = html;
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
 
     // Add user messages in a different style
     function addUserMessage(text) {
@@ -147,27 +149,27 @@ pub async fn root() -> impl IntoResponse {
     }
 
     const chatContainer = document.getElementById("chatContainer");
-ws.onmessage = (evt) => {
-  try {
-    const msg = JSON.parse(evt.data);
-    if(msg.type === "token") {
-      // Append chunk to ongoing assistant message
-      appendToAssistantMessage(msg.data);
-    } else if(msg.type === "done") {
-      // Optionally finalize the message. E.g. add "[Done]" or not
-      appendToAssistantMessage("\n[Done]");
-      // Then reset currentAssistantDiv so the next message starts fresh
-      currentAssistantDiv = null;
-    } else if(msg.type === "error") {
-      // Or handle errors
-      startNewAssistantMessage();
-      appendToAssistantMessage("[ERROR] " + msg.data);
-      currentAssistantDiv = null;
-    }
-  } catch(e) {
-    console.error('Invalid JSON from server:', evt.data);
-  }
-};
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === "token") {
+          if (!currentAssistantDiv) {
+            startNewAssistantMessage();
+          }
+          appendToAssistantMessage(msg.data);
+        } else if (msg.type === "done") {
+          // Optionally finalize
+          appendToAssistantMessage("\n[Done]");
+          currentAssistantDiv = null;
+        } else if (msg.type === "error") {
+          startNewAssistantMessage();
+          appendToAssistantMessage("[ERROR] " + msg.data);
+          currentAssistantDiv = null;
+        }
+      } catch(e) {
+        console.error("Invalid JSON from server:", evt.data);
+      }
+    };
 
     // Pressing Enter also sends the message
     const inputField = document.getElementById("userInput");
