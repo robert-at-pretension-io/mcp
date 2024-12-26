@@ -96,62 +96,66 @@ pub fn infer_tool_from_json(json: &Value) -> Option<(String, Value)> {
     None
 }
 
-pub fn parse_tool_call(response: &str) -> Option<(String, Value)> {
+#[derive(Debug)]
+pub enum ToolCallResult {
+    Success(String, Value),
+    NearMiss(Vec<String>),
+    NoMatch,
+}
+
+pub fn parse_tool_call(response: &str) -> ToolCallResult {
     lazy_static! {
-        static ref TOOL_PATTERNS: Vec<Regex> = vec![
-            Regex::new(
-                r"(?s)Let me call the `([^`]+)` tool with these parameters:\s*```(?:json)?\s*(\{.*?\})\s*```"
-            ).unwrap(),
-            Regex::new(
-                r"(?s)Let me call `([^`]+)` with these parameters:\s*```(?:json)?\s*(\{.*?\})\s*```"
-            ).unwrap(),
-            Regex::new(
-                r"(?s)Using the `([^`]+)` tool:?\s*```(?:json)?\s*(\{.*?\})\s*```"
-            ).unwrap(),
-            Regex::new(
-                r"(?s)I'll use `([^`]+)`:?\s*```(?:json)?\s*(\{.*?\})\s*```"
-            ).unwrap(),
-            Regex::new(
-                r"(?s)`([^`]+)`.*?```(?:json)?\s*(\{.*?\})\s*```"
-            ).unwrap(),
-            Regex::new(
-                r"(?s)```(?:json)?\s*(\{.*?\})\s*```"
-            ).unwrap(),
+        // Single strict pattern
+        static ref TOOL_PATTERN: Regex = Regex::new(
+            r"(?s)Let me call ([a-zA-Z_][a-zA-Z0-9_]*)\n```json\n(\{.*?\})\n```"
+        ).unwrap();
+
+        // "Near miss" patterns to provide helpful feedback
+        static ref NEAR_MISS_PATTERNS: Vec<(Regex, &'static str)> = vec![
+            (
+                Regex::new(r"`([^`]+)`").unwrap(),
+                "Tool name should not be in backticks. Use: Let me call tool_name"
+            ),
+            (
+                Regex::new(r"```\s*\{").unwrap(),
+                "JSON block must start with ```json on its own line"
+            ),
+            (
+                Regex::new(r"\{.*\}\s*```").unwrap(),
+                "JSON block must end with ``` on its own line"
+            ),
+            (
+                Regex::new(r"Let me use|I'll use|Using the|Call the").unwrap(),
+                "Must start with exactly 'Let me call'"
+            ),
         ];
     }
 
-    // First try to match explicit tool call patterns
-    for pattern in TOOL_PATTERNS.iter() {
-        if let Some(captures) = pattern.captures(response) {
-            match captures.len() {
-                2 => {
-                    if let Ok(json) = serde_json::from_str::<Value>(&captures[1]) {
-                        if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
-                            return Some((action.to_string(), json));
-                        }
-                        return infer_tool_from_json(&json);
-                    }
-                },
-                3 => {
-                    let tool_name = captures[1].to_string();
-                    if let Ok(args) = serde_json::from_str::<Value>(&captures[2]) {
-                        return Some((tool_name.trim().to_string(), args));
-                    }
-                },
-                _ => continue,
-            }
+    // Try the strict pattern first
+    if let Some(captures) = TOOL_PATTERN.captures(response) {
+        let tool_name = captures[1].to_string();
+        if let Ok(args) = serde_json::from_str(&captures[2]) {
+            return ToolCallResult::Success(tool_name, args);
+        } else {
+            log::warn!("Found tool call pattern but JSON parsing failed: {}", &captures[2]);
+            return ToolCallResult::NearMiss(vec!["JSON parsing failed".to_string()]);
         }
     }
 
-    // If no explicit pattern matched, try to find any JSON and infer tool
-    if let Some(json) = find_any_json(response) {
-        if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
-            return Some((action.to_string(), json));
+    // If no match, check for near misses and collect feedback
+    let mut feedback = Vec::new();
+    for (pattern, message) in NEAR_MISS_PATTERNS.iter() {
+        if pattern.is_match(response) {
+            log::warn!("Tool call format near miss: {}", message);
+            feedback.push(message.to_string());
         }
-        return infer_tool_from_json(&json);
     }
 
-    None
+    if !feedback.is_empty() {
+        ToolCallResult::NearMiss(feedback)
+    } else {
+        ToolCallResult::NoMatch
+    }
 }
 
 pub async fn handle_assistant_response(
@@ -174,18 +178,19 @@ pub async fn handle_assistant_response(
         let chunks: Vec<&str> = current_response.split("```").collect();
         for (i, chunk) in chunks.iter().enumerate() {
             if i % 2 == 1 {
-                if let Some((tool_name, args)) = parse_tool_call(chunk) {
-                    found_tool_call = true;
-                    log::debug!("Found tool call in chunk {}:", i);
-                    log::debug!("Tool: {}", tool_name);
-                    log::debug!("Arguments: {}", serde_json::to_string_pretty(&args).unwrap_or_default());
-                    
-                    println!("{}", style("\nTool Call:").green().bold());
-                    println!("└─ {}: {}\n", 
-                        style(&tool_name).yellow(),
-                        crate::conversation_state::format_json_output(&serde_json::to_string_pretty(&args)?));
+                match parse_tool_call(chunk) {
+                    ToolCallResult::Success(tool_name, args) => {
+                        found_tool_call = true;
+                        log::debug!("Found tool call in chunk {}:", i);
+                        log::debug!("Tool: {}", tool_name);
+                        log::debug!("Arguments: {}", serde_json::to_string_pretty(&args).unwrap_or_default());
+                        
+                        println!("{}", style("\nTool Call:").green().bold());
+                        println!("└─ {}: {}\n", 
+                            style(&tool_name).yellow(),
+                            crate::conversation_state::format_json_output(&serde_json::to_string_pretty(&args)?));
 
-                    match host.call_tool(server_name, &tool_name, args).await {
+                        match host.call_tool(server_name, &tool_name, args).await {
                         Ok(result) => {
                             println!("{}", crate::conversation_state::format_tool_response(&tool_name, &result));
                             state.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result.trim()));
@@ -196,6 +201,15 @@ pub async fn handle_assistant_response(
                             // Continue to next iteration even if tool call fails
                             continue;
                         }
+                    }
+                    ToolCallResult::NearMiss(feedback) => {
+                        let feedback_msg = feedback.join("\n");
+                        println!("{}", style("\nTool Call Format Error:").red().bold());
+                        println!("└─ {}\n", feedback_msg);
+                        state.add_assistant_message(&format!("Tool call format error:\n{}", feedback_msg));
+                    }
+                    ToolCallResult::NoMatch => {
+                        // No tool call found in this chunk, continue
                     }
                 }
             }
