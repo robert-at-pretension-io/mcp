@@ -6,7 +6,12 @@ use axum::{
     Json,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
 };
-use crate::conversation_service::parse_tool_call;
+use crate::{
+    ai_client::StreamEvent,
+    conversation_state::ConversationState,
+    MCPHost,
+    conversation_service::parse_tool_call,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -440,17 +445,10 @@ async fn do_multi_tool_loop(
     while iteration < MAX_ITERATIONS {
         log::debug!("[Tool Loop] Iteration {} - Current response: {}", iteration + 1, partial_response);
         
-        // Only check for tool calls if we have a complete response
-        if partial_response.trim().ends_with("```") {
-            log::debug!("[Tool Loop] Checking for tool calls in complete response");
-            
-            let maybe_call = parse_tool_call(partial_response);
-            if maybe_call.is_none() {
-                log::debug!("[Tool Loop] No tool calls found, exiting loop");
-                break;
-            }
-            
-            let (tool_name, args) = maybe_call.unwrap();
+        // Use the existing parse_tool_call function
+        let maybe_call = parse_tool_call(partial_response);
+        
+        if let Some((tool_name, args)) = maybe_call {
             log::debug!("[Tool Loop] Found tool call: {} with args: {:?}", tool_name, args);
 
             // Notify frontend about tool execution
@@ -509,7 +507,7 @@ async fn do_multi_tool_loop(
 
             iteration += 1;
         } else {
-            log::debug!("[Tool Loop] Partial response detected, waiting for completion");
+            log::debug!("[Tool Loop] No tool calls detected, exiting loop");
             break;
         }
     }
