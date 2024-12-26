@@ -6,6 +6,7 @@ use axum::{
     Json,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
 };
+use crate::conversation_service::parse_tool_call;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -245,7 +246,6 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                 convo.add_user_message(&user_input);
             }
 
-            // Stream from AI client
             let stream_result = {
                 let sessions = app_state.sessions.lock().await;
                 let convo = sessions.get(&session_id).unwrap();
@@ -258,15 +258,9 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                 let mut builder = client.raw_builder().streaming(true);
                 for m in &convo.messages {
                     match m.role {
-                        Role::System => {
-                            builder = builder.system(m.content.clone());
-                        }
-                        Role::User => {
-                            builder = builder.user(m.content.clone());
-                        }
-                        Role::Assistant => {
-                            builder = builder.assistant(m.content.clone());
-                        }
+                        Role::System => builder = builder.system(m.content.clone()),
+                        Role::User => builder = builder.user(m.content.clone()),
+                        Role::Assistant => builder = builder.assistant(m.content.clone()),
                     }
                 }
                 builder.execute_streaming().await
@@ -274,11 +268,15 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
 
             match stream_result {
                 Ok(mut s) => {
+                    let mut partial_response = String::new();
+                    
                     while let Some(chunk_res) = s.next().await {
                         match chunk_res {
                             Ok(event) => {
                                 match event {
                                     StreamEvent::ContentDelta{ text, .. } => {
+                                        partial_response.push_str(&text);
+                                        
                                         let json_msg = serde_json::json!({
                                             "type": "token",
                                             "data": text
@@ -288,6 +286,21 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                                         }
                                     }
                                     StreamEvent::MessageStop => {
+                                        // Handle any tool calls in the complete response
+                                        if let Err(e) = handle_tool_calls(
+                                            &app_state,
+                                            session_id,
+                                            &mut partial_response,
+                                            &mut socket
+                                        ).await {
+                                            log::error!("Tool handling error: {}", e);
+                                            let err_msg = serde_json::json!({
+                                                "type": "error",
+                                                "data": format!("Tool error: {}", e)
+                                            });
+                                            let _ = socket.send(Message::Text(err_msg.to_string())).await;
+                                        }
+
                                         let done_msg = serde_json::json!({"type":"done"});
                                         let _ = socket.send(Message::Text(done_msg.to_string())).await;
                                         break;
@@ -335,4 +348,72 @@ async fn resolve_session_id(
     let new_id = Uuid::new_v4();
     log::info!("[WS] Generating new session_id: {}", new_id);
     new_id
+}
+async fn handle_tool_calls(
+    app_state: &WebAppState,
+    session_id: Uuid,
+    partial_response: &mut String,
+    socket: &mut WebSocket,
+) -> Result<()> {
+    while let Some((tool_name, args)) = parse_tool_call(partial_response) {
+        // Notify frontend about tool execution
+        let tool_msg = serde_json::json!({
+            "type": "token",
+            "data": format!("\nExecuting tool '{}'...\n", tool_name)
+        });
+        socket.send(Message::Text(tool_msg.to_string())).await?;
+
+        // Call the tool
+        let result = app_state.host.call_tool("api", &tool_name, args).await?;
+
+        // Send tool result to frontend
+        let result_msg = serde_json::json!({
+            "type": "token",
+            "data": format!("Tool '{}' returned: {}\n", tool_name, result)
+        });
+        socket.send(Message::Text(result_msg.to_string())).await?;
+
+        // Update conversation state
+        let mut sessions = app_state.sessions.lock().await;
+        if let Some(convo) = sessions.get_mut(&session_id) {
+            convo.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result));
+        }
+
+        // Get updated response from AI with tool result
+        let client = app_state.host.ai_client.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No AI client configured"))?;
+        
+        let sessions = app_state.sessions.lock().await;
+        let convo = sessions.get(&session_id)
+            .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
+
+        let mut builder = client.raw_builder();
+        for m in &convo.messages {
+            match m.role {
+                Role::System => builder = builder.system(m.content.clone()),
+                Role::User => builder = builder.user(m.content.clone()),
+                Role::Assistant => builder = builder.assistant(m.content.clone()),
+            }
+        }
+
+        match builder.execute().await {
+            Ok(continued_response) => {
+                let continue_msg = serde_json::json!({
+                    "type": "token",
+                    "data": format!("\n{}", continued_response)
+                });
+                socket.send(Message::Text(continue_msg.to_string())).await?;
+                
+                // Update conversation with continued response
+                let mut sessions = app_state.sessions.lock().await;
+                if let Some(convo) = sessions.get_mut(&session_id) {
+                    convo.add_assistant_message(&continued_response);
+                }
+            }
+            Err(e) => {
+                log::error!("Error getting continued response: {}", e);
+            }
+        }
+    }
+    Ok(())
 }
