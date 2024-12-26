@@ -116,17 +116,39 @@ pub enum ToolCallResult {
 
 pub fn parse_tool_call(response: &str) -> ToolCallResult {
     lazy_static! {
-        // Single strict pattern that handles both formats
-        static ref TOOL_PATTERN: Regex = Regex::new(
-            r"(?s)Let me call ([a-zA-Z_][a-zA-Z0-9_]*)\s*\n```json\n(\{.*?\})\n```"
-        ).unwrap();
-
-        // "Near miss" patterns to provide helpful feedback
-        static ref NEAR_MISS_PATTERNS: Vec<(Regex, &'static str)> = vec![
+        static ref TOOL_PATTERNS: Vec<(Regex, &'static str)> = vec![
+            // Standard format: "Let me call graph_tool\n```json\n{...}\n```"
             (
-                Regex::new(r"`([^`]+)`").unwrap(),
-                "Tool name should not be in backticks. Use: Let me call tool_name"
+                Regex::new(
+                    r"(?s)Let me call\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*```(?:json)?\s*(\{.*?\})\s*```"
+                ).unwrap(),
+                "standard"
             ),
+            // With backticks: "Let me call the `graph_tool` tool with these parameters:\n```json\n{...}\n```"
+            (
+                Regex::new(
+                    r"(?s)Let me call the\s+`([^`]+)`\s+tool with these parameters:?\s*```(?:json)?\s*(\{.*?\})\s*```"
+                ).unwrap(),
+                "with_backticks"
+            ),
+            // Using format: "Using the `graph_tool` tool:\n```json\n{...}\n```"
+            (
+                Regex::new(
+                    r"(?s)Using the\s+`([^`]+)`\s*tool:?\s*```(?:json)?\s*(\{.*?\})\s*```"
+                ).unwrap(),
+                "using_format"
+            ),
+            // I'll use format: "I'll use `graph_tool`:\n```json\n{...}\n```"
+            (
+                Regex::new(
+                    r"(?s)I(?:'|')?ll use\s+`([^`]+)`:?\s*```(?:json)?\s*(\{.*?\})\s*```"
+                ).unwrap(),
+                "ill_use_format"
+            ),
+        ];
+
+        // Patterns to detect common mistakes
+        static ref NEAR_MISS_PATTERNS: Vec<(Regex, &'static str)> = vec![
             (
                 Regex::new(r"```\s*\{").unwrap(),
                 "JSON block must start with ```json on its own line"
@@ -136,28 +158,45 @@ pub fn parse_tool_call(response: &str) -> ToolCallResult {
                 "JSON block must end with ``` on its own line"
             ),
             (
-                Regex::new(r"Let me use|I'll use|Using the|Call the").unwrap(),
-                "Must start with exactly 'Let me call'"
+                Regex::new(r"Call the|Execute|Run the").unwrap(),
+                "Use 'Let me call', 'Using the', or 'I'll use' to start tool calls"
             ),
         ];
     }
 
-    // Try the strict pattern first
-    if let Some(captures) = TOOL_PATTERN.captures(response) {
-        let tool_name = captures[1].to_string();
-        log::debug!("Found tool call pattern for tool: {}", tool_name);
-        log::debug!("JSON content: {}", &captures[2]);
-        if let Ok(args) = serde_json::from_str(&captures[2]) {
-            log::debug!("Successfully parsed JSON arguments");
-            return ToolCallResult::Success(tool_name, args);
-        } else {
-            let error = format!("Found tool call pattern but JSON parsing failed: {}", &captures[2]);
-            log::warn!("{}", error);
-            return ToolCallResult::NearMiss(vec![error]);
+    // Try all patterns in order
+    for (pattern, pattern_name) in TOOL_PATTERNS.iter() {
+        if let Some(captures) = pattern.captures(response) {
+            if captures.len() >= 3 {
+                let tool_name = captures[1].trim().to_string();
+                let json_block = captures[2].trim();
+                
+                log::debug!("Found tool call pattern '{}' for tool: {}", pattern_name, tool_name);
+                log::debug!("JSON content: {}", json_block);
+                
+                if let Ok(args) = serde_json::from_str(json_block) {
+                    log::debug!("Successfully parsed JSON arguments");
+                    return ToolCallResult::Success(tool_name, args);
+                } else {
+                    let error = format!("Found tool call pattern but JSON parsing failed: {}", json_block);
+                    log::warn!("{}", error);
+                    return ToolCallResult::NearMiss(vec![error]);
+                }
+            }
         }
     }
 
-    // If no match, check for near misses and collect feedback
+    // If no exact matches, look for a bare JSON block that might contain a tool call
+    if let Some(json_match) = Regex::new(r"(?s)```json\s*(\{.*?\})\s*```").unwrap().captures(response) {
+        if let Ok(json) = serde_json::from_str::<Value>(&json_match[1]) {
+            if let Some((tool_name, args)) = infer_tool_from_json(&json) {
+                log::debug!("Inferred tool '{}' from JSON content", tool_name);
+                return ToolCallResult::Success(tool_name, args);
+            }
+        }
+    }
+
+    // If still no match, check for near misses and collect feedback
     let mut feedback = Vec::new();
     for (pattern, message) in NEAR_MISS_PATTERNS.iter() {
         if pattern.is_match(response) {
