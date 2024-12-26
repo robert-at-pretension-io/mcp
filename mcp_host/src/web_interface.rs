@@ -439,15 +439,20 @@ async fn do_multi_tool_loop(
 ) -> Result<()> {
     let mut iteration = 0;
     const MAX_ITERATIONS: usize = 15;
+    let mut processed_text = String::new();
 
     while iteration < MAX_ITERATIONS {
         log::debug!("[Tool Loop] Iteration {} - Current response: {}", iteration + 1, partial_response);
         
-        // Use the existing parse_tool_call function
-        let maybe_call = parse_tool_call(partial_response);
+        // Use the existing parse_tool_call function on unprocessed text
+        let remaining_text = &partial_response[processed_text.len()..];
+        let maybe_call = parse_tool_call(remaining_text);
         
         if let Some((tool_name, args)) = maybe_call {
             log::debug!("[Tool Loop] Found tool call: {} with args: {:?}", tool_name, args);
+
+            // Mark this part of the text as processed
+            processed_text = partial_response[..processed_text.len() + remaining_text.find("```").unwrap_or(remaining_text.len())].to_string();
 
             // Notify frontend about tool execution
             let tool_msg = serde_json::json!({
@@ -493,19 +498,14 @@ async fn do_multi_tool_loop(
                         convo.add_assistant_message(&format!("Tool '{}' error: {}", tool_name, e));
                     }
 
-                    // Continue to allow retrying
+                    // Mark this part as processed even though it failed
                     continue;
                 }
             }
 
-            // Re-invoke model with updated conversation
-            let continued_response = run_single_stream_pass(app_state, session_id).await?;
-            partial_response.clear();
-            partial_response.push_str(&continued_response);
-
             iteration += 1;
         } else {
-            log::debug!("[Tool Loop] No tool calls detected, exiting loop");
+            log::debug!("[Tool Loop] No more tool calls detected, exiting loop");
             break;
         }
     }
