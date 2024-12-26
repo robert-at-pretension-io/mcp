@@ -267,9 +267,11 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
 
             {
                 let mut sessions = app_state.sessions.lock().await;
-                let convo = sessions
-                    .entry(session_id)
-                    .or_insert_with(|| ConversationState::new("Welcome!".to_string(), vec![]));
+                if !sessions.contains_key(&session_id) {
+                    let new_convo = app_state.host.enter_chat_mode("api").await?;
+                    sessions.insert(session_id, new_convo);
+                }
+                let convo = sessions.get_mut(&session_id).unwrap();
                 convo.add_user_message(&user_input);
             }
 
