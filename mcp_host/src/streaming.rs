@@ -46,10 +46,10 @@ where
     // Buffer for incomplete messages
     let buffer = Arc::new(Mutex::new(String::new()));
     
-    Box::pin(stream.flat_map(move |chunk_result| {
+    Box::pin(stream.then(move |chunk_result| {
         let buffer = buffer.clone();
         async move {
-            let mut out = Vec::new();
+            let mut results = Vec::new();
             match chunk_result {
                 Ok(chunk) => {
                     match String::from_utf8(chunk.to_vec()) {
@@ -66,12 +66,12 @@ where
                                     if !data.is_empty() {
                                         match serde_json::from_str::<StreamingMessage>(data) {
                                             Ok(msg) => {
-                                                if let Err(e) = handle_sse_message(&msg, &mut out) {
-                                                    out.push(Err(e));
+                                                if let Err(e) = handle_sse_message(&msg, &mut results) {
+                                                    results.push(Err(e));
                                                 }
                                             }
                                             Err(e) => {
-                                                out.push(Err(anyhow!(
+                                                results.push(Err(anyhow!(
                                                     "Failed to parse SSE JSON: {} (data was: '{}')",
                                                     e, data
                                                 )));
@@ -82,17 +82,17 @@ where
                             }
                         }
                         Err(e) => {
-                            out.push(Err(anyhow!("Invalid UTF-8 in SSE stream: {}", e)));
+                            results.push(Err(anyhow!("Invalid UTF-8 in SSE stream: {}", e)));
                         }
                     }
                 }
                 Err(e) => {
-                    out.push(Err(anyhow!(e)));
+                    results.push(Err(anyhow!(e)));
                 }
             }
-            futures::stream::iter(out)
+            futures::stream::iter(results)
         }
-    }).flatten())
+    }).flatten_stream())
 }
 
 fn extract_complete_message(buffer: &str) -> Option<(String, String)> {
