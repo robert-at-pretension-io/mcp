@@ -1,8 +1,8 @@
-use anyhow::{Result, anyhow};
+use anyhow::{ Result, anyhow };
 use serde_json::Value;
 use crate::MCPHost;
 use crate::conversation_state::ConversationState;
-use crate::ai_client::{AIClient};
+use crate::ai_client::{ AIClient };
 use console::style;
 
 use lazy_static::lazy_static;
@@ -16,10 +16,12 @@ pub fn extract_json_after_position(text: &str, pos: usize) -> Option<Value> {
         let start_pos = pos + json_start;
         let mut brace_count = 0;
         let mut end_pos = start_pos;
-        
+
         for (i, c) in text[start_pos..].chars().enumerate() {
             match c {
-                '{' => brace_count += 1,
+                '{' => {
+                    brace_count += 1;
+                }
                 '}' => {
                     brace_count -= 1;
                     if brace_count == 0 {
@@ -27,7 +29,9 @@ pub fn extract_json_after_position(text: &str, pos: usize) -> Option<Value> {
                         break;
                     }
                 }
-                _ => continue,
+                _ => {
+                    continue;
+                }
             }
         }
 
@@ -41,16 +45,21 @@ pub fn extract_json_after_position(text: &str, pos: usize) -> Option<Value> {
 }
 
 pub fn find_any_json(text: &str) -> Option<Value> {
-    let mut start_indices: Vec<usize> = text.match_indices('{').map(|(i, _)| i).collect();
+    let mut start_indices: Vec<usize> = text
+        .match_indices('{')
+        .map(|(i, _)| i)
+        .collect();
     start_indices.sort_unstable();
 
     for start in start_indices {
         let mut brace_count = 0;
         let mut end_pos = start;
-        
+
         for (i, c) in text[start..].chars().enumerate() {
             match c {
-                '{' => brace_count += 1,
+                '{' => {
+                    brace_count += 1;
+                }
                 '}' => {
                     brace_count -= 1;
                     if brace_count == 0 {
@@ -58,7 +67,9 @@ pub fn find_any_json(text: &str) -> Option<Value> {
                         break;
                     }
                 }
-                _ => continue,
+                _ => {
+                    continue;
+                }
             }
         }
 
@@ -114,20 +125,17 @@ pub fn parse_tool_call(response: &str) -> ToolCallResult {
         static ref NEAR_MISS_PATTERNS: Vec<(Regex, &'static str)> = vec![
             (
                 Regex::new(r"`([^`]+)`").unwrap(),
-                "Tool name should not be in backticks. Use: Let me call tool_name"
+                "Tool name should not be in backticks. Use: Let me call tool_name",
             ),
             (
                 Regex::new(r"```\s*\{").unwrap(),
-                "JSON block must start with ```json on its own line"
+                "JSON block must start with ```json on its own line",
             ),
-            (
-                Regex::new(r"\{.*\}\s*```").unwrap(),
-                "JSON block must end with ``` on its own line"
-            ),
+            (Regex::new(r"\{.*\}\s*```").unwrap(), "JSON block must end with ``` on its own line"),
             (
                 Regex::new(r"Let me use|I'll use|Using the|Call the").unwrap(),
-                "Must start with exactly 'Let me call'"
-            ),
+                "Must start with exactly 'Let me call'",
+            )
         ];
     }
 
@@ -163,17 +171,17 @@ pub async fn handle_assistant_response(
     response: &str,
     server_name: &str,
     state: &mut ConversationState,
-    client: &Box<dyn AIClient>,
+    client: &Box<dyn AIClient>
 ) -> Result<()> {
     state.add_assistant_message(response);
-    
+
     let mut current_response = response.to_string();
     let mut iteration = 0;
     const MAX_ITERATIONS: i32 = 15;
-    
+
     while iteration < MAX_ITERATIONS {
         log::debug!("\nStarting iteration {} of response handling", iteration + 1);
-        
+
         let mut found_tool_call = false;
         let chunks: Vec<&str> = current_response.split("```").collect();
         for (i, chunk) in chunks.iter().enumerate() {
@@ -183,23 +191,41 @@ pub async fn handle_assistant_response(
                         found_tool_call = true;
                         log::debug!("Found tool call in chunk {}:", i);
                         log::debug!("Tool: {}", tool_name);
-                        log::debug!("Arguments: {}", serde_json::to_string_pretty(&args).unwrap_or_default());
-                        
+                        log::debug!(
+                            "Arguments: {}",
+                            serde_json::to_string_pretty(&args).unwrap_or_default()
+                        );
+
                         println!("{}", style("\nTool Call:").green().bold());
-                        println!("└─ {}: {}\n", 
+                        println!(
+                            "└─ {}: {}\n",
                             style(&tool_name).yellow(),
-                            crate::conversation_state::format_json_output(&serde_json::to_string_pretty(&args)?));
+                            crate::conversation_state::format_json_output(
+                                &serde_json::to_string_pretty(&args)?
+                            )
+                        );
 
                         match host.call_tool(server_name, &tool_name, args).await {
-                        Ok(result) => {
-                            println!("{}", crate::conversation_state::format_tool_response(&tool_name, &result));
-                            state.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result.trim()));
-                        }
-                        Err(e) => {
-                            println!("{}: {}\n", style("Error").red().bold(), e);
-                            state.add_assistant_message(&format!("Tool '{}' error: {}", tool_name, e).trim());
-                            // Continue to next iteration even if tool call fails
-                            continue;
+                            Ok(result) => {
+                                println!(
+                                    "{}",
+                                    crate::conversation_state::format_tool_response(
+                                        &tool_name,
+                                        &result
+                                    )
+                                );
+                                state.add_assistant_message(
+                                    &format!("Tool '{}' returned: {}", tool_name, result.trim())
+                                );
+                            }
+                            Err(e) => {
+                                println!("{}: {}\n", style("Error").red().bold(), e);
+                                state.add_assistant_message(
+                                    &format!("Tool '{}' error: {}", tool_name, e).trim()
+                                );
+                                // Continue to next iteration even if tool call fails
+                                continue;
+                            }
                         }
                     }
                     ToolCallResult::NearMiss(feedback) => {
@@ -214,24 +240,36 @@ pub async fn handle_assistant_response(
                 }
             }
         }
-        
+
         if !found_tool_call {
             break;
         }
-        
+
         let mut builder = client.raw_builder();
         for msg in &state.messages {
             match msg.role {
-                Role::System => builder = builder.system(msg.content.clone()),
-                Role::User => builder = builder.user(msg.content.clone()),
-                Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                Role::System => {
+                    builder = builder.system(msg.content.clone());
+                }
+                Role::User => {
+                    builder = builder.user(msg.content.clone());
+                }
+                Role::Assistant => {
+                    builder = builder.assistant(msg.content.clone());
+                }
             }
         }
 
         log::debug!("Sending updated conversation to AI");
         match builder.execute().await {
             Ok(response_string) => {
-                println!("\n{}", crate::conversation_state::format_chat_message(&Role::Assistant, &response_string));
+                println!(
+                    "\n{}",
+                    crate::conversation_state::format_chat_message(
+                        &Role::Assistant,
+                        &response_string
+                    )
+                );
                 state.add_assistant_message(&response_string);
                 current_response = response_string;
             }
@@ -240,13 +278,13 @@ pub async fn handle_assistant_response(
                 break;
             }
         }
-        
+
         iteration += 1;
     }
-    
+
     if iteration >= MAX_ITERATIONS {
         log::info!("Warning: Reached maximum number of tool call iterations");
     }
-    
+
     Ok(())
 }
