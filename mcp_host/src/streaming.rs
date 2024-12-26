@@ -64,6 +64,7 @@ where
                                 if let Some(data) = message.strip_prefix("data: ") {
                                     let data = data.trim();
                                     if !data.is_empty() {
+                                        
                                         match serde_json::from_str::<StreamingMessage>(data) {
                                             Ok(msg) => {
                                                 if let Err(e) = handle_sse_message(&msg, &mut results) {
