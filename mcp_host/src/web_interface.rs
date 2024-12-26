@@ -265,20 +265,31 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
             let session_id = resolve_session_id(parsed.session_id, &app_state).await;
             let user_input = parsed.user_input.trim().to_string();
 
-            {
+            let new_convo = {
                 let mut sessions = app_state.sessions.lock().await;
                 if !sessions.contains_key(&session_id) {
-                    drop(sessions); // Release the lock to avoid deadlock
-                    let new_convo = match app_state.host.enter_chat_mode("api").await {
-                        Ok(state) => state,
+                    drop(sessions); // Release the lock
+                    match app_state.host.enter_chat_mode("api").await {
+                        Ok(state) => Some(state),
                         Err(e) => {
                             log::warn!("Error calling enter_chat_mode: {}", e);
-                            ConversationState::new("Welcome!".to_string(), vec![])
+                            Some(ConversationState::new("Welcome!".to_string(), vec![]))
                         }
-                    };
-                    let mut sessions = app_state.sessions.lock().await;
-                    sessions.insert(session_id, new_convo);
+                    }
+                } else {
+                    None
                 }
+            };
+
+            // If we created a new conversation, insert it
+            if let Some(convo) = new_convo {
+                let mut sessions = app_state.sessions.lock().await;
+                sessions.insert(session_id, convo);
+            }
+
+            // Add the user message
+            {
+                let mut sessions = app_state.sessions.lock().await;
                 let convo = sessions.get_mut(&session_id).unwrap();
                 convo.add_user_message(&user_input);
             }
