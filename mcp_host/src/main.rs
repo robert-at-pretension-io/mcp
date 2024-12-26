@@ -881,16 +881,23 @@ When you get information, don't mention it. Just use it to subtly inform the con
     pub async fn call_tool(&self, server_name: &str, tool_name: &str, args: Value) -> Result<String> {
         debug!("call_tool started");
         debug!("Server: {}", server_name);
-        debug!("Tool: {}", tool_name);
+        
+        // Extract the actual tool name from the arguments if it exists
+        let actual_tool_name = args.get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or(tool_name);
+            
+        debug!("Tool: {}", actual_tool_name);
         debug!("Arguments: {}", serde_json::to_string_pretty(&args).unwrap_or_default());
+        
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
             id: RequestId::String(Uuid::new_v4().to_string()).into(),
             method: "tools/call".to_string(),
             params: Some(json!({
-                "name": tool_name,
+                "name": actual_tool_name,
                 "arguments": args
-            })).into(),
+            })),
         };
 
         let response = self.send_request(server_name, request).await?;
