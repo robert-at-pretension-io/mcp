@@ -125,7 +125,7 @@ pub fn parse_tool_call(response: &str) -> Option<(String, Value)> {
         if let Some(captures) = pattern.captures(response) {
             match captures.len() {
                 2 => {
-                    if let Ok(json) = serde_json::from_str(&captures[1]) {
+                    if let Ok(json) = serde_json::from_str::<Value>(&captures[1]) {
                         if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
                             return Some((action.to_string(), json));
                         }
@@ -134,7 +134,7 @@ pub fn parse_tool_call(response: &str) -> Option<(String, Value)> {
                 },
                 3 => {
                     let tool_name = captures[1].to_string();
-                    if let Ok(args) = serde_json::from_str(&captures[2]) {
+                    if let Ok(args) = serde_json::from_str::<Value>(&captures[2]) {
                         return Some((tool_name.trim().to_string(), args));
                     }
                 },
