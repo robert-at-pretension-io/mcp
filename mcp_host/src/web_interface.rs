@@ -256,6 +256,8 @@ pub async fn ws_handler(
 async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> {
     log::info!("[WS] New WebSocket connection");
 
+    let mut accumulated_message = String::new();
+
     while let Some(Ok(msg)) = socket.recv().await {
         if let Message::Text(text) = msg {
             let parsed: WsRequest = match serde_json::from_str(&text) {
@@ -326,14 +328,14 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
 
             match stream_result {
                 Ok(mut s) => {
-                    let mut partial_response = String::new();
+                    accumulated_message.clear();
                     
                     while let Some(chunk_res) = s.next().await {
                         match chunk_res {
                             Ok(event) => {
                                 match event {
                                     StreamEvent::ContentDelta{ text, .. } => {
-                                        partial_response.push_str(&text);
+                                        accumulated_message.push_str(&text);
                                         
                                         let json_msg = serde_json::json!({
                                             "type": "token",
@@ -344,11 +346,11 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                                         }
                                     }
                                     StreamEvent::MessageStop => {
-                                        // Handle tool calls with error feedback
+                                        // Handle tool calls with the complete accumulated message
                                         if let Err(e) = do_multi_tool_loop(
                                             &app_state,
                                             session_id,
-                                            &mut partial_response,
+                                            &mut accumulated_message,
                                             &mut socket
                                         ).await {
                                             log::error!("Tool handling error: {}", e);
