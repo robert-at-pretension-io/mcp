@@ -92,7 +92,7 @@ where
             }
             futures::stream::iter(results)
         }
-    }).flatten_stream())
+    }).flatten())
 }
 
 fn extract_complete_message(buffer: &str) -> Option<(String, String)> {
