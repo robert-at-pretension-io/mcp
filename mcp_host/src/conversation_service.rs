@@ -227,11 +227,19 @@ pub async fn handle_assistant_response(
 
     while iteration < MAX_ITERATIONS {
         log::debug!("\nStarting iteration {} of response handling", iteration + 1);
+        log::debug!("Current response length: {} chars", current_response.len());
+        log::debug!("Current response content:\n{}", current_response);
 
         let mut found_tool_call = false;
         let chunks: Vec<&str> = current_response.split("```").collect();
+        log::debug!("Split response into {} chunks", chunks.len());
+        
         for (i, chunk) in chunks.iter().enumerate() {
+            log::debug!("Processing chunk {} of length {}", i, chunk.len());
+            log::debug!("Chunk content:\n{}", chunk);
+            
             if i % 2 == 1 {
+                log::debug!("Checking chunk {} for tool calls", i);
                 match parse_tool_call(chunk) {
                     ToolCallResult::Success(tool_name, args) => {
                         found_tool_call = true;
@@ -241,6 +249,7 @@ pub async fn handle_assistant_response(
                             "Arguments: {}",
                             serde_json::to_string_pretty(&args).unwrap_or_default()
                         );
+                        log::debug!("Tool call patterns matched successfully");
 
                         println!("{}", style("\nTool Call:").green().bold());
                         println!(
@@ -276,12 +285,17 @@ pub async fn handle_assistant_response(
                     }
                     ToolCallResult::NearMiss(feedback) => {
                         let feedback_msg = feedback.join("\n");
+                        log::debug!("Near miss detected with feedback: {}", feedback_msg);
                         println!("{}", style("\nTool Call Format Error:").red().bold());
                         println!("└─ {}\n", feedback_msg);
                         state.add_assistant_message(&format!("Tool call format error:\n{}", feedback_msg));
                     }
                     ToolCallResult::NoMatch => {
-                        // No tool call found in this chunk, continue
+                        log::debug!("No tool call pattern matched in this chunk");
+                        // Try to find any JSON-like content for debugging
+                        if chunk.contains("{") && chunk.contains("}") {
+                            log::debug!("Found JSON-like content but no valid tool call pattern");
+                        }
                     }
                 }
             }
