@@ -258,6 +258,11 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                 Ok(req) => req,
                 Err(e) => {
                     log::error!("[WS] Could not parse JSON request: {}", e);
+                    let err_msg = serde_json::json!({
+                        "type": "error",
+                        "data": format!("Invalid request: {}", e)
+                    });
+                    socket.send(Message::Text(err_msg.to_string())).await?;
                     continue;
                 }
             };
@@ -265,10 +270,11 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
             let session_id = resolve_session_id(parsed.session_id, &app_state).await;
             let user_input = parsed.user_input.trim().to_string();
 
+            // Initialize new conversation if needed
             let new_convo = {
                 let mut sessions = app_state.sessions.lock().await;
                 if !sessions.contains_key(&session_id) {
-                    drop(sessions); // Release the lock
+                    drop(sessions);
                     match app_state.host.enter_chat_mode("api").await {
                         Ok(state) => Some(state),
                         Err(e) => {
@@ -281,19 +287,19 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                 }
             };
 
-            // If we created a new conversation, insert it
             if let Some(convo) = new_convo {
                 let mut sessions = app_state.sessions.lock().await;
                 sessions.insert(session_id, convo);
             }
 
-            // Add the user message
+            // Add user message
             {
                 let mut sessions = app_state.sessions.lock().await;
                 let convo = sessions.get_mut(&session_id).unwrap();
                 convo.add_user_message(&user_input);
             }
 
+            // Get AI response
             let stream_result = {
                 let sessions = app_state.sessions.lock().await;
                 let convo = sessions.get(&session_id).unwrap();
@@ -334,7 +340,7 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                                         }
                                     }
                                     StreamEvent::MessageStop => {
-                                        // Handle multi-tool calls
+                                        // Handle tool calls with error feedback
                                         if let Err(e) = do_multi_tool_loop(
                                             &app_state,
                                             session_id,
@@ -344,12 +350,12 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                                             log::error!("Tool handling error: {}", e);
                                             let err_msg = serde_json::json!({
                                                 "type": "error",
-                                                "data": format!("Tool error: {}", e)
+                                                "data": format!("Tool handling error: {}", e)
                                             });
                                             let _ = socket.send(Message::Text(err_msg.to_string())).await;
                                         }
 
-                                        // Notify the frontend that processing is complete
+                                        // Notify completion
                                         let done_msg = serde_json::json!({"type": "done"});
                                         let _ = socket.send(Message::Text(done_msg.to_string())).await;
                                         break;
@@ -441,44 +447,63 @@ async fn do_multi_tool_loop(
             let maybe_call = parse_tool_call(partial_response);
             if maybe_call.is_none() {
                 log::debug!("[Tool Loop] No tool calls found, exiting loop");
-                break; // No more tool calls, exit the loop
+                break;
             }
             
             let (tool_name, args) = maybe_call.unwrap();
             log::debug!("[Tool Loop] Found tool call: {} with args: {:?}", tool_name, args);
 
-            // Notify the frontend about tool execution
+            // Notify frontend about tool execution
             let tool_msg = serde_json::json!({
-                "type": "token",
-                "data": format!("\nExecuting tool '{}'...\n", tool_name)
+                "type": "tool_start",
+                "tool": tool_name,
+                "args": args
             });
             socket.send(Message::Text(tool_msg.to_string())).await?;
 
-            // Call the tool
-            log::debug!("[Tool Loop] Calling tool: {}", tool_name);
-            let result = app_state.host.call_tool("api", &tool_name, args).await?;
-            log::debug!("[Tool Loop] Tool call completed with result: {}", result);
+            // Call the tool with error handling
+            match app_state.host.call_tool("api", &tool_name, args).await {
+                Ok(result) => {
+                    log::debug!("[Tool Loop] Tool call completed with result: {}", result);
 
-            // Send tool result to the frontend
-            let result_msg = serde_json::json!({
-                "type": "token",
-                "data": format!("Tool '{}' returned: {}\n", tool_name, result)
-            });
-            socket.send(Message::Text(result_msg.to_string())).await?;
+                    // Send success result to frontend
+                    let result_msg = serde_json::json!({
+                        "type": "tool_result",
+                        "tool": tool_name,
+                        "result": result
+                    });
+                    socket.send(Message::Text(result_msg.to_string())).await?;
 
-            // Update conversation state with the tool result
-            let mut sessions = app_state.sessions.lock().await;
-            if let Some(convo) = sessions.get_mut(&session_id) {
-                log::debug!("[Tool Loop] Updating conversation state with tool result");
-                convo.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result));
+                    // Update conversation state
+                    let mut sessions = app_state.sessions.lock().await;
+                    if let Some(convo) = sessions.get_mut(&session_id) {
+                        convo.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result));
+                    }
+                }
+                Err(e) => {
+                    log::error!("[Tool Loop] Tool call failed: {}", e);
+
+                    // Send error to frontend
+                    let err_msg = serde_json::json!({
+                        "type": "tool_error",
+                        "tool": tool_name,
+                        "error": e.to_string()
+                    });
+                    socket.send(Message::Text(err_msg.to_string())).await?;
+
+                    // Update conversation state with error
+                    let mut sessions = app_state.sessions.lock().await;
+                    if let Some(convo) = sessions.get_mut(&session_id) {
+                        convo.add_assistant_message(&format!("Tool '{}' error: {}", tool_name, e));
+                    }
+
+                    // Continue to allow retrying
+                    continue;
+                }
             }
 
-            // Re-invoke the model with the updated conversation
-            log::debug!("[Tool Loop] Re-invoking model with updated conversation");
+            // Re-invoke model with updated conversation
             let continued_response = run_single_stream_pass(app_state, session_id).await?;
-            log::debug!("[Tool Loop] Received continued response: {}", continued_response);
-
-            // Update the partial response for the next iteration
             partial_response.clear();
             partial_response.push_str(&continued_response);
 
@@ -491,6 +516,11 @@ async fn do_multi_tool_loop(
     
     if iteration >= MAX_ITERATIONS {
         log::warn!("[Tool Loop] Reached maximum number of iterations");
+        let max_iter_msg = serde_json::json!({
+            "type": "error",
+            "data": "Reached maximum number of tool call iterations"
+        });
+        socket.send(Message::Text(max_iter_msg.to_string())).await?;
     }
     
     Ok(())
