@@ -448,7 +448,7 @@ async fn do_multi_tool_loop(
         .ok_or_else(|| anyhow::anyhow!("No AI client configured"))?;
 
     // Create a wrapper to handle WebSocket notifications
-    let ws_notifier = |event_type: &str, data: serde_json::Value| {
+    let mut ws_notifier = |event_type: &str, data: serde_json::Value| async move {
         let msg = serde_json::json!({
             "type": event_type,
             "data": data
