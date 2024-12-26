@@ -181,11 +181,13 @@ impl AIRequestBuilder for GeminiCompletionBuilder {
             .await?;
     
         debug!("Response received, status: {}", response.status());
-        if !response.status().is_success() {
+        let status = response.status().clone();
+        let status_two = response.status().clone();
+        if !status.is_success() {
             let error_text = response.text().await?;
             error!("API error response: {}", error_text);
             return Err(anyhow::anyhow!("API request failed with status {}: {}", 
-                response.status(), error_text));
+            status_two, error_text));
         }
 
         let stream = response.bytes_stream();

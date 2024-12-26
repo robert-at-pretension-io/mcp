@@ -2,10 +2,13 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use crate::MCPHost;
 use crate::conversation_state::ConversationState;
-use crate::ai_client::{AIClient, Role};
+use crate::ai_client::{AIClient};
 use console::style;
+
 use lazy_static::lazy_static;
 use regex::Regex;
+
+use shared_protocol_objects::Role;
 
 // Tool call parsing helpers
 pub fn extract_json_after_position(text: &str, pos: usize) -> Option<Value> {
