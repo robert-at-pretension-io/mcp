@@ -114,31 +114,53 @@ pub async fn root() -> impl IntoResponse {
       console.error('WebSocket error:', err);
     };
 
-    // We display messages in #chatContainer, each in its own <div>
-    // We'll parse text as markdown (via "marked") to convert to HTML.
-    const chatContainer = document.getElementById("chatContainer");
-    function addMessage(text, from='assistant') {
+    // Track the current assistant message div
+    let currentAssistantDiv = null;
+
+    function startNewAssistantMessage() {
+      currentAssistantDiv = document.createElement('div');
+      currentAssistantDiv.style.borderTop = "1px solid #ccc";
+      currentAssistantDiv.style.margin = "4px 0";
+      chatContainer.appendChild(currentAssistantDiv);
+    }
+
+    function appendToAssistantMessage(textChunk) {
+      if (!currentAssistantDiv) {
+        startNewAssistantMessage();
+      }
+      // Convert the partial chunk to HTML and append
+      const currentHTML = currentAssistantDiv.innerHTML;
+      currentAssistantDiv.innerHTML = currentHTML + marked.parse(textChunk);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Add user messages in a different style
+    function addUserMessage(text) {
       const msgDiv = document.createElement('div');
-      // Use marked to parse the string as markdown
       msgDiv.innerHTML = marked.parse(text);
       msgDiv.style.borderTop = "1px solid #ccc";
       msgDiv.style.margin = "4px 0";
+      msgDiv.style.backgroundColor = "#f0f0f0";  // Light gray background
       chatContainer.appendChild(msgDiv);
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
+
+    const chatContainer = document.getElementById("chatContainer");
 
     // On receiving server messages, we parse them as JSON
     ws.onmessage = (evt) => {
       try {
         const msg = JSON.parse(evt.data);
         if(msg.type === "token") {
-          // We'll treat each token chunk as part of a single response
-          addMessage(msg.data, 'assistant');
+          // Append chunk to ongoing assistant message
+          appendToAssistantMessage(msg.data);
         } else if(msg.type === "done") {
-          // End of message
-          addMessage('[Done]', 'assistant');
+          // Reset currentAssistantDiv for next message
+          currentAssistantDiv = null;
         } else if(msg.type === "error") {
-          addMessage('[ERROR] ' + msg.data, 'assistant');
+          startNewAssistantMessage();
+          appendToAssistantMessage("[ERROR] " + msg.data);
+          currentAssistantDiv = null;
         }
       } catch(e) {
         console.error('Invalid JSON from server:', evt.data);
@@ -157,7 +179,7 @@ pub async fn root() -> impl IntoResponse {
       const payload = { session_id: window.sessionId, user_input: text };
 
       // Add user message to chat
-      addMessage(text, 'user');
+      addUserMessage(text);
       inputField.value = "";
 
       // Send to WebSocket
