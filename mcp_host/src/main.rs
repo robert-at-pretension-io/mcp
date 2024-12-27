@@ -12,6 +12,7 @@ struct ToolChain {
     title: String,
     steps: Vec<String>,
 }
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 struct ToolChainLibrary(Vec<ToolChain>);
