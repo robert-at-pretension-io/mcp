@@ -246,7 +246,7 @@ impl MCPHost {
             The pattern must match this regular expression:\n\
             {}\n\n\
             TOOLS:\n{}",
-            MASTER_REGEX.as_str(),
+            build_tool_call_regex(&["graph_tool".to_string(), "brave_search".to_string(), "scrape_url".to_string(), "bash".to_string()]).as_str(),
             tools_str
         );
 
