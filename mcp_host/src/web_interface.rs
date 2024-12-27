@@ -490,7 +490,7 @@ async fn do_multi_tool_loop(
         "api",
         convo,
         client,
-        socket
+        Some(socket)
     ).await {
         Ok(()) => {
             log::debug!("Successfully handled assistant response");
