@@ -380,6 +380,13 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                                         }
                                     }
                                     StreamEvent::MessageStop => {
+                                        // Log the full message from DeepSeek
+                                        log::info!(
+                                            "[WS] Full message from DeepSeek for session {}:\n{}", 
+                                            session_id,
+                                            accumulated_message
+                                        );
+
                                         // Handle tool calls with the complete accumulated message
                                         if let Err(e) = do_multi_tool_loop(
                                             &app_state,
