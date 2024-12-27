@@ -1,4 +1,5 @@
-use anyhow::{ Result, anyhow };
+use anyhow::Result;
+use axum::extract::ws::{Message, WebSocket};
 use serde_json::Value;
 use crate::MCPHost;
 use crate::conversation_state::ConversationState;
@@ -105,7 +106,8 @@ pub async fn handle_assistant_response(
     response: &str,
     server_name: &str,
     state: &mut ConversationState,
-    client: &Box<dyn AIClient>
+    client: &Box<dyn AIClient>,
+    socket: &mut WebSocket
 ) -> Result<()> {
     state.add_assistant_message(response);
 
