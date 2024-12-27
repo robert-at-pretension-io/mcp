@@ -253,50 +253,61 @@ impl MCPHost {
             })
         }).collect();
 
-        // Generate system prompt with tool chains
+        // Generate simplified system prompt
         let system_prompt = format!(
-            "{}\n\nTOOL CHAINING EXAMPLES:\n{}\n\nREMEMBER:\n\
-            1. Use proper JSON-RPC format for tool calls when needed\n\
-            2. Maintain context between tool calls\n\
-            3. Handle tool responses appropriately",
-            self.generate_system_prompt(&tools_json),
-            tool_chains.get_examples(Some(3)) // Show 3 examples by default
+            "You are a helpful assistant with access to tools. Use tools only when necessary.\n\n\
+            CORE RESPONSIBILITIES:\n\
+            1. Create knowledge graph nodes when important new information is shared\n\
+            2. Use tools to gather additional context when needed\n\
+            3. Maintain natural conversation flow\n\n\
+            TOOL USAGE GUIDELINES:\n\
+            - Use tools only when they would provide valuable information\n\
+            - Create nodes for significant new information\n\
+            - Connect information when it helps the conversation\n\
+            - Suggest tool usage only when it would be genuinely helpful\n\n\
+            CONVERSATION STYLE:\n\
+            - Focus on natural conversation\n\
+            - Use tools subtly when needed\n\
+            - Avoid excessive tool usage\n\
+            - Only reference tool outputs when relevant\n\n\
+            TOOLS:\n{}",
+            tool_info_list.iter().map(|tool| {
+                format!(
+                    "- {}: {}\n",
+                    tool.name,
+                    tool.description.as_ref().unwrap_or(&"".to_string())
+                )
+            }).collect::<Vec<_>>().join("")
         );
 
         // Create the conversation state
         let mut state = ConversationState::new(system_prompt, tool_info_list.clone());
         
-        // Create a hidden instruction message with simplified guidance
+        // Create a simplified hidden instruction
         let hidden_instruction = format!(
             "[GUIDANCE]\n\
             You are a helpful assistant who can call tools when useful. Follow these guidelines:\n\
             - Use tools only when additional context or information is needed\n\
-            - Consider running tools like get_top_tags or search_nodes if the user's request requires it\n\
+            - Consider running tools if the user's request requires it\n\
             - Create knowledge graph nodes when new important information is shared\n\
-            - Maintain natural conversation flow - avoid excessive tool usage\n\
-            \n\
-            AVAILABLE TOOLS:\n{}",
+            - Maintain natural conversation flow\n\n\
+            TOOLS:\n{}",
             tool_info_list.iter().map(|tool| {
                 format!(
-                    "Tool: {}\n\
-                    Description: {}\n\
-                    Schema: {}\n",
+                    "- {}: {}\n",
                     tool.name,
-                    tool.description.as_ref().unwrap_or(&"".to_string()),
+                    tool.description.as_ref().unwrap_or(&"".to_string())
+                )
+            }).collect::<Vec<_>>().join("")
         // Add the simplified hidden instruction as a user message
         state.add_user_message(&hidden_instruction);
         
         // Add the hidden instruction as a user message instead of a system message
         state.add_user_message(&hidden_instruction);
 
-        // Add startup reminder as system message
-        let startup_reminder = format!(
-            "Consider these example tool chains for guidance:\n\
-            {}\n\
-            \n\
-            Remember to use proper JSON format when calling tools.",
-            tool_chains.get_examples(Some(5)) // Show fewer examples
-        );
+        // Add simplified startup reminder
+        let startup_reminder = "Remember to use tools only when they would provide valuable information. \
+            Maintain a natural conversation flow and avoid excessive tool usage.".to_string();
 
         state.add_system_message(&startup_reminder);
 
