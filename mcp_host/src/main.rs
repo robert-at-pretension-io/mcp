@@ -234,8 +234,6 @@ pub struct MCPHost {
 }
 
 impl MCPHost {
-
-impl MCPHost {
     pub async fn enter_chat_mode(&self, server_name: &str) -> Result<ConversationState> {
         // Fetch tools from the server
         let tool_info_list = self.list_server_tools(server_name).await?;
@@ -314,7 +312,7 @@ impl MCPHost {
 
         Ok(state)
     }
-}
+
 
     fn generate_system_prompt(&self, tools: &[serde_json::Value]) -> String {
         let tools_section = serde_json::to_string_pretty(&json!({ "tools": tools })).unwrap_or_else(|_| "".to_string());
@@ -349,53 +347,8 @@ impl MCPHost {
         )
     }
 
-    pub async fn new() -> Result<MCPHost> {
+    pub async fn new(&self) -> Result<MCPHost> {
         // Try to get the AI provider from environment
-        let _ai_provider = std::env::var("MCP_AI_PROVIDER").unwrap_or_else(|_| {
-            info!("MCP_AI_PROVIDER not set, defaulting to 'gemini'");
-            "gemini".to_string()
-        });
-
-        // Get the model name from environment or use provider-specific defaults
-        // let model_name = std::env::var("MCP_AI_MODEL").unwrap_or_else(|_| {
-        //     match ai_provider.as_str() {
-        //         "openai" => {
-        //             info!("MCP_AI_MODEL not set, defaulting to 'gpt-4-1106-preview' for OpenAI");
-        //             "gpt-4-1106-preview".to_string()
-        //         }
-        //         "gemini" => {
-        //             info!("MCP_AI_MODEL not set, defaulting to 'gemini-pro' for Gemini");
-        //             "gemini-pro".to_string()
-        //         }
-        //         _ => "gpt-4-1106-preview".to_string()
-        //     }
-        // });
-
-        // let model_name = "gemini-2.0-flash-exp".to_string();
-        // info!("Initializing Gemini client with model: {}", model_name);
-        // // Get Google Cloud auth token using gcloud command
-        // let output = std::process::Command::new("gcloud")
-        //     .args(["auth", "print-access-token"])
-        //     .output()
-        //     .expect("Failed to execute gcloud command");
-        // let api_key = String::from_utf8(output.stdout)
-        //     .expect("Invalid UTF-8 in gcloud output")
-        //     .trim()
-        //     .to_string();
-        // info!("Got Google Cloud auth token: {}", api_key);
-        // let client = GeminiClient::new(api_key, model_name);
-        // let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
-
-        // let model_name = "gpt-4o".to_string();
-        // info!("Initializing OpenAI client with model: {}", model_name);
-
-        // // Retrieve the OpenAI API key from an environment variable
-        // let api_key = std::env::var("OPENAI_API_KEY")
-        //     .expect("OPENAI_API_KEY not set. Please provide it in the environment.");
-
-        // info!("Got OpenAI API key: {}", api_key);
-        // let client = OpenAIClient::new(api_key, model_name);
-        // let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
         let model_name = "deepseek-chat".to_string();
         info!("Initializing DeepSeek client with model: {}", model_name);
