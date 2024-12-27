@@ -518,7 +518,8 @@ async fn do_multi_tool_loop(
         iteration_count += 1;
 
         // 1) Attempt parse
-        match crate::conversation_service::parse_tool_call(partial_response) {
+        let tool_names: Vec<String> = convo.tools.iter().map(|t| t.name.clone()).collect();
+        match crate::conversation_service::parse_tool_call(partial_response, &tool_names) {
             crate::conversation_service::ToolCallResult::Success(tool_name, args) => {
                 
                 let start_msg = serde_json::json!({
