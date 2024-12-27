@@ -15,7 +15,6 @@ mod streaming;
 mod conversation_service;
 mod my_regex;
 
-use crate::my_regex::MASTER_REGEX;
 
 
 use crate::deepseek::DeepSeekClient;
@@ -218,11 +217,14 @@ impl MCPHost {
         // Create the tools string first
         let tools_str = tool_info_list.iter().map(|tool| {
             format!(
-                "- {}: {}\n",
+                "- {}: {}\ninput schema: {:?}",
                 tool.name,
-                tool.description.as_ref().unwrap_or(&"".to_string())
+                tool.description.as_ref().unwrap_or(&"".to_string()),
+                tool.input_schema
             )
         }).collect::<Vec<_>>().join("");
+
+        log::debug!("{}",format!("tool_str is {:?}", &tools_str));
 
         // Generate simplified system prompt
         let system_prompt = format!(
@@ -241,14 +243,15 @@ impl MCPHost {
             - Use tools only when additional context or information is needed\n\
             - Consider running tools if the user's request requires it\n\n\
             TOOL CALLING FORMAT:\n\
-            When calling a tool, use this exact pattern:\n\
-            \"Let me call <tool_name> {{\n  <parameters>\n}}\"\n\n\
             The pattern must match this regular expression:\n\
             {}\n\n\
             TOOLS:\n{}",
             MASTER_REGEX.as_str(),
             tools_str
         );
+
+        log::debug!("{}",format!("hidden_instruction is {:?}", &hidden_instruction));
+
 
         // Add the hidden instruction as a user message
         state.add_user_message(&hidden_instruction);

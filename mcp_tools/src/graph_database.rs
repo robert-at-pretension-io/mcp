@@ -552,42 +552,10 @@ pub fn graph_tool_info() -> ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
             r#"Knowledge Graph Tool
-CRITICAL WORKFLOW REQUIREMENTS:
-
-ALWAYS START conversation with:
-
-get_recent_nodes for latest context
-get_top_tags for key themes
-search_nodes for relevant info
-get_most_connected for core concepts
-
-
-FOR EVERY USER INPUT:
-
-Search all relevant context
-Cross-reference across nodes
-Find topic connections
-Verify knowledge consistency
-
-
-BEFORE NEW NODES:
-
-Search to avoid duplicates
-Find nodes to connect
-Gather multiple perspectives
-
-
-AFTER OPERATIONS:
-
-Verify changes
-Make new connections
-Check related info
-
-
+ALWAYS START conversation with some calls to the knowledge graph to catch up on the user's history
 
 Purpose: Build comprehensive context through thorough information gathering.
-Returns: Structured node data with metadata.
-Always search before responding."#
+Always use this tool to search before responding search before responding."#
         .into()),
         input_schema: json!({
             "type": "object",

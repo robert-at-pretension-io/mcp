@@ -17,21 +17,21 @@ pub enum ToolCallResult {
     NoMatch,
 }
 
-use crate::my_regex::MASTER_REGEX;
+
+use crate::my_regex::build_tool_call_regex;
 
 /// Attempts to parse a single tool call from `response`.
-pub fn parse_tool_call(response: &str) -> ToolCallResult {
+pub fn parse_tool_call(response: &str, tool_names: &[String]) -> ToolCallResult {
+    let dynamic_regex = build_tool_call_regex(tool_names);
+
     log::debug!("Parsing response for tool calls:\n{}", response);
 
-    // 1) Scan the entire response for a pattern: “Let me call <toolname> ... {”
-    //    The MASTER_REGEX returns two captures: 
-    //      capture 1 = the tool name
-    //      capture 2 = the literal “{” from which we will parse balanced braces.
-    if let Some(caps) = MASTER_REGEX.captures(response) {
+    // 1) Attempt to match
+    if let Some(caps) = dynamic_regex.captures(response) {
         let tool_name = caps[1].to_string();
         let brace_start_index = caps.get(2).unwrap().start();
 
-        // 2) Attempt to extract a balanced JSON block from that point.
+        // 2) Extract braces
         match extract_balanced_braces(response, brace_start_index) {
             Some((json_str, _end_index)) => {
                 // 3) Attempt to parse that JSON
@@ -58,7 +58,7 @@ pub fn parse_tool_call(response: &str) -> ToolCallResult {
             }
         }
     } else {
-        // If the MASTER_REGEX fails, we might do other fallback attempts, or return NoMatch:
+        // If the dynamic regex fails, we might do fallback attempts, or return NoMatch:
         log::debug!("No valid tool calls found in response");
         ToolCallResult::NoMatch
     }
@@ -89,207 +89,92 @@ fn extract_balanced_braces(text: &str, open_brace_index: usize) -> Option<(Strin
 
 pub async fn handle_assistant_response(
     host: &MCPHost,
-    response: &str,
+    incoming_response: &str,
     server_name: &str,
     state: &mut ConversationState,
     client: &Box<dyn AIClient>,
     mut socket: Option<&mut WebSocket>
 ) -> Result<()> {
-    state.add_assistant_message(response);
+    // Record the incoming response
+    state.add_assistant_message(incoming_response);
 
-    let mut current_response = response.to_string();
-    let mut iteration = 0;
-    const MAX_TOOL_ITERATIONS: i32 = 3; // Limit to 3 tool call iterations
-    let mut tool_results = Vec::new();
-
-    while iteration < MAX_TOOL_ITERATIONS {
-        log::debug!("\nStarting iteration {} of tool handling", iteration + 1);
-        log::debug!("Current response length: {} chars", current_response.len());
-        log::debug!("Current response content:\n{}", current_response);
-
-        let chunks: Vec<&str> = current_response.split("```").collect();
-        log::debug!("Split response into {} chunks", chunks.len());
-        
-        // Process the entire response as a single unit
-        log::debug!("Checking response for tool calls");
-        match parse_tool_call(&current_response) {
-                    ToolCallResult::Success(tool_name, args) => {
-                        
-                        log::debug!("Tool: {}", tool_name);
-                        log::debug!(
-                            "Arguments: {}",
-                            serde_json::to_string_pretty(&args).unwrap_or_default()
-                        );
-                        log::debug!("Tool call patterns matched successfully");
-
-                        println!("{}", style("\nTool Call:").green().bold());
-                        println!(
-                            "└─ {}: {}\n",
-                            style(&tool_name).yellow(),
-                            crate::conversation_state::format_json_output(
-                                &serde_json::to_string_pretty(&args)?
-                            )
-                        );
-
-                        // Send tool start notification
-                        if let Some(ref mut socket) = socket {
-                            let start_msg = serde_json::json!({
-                                "type": "tool_call_start",
-                                "tool_name": tool_name
-                            });
-                            let _ = socket.send(Message::Text(start_msg.to_string())).await;
-                        }
-
-                        match host.call_tool(server_name, &tool_name, args).await {
-                            Ok(result) => {
-                                // Send tool end notification
-                                if let Some(ref mut socket) = socket {
-                                    let end_msg = serde_json::json!({
-                                        "type": "tool_call_end",
-                                        "tool_name": tool_name
-                                    });
-                                    let _ = socket.send(Message::Text(end_msg.to_string())).await;
-                                }
-
-                                println!(
-                                    "{}",
-                                    crate::conversation_state::format_tool_response(
-                                        &tool_name,
-                                        &result
-                                    )
-                                );
-                                        
-                                // Store tool result for final summary
-                                tool_results.push(format!(
-                                    "Tool '{}' returned:\n{}",
-                                    tool_name,
-                                    result.trim()
-                                ));
-                                        
-                                // Add to conversation state
-                                state.add_assistant_message(
-                                    &format!("Tool '{}' returned: {}", tool_name, result.trim())
-                                );
-                            }
-                            Err(e) => {
-                                println!("{}: {}\n", style("Error").red().bold(), e);
-                                // Add detailed error message to conversation state
-                                state.add_assistant_message(
-                                    &format!("Tool '{}' call failed with error: {}\nPlease analyze this error and correct the tool call.", tool_name, e)
-                                );
-                                // Break out of tool calling loop to restart assistant
-                                break;
-                            }
-                        }
-                    }
-                    ToolCallResult::NearMiss(feedback) => {
-                        let feedback_msg = feedback.join("\n");
-                        log::debug!("Near miss detected with feedback: {}", feedback_msg);
-                        println!("{}", style("\nTool Call Format Error:").red().bold());
-                        println!("└─ {}\n", feedback_msg);
-                        state.add_assistant_message(&format!("Tool call format error:\n{}", feedback_msg));
-                    }
-                    ToolCallResult::NoMatch => {
-                        log::debug!("No tool call pattern matched at ALL");
-                        // Try to find any JSON-like content for debugging
-                        
-                    }
-                }
-
-
-        let mut builder = client.raw_builder();
-        for msg in &state.messages {
-            match msg.role {
-                Role::System => {
-                    builder = builder.system(msg.content.clone());
-                }
-                Role::User => {
-                    builder = builder.user(msg.content.clone());
-                }
-                Role::Assistant => {
-                    builder = builder.assistant(msg.content.clone());
-                }
-            }
+    let tool_names: Vec<String> = state.tools.iter().map(|t| t.name.clone()).collect();
+    if let Some((tool_name, args)) = match parse_tool_call(incoming_response, &tool_names) {
+        ToolCallResult::Success(name, a) => Some((name, a)),
+        ToolCallResult::NearMiss(feedback) => {
+            let joined = feedback.join("\n");
+            state.add_assistant_message(&joined);
+            None
+        }
+        ToolCallResult::NoMatch => None,
+    } {
+        // If we found a valid tool call, handle it
+        if let Some(ref mut ws) = socket {
+            let start_msg = serde_json::json!({ "type": "tool_call_start", "tool_name": &tool_name });
+            let _ = ws.send(Message::Text(start_msg.to_string())).await;
         }
 
-        log::debug!("Sending updated conversation to AI");
-        match builder.execute().await {
-            Ok(response_string) => {
+        match host.call_tool(server_name, &tool_name, args).await {
+            Ok(result) => {
+                if let Some(ref mut ws) = socket {
+                    let end_msg = serde_json::json!({
+                        "type": "tool_call_end",
+                        "tool_name": &tool_name
+                    });
+                    let _ = ws.send(Message::Text(end_msg.to_string())).await;
+                }
+                
                 println!(
-                    "\n{}",
-                    crate::conversation_state::format_chat_message(
-                        &Role::Assistant,
-                        &response_string
-                    )
+                    "{}",
+                    crate::conversation_state::format_tool_response(&tool_name, &result)
                 );
-                state.add_assistant_message(&response_string);
-                current_response = response_string;
+                let combo = format!("Tool '{tool_name}' returned: {}", result.trim());
+                state.add_assistant_message(&combo);
             }
             Err(e) => {
-                log::info!("Error getting response from API: {}", e);
-                break;
+                let error_msg = format!("Tool '{tool_name}' error: {e}");
+                state.add_assistant_message(&error_msg);
+                log::error!("{}", error_msg);
             }
         }
-
-        iteration += 1;
     }
 
-    // Generate final response regardless of whether there were tool calls
-    let final_prompt = if !tool_results.is_empty() {
-        let tools_summary = tool_results.join("\n\n");
-        if iteration < MAX_TOOL_ITERATIONS {
-            // If we exited early due to an error, ask the LLM to analyze and correct
-            tools_summary // The last entry will be the error message
-        } else {
-            // Normal case - summarize successful tool calls
-            format!(
-                "Here are the results from the tools I called:\n\n{}\n\n\
-                Please provide a concise response to the user's original question \
-                incorporating this information.",
-                tools_summary
-            )
-        }
-    } else {
-        // If no tools were called, just ask for a final response
-        "Please provide a response to the user's question.".to_string()
-    };
-
+    // Now generate the final answer again with full conversation context
     let mut builder = client.raw_builder();
     for msg in &state.messages {
         match msg.role {
-            Role::System => {
-                builder = builder.system(msg.content.clone());
-            }
-            Role::User => {
-                builder = builder.user(msg.content.clone());
-            }
-            Role::Assistant => {
-                builder = builder.assistant(msg.content.clone());
-            }
+            Role::System => builder = builder.system(msg.content.clone()),
+            Role::User => builder = builder.user(msg.content.clone()),
+            Role::Assistant => builder = builder.assistant(msg.content.clone()),
         }
     }
-    builder = builder.user(final_prompt);
 
-    log::debug!("Generating final response");
-    match builder.execute().await {
-        Ok(response_string) => {
-            println!(
-                "\n{}",
-                crate::conversation_state::format_chat_message(
-                    &Role::Assistant,
-                    &response_string
-                )
-            );
-            state.add_assistant_message(&response_string);
-            
-            // Always send final response via websocket if available
-            if let Some(ref mut socket) = socket {
-                let _ = socket.send(Message::Text(response_string)).await;
-            }
-        }
+    // Ask for final text
+    let final_answer = match builder.execute().await {
+        Ok(text) => text,
         Err(e) => {
-            log::info!("Error getting final response from API: {}", e);
+            log::error!("Error requesting final answer: {}", e);
+            if let Some(ref mut ws) = socket {
+                let err_msg = serde_json::json!({
+                    "type": "error",
+                    "data": e.to_string()
+                });
+                let _ = ws.send(Message::Text(err_msg.to_string())).await;
+            }
+            return Ok(()); // Early return
         }
+    };
+
+    // Display the final text
+    println!(
+        "\n{}",
+        crate::conversation_state::format_chat_message(&Role::Assistant, &final_answer)
+    );
+    state.add_assistant_message(&final_answer);
+
+    // Send the final text to client
+    if let Some(ref mut ws) = socket {
+        let _ = ws.send(Message::Text(final_answer)).await;
     }
 
     Ok(())

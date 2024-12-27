@@ -208,15 +208,15 @@ impl Stream for DeepSeekStream {
             Poll::Ready(Some(Ok(response))) => {
                 // Each chunk is a partial response 
                 // Log the raw response for debugging
-                log::debug!("DeepSeek raw response: {:?}", response);
-                
+                // log::debug!("DeepSeek raw response: {:?}", response);
+                // 
                 if let Some(choice) = response.choices.first() {
-                    log::debug!(
-                        "DeepSeek choice details - index: {}, finish_reason: {:?}, delta: {:?}",
-                        choice.index,
-                        choice.finish_reason,
-                        choice.delta
-                    );
+                    // log::debug!(
+                    //     "DeepSeek choice details - index: {}, finish_reason: {:?}, delta: {:?}",
+                    //     choice.index,
+                    //     choice.finish_reason,
+                    //     choice.delta
+                    // );
                     
                     // 1) If we have a finish_reason == Some(Stop), yield MessageStop right away
                     if let Some(reason) = &choice.finish_reason {
@@ -230,11 +230,11 @@ impl Stream for DeepSeekStream {
 
                     // 2) Otherwise, if there's partial text, yield it as ContentDelta
                     if let Some(delta_text) = &choice.delta.content {
-                        log::debug!(
-                            "DeepSeek content delta ({} chars): {}",
-                            delta_text.len(),
-                            delta_text
-                        );
+                        // log::debug!(
+                        //     "DeepSeek content delta ({} chars): {}",
+                        //     delta_text.len(),
+                        //     delta_text
+                        // );
                         let event = crate::ai_client::StreamEvent::ContentDelta {
                             index: 0,
                             text: delta_text.clone(),

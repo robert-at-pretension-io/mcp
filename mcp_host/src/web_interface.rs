@@ -297,7 +297,6 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
             let parsed: WsRequest = match serde_json::from_str(&text) {
                 Ok(req) => req,
                 Err(e) => {
-                    log::error!("[WS] Could not parse JSON request: {}", e);
                     let err_msg = serde_json::json!({
                         "type": "error",
                         "data": format!("Invalid request: {}", e)
@@ -310,44 +309,34 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
             let session_id = resolve_session_id(parsed.session_id, &app_state).await;
             let user_input = parsed.user_input.trim().to_string();
 
-            // Initialize new conversation if needed
-            let new_convo = {
+            // Possibly init conversation
+            init_convo_if_needed(&app_state, &session_id).await;
+
+            // Record user message
+            {
                 let mut sessions = app_state.sessions.lock().await;
-                if !sessions.contains_key(&session_id) {
-                    drop(sessions);
-                    match app_state.host.enter_chat_mode("api").await {
-                        Ok(state) => Some(state),
-                        Err(e) => {
-                            log::warn!("Error calling enter_chat_mode: {}", e);
-                            Some(ConversationState::new("Welcome!".to_string(), vec![]))
-                        }
-                    }
-                } else {
-                    None
+                if let Some(convo) = sessions.get_mut(&session_id) {
+                    convo.add_user_message(&user_input);
+                }
+            }
+
+            // Try to get a streaming response from the AI
+            let client = match app_state.host.ai_client.as_ref() {
+                Some(c) => c,
+                None => {
+                    let err = "No AI client configured";
+                    socket.send(Message::Text(
+                        serde_json::json!({ "type": "error", "data": err }).to_string()
+                    )).await?;
+                    continue;
                 }
             };
 
-            if let Some(convo) = new_convo {
-                let mut sessions = app_state.sessions.lock().await;
-                sessions.insert(session_id, convo);
-            }
-
-            // Add user message
-            {
-                let mut sessions = app_state.sessions.lock().await;
-                let convo = sessions.get_mut(&session_id).unwrap();
-                convo.add_user_message(&user_input);
-            }
-
-            // Get AI response
             let stream_result = {
                 let sessions = app_state.sessions.lock().await;
-                let convo = sessions.get(&session_id).unwrap();
-                let client = app_state
-                    .host
-                    .ai_client
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("No AI client configured"))?;
+                let convo = sessions.get(&session_id).ok_or_else(|| {
+                    anyhow::anyhow!("Conversation state not found")
+                })?;
 
                 let mut builder = client.raw_builder().streaming(true);
                 for m in &convo.messages {
@@ -366,59 +355,52 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                     
                     while let Some(chunk_res) = s.next().await {
                         match chunk_res {
-                            Ok(event) => {
-                                match event {
-                                    StreamEvent::ContentDelta{ text, .. } => {
-                                        log::debug!("Received content delta: {}", text);
-                                        accumulated_message.push_str(&text);
-                                        
-                                        let json_msg = serde_json::json!({
-                                            "type": "token",
-                                            "data": text
-                                        });
-                                        if socket.send(Message::Text(json_msg.to_string())).await.is_err() {
-                                            log::error!("Failed to send WebSocket message");
-                                            break;
-                                        }
-                                    }
-                                    StreamEvent::MessageStop => {
-                                        // Log the full message from DeepSeek
-                                        log::info!(
-                                            "[WS] Full message from DeepSeek for session {}:\n{}", 
-                                            session_id,
-                                            accumulated_message
-                                        );
-                                        
-                                        // Debug: Print accumulated message length
-                                        log::debug!("Accumulated message length: {} chars", accumulated_message.len());
-
-                                        // Handle tool calls with the complete accumulated message
-                                        if let Err(e) = do_multi_tool_loop(
-                                            &app_state,
-                                            session_id,
-                                            &mut accumulated_message,
-                                            &mut socket
-                                        ).await {
-                                            log::error!("Tool handling error: {}", e);
-                                            let err_msg = serde_json::json!({
-                                                "type": "error",
-                                                "data": format!("Tool handling error: {}", e)
-                                            });
-                                            let _ = socket.send(Message::Text(err_msg.to_string())).await;
-                                        }
-
-                                        // Notify completion
-                                        let done_msg = serde_json::json!({"type": "done"});
-                                        if socket.send(Message::Text(done_msg.to_string())).await.is_err() {
-                                            log::error!("Failed to send done message");
-                                        }
+                            Ok(event) => match event {
+                                StreamEvent::ContentDelta { text, .. } => {
+                                    accumulated_message.push_str(&text);
+                                    let json_msg = serde_json::json!({
+                                        "type": "token",
+                                        "data": text
+                                    });
+                                    if socket.send(Message::Text(json_msg.to_string())).await.is_err() {
+                                        log::error!("Failed to send token message");
                                         break;
                                     }
-                                    _ => {}
                                 }
-                            }
+                                StreamEvent::MessageStop => {
+                                    log::info!(
+                                        "[WS] Full message from DeepSeek for session {}:\n{}", 
+                                        session_id,
+                                        accumulated_message
+                                    );
+
+                                    // Pass the complete message to `do_multi_tool_loop`
+                                    if let Err(e) = do_multi_tool_loop(
+                                        &app_state,
+                                        session_id,
+                                        &mut accumulated_message,
+                                        &mut socket
+                                    ).await
+                                    {
+                                        log::error!("Tool handling error: {}", e);
+                                        let err_msg = serde_json::json!({
+                                            "type": "error",
+                                            "data": format!("Tool handling error: {}", e)
+                                        });
+                                        let _ = socket.send(Message::Text(err_msg.to_string())).await;
+                                    }
+
+                                    // Let the frontend know this streaming pass is done
+                                    let done_msg = serde_json::json!({"type": "done"});
+                                    if socket.send(Message::Text(done_msg.to_string())).await.is_err() {
+                                        log::error!("Failed to send done message");
+                                    }
+
+                                    break;
+                                }
+                                _ => {}
+                            },
                             Err(e) => {
-                                log::error!("Error in streaming: {}", e);
                                 let err_msg = serde_json::json!({
                                     "type": "error",
                                     "data": e.to_string()
@@ -430,11 +412,7 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                     }
                 }
                 Err(e) => {
-                    log::error!("AI client error: {}", e);
-                    let err_msg = serde_json::json!({
-                        "type": "error",
-                        "data": e.to_string()
-                    });
+                    let err_msg = serde_json::json!({ "type": "error", "data": e.to_string() });
                     let _ = socket.send(Message::Text(err_msg.to_string())).await;
                 }
             }
@@ -443,6 +421,27 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
 
     log::info!("[WS] WebSocket closed");
     Ok(())
+}
+
+/// Initialize conversation state if needed
+async fn init_convo_if_needed(app_state: &WebAppState, session_id: &Uuid) {
+    let mut sessions = app_state.sessions.lock().await;
+    if sessions.contains_key(session_id) {
+        return;
+    }
+    drop(sessions);
+
+    match app_state.host.enter_chat_mode("api").await {
+        Ok(new_state) => {
+            let mut sessions = app_state.sessions.lock().await;
+            sessions.insert(*session_id, new_state);
+        }
+        Err(e) => {
+            log::warn!("Error calling enter_chat_mode: {}", e);
+            let mut sessions = app_state.sessions.lock().await;
+            sessions.insert(*session_id, ConversationState::new("Welcome!".to_string(), vec![]));
+        }
+    }
 }
 
 async fn resolve_session_id(
@@ -488,37 +487,116 @@ async fn do_multi_tool_loop(
     partial_response: &mut String,
     socket: &mut WebSocket,
 ) -> Result<()> {
-    // Get the conversation state
+    // Acquire the conversation state
     let mut sessions = app_state.sessions.lock().await;
     let convo = sessions.get_mut(&session_id)
         .ok_or_else(|| anyhow::anyhow!("Session not found"))?;
-    
-    // Get the AI client
-    let client = app_state.host.ai_client.as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No AI client configured"))?;
 
-    // Use handle_assistant_response directly
-    match crate::conversation_service::handle_assistant_response(
-        &app_state.host,
-        partial_response,
-        "api",
-        convo,
-        client,
-        Some(socket)
-    ).await {
-        Ok(()) => {
-            log::debug!("Successfully handled assistant response");
-            Ok(())
-        },
-        Err(e) => {
-            log::error!("Error handling assistant response: {}", e);
-            // Send error directly through WebSocket
+    // Access the AI client
+    let client = match app_state.host.ai_client.as_ref() {
+        Some(c) => c,
+        None => {
+            let err = "No AI client configured";
+            log::error!("{}", err);
             let err_msg = serde_json::json!({
                 "type": "error",
-                "data": format!("Error processing response: {}", e)
+                "data": err
             });
             socket.send(Message::Text(err_msg.to_string())).await?;
-            Err(anyhow::anyhow!(e))
+            return Err(anyhow::anyhow!(err));
+        }
+    };
+
+    // Insert the newly received partial_response from the AI as an assistant message
+    convo.add_assistant_message(partial_response);
+
+    // Now we do a simple loop: parse for tool calls, handle them, and re-ask the model if needed.
+    let mut iteration_count = 0;
+    const MAX_ITERATIONS: usize = 2;
+
+    while iteration_count < MAX_ITERATIONS {
+        iteration_count += 1;
+
+        // 1) Attempt parse
+        match crate::conversation_service::parse_tool_call(partial_response) {
+            crate::conversation_service::ToolCallResult::Success(tool_name, args) => {
+                
+                let start_msg = serde_json::json!({
+                    "type": "tool_call_start",
+                    "tool_name": tool_name
+                });
+                let _ = socket.send(Message::Text(start_msg.to_string())).await;
+                
+
+                // 2) Actually call the tool
+                match app_state.host.call_tool("api", &tool_name, args).await {
+                    Ok(tool_output) => {
+                        
+                        let end_msg = serde_json::json!({
+                            "type": "tool_call_end",
+                            "tool_name": tool_name
+                        });
+                        let _ = socket.send(Message::Text(end_msg.to_string())).await;
+                        
+
+                        // Record the tool output in conversation
+                        convo.add_assistant_message(
+                            &format!("Tool '{tool_name}' returned: {}", tool_output.trim())
+                        );
+                    }
+                    Err(e) => {
+                        let error_msg = format!("Tool '{tool_name}' failed: {e}");
+                        convo.add_assistant_message(&error_msg);
+                        log::error!("{}", error_msg);
+                        // break or continue as desired
+                    }
+                }
+
+                // 3) Now re-run the model with the updated conversation
+                let new_ai_answer = {
+                    let mut builder = client.raw_builder();
+                    for msg in &convo.messages {
+                        match msg.role {
+                            Role::System => builder = builder.system(msg.content.clone()),
+                            Role::User => builder = builder.user(msg.content.clone()),
+                            Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                        }
+                    }
+                    match builder.execute().await {
+                        Ok(ans) => {let _ = socket.send(Message::Text(ans.to_string())).await; ans},
+                        Err(e) => {
+                            log::error!("Error requesting final answer: {}", e);
+                            
+                            let err_msg = serde_json::json!({
+                                "type": "error",
+                                "data": e.to_string()
+                            });
+                            let _ = socket.send(Message::Text(err_msg.to_string())).await;
+                            
+                            break; 
+                        }
+                    }
+                };
+
+                // Update partial_response with the new model content
+                *partial_response = new_ai_answer.clone();
+                convo.add_assistant_message(&new_ai_answer);
+
+            }
+            crate::conversation_service::ToolCallResult::NearMiss(fb) => {
+                // Show near-miss
+                convo.add_assistant_message(&fb.join("\n"));
+                break;
+            }
+            crate::conversation_service::ToolCallResult::NoMatch => {
+                // No calls found, so we’re done
+                break;
+            }
         }
     }
+
+    let _ = socket.send(Message::Text(partial_response.to_string())).await;
+    
+
+    Ok(())
 }
