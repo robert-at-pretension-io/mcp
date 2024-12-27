@@ -224,6 +224,10 @@ pub async fn root() -> impl IntoResponse {
           startNewAssistantMessage();
           appendToAssistantMessage("[ERROR] " + msg.data);
           currentAssistantDiv = null;
+        } else if (msg.type === "tool_call_start") {
+          showLoadingIndicator(msg.tool_name);
+        } else if (msg.type === "tool_call_end") {
+          hideLoadingIndicator(msg.tool_name);
         }
       } catch(e) {
         console.error("Invalid JSON from server:", evt.data);
