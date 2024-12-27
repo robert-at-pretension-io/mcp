@@ -229,9 +229,11 @@ struct ManagedServer {
 pub struct MCPHost {
     servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
     client_info: Implementation,
-    request_timeout: std::time::Duration,
+    request_timeout: std::time::Duration, 
     ai_client: Option<Box<dyn AIClient>>,
 }
+
+impl MCPHost {
 
 impl MCPHost {
     pub async fn enter_chat_mode(&self, server_name: &str) -> Result<ConversationState> {
@@ -315,46 +317,39 @@ impl MCPHost {
 }
 
     fn generate_system_prompt(&self, tools: &[serde_json::Value]) -> String {
-        let tools_section = serde_json::to_string_pretty(&json!({ "tools": tools })).unwrap_or("".to_string());
+        let tools_section = serde_json::to_string_pretty(&json!({ "tools": tools })).unwrap_or_else(|_| "".to_string());
 
-        let prompt = format!(r####"You are a helpful assistant with access to tools. Use tools only when necessary.
-
-CORE RESPONSIBILITIES:
-1. Create knowledge graph nodes when important new information is shared
-2. Use tools to gather additional context when needed
-3. Maintain natural conversation flow
-
-TOOL USAGE GUIDELINES:
-- Use tools only when they would provide valuable information
-- Create nodes for significant new information
-- Connect information when it helps the conversation
-- Suggest tool usage only when it would be genuinely helpful
-
-CONVERSATION STYLE:
-- Focus on natural conversation
-- Use tools subtly when needed
-- Avoid excessive tool usage
-- Only reference tool outputs when relevant
-
-{tools_section}
-
-TOOL CALLING FORMAT:
-To call a tool, use this format:
-
-Let me call [tool_name_here]
-```json
-{{
-    params here
-}}
-```
-
-Remember to use proper JSON format when calling tools.
-"####);
-
-        prompt
+        format!(
+            "You are a helpful assistant with access to tools. Use tools only when necessary.\n\n\
+            CORE RESPONSIBILITIES:\n\
+            1. Create knowledge graph nodes when important new information is shared\n\
+            2. Use tools to gather additional context when needed\n\
+            3. Maintain natural conversation flow\n\n\
+            TOOL USAGE GUIDELINES:\n\
+            - Use tools only when they would provide valuable information\n\
+            - Create nodes for significant new information\n\
+            - Connect information when it helps the conversation\n\
+            - Suggest tool usage only when it would be genuinely helpful\n\n\
+            CONVERSATION STYLE:\n\
+            - Focus on natural conversation\n\
+            - Use tools subtly when needed\n\
+            - Avoid excessive tool usage\n\
+            - Only reference tool outputs when relevant\n\n\
+            {}\n\n\
+            TOOL CALLING FORMAT:\n\
+            To call a tool, use this format:\n\n\
+            Let me call [tool_name_here]\n\
+            ```json\n\
+            {{\n\
+                params here\n\
+            }}\n\
+            ```\n\n\
+            Remember to use proper JSON format when calling tools.",
+            tools_section
+        )
     }
 
-    pub async fn new() -> Result<Self> {
+    pub async fn new() -> Result<MCPHost> {
         // Try to get the AI provider from environment
         let _ai_provider = std::env::var("MCP_AI_PROVIDER").unwrap_or_else(|_| {
             info!("MCP_AI_PROVIDER not set, defaulting to 'gemini'");
@@ -419,7 +414,7 @@ Remember to use proper JSON format when calling tools.
             info!("No AI client configured. Set MCP_AI_PROVIDER and corresponding API key (OPENAI_API_KEY or GEMINI_API_KEY or ANTHROPIC_API_KEY)");
         }
 
-        Ok(Self {
+        Ok(MCPHost {
             servers: Arc::new(Mutex::new(HashMap::new())),
             client_info: Implementation {
                 name: "mcp-host".to_string(),
@@ -572,7 +567,7 @@ Remember to use proper JSON format when calling tools.
         let (tx, mut rx) = mpsc::channel(1);
         
         // Get the server's I/O handles
-        let (stdin, stdout) = {
+        let (stdin, stdout): (Arc<Mutex<ChildStdin>>, Arc<Mutex<ChildStdout>>) = {
             let servers = self.servers.lock().await;
             let server = servers.get(server_name)
                 .ok_or_else(|| anyhow::anyhow!("Server not found: {}", server_name))?;
