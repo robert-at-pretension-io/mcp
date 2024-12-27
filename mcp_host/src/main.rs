@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::fs;
 use serde::{Deserialize, Serialize};
 
+use crate::conversation_service::handle_assistant_response;
+
 #[derive(Debug, Deserialize, Serialize)]
 struct ToolChain {
     title: String,
@@ -400,9 +402,6 @@ impl MCPHost {
             AVAILABLE TOOLS AND THEIR REQUIRED USAGE PATTERNS:\n\
             {}\n\
             \n\
-            EXAMPLE TOOL CHAINS:\n\
-            {}\n\
-            \n\
             CRITICAL: NEVER WAIT FOR PERMISSION TO USE TOOLS!",
             tool_chains.get_examples(Some(3)), // Show 3 examples in the hidden instruction
             tool_info_list.iter().map(|tool| {
@@ -422,8 +421,7 @@ impl MCPHost {
                         .join("\n"),
                     serde_json::to_string_pretty(&tool.input_schema).unwrap_or_default()
                 )
-            }).collect::<Vec<_>>().join("\n\n"),
-            tool_chains.get_examples(Some(3))
+            }).collect::<Vec<_>>().join("\n\n")
         );
         
         // Add the hidden instruction as a user message instead of a system message
@@ -881,13 +879,9 @@ When you get information, don't mention it. Just use it to subtly inform the con
     pub async fn call_tool(&self, server_name: &str, tool_name: &str, args: Value) -> Result<String> {
         debug!("call_tool started");
         debug!("Server: {}", server_name);
-        
-        // Extract the actual tool name from the arguments if it exists
-        let actual_tool_name = args.get("action")
-            .and_then(|v| v.as_str())
-            .unwrap_or(tool_name);
+    
             
-        debug!("Tool: {}", actual_tool_name);
+        debug!("Tool: {}", tool_name);
         debug!("Arguments: {}", serde_json::to_string_pretty(&args).unwrap_or_default());
         
         let request = JsonRpcRequest {
@@ -895,7 +889,7 @@ When you get information, don't mention it. Just use it to subtly inform the con
             id: RequestId::String(Uuid::new_v4().to_string()).into(),
             method: "tools/call".to_string(),
             params: Some(json!({
-                "name": actual_tool_name,
+                "name": tool_name,
                 "arguments": args
             })),
         };
@@ -931,99 +925,6 @@ When you get information, don't mention it. Just use it to subtly inform the con
         Ok(())
     }
 
-    async fn handle_assistant_response(
-        &self,
-        response: &str,
-        server_name: &str,
-        state: &mut ConversationState,
-        client: &Box<dyn AIClient>,
-    ) -> Result<()> {
-        state.add_assistant_message(response);
-        
-        let mut current_response = response.to_string();
-        let mut iteration = 0;
-        const MAX_ITERATIONS: i32 = 15;
-        
-        while iteration < MAX_ITERATIONS {
-            debug!("\nStarting iteration {} of response handling", iteration + 1);
-            
-            let mut found_tool_call = false;
-            let chunks: Vec<&str> = current_response.split("```").collect();
-            for (i, chunk) in chunks.iter().enumerate() {
-                if i % 2 == 1 {
-                    if let Some((tool_name, args)) = parse_tool_call(chunk) {
-                        found_tool_call = true;
-                        debug!("Found tool call in chunk {}:", i);
-                        debug!("Tool: {}", tool_name);
-                        debug!("Arguments: {}", serde_json::to_string_pretty(&args).unwrap_or_default());
-                        
-                        println!("{}", style("\nTool Call:").green().bold());
-                        println!("└─ {}: {}\n", 
-                            style(&tool_name).yellow(),
-                            conversation_state::format_json_output(&serde_json::to_string_pretty(&args)?));
-    
-                        match self.call_tool(server_name, &tool_name, args).await {
-                            Ok(result) => {
-                                println!("{}", conversation_state::format_tool_response(&tool_name, &result));
-                                // Add tool response as assistant message, trimming whitespace
-                                state.add_assistant_message(&format!("Tool '{}' returned: {}", tool_name, result.trim()));
-                            }
-                            Err(e) => {
-                                println!("{}: {}\n", style("Error").red().bold(), e);
-                                // Add error as assistant message to handle gracefully, trimming whitespace
-                                state.add_assistant_message(&format!("Tool '{}' error: {}", tool_name, e).trim());
-                            }
-                        }
-                    }
-                }
-            }
-            
-            if !found_tool_call {
-                break;
-            }
-            
-            // Send all messages (including the tool results now marked as user messages) back to AI
-            let mut builder = client.raw_builder();
-            for msg in &state.messages {
-                match msg.role {
-                    Role::System => builder = builder.system(msg.content.clone()),
-                    Role::User => builder = builder.user(msg.content.clone()),
-                    Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                }
-            }
-    
-            debug!("Sending updated conversation to AI");
-            let timeout_result = with_progress("Waiting for AI response...".to_string(),
-                tokio::time::timeout(std::time::Duration::from_secs(30), builder.execute())
-            ).await;
-    
-            match timeout_result {
-                Ok(execute_result) => match execute_result {
-                    Ok(response_string) => {
-                        println!("\n{}", conversation_state::format_chat_message(&Role::Assistant, &response_string));
-                        state.add_assistant_message(&response_string);
-                        current_response = response_string;
-                    }
-                    Err(e) => {
-                        info!("Error getting response from API: {}", e);
-                        break;
-                    }
-                },
-                Err(_) => {
-                    info!("API request timed out after 30 seconds");
-                    break;
-                }
-            }
-            
-            iteration += 1;
-        }
-        
-        if iteration >= MAX_ITERATIONS {
-            info!("Warning: Reached maximum number of tool call iterations");
-        }
-        
-        Ok(())
-    }
 
     pub async fn run_cli(&self) -> Result<()> {
         info!("MCP Host CLI - Enter 'help' for commands");
@@ -1116,7 +1017,7 @@ When you get information, don't mention it. Just use it to subtly inform the con
                                         Ok(response_str) => {
                                             let response = response_str.as_str();
                                             println!("\n{}: {}", style("Assistant").cyan().bold(), response);
-                                            if let Err(e) = self.handle_assistant_response(&response, server_name, &mut state, client).await {
+                                            if let Err(e) = handle_assistant_response(&self, &response, server_name, &mut state, client).await {
                                                 info!("Error handling assistant response: {}", e);
                                             }
                                         }
