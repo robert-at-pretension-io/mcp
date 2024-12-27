@@ -256,98 +256,33 @@ impl MCPHost {
         // Generate system prompt with tool chains
         let system_prompt = format!(
             "{}\n\nTOOL CHAINING EXAMPLES:\n{}\n\nREMEMBER:\n\
-            1. Always use proper JSON-RPC format for tool calls\n\
-            2. Chain tools together when appropriate\n\
-            3. Consider the examples above when planning tool usage\n\
-            4. Maintain context between tool calls\n\
-            5. Handle tool responses appropriately",
+            1. Use proper JSON-RPC format for tool calls when needed\n\
+            2. Maintain context between tool calls\n\
+            3. Handle tool responses appropriately",
             self.generate_system_prompt(&tools_json),
-            tool_chains.get_examples(Some(5)) // Show 5 examples by default
+            tool_chains.get_examples(Some(3)) // Show 3 examples by default
         );
 
         // Create the conversation state
         let mut state = ConversationState::new(system_prompt, tool_info_list.clone());
         
-        // Create a hidden instruction message that combines static guidance with dynamic tool info
+        // Create a hidden instruction message with simplified guidance
         let hidden_instruction = format!(
-            "[CRITICAL INSTRUCTION - FOLLOW EXACTLY]\n\
-            When using tools, follow these patterns from the examples:\n\
-            {}\n\
+            "[GUIDANCE]\n\
+            You are a helpful assistant who can call tools when useful. Follow these guidelines:\n\
+            - Use tools only when additional context or information is needed\n\
+            - Consider running tools like get_top_tags or search_nodes if the user's request requires it\n\
+            - Create knowledge graph nodes when new important information is shared\n\
+            - Maintain natural conversation flow - avoid excessive tool usage\n\
             \n\
-            PROACTIVE REQUIREMENTS:\n\
-            1. Create knowledge graph nodes for EVERY:\n\
-               - Statement made\n\
-               - Preference shared\n\
-               - Opinion expressed\n\
-               - Question asked\n\
-               - Problem discussed\n\
-               - Goal mentioned\n\
-               - Experience described\n\
-               - Relationship identified\n\
-               - Decision\n\
-               - Skill mentioned\n\
-            2. BEFORE EVERY RESPONSE:\n\
-               - Search existing nodes for context\n\
-               - Look for related information\n\
-               - Identify connection opportunities\n\
-               - Prepare relevant suggestions\n\
-            3. AFTER EVERY USER MESSAGE:\n\
-               - Create new nodes immediately\n\
-               - Connect to existing knowledge\n\
-               - Update related nodes\n\
-            4. PROACTIVELY OFFER:\n\
-               - Related information searches\n\
-               - Deeper topic exploration\n\
-               - Connection to related topics\n\
-               - Resource discovery\n\
-            5. SUGGEST NEXT ACTIONS:\n\
-               - Related topics to explore\n\
-               - Relevant searches to perform\n\
-               - Connections to investigate\n\
-               - Resources to examine\n\
-            \n\
-            TOOL USAGE PATTERN:\n\
-            1. ALWAYS run initial tools:\n\
-               - get_top_tags\n\
-               - get_tags_by_date\n\
-               - get_most_connected\n\
-               - search_nodes (for context)\n\
-            2. AFTER EVERY USER MESSAGE:\n\
-               - Create/update nodes\n\
-               - Make connections\n\
-               - Search for relevance\n\
-            3. BEFORE EVERY RESPONSE:\n\
-               - Check existing knowledge\n\
-               - Search for related info\n\
-               - Prepare suggestions\n\
-            \n\
-            CONVERSATION STYLE:\n\
-            - Be proactive with suggestions\n\
-            - Offer relevant searches\n\
-            - Suggest related explorations\n\
-            - Connect topics naturally\n\
-            - Show enthusiasm for discovery\n\
-            \n\
-            AVAILABLE TOOLS AND THEIR REQUIRED USAGE PATTERNS:\n\
-            {}\n\
-            \n\
-            CRITICAL: NEVER WAIT FOR PERMISSION TO USE TOOLS!",
-            tool_chains.get_examples(Some(3)), // Show 3 examples in the hidden instruction
+            AVAILABLE TOOLS:\n{}",
             tool_info_list.iter().map(|tool| {
                 format!(
                     "Tool: {}\n\
                     Description: {}\n\
-                    Usage Requirements: {}\n\
                     Schema: {}\n",
                     tool.name,
                     tool.description.as_ref().unwrap_or(&"".to_string()),
-                    // Extract any usage requirements from description (usually in caps or after "ALWAYS")
-                    tool.description.as_ref()
-                        .unwrap_or(&"".to_string())
-                        .lines()
-                        .filter(|line| line.contains("ALWAYS") || line.contains("MUST") || line.contains("NEVER"))
-                        .collect::<Vec<_>>()
-                        .join("\n"),
                     serde_json::to_string_pretty(&tool.input_schema).unwrap_or_default()
                 )
             }).collect::<Vec<_>>().join("\n\n")
@@ -413,10 +348,8 @@ impl MCPHost {
             "Consider these example tool chains for guidance:\n\
             {}\n\
             \n\
-            DO NOT PROCEED WITH USER INTERACTION UNTIL THESE ARE COMPLETE. \n\
-            WHEN TOOL CALLING, MAKE SURE YOU INCLUDE THE JSON TO MAKE THE REQUEST OR THE TOOL WILL NOT BE INVOKED!
-            This is a strict requirement, not a suggestion.",
-            tool_chains.get_examples(Some(15)) // Show 15 relevant examples
+            Remember to use proper JSON format when calling tools.",
+            tool_chains.get_examples(Some(5)) // Show fewer examples
         );
 
         state.add_system_message(&startup_reminder);
@@ -427,70 +360,29 @@ impl MCPHost {
     fn generate_system_prompt(&self, tools: &[serde_json::Value]) -> String {
         let tools_section = serde_json::to_string_pretty(&json!({ "tools": tools })).unwrap_or("".to_string());
 
-        let prompt = format!(r####"You are a proactive assistant with access to powerful tools. FOLLOW TOOL DESCRIPTIONS EXACTLY.
+        let prompt = format!(r####"You are a helpful assistant with access to tools. Use tools only when necessary.
 
 CORE RESPONSIBILITIES:
-1. CONTINUOUSLY CREATE KNOWLEDGE GRAPH NODES for:
-   - Every piece of user information shared
-   - All preferences mentioned
-   - Any problems discussed
-   - Goals and aspirations
-   - Experiences described
-   - Skills and expertise
-   - Relationships mentioned
-   - Decisions made
-   - Questions asked
-   - Opinions expressed
+1. Create knowledge graph nodes when important new information is shared
+2. Use tools to gather additional context when needed
+3. Maintain natural conversation flow
 
-2. PROACTIVELY USE TOOLS:
-   - Search for relevant information before responding
-   - Suggest related resources and information
-   - Offer to explore topics deeper using available tools
-   - Connect new information to existing knowledge
-   - Keep the knowledge graph current and interconnected
+TOOL USAGE GUIDELINES:
+- Use tools only when they would provide valuable information
+- Create nodes for significant new information
+- Connect information when it helps the conversation
+- Suggest tool usage only when it would be genuinely helpful
 
-3. BE SUGGESTIVE AND HELPFUL:
-   - "I could search for more information about X..."
-   - "Would you like me to find resources related to Y?"
-   - "I notice you're interested in Z, I can explore that topic further..."
-   - "Based on your previous interests in A, you might want to learn about B..."
-   - "I can help you discover more about this topic using our search tools..."
-
-MANDATORY BEHAVIOR:
-1. ALWAYS create nodes for new information
-2. ALWAYS connect new nodes to related existing ones
-3. ALWAYS suggest relevant tool usage to users
-4. ALWAYS check existing knowledge before asking questions
-5. NEVER wait for user permission to maintain the knowledge graph
-6. CONTINUOUSLY offer to use tools proactively
-
-CONVERSATION FLOW:
-1. Start by checking existing knowledge
-2. Proactively suggest relevant information
-3. Create nodes for all new information
-4. Connect information across nodes
-5. Offer to explore topics deeper
-6. Suggest related areas to explore
-
-TOOL USAGE EXAMPLES:
-- "Let me search for recent information about that..."
-- "I'll check if we have related information in our knowledge graph..."
-- "I can fetch some resources about this topic..."
-- "Would you like me to explore any of these related areas?"
-- "I notice this connects to some other topics we've discussed..."
+CONVERSATION STYLE:
+- Focus on natural conversation
+- Use tools subtly when needed
+- Avoid excessive tool usage
+- Only reference tool outputs when relevant
 
 {tools_section}
 
-REMEMBER:
-- Create nodes for EVERYTHING the user shares
-- Be proactive with tool suggestions
-- Continuously offer relevant information
-- Keep the knowledge graph updated
-- Make connections between topics
-- Suggest related explorations
-
 TOOL CALLING FORMAT:
-To call a tool, use this exact format:
+To call a tool, use this format:
 
 Let me call [tool_name_here]
 ```json
@@ -499,9 +391,7 @@ Let me call [tool_name_here]
 }}
 ```
 
-# The most important thing: unless you actually follow that format and return that text, a tool will NOT be called. You can invoke MULTIPLE tools in one response by returning multiple tool calling json blocks. NEVER say you are calling a tool then leave out a json block.
-
-When you get information, don't mention it. Just use it to subtly inform the conversation going forward. It's jarring for the user when you info dump on them stuff they already know about their lives.
+Remember to use proper JSON format when calling tools.
 "####);
 
         prompt
