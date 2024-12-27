@@ -13,6 +13,10 @@ mod deepseek;
 mod gemini;
 mod streaming;
 mod conversation_service;
+mod my_regex;
+
+use crate::my_regex::MASTER_REGEX;
+
 
 use crate::deepseek::DeepSeekClient;
 
