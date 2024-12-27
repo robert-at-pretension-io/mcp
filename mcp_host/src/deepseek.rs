@@ -210,9 +210,13 @@ impl Stream for DeepSeekStream {
                 log::debug!("DeepSeek raw response: {:?}", response);
                 
                 if let Some(choice) = response.choices.first() {
+                    // Log choice details
+                    log::debug!("DeepSeek choice details - index: {}, finish_reason: {:?}, delta: {:?}", 
+                        choice.index, choice.finish_reason, choice.delta);
+                    
                     // If there's partial text, yield it as ContentDelta
                     if let Some(delta_text) = &choice.delta.content {
-                        log::debug!("DeepSeek content delta: {}", delta_text);
+                        log::debug!("DeepSeek content delta ({} chars): {}", delta_text.len(), delta_text);
                         let event = crate::ai_client::StreamEvent::ContentDelta {
                             index: 0,
                             text: delta_text.clone(),
@@ -221,14 +225,18 @@ impl Stream for DeepSeekStream {
                     }
                     // End condition
                     if choice.finish_reason.is_some() {
-                        log::debug!("DeepSeek finish reason: {:?}", choice.finish_reason);
+                        log::debug!("DeepSeek finish reason: {:?}, choice details: {:?}", 
+                            choice.finish_reason, choice);
                         // If the finish reason is "stop", we yield a MessageStop
                         let event = crate::ai_client::StreamEvent::MessageStop;
                         return Poll::Ready(Some(Ok(event)));
                     }
                 }
-                // Log empty delta
-                log::debug!("DeepSeek empty content delta");
+                // Log empty delta with more context
+                log::debug!("DeepSeek empty content delta - response had {} choices", response.choices.len());
+                if response.choices.is_empty() {
+                    log::debug!("Full empty response: {:?}", response);
+                }
                 Poll::Ready(Some(Ok(crate::ai_client::StreamEvent::ContentDelta {
                     index: 0,
                     text: "".into(),

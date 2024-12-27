@@ -114,11 +114,15 @@ where
 fn extract_complete_message(buffer: &str) -> Option<(String, String)> {
     if let Some(newline_pos) = buffer.find('\n') {
         let (message, rest) = buffer.split_at(newline_pos + 1);
-        // log::debug!("[SSE] Extracted message of {} bytes, {} bytes remaining", 
-            // message.len(), rest.len());
+        log::debug!("[SSE] Extracted message of {} bytes, {} bytes remaining", 
+            message.len(), rest.len());
+        log::debug!("[SSE] Message content: {}", message);
         Some((message.trim().to_string(), rest.to_string()))
     } else {
-        // log::debug!("[SSE] No complete message found in buffer of {} bytes", buffer.len());
+        log::debug!("[SSE] No complete message found in buffer of {} bytes", buffer.len());
+        if !buffer.is_empty() {
+            log::debug!("[SSE] Buffer content: {}", buffer);
+        }
         None
     }
 }
