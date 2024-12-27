@@ -211,39 +211,56 @@ impl Stream for DeepSeekStream {
                 log::debug!("DeepSeek raw response: {:?}", response);
                 
                 if let Some(choice) = response.choices.first() {
-                    // Log choice details
-                    log::debug!("DeepSeek choice details - index: {}, finish_reason: {:?}, delta: {:?}", 
-                        choice.index, choice.finish_reason, choice.delta);
+                    log::debug!(
+                        "DeepSeek choice details - index: {}, finish_reason: {:?}, delta: {:?}",
+                        choice.index,
+                        choice.finish_reason,
+                        choice.delta
+                    );
                     
-                    // If there's partial text, yield it as ContentDelta
+                    // 1) If we have a finish_reason == Some(Stop), yield MessageStop right away
+                    if let Some(reason) = &choice.finish_reason {
+                        if *reason == FinishReason::Stop {
+                            log::debug!("DeepSeek finish reason is STOP => yield MessageStop");
+                            return Poll::Ready(Some(Ok(
+                                crate::ai_client::StreamEvent::MessageStop
+                            )));
+                        }
+                    }
+
+                    // 2) Otherwise, if there's partial text, yield it as ContentDelta
                     if let Some(delta_text) = &choice.delta.content {
-                        log::debug!("DeepSeek content delta ({} chars): {}", delta_text.len(), delta_text);
+                        log::debug!(
+                            "DeepSeek content delta ({} chars): {}",
+                            delta_text.len(),
+                            delta_text
+                        );
                         let event = crate::ai_client::StreamEvent::ContentDelta {
                             index: 0,
                             text: delta_text.clone(),
                         };
                         return Poll::Ready(Some(Ok(event)));
                     }
-                    // End condition
+
+                    // Possibly other finish reasons, e.g. length or content filter
                     if let Some(reason) = &choice.finish_reason {
-                        log::debug!("DeepSeek finish reason: {:?}, choice details: {:?}", 
-                            reason, choice);
-                        // If the finish reason is Stop, we yield a MessageStop
-                        if *reason == FinishReason::Stop {
-                            let event = crate::ai_client::StreamEvent::MessageStop;
-                            return Poll::Ready(Some(Ok(event)));
-                        }
+                        log::debug!("DeepSeek non-'Stop' finish reason: {:?}", reason);
+                        // Yield MessageStop for other finish reasons too
+                        return Poll::Ready(Some(Ok(crate::ai_client::StreamEvent::MessageStop)));
                     }
                 }
-                // Log empty delta with more context
-                log::debug!("DeepSeek empty content delta - response had {} choices", response.choices.len());
-                if response.choices.is_empty() {
-                    log::debug!("Full empty response: {:?}", response);
-                }
-                Poll::Ready(Some(Ok(crate::ai_client::StreamEvent::ContentDelta {
-                    index: 0,
-                    text: "".into(),
-                })))
+
+                // If no choices, or no content, just yield empty ContentDelta
+                log::debug!(
+                    "DeepSeek empty content delta - response had {} choices",
+                    response.choices.len()
+                );
+                return Poll::Ready(Some(Ok(
+                    crate::ai_client::StreamEvent::ContentDelta {
+                        index: 0,
+                        text: "".into(),
+                    }
+                )));
             }
             Poll::Ready(Some(Err(e))) => {
                 // If the streaming had an error
