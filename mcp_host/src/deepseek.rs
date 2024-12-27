@@ -206,9 +206,13 @@ impl Stream for DeepSeekStream {
         match Pin::new(&mut me.inner).poll_next(cx) {
             Poll::Ready(Some(Ok(response))) => {
                 // Each chunk is a partial response 
+                // Log the raw response for debugging
+                log::debug!("DeepSeek raw response: {:?}", response);
+                
                 if let Some(choice) = response.choices.first() {
                     // If there's partial text, yield it as ContentDelta
                     if let Some(delta_text) = &choice.delta.content {
+                        log::debug!("DeepSeek content delta: {}", delta_text);
                         let event = crate::ai_client::StreamEvent::ContentDelta {
                             index: 0,
                             text: delta_text.clone(),
@@ -217,12 +221,14 @@ impl Stream for DeepSeekStream {
                     }
                     // End condition
                     if choice.finish_reason.is_some() {
+                        log::debug!("DeepSeek finish reason: {:?}", choice.finish_reason);
                         // If the finish reason is "stop", we yield a MessageStop
                         let event = crate::ai_client::StreamEvent::MessageStop;
                         return Poll::Ready(Some(Ok(event)));
                     }
                 }
-                // Otherwise keep waiting
+                // Log empty delta
+                log::debug!("DeepSeek empty content delta");
                 Poll::Ready(Some(Ok(crate::ai_client::StreamEvent::ContentDelta {
                     index: 0,
                     text: "".into(),

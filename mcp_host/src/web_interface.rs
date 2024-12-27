@@ -369,6 +369,7 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                             Ok(event) => {
                                 match event {
                                     StreamEvent::ContentDelta{ text, .. } => {
+                                        log::debug!("Received content delta: {}", text);
                                         accumulated_message.push_str(&text);
                                         
                                         let json_msg = serde_json::json!({
@@ -376,6 +377,7 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                                             "data": text
                                         });
                                         if socket.send(Message::Text(json_msg.to_string())).await.is_err() {
+                                            log::error!("Failed to send WebSocket message");
                                             break;
                                         }
                                     }
@@ -386,6 +388,9 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
                                             session_id,
                                             accumulated_message
                                         );
+                                        
+                                        // Debug: Print accumulated message length
+                                        log::debug!("Accumulated message length: {} chars", accumulated_message.len());
 
                                         // Handle tool calls with the complete accumulated message
                                         if let Err(e) = do_multi_tool_loop(
