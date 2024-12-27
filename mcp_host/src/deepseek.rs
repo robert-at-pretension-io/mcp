@@ -145,24 +145,18 @@ fn build_deepseek_request(
     // Convert your internal messages to ChatCompletionRequestMessage
     let converted_messages = messages.iter().map(|(role, content)| {
         match role {
-            Role::System => {
-                ChatCompletionRequestSystemMessageArgs::default()
-                    .content(content.clone())
-                    .build()?
-                    .into()
-            }
-            Role::User => {
-                ChatCompletionRequestUserMessageArgs::default()
-                    .content(content.clone())
-                    .build()?
-                    .into()
-            }
-            Role::Assistant => {
-                ChatCompletionRequestAssistantMessageArgs::default()
-                    .content(content.clone())
-                    .build()?
-                    .into()
-            }
+            Role::System => Ok(ChatCompletionRequestSystemMessageArgs::default()
+                .content(content.clone())
+                .build()?
+                .into()),
+            Role::User => Ok(ChatCompletionRequestUserMessageArgs::default()
+                .content(content.clone())
+                .build()?
+                .into()),
+            Role::Assistant => Ok(ChatCompletionRequestAssistantMessageArgs::default()
+                .content(content.clone())
+                .build()?
+                .into()),
         }
     }).collect::<Result<Vec<_>, _>>()?;
 
