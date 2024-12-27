@@ -167,7 +167,7 @@ fn build_deepseek_request(
     }).collect::<Result<Vec<_>, anyhow::Error>>()?;
 
     // Build the request
-    let mut builder = CreateChatCompletionRequestArgs::default();
+    let builder = CreateChatCompletionRequestArgs::default();
     builder = builder
         .model(model)  
         .messages(converted_messages)
