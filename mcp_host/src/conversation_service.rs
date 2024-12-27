@@ -143,8 +143,22 @@ pub async fn handle_assistant_response(
                             )
                         );
 
+                        // Send tool start notification
+                        let start_msg = serde_json::json!({
+                            "type": "tool_call_start",
+                            "tool_name": tool_name
+                        });
+                        let _ = socket.send(Message::Text(start_msg.to_string())).await;
+
                         match host.call_tool(server_name, &tool_name, args).await {
                             Ok(result) => {
+                                // Send tool end notification
+                                let end_msg = serde_json::json!({
+                                    "type": "tool_call_end",
+                                    "tool_name": tool_name
+                                });
+                                let _ = socket.send(Message::Text(end_msg.to_string())).await;
+
                                 println!(
                                     "{}",
                                     crate::conversation_state::format_tool_response(

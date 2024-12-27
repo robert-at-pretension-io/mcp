@@ -165,6 +165,36 @@ pub async fn root() -> impl IntoResponse {
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
+    function showLoadingIndicator(toolName) {
+      const indicator = document.createElement('div');
+      indicator.id = `loading-indicator-${toolName}`;
+      indicator.style.padding = "0.5rem";
+      indicator.style.margin = "0.5rem 0";
+      indicator.style.background = "var(--pico-card-background-color)";
+      indicator.style.borderRadius = "var(--pico-border-radius)";
+      indicator.style.color = "var(--pico-muted-color)";
+      indicator.innerHTML = `<span style="display: inline-block; animation: spin 1s linear infinite">⚙️</span> Running ${toolName}...`;
+      chatContainer.appendChild(indicator);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function hideLoadingIndicator(toolName) {
+      const indicator = document.getElementById(`loading-indicator-${toolName}`);
+      if (indicator) {
+        indicator.remove();
+      }
+    }
+
+    // Add spinning animation
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+
     // Add user messages in a different style
     function addUserMessage(text) {
       const msgDiv = document.createElement('div');
