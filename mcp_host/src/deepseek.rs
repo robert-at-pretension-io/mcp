@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow, Context};
 use async_trait::async_trait;
 use async_openai::{
     config::OpenAIConfig,
+    types::FinishReason,
     types::{
         ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestSystemMessageArgs,
         ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequest, 
@@ -227,8 +228,8 @@ impl Stream for DeepSeekStream {
                     if let Some(reason) = &choice.finish_reason {
                         log::debug!("DeepSeek finish reason: {:?}, choice details: {:?}", 
                             reason, choice);
-                        // If the finish reason is "stop", we yield a MessageStop
-                        if reason.as_str() == "stop" {
+                        // If the finish reason is Stop, we yield a MessageStop
+                        if *reason == FinishReason::Stop {
                             let event = crate::ai_client::StreamEvent::MessageStop;
                             return Poll::Ready(Some(Ok(event)));
                         }
