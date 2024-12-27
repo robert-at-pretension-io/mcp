@@ -7,43 +7,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::conversation_service::handle_assistant_response;
 
-#[derive(Debug, Deserialize, Serialize)]
-struct ToolChain {
-    title: String,
-    steps: Vec<String>,
-}
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ToolChainLibrary(Vec<ToolChain>);
-
-impl ToolChainLibrary {
-    fn load() -> Result<Self> {
-        let chains_json = include_str!("tool_chaining.json");
-        serde_json::from_str(chains_json).map_err(|e| anyhow!("Failed to parse tool chains: {}", e))
-    }
-
-    fn get_examples(&self, limit: Option<usize>) -> String {
-        let chains = match limit {
-            Some(n) => self.0.iter().take(n),
-            None => self.0.iter().take(self.0.len()) // Use take() with full length for None case
-        };
-
-        chains.map(|chain| {
-            format!(
-                "Example Workflow: {}\nSteps:\n{}\n",
-                style(&chain.title).cyan().bold(),
-                chain.steps.iter()
-                    .enumerate()
-                    .map(|(i, step)| format!("{}. {}", i + 1, step))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n---\n\n")
-    }
-}
 mod ai_client;
 mod anthropic;
 mod deepseek;
@@ -239,11 +202,6 @@ impl MCPHost {
         // Fetch tools from the server
         let tool_info_list = self.list_server_tools(server_name).await?;
 
-        // Load tool chain examples
-        let tool_chains = ToolChainLibrary::load().unwrap_or_else(|e| {
-            warn!("Failed to load tool chains: {}. Using empty library.", e);
-            ToolChainLibrary(vec![])
-        });
 
         // Convert our tool list to a JSON structure
         let tools_json: Vec<serde_json::Value> = tool_info_list.iter().map(|t| {
@@ -256,21 +214,7 @@ impl MCPHost {
 
         // Generate simplified system prompt
         let system_prompt = format!(
-            "You are a helpful assistant with access to tools. Use tools only when necessary.\n\n\
-            CORE RESPONSIBILITIES:\n\
-            1. Create knowledge graph nodes when important new information is shared\n\
-            2. Use tools to gather additional context when needed\n\
-            3. Maintain natural conversation flow\n\n\
-            TOOL USAGE GUIDELINES:\n\
-            - Use tools only when they would provide valuable information\n\
-            - Create nodes for significant new information\n\
-            - Connect information when it helps the conversation\n\
-            - Suggest tool usage only when it would be genuinely helpful\n\n\
-            CONVERSATION STYLE:\n\
-            - Focus on natural conversation\n\
-            - Use tools subtly when needed\n\
-            - Avoid excessive tool usage\n\
-            - Only reference tool outputs when relevant\n\n\
+            "You are a helpful assistant with access to tools. Use tools EXACTLY according to their descriptions.
             TOOLS:\n{}",
             tool_info_list.iter().map(|tool| {
                 format!(
@@ -289,8 +233,7 @@ impl MCPHost {
             You are a helpful assistant who can call tools when useful. Follow these guidelines:\n\
             - Use tools only when additional context or information is needed\n\
             - Consider running tools if the user's request requires it\n\
-            - Create knowledge graph nodes when new important information is shared\n\
-            - Maintain natural conversation flow\n\n\
+
             TOOLS:\n{}",
             tool_info_list.iter().map(|tool| {
                 format!(
@@ -304,12 +247,6 @@ impl MCPHost {
         
         // Add the hidden instruction as a user message instead of a system message
         state.add_user_message(&hidden_instruction);
-
-        // Add simplified startup reminder
-        let startup_reminder = "Remember to use tools only when they would provide valuable information. \
-            Maintain a natural conversation flow and avoid excessive tool usage.".to_string();
-
-        state.add_system_message(&startup_reminder);
 
         Ok(state)
     }
@@ -348,7 +285,7 @@ impl MCPHost {
         )
     }
 
-    pub async fn new(&self) -> Result<MCPHost> {
+    pub async fn new() -> Result<MCPHost> {
         // Try to get the AI provider from environment
 
         let model_name = "deepseek-chat".to_string();
@@ -881,6 +818,7 @@ impl MCPHost {
 
         Ok(())
     }
+}
 
 
 mod web_interface;
