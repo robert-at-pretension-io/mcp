@@ -45,6 +45,7 @@ impl ToolChainLibrary {
 }
 mod ai_client;
 mod anthropic;
+mod deepseek;
 mod gemini;
 mod streaming;
 mod conversation_service;
@@ -626,15 +627,15 @@ When you get information, don't mention it. Just use it to subtly inform the con
         // let client = OpenAIClient::new(api_key, model_name);
         // let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
-        let model_name = "claude-3-5-sonnet-20241022".to_string();
-        info!("Initializing Anthropic client with model: {}", model_name);
+        let model_name = "deepseek-chat".to_string();
+        info!("Initializing DeepSeek client with model: {}", model_name);
 
-        // Retrieve the Anthropic API key from an environment variable
-        let api_key = std::env::var("ANTHROPIC_API_KEY")
-            .expect("ANTHROPIC_API_KEY not set. Please provide it in the environment.");
+        // Retrieve the DeepSeek API key from an environment variable
+        let api_key = std::env::var("DEEPSEEK_API_KEY")
+            .expect("DEEPSEEK_API_KEY not set. Please provide it in the environment.");
 
-        info!("Got Anthropic API key: {}", api_key);
-        let client = AnthropicClient::new(api_key, model_name);
+        info!("Got DeepSeek API key: {}", api_key);
+        let client = DeepSeekClient::new(api_key, model_name);
         let ai_client = Some(Box::new(client) as Box<dyn AIClient>);
 
 
