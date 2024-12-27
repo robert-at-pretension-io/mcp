@@ -7,7 +7,6 @@ use crate::ai_client::{ AIClient };
 use console::style;
 
 use lazy_static::lazy_static;
-use regex::Regex;
 
 use shared_protocol_objects::Role;
 
@@ -18,20 +17,7 @@ pub enum ToolCallResult {
     NoMatch,
 }
 
-lazy_static! {
-    /// A regex that finds "Let me call <tool_name>" (or one of several synonyms) 
-    /// plus optional code fences, capturing the tool name and the starting brace.
-    static ref MASTER_REGEX: Regex = Regex::new(
-        r#"(?sx)
-        (?:Let\ me\ call|I(?:'|’)ll\ use|Using\ the)    # Phrases like "Let me call", "I'll use", "Using the"
-        \s+`?([a-zA-Z_][a-zA-Z0-9_]*)`?\s*(?:tool)?      # The tool name, optionally in backticks, optionally ending with "tool"
-        (?:\s*with\s+(?:these\s+)?parameters)?          # Possibly "with these parameters"
-        :?                                              # optional colon
-        \s*                                             # optional whitespace
-        (?:```(?:json)?\s*)?                            # Possibly triple-backtick plus "json"
-        (\{)                                            # Capture the STARTING brace for JSON in group 2
-        "#).unwrap();
-}
+use crate::my_regex::MASTER_REGEX;
 
 /// Attempts to parse a single tool call from `response`.
 pub fn parse_tool_call(response: &str) -> ToolCallResult {
@@ -107,7 +93,7 @@ pub async fn handle_assistant_response(
     server_name: &str,
     state: &mut ConversationState,
     client: &Box<dyn AIClient>,
-    socket: Option<&mut WebSocket>
+    mut socket: Option<&mut WebSocket>
 ) -> Result<()> {
     state.add_assistant_message(response);
 
@@ -127,7 +113,7 @@ pub async fn handle_assistant_response(
         log::debug!("Checking response for tool calls");
         match parse_tool_call(&current_response) {
                     ToolCallResult::Success(tool_name, args) => {
-                        found_tool_call = true;
+                        
                         log::debug!("Tool: {}", tool_name);
                         log::debug!(
                             "Arguments: {}",
