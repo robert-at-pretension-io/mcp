@@ -224,12 +224,14 @@ impl Stream for DeepSeekStream {
                         return Poll::Ready(Some(Ok(event)));
                     }
                     // End condition
-                    if choice.finish_reason.is_some() {
+                    if let Some(reason) = &choice.finish_reason {
                         log::debug!("DeepSeek finish reason: {:?}, choice details: {:?}", 
-                            choice.finish_reason, choice);
+                            reason, choice);
                         // If the finish reason is "stop", we yield a MessageStop
-                        let event = crate::ai_client::StreamEvent::MessageStop;
-                        return Poll::Ready(Some(Ok(event)));
+                        if reason == "stop" {
+                            let event = crate::ai_client::StreamEvent::MessageStop;
+                            return Poll::Ready(Some(Ok(event)));
+                        }
                     }
                 }
                 // Log empty delta with more context

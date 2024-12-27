@@ -409,7 +409,9 @@ async fn handle_ws(mut socket: WebSocket, app_state: WebAppState) -> Result<()> 
 
                                         // Notify completion
                                         let done_msg = serde_json::json!({"type": "done"});
-                                        let _ = socket.send(Message::Text(done_msg.to_string())).await;
+                                        if socket.send(Message::Text(done_msg.to_string())).await.is_err() {
+                                            log::error!("Failed to send done message");
+                                        }
                                         break;
                                     }
                                     _ => {}
