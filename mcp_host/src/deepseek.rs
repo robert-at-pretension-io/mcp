@@ -166,21 +166,21 @@ fn build_deepseek_request(
         }
     }).collect::<Result<Vec<_>, anyhow::Error>>()?;
 
-    // Build the request
-    let builder = CreateChatCompletionRequestArgs::default();
-    builder = builder
-        .model(model)  
+    // Build the request using method chaining
+    let mut builder = CreateChatCompletionRequestArgs::default()
+        .model(model)
         .messages(converted_messages)
         .stream(streaming);
 
+    // Apply optional config settings
     if let Some(cfg) = config {
         if let Some(temp) = cfg.temperature {
-            builder = builder.temperature(temp);
+            builder.temperature(temp);
         }
         if let Some(max_tokens) = cfg.max_tokens {
-            builder = builder.max_tokens(max_tokens);
+            builder.max_tokens(max_tokens);
         }
-        // top_p, frequency_penalty, presence_penalty can be set similarly 
+        // top_p, frequency_penalty, presence_penalty can be set similarly
     }
 
     Ok(builder.build()?)
