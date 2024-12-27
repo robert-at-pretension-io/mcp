@@ -99,10 +99,11 @@ pub async fn handle_assistant_response(
 
     let mut current_response = response.to_string();
     let mut iteration = 0;
-    const MAX_ITERATIONS: i32 = 15;
+    const MAX_TOOL_ITERATIONS: i32 = 3; // Limit to 3 tool call iterations
+    let mut tool_results = Vec::new();
 
-    while iteration < MAX_ITERATIONS {
-        log::debug!("\nStarting iteration {} of response handling", iteration + 1);
+    while iteration < MAX_TOOL_ITERATIONS {
+        log::debug!("\nStarting iteration {} of tool handling", iteration + 1);
         log::debug!("Current response length: {} chars", current_response.len());
         log::debug!("Current response content:\n{}", current_response);
 
@@ -157,6 +158,15 @@ pub async fn handle_assistant_response(
                                         &result
                                     )
                                 );
+                                        
+                                // Store tool result for final summary
+                                tool_results.push(format!(
+                                    "Tool '{}' returned:\n{}",
+                                    tool_name,
+                                    result.trim()
+                                ));
+                                        
+                                // Add to conversation state
                                 state.add_assistant_message(
                                     &format!("Tool '{}' returned: {}", tool_name, result.trim())
                                 );
@@ -223,8 +233,53 @@ pub async fn handle_assistant_response(
         iteration += 1;
     }
 
-    if iteration >= MAX_ITERATIONS {
-        log::info!("Warning: Reached maximum number of tool call iterations");
+    // After tool calling iterations, generate final response
+    if !tool_results.is_empty() {
+        let tools_summary = tool_results.join("\n\n");
+        let final_prompt = format!(
+            "Here are the results from the tools I called:\n\n{}\n\n\
+            Please provide a concise response to the user's original question \
+            incorporating this information.",
+            tools_summary
+        );
+
+        let mut builder = client.raw_builder();
+        for msg in &state.messages {
+            match msg.role {
+                Role::System => {
+                    builder = builder.system(msg.content.clone());
+                }
+                Role::User => {
+                    builder = builder.user(msg.content.clone());
+                }
+                Role::Assistant => {
+                    builder = builder.assistant(msg.content.clone());
+                }
+            }
+        }
+        builder = builder.user(final_prompt);
+
+        log::debug!("Generating final response incorporating tool results");
+        match builder.execute().await {
+            Ok(response_string) => {
+                println!(
+                    "\n{}",
+                    crate::conversation_state::format_chat_message(
+                        &Role::Assistant,
+                        &response_string
+                    )
+                );
+                state.add_assistant_message(&response_string);
+                
+                // Send final response via websocket if available
+                if let Some(ref mut socket) = socket {
+                    let _ = socket.send(Message::Text(response_string)).await;
+                }
+            }
+            Err(e) => {
+                log::info!("Error getting final response from API: {}", e);
+            }
+        }
     }
 
     Ok(())
