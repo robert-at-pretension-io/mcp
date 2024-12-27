@@ -166,8 +166,11 @@ fn build_deepseek_request(
         }
     }).collect::<Result<Vec<_>, anyhow::Error>>()?;
 
-    // Build the request using method chaining
-    let mut builder = CreateChatCompletionRequestArgs::default()
+    // Create a local builder variable
+    let mut builder = CreateChatCompletionRequestArgs::default();
+    
+    // Chain method calls on the local variable
+    builder
         .model(model)
         .messages(converted_messages)
         .stream(streaming);
