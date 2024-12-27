@@ -202,7 +202,6 @@ impl MCPHost {
         // Fetch tools from the server
         let tool_info_list = self.list_server_tools(server_name).await?;
 
-
         // Convert our tool list to a JSON structure
         let tools_json: Vec<serde_json::Value> = tool_info_list.iter().map(|t| {
             json!({
@@ -212,17 +211,21 @@ impl MCPHost {
             })
         }).collect();
 
+        // Create the tools string first
+        let tools_str = tool_info_list.iter().map(|tool| {
+            format!(
+                "- {}: {}\n",
+                tool.name,
+                tool.description.as_ref().unwrap_or(&"".to_string())
+            )
+        }).collect::<Vec<_>>().join("");
+
         // Generate simplified system prompt
         let system_prompt = format!(
-            "You are a helpful assistant with access to tools. Use tools EXACTLY according to their descriptions.
+            "You are a helpful assistant with access to tools. Use tools EXACTLY according to their descriptions.\n\
             TOOLS:\n{}",
-            tool_info_list.iter().map(|tool| {
-                format!(
-                    "- {}: {}\n",
-                    tool.name,
-                    tool.description.as_ref().unwrap_or(&"".to_string())
-                )
-            })).collect::<Vec<_>>().join("");
+            tools_str
+        );
 
         // Create the conversation state
         let mut state = ConversationState::new(system_prompt, tool_info_list.clone());
@@ -232,20 +235,12 @@ impl MCPHost {
             "[GUIDANCE]\n\
             You are a helpful assistant who can call tools when useful. Follow these guidelines:\n\
             - Use tools only when additional context or information is needed\n\
-            - Consider running tools if the user's request requires it\n\
-
+            - Consider running tools if the user's request requires it\n\n\
             TOOLS:\n{}",
-            tool_info_list.iter().map(|tool| {
-                format!(
-                    "- {}: {}\n",
-                    tool.name,
-                    tool.description.as_ref().unwrap_or(&"".to_string())
-                )
-            })).collect::<Vec<_>>().join("")
-        // Add the simplified hidden instruction as a user message
-        state.add_user_message(&hidden_instruction);
-        
-        // Add the hidden instruction as a user message instead of a system message
+            tools_str
+        );
+
+        // Add the hidden instruction as a user message
         state.add_user_message(&hidden_instruction);
 
         Ok(state)
