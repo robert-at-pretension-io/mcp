@@ -3,8 +3,9 @@ use async_trait::async_trait;
 use async_openai::{
     config::OpenAIConfig,
     types::{
-        ChatCompletionRequestMessage,
-        CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ChatChoice, ChatCompletionResponseStream,
+        ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestSystemMessageArgs,
+        ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequest, 
+        CreateChatCompletionRequestArgs, ChatCompletionResponseStream,
     },
     Client,
 };
@@ -142,19 +143,28 @@ fn build_deepseek_request(
     streaming: bool,
 ) -> Result<CreateChatCompletionRequest> {
     // Convert your internal messages to ChatCompletionRequestMessage
-    let converted_messages: Vec<async_openai::types::ChatCompletionRequestMessage> = messages.iter().map(|(role, content)| {
-        let role_str = match role {
-            Role::System => "system",
-            Role::User => "user",
-            Role::Assistant => "assistant",
-        };
-        async_openai::types::ChatCompletionRequestMessage {
-            role: role_str.to_string(),
-            content: Some(content.clone()),
-            name: None,
-            function_call: None,
+    let converted_messages = messages.iter().map(|(role, content)| {
+        match role {
+            Role::System => {
+                ChatCompletionRequestSystemMessageArgs::default()
+                    .content(content.clone())
+                    .build()?
+                    .into()
+            }
+            Role::User => {
+                ChatCompletionRequestUserMessageArgs::default()
+                    .content(content.clone())
+                    .build()?
+                    .into()
+            }
+            Role::Assistant => {
+                ChatCompletionRequestAssistantMessageArgs::default()
+                    .content(content.clone())
+                    .build()?
+                    .into()
+            }
         }
-    }).collect();
+    }).collect::<Result<Vec<_>, _>>()?;
 
     // Build the request
     let mut builder = CreateChatCompletionRequestArgs::default()
