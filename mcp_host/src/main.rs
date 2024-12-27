@@ -1017,7 +1017,7 @@ When you get information, don't mention it. Just use it to subtly inform the con
                                         Ok(response_str) => {
                                             let response = response_str.as_str();
                                             println!("\n{}: {}", style("Assistant").cyan().bold(), response);
-                                            if let Err(e) = handle_assistant_response(&self, &response, server_name, &mut state, client, &mut socket).await {
+                                            if let Err(e) = handle_assistant_response(&self, &response, server_name, &mut state, client, None).await {
                                                 info!("Error handling assistant response: {}", e);
                                             }
                                         }
