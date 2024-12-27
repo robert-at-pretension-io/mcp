@@ -50,6 +50,8 @@ mod gemini;
 mod streaming;
 mod conversation_service;
 
+use crate::deepseek::DeepSeekClient;
+
 use log::{info,warn};
 use tokio::time::Duration;
 
@@ -65,8 +67,6 @@ struct Config {
     #[serde(rename = "mcpServers")]
     servers: HashMap<String, ServerConfig>,
 }
-
-use anthropic::AnthropicClient;
 
 use ai_client::AIClient;
 

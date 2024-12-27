@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use async_openai::{
     config::OpenAIConfig,
     types::{
-        ChatCompletionRequestMessage, ChatCompletionRequestMessageArgs,
+        ChatCompletionRequestMessage,
         CreateChatCompletionRequest, CreateChatCompletionRequestArgs, ChatChoice, ChatCompletionResponseStream,
     },
     Client,
@@ -148,10 +148,12 @@ fn build_deepseek_request(
             Role::User => "user",
             Role::Assistant => "assistant",
         };
-        ChatCompletionRequestMessageArgs::default()
-            .role(role_str)
-            .content(content)
-            .build().expect("Failed building ChatCompletionRequestMessage")
+        ChatCompletionRequestMessage {
+            role: role_str.to_string(),
+            content: Some(content.clone()),
+            name: None,
+            function_call: None,
+        }
     }).collect();
 
     // Build the request

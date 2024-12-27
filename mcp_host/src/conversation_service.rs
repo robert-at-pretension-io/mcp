@@ -120,7 +120,6 @@ pub async fn handle_assistant_response(
         log::debug!("Current response length: {} chars", current_response.len());
         log::debug!("Current response content:\n{}", current_response);
 
-        let mut found_tool_call = false;
         let chunks: Vec<&str> = current_response.split("```").collect();
         log::debug!("Split response into {} chunks", chunks.len());
         
@@ -146,7 +145,7 @@ pub async fn handle_assistant_response(
                         );
 
                         // Send tool start notification
-                        if let Some(socket) = socket {
+                        if let Some(ref mut socket) = socket {
                             let start_msg = serde_json::json!({
                                 "type": "tool_call_start",
                                 "tool_name": tool_name
@@ -157,7 +156,7 @@ pub async fn handle_assistant_response(
                         match host.call_tool(server_name, &tool_name, args).await {
                             Ok(result) => {
                                 // Send tool end notification
-                                if let Some(socket) = socket {
+                                if let Some(ref mut socket) = socket {
                                     let end_msg = serde_json::json!({
                                         "type": "tool_call_end",
                                         "tool_name": tool_name
