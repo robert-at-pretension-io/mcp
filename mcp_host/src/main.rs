@@ -313,7 +313,6 @@ impl MCPHost {
 
         Ok(state)
     }
-}
 
     fn generate_system_prompt(&self, tools: &[serde_json::Value]) -> String {
         let tools_section = serde_json::to_string_pretty(&json!({ "tools": tools })).unwrap_or("".to_string());
