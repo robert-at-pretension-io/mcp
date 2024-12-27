@@ -54,25 +54,25 @@ where
             let mut results = Vec::new();
             match chunk_result {
                 Ok(chunk) => {
-                    log::debug!("[SSE] Received raw chunk of {} bytes", chunk.len());
+                    // log::debug!("[SSE] Received raw chunk of {} bytes", chunk.len());
                     
                     match String::from_utf8(chunk.to_vec()) {
                         Ok(chunk_str) => {
-                            log::debug!("[SSE] Decoded chunk: {}", chunk_str);
+                            // log::debug!("[SSE] Decoded chunk: {}", chunk_str);
                             let mut buffer = buffer.lock().await;
                             buffer.push_str(&chunk_str);
-                            log::debug!("[SSE] Current buffer size: {} bytes", buffer.len());
+                            // log::debug!("[SSE] Current buffer size: {} bytes", buffer.len());
 
                             // Process complete messages
                             while let Some((message, remaining)) = extract_complete_message(&buffer) {
-                                log::debug!("[SSE] Extracted complete message: {}", message);
+                                // log::debug!("[SSE] Extracted complete message: {}", message);
                                 *buffer = remaining;
-                                log::debug!("[SSE] Remaining buffer size: {} bytes", buffer.len());
+                                // log::debug!("[SSE] Remaining buffer size: {} bytes", buffer.len());
                                 
                                 if let Some(data) = message.strip_prefix("data: ") {
                                     let data = data.trim();
                                     if !data.is_empty() {
-                                        log::debug!("[SSE] Processing data payload: {}", data);
+                                        // log::debug!("[SSE] Processing data payload: {}", data);
                                         
                                         match serde_json::from_str::<StreamingMessage>(data) {
                                             Ok(msg) => {
@@ -105,7 +105,7 @@ where
                     results.push(Err(anyhow!(e)));
                 }
             }
-            log::debug!("[SSE] Returning {} results", results.len());
+            log::debug!("[SSE] Returning {} results: {:?}", results.len(), results);
             futures::stream::iter(results)
         }
     }).flatten())
@@ -114,11 +114,11 @@ where
 fn extract_complete_message(buffer: &str) -> Option<(String, String)> {
     if let Some(newline_pos) = buffer.find('\n') {
         let (message, rest) = buffer.split_at(newline_pos + 1);
-        log::debug!("[SSE] Extracted message of {} bytes, {} bytes remaining", 
-            message.len(), rest.len());
+        // log::debug!("[SSE] Extracted message of {} bytes, {} bytes remaining", 
+            // message.len(), rest.len());
         Some((message.trim().to_string(), rest.to_string()))
     } else {
-        log::debug!("[SSE] No complete message found in buffer of {} bytes", buffer.len());
+        // log::debug!("[SSE] No complete message found in buffer of {} bytes", buffer.len());
         None
     }
 }
