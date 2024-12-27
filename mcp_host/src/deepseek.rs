@@ -142,13 +142,13 @@ fn build_deepseek_request(
     streaming: bool,
 ) -> Result<CreateChatCompletionRequest> {
     // Convert your internal messages to ChatCompletionRequestMessage
-    let converted_messages: Vec<ChatCompletionRequestMessage> = messages.iter().map(|(role, content)| {
+    let converted_messages: Vec<async_openai::types::ChatCompletionRequestMessage> = messages.iter().map(|(role, content)| {
         let role_str = match role {
             Role::System => "system",
             Role::User => "user",
             Role::Assistant => "assistant",
         };
-        ChatCompletionRequestMessage {
+        async_openai::types::ChatCompletionRequestMessage {
             role: role_str.to_string(),
             content: Some(content.clone()),
             name: None,
