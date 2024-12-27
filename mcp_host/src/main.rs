@@ -277,8 +277,7 @@ impl MCPHost {
                     tool.name,
                     tool.description.as_ref().unwrap_or(&"".to_string())
                 )
-            }).collect::<Vec<_>>().join("")
-        );
+            })).collect::<Vec<_>>().join("");
 
         // Create the conversation state
         let mut state = ConversationState::new(system_prompt, tool_info_list.clone());
@@ -298,7 +297,7 @@ impl MCPHost {
                     tool.name,
                     tool.description.as_ref().unwrap_or(&"".to_string())
                 )
-            }).collect::<Vec<_>>().join("")
+            })).collect::<Vec<_>>().join("")
         // Add the simplified hidden instruction as a user message
         state.add_user_message(&hidden_instruction);
         
@@ -313,6 +312,7 @@ impl MCPHost {
 
         Ok(state)
     }
+}
 
     fn generate_system_prompt(&self, tools: &[serde_json::Value]) -> String {
         let tools_section = serde_json::to_string_pretty(&json!({ "tools": tools })).unwrap_or("".to_string());
@@ -932,7 +932,7 @@ Remember to use proper JSON format when calling tools.
 
         Ok(())
     }
-}
+
 
 mod web_interface;
 
