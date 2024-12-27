@@ -283,62 +283,8 @@ impl MCPHost {
                     Schema: {}\n",
                     tool.name,
                     tool.description.as_ref().unwrap_or(&"".to_string()),
-                    serde_json::to_string_pretty(&tool.input_schema).unwrap_or_default()
-                )
-            }).collect::<Vec<_>>().join("\n\n")
-        );
-        
-        // Add the hidden instruction as a user message instead of a system message
+        // Add the simplified hidden instruction as a user message
         state.add_user_message(&hidden_instruction);
-        
-        // Create a hidden instruction message that combines static guidance with dynamic tool info
-        let hidden_instruction = format!(
-            "[ASSISTANT INSTRUCTION - FOLLOW ALL GUIDELINES STRICTLY]\n\
-            GENERAL PRINCIPLES:\n\
-            - Use tools proactively but don't acknowledge the response data directly in each response, instead use it to inform the conversation\n\
-            - Chain tools together to build internal context\n\
-            - Run preliminary tools before responding\n\
-            - Follow each tool's usage patterns exactly as described\n\
-            - Maintain a natural conversation flow - avoid dumping raw tool outputs to the user\n\
-            - Don't wait for explicit user requests to use tools\n\n\
-            INFORMATION USAGE:\n\
-            - DO NOT repeat tool outputs verbatim to the user\n\
-            - DO NOT say \"I see from the graph...\" - infer things naturally and provide that info to the user.\n\
-            - Use retrieved information to inform and personalize responses\n\
-            - Keep tool usage subtle and behind-the-scenes\n\
-            - Focus on natural conversation, not data reporting\n\
-            - Only reference known information when contextually relevant\n\n\
-            TOOL USAGE PATTERN:\n\
-            1. Gather context from tools first\n\
-            2. Process and analyze results internally\n\
-            3. Use insights to shape natural responses\n\
-            4. Store new information continuously\n\n\
-            EXAMPLE INTERACTIONS:\n\
-            - BAD: \"I see from the graph that you like pizza and work as a developer\"\n\
-            - GOOD: \"Since you're familiar with software development, you might find this interesting...\"\n\
-            - BAD: \"According to my records, you mentioned having a dog named Max\"\n\
-            - GOOD: \"How's Max doing? Still enjoying those long walks?\"\n\n\
-            AVAILABLE TOOLS AND THEIR REQUIRED USAGE PATTERNS:\n{}\n\n\
-            ",
-            tool_info_list.iter().map(|tool| {
-                format!(
-                    "Tool: {}\n\
-                    Description: {}\n\
-                    Usage Requirements: {}\n\
-                    Schema: {}\n",
-                    tool.name,
-                    tool.description.as_ref().unwrap_or(&"".to_string()),
-                    // Extract any usage requirements from description (usually in caps or after "ALWAYS")
-                    tool.description.as_ref()
-                        .unwrap_or(&"".to_string())
-                        .lines()
-                        .filter(|line| line.contains("ALWAYS") || line.contains("MUST") || line.contains("NEVER"))
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                    serde_json::to_string_pretty(&tool.input_schema).unwrap_or_default()
-                )
-            }).collect::<Vec<_>>().join("\n\n")
-        );
         
         // Add the hidden instruction as a user message instead of a system message
         state.add_user_message(&hidden_instruction);
