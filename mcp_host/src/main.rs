@@ -234,13 +234,19 @@ impl MCPHost {
         // Create the conversation state
         let mut state = ConversationState::new(system_prompt, tool_info_list.clone());
         
-        // Create a simplified hidden instruction
+        // Create a simplified hidden instruction with regex pattern
         let hidden_instruction = format!(
             "[GUIDANCE]\n\
             You are a helpful assistant who can call tools when useful. Follow these guidelines:\n\
             - Use tools only when additional context or information is needed\n\
             - Consider running tools if the user's request requires it\n\n\
+            TOOL CALLING FORMAT:\n\
+            When calling a tool, use this exact pattern:\n\
+            \"Let me call <tool_name> {{\n  <parameters>\n}}\"\n\n\
+            The pattern must match this regular expression:\n\
+            {}\n\n\
             TOOLS:\n{}",
+            MASTER_REGEX.as_str(),
             tools_str
         );
 
