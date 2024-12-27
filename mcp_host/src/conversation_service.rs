@@ -234,10 +234,10 @@ pub async fn handle_assistant_response(
         iteration += 1;
     }
 
-    // After tool calling iterations, generate final response
-    if !tool_results.is_empty() {
+    // Generate final response regardless of whether there were tool calls
+    let final_prompt = if !tool_results.is_empty() {
         let tools_summary = tool_results.join("\n\n");
-        let final_prompt = if iteration < MAX_TOOL_ITERATIONS {
+        if iteration < MAX_TOOL_ITERATIONS {
             // If we exited early due to an error, ask the LLM to analyze and correct
             tools_summary // The last entry will be the error message
         } else {
@@ -248,44 +248,47 @@ pub async fn handle_assistant_response(
                 incorporating this information.",
                 tools_summary
             )
-        };
+        }
+    } else {
+        // If no tools were called, just ask for a final response
+        "Please provide a response to the user's question.".to_string()
+    };
 
-        let mut builder = client.raw_builder();
-        for msg in &state.messages {
-            match msg.role {
-                Role::System => {
-                    builder = builder.system(msg.content.clone());
-                }
-                Role::User => {
-                    builder = builder.user(msg.content.clone());
-                }
-                Role::Assistant => {
-                    builder = builder.assistant(msg.content.clone());
-                }
+    let mut builder = client.raw_builder();
+    for msg in &state.messages {
+        match msg.role {
+            Role::System => {
+                builder = builder.system(msg.content.clone());
+            }
+            Role::User => {
+                builder = builder.user(msg.content.clone());
+            }
+            Role::Assistant => {
+                builder = builder.assistant(msg.content.clone());
             }
         }
-        builder = builder.user(final_prompt);
+    }
+    builder = builder.user(final_prompt);
 
-        log::debug!("Generating final response incorporating tool results");
-        match builder.execute().await {
-            Ok(response_string) => {
-                println!(
-                    "\n{}",
-                    crate::conversation_state::format_chat_message(
-                        &Role::Assistant,
-                        &response_string
-                    )
-                );
-                state.add_assistant_message(&response_string);
-                
-                // Send final response via websocket if available
-                if let Some(ref mut socket) = socket {
-                    let _ = socket.send(Message::Text(response_string)).await;
-                }
+    log::debug!("Generating final response");
+    match builder.execute().await {
+        Ok(response_string) => {
+            println!(
+                "\n{}",
+                crate::conversation_state::format_chat_message(
+                    &Role::Assistant,
+                    &response_string
+                )
+            );
+            state.add_assistant_message(&response_string);
+            
+            // Always send final response via websocket if available
+            if let Some(ref mut socket) = socket {
+                let _ = socket.send(Message::Text(response_string)).await;
             }
-            Err(e) => {
-                log::info!("Error getting final response from API: {}", e);
-            }
+        }
+        Err(e) => {
+            log::info!("Error getting final response from API: {}", e);
         }
     }
 
