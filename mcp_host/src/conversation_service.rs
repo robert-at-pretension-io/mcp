@@ -173,11 +173,12 @@ pub async fn handle_assistant_response(
                             }
                             Err(e) => {
                                 println!("{}: {}\n", style("Error").red().bold(), e);
+                                // Add detailed error message to conversation state
                                 state.add_assistant_message(
-                                    &format!("Tool '{}' error: {}", tool_name, e).trim()
+                                    &format!("Tool '{}' call failed with error: {}\nPlease analyze this error and correct the tool call.", tool_name, e)
                                 );
-                                // Continue to next iteration even if tool call fails
-                                continue;
+                                // Break out of tool calling loop to restart assistant
+                                break;
                             }
                         }
                     }
@@ -236,12 +237,18 @@ pub async fn handle_assistant_response(
     // After tool calling iterations, generate final response
     if !tool_results.is_empty() {
         let tools_summary = tool_results.join("\n\n");
-        let final_prompt = format!(
-            "Here are the results from the tools I called:\n\n{}\n\n\
-            Please provide a concise response to the user's original question \
-            incorporating this information.",
-            tools_summary
-        );
+        let final_prompt = if iteration < MAX_TOOL_ITERATIONS {
+            // If we exited early due to an error, ask the LLM to analyze and correct
+            tools_summary // The last entry will be the error message
+        } else {
+            // Normal case - summarize successful tool calls
+            format!(
+                "Here are the results from the tools I called:\n\n{}\n\n\
+                Please provide a concise response to the user's original question \
+                incorporating this information.",
+                tools_summary
+            )
+        };
 
         let mut builder = client.raw_builder();
         for msg in &state.messages {
