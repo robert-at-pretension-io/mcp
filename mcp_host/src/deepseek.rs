@@ -228,7 +228,7 @@ impl Stream for DeepSeekStream {
                         log::debug!("DeepSeek finish reason: {:?}, choice details: {:?}", 
                             reason, choice);
                         // If the finish reason is "stop", we yield a MessageStop
-                        if reason == "stop" {
+                        if reason.as_str() == "stop" {
                             let event = crate::ai_client::StreamEvent::MessageStop;
                             return Poll::Ready(Some(Ok(event)));
                         }
