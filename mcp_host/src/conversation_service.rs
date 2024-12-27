@@ -127,7 +127,6 @@ pub async fn handle_assistant_response(
         match parse_tool_call(&current_response) {
                     ToolCallResult::Success(tool_name, args) => {
                         found_tool_call = true;
-                        log::debug!("Found tool call in chunk {}:", i);
                         log::debug!("Tool: {}", tool_name);
                         log::debug!(
                             "Arguments: {}",
@@ -175,19 +174,12 @@ pub async fn handle_assistant_response(
                         state.add_assistant_message(&format!("Tool call format error:\n{}", feedback_msg));
                     }
                     ToolCallResult::NoMatch => {
-                        log::debug!("No tool call pattern matched in this chunk");
+                        log::debug!("No tool call pattern matched at ALL");
                         // Try to find any JSON-like content for debugging
-                        if chunk.contains("{") && chunk.contains("}") {
-                            log::debug!("Found JSON-like content but no valid tool call pattern");
-                        }
+                        
                     }
                 }
-            }
-        }
 
-        if !found_tool_call {
-            break;
-        }
 
         let mut builder = client.raw_builder();
         for msg in &state.messages {
