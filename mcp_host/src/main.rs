@@ -15,6 +15,9 @@ mod streaming;
 mod conversation_service;
 mod my_regex;
 
+use crate::my_regex::build_tool_call_regex;
+
+
 
 
 use crate::deepseek::DeepSeekClient;
@@ -245,7 +248,15 @@ impl MCPHost {
             TOOL CALLING FORMAT:\n\
             The pattern must match this regular expression:\n\
             {}\n\n\
-            TOOLS:\n{}",
+            TOOLS:\n{}\n
+            For example:
+            I'll use [tool_name] to do...
+            ```json
+            {{parameters go here}}
+            ```
+
+            Make sure to include that format for EVERY tool call.
+            ",
             build_tool_call_regex(&tool_info_list.iter().map(|t| t.name.clone()).collect::<Vec<_>>()).as_str(),
             tools_str
         );
