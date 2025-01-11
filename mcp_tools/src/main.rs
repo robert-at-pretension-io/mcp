@@ -59,12 +59,12 @@ async fn main() {
     info!("Starting MCP server...");
 
     // Verify required environment variables are present
-    let _scrapingbee_key = std::env::var("SCRAPINGBEE_API_KEY")
-        .expect("SCRAPINGBEE_API_KEY environment variable must be set");
-    let _brave_key = std::env::var("BRAVE_API_KEY")
-        .expect("BRAVE_API_KEY environment variable must be set");
+    // let _scrapingbee_key = std::env::var("SCRAPINGBEE_API_KEY")
+    //     .expect("SCRAPINGBEE_API_KEY environment variable must be set");
+    // let _brave_key = std::env::var("BRAVE_API_KEY")
+    //     .expect("BRAVE_API_KEY environment variable must be set");
 
-    debug!("Environment variables loaded successfully");
+    // debug!("Environment variables loaded successfully");
 
 
     let state = Arc::new(Mutex::new(MCPServerState {
@@ -75,13 +75,13 @@ async fn main() {
             description: Some("An example text resource".into()),
         }],
         tools: vec![
-            git_tool_info(),
+            // git_tool_info(),
             bash_tool_info(),
             scraping_tool_info(),
             search_tool_info(),
             graph_tool_info(),
             regex_replace_tool_info(),
-            oracle_select_tool_info(),
+            // oracle_select_tool_info(),
             // sequential_thinking::sequential_thinking_tool_info(),
             // memory::memory_tool_info(),
             //task_planning::task_planning_tool_info(),
@@ -142,12 +142,12 @@ async fn main() {
                             intended_tool,
                             raw_json
                         );
-                        let resp = error_response(None, PARSE_ERROR, &error_msg);
+                        let resp = error_response(Some(Value::Number(1.into())), PARSE_ERROR, &error_msg);
                         let _ = tx_out.send(resp);
                         continue;
                     }
                 }
-                let resp = error_response(None, PARSE_ERROR, "Parse error");
+                let resp = error_response(Some(Value::Number(1.into())), PARSE_ERROR, "Parse error");
                 let _ = tx_out.send(resp);
                 continue;
             }
@@ -195,7 +195,7 @@ async fn handle_request(
         "initialize" => {
             let params = match req.params {
                 Some(p) => p,
-                None => return Some(error_response(id, -32602, "Missing params")),
+                None => return Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), -32602, "Missing params")),
             };
 
             let protocol_version = params
@@ -204,7 +204,7 @@ async fn handle_request(
                 .unwrap_or(LATEST_PROTOCOL_VERSION);
 
             if !SUPPORTED_PROTOCOL_VERSIONS.contains(&protocol_version) {
-                return Some(error_response(id, -32602, "Unsupported protocol version"));
+                return Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), -32602, "Unsupported protocol version"));
             }
 
             // Store client info and capabilities
@@ -344,7 +344,7 @@ async fn handle_request(
                             .to_string();
                         if url.is_empty() {
                             return Some(error_response(
-                                id,
+                                Some(id.unwrap_or(Value::Number(1.into()))),
                                 -32602,
                                 "Missing required argument: url",
                             ));
@@ -426,7 +426,7 @@ async fn handle_request(
                         {
                             Ok(p) => p,
                             Err(e) => {
-                                return Some(error_response(id, INVALID_PARAMS, &e.to_string()))
+                                return Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INVALID_PARAMS, &e.to_string()))
                             }
                         };
 
@@ -453,19 +453,19 @@ async fn handle_request(
                                 };
                                 Some(success_response(id, json!(tool_res)))
                             }
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
+                            Err(e) => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INTERNAL_ERROR, &e.to_string())),
                         }
                     } else if t.name == "git" {
                         match handle_git_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
+                            Err(e) => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INTERNAL_ERROR, &e.to_string())),
                         }
                     } else if t.name == "brave_search" {
                         let query = match params.arguments.get("query").and_then(Value::as_str) {
                             Some(q) => q.to_string(),
                             None => {
                                 return Some(error_response(
-                                    id,
+                                    Some(id.unwrap_or(Value::Number(1.into()))),
                                     -32602,
                                     "Missing required argument: query",
                                 ))
@@ -539,12 +539,12 @@ async fn handle_request(
                             GraphManager::new("knowledge_graph.json".to_string());
                         match handle_graph_tool_call(params, &mut graph_manager, id.clone()).await {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
+                            Err(e) => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INTERNAL_ERROR, &e.to_string())),
                         }
                     } else if t.name == "regex_replace" {
                         match handle_regex_replace_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
+                            Err(e) => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INTERNAL_ERROR, &e.to_string())),
                         }
                     } else if t.name == "sequential_thinking" {
                         match sequential_thinking::handle_sequential_thinking_tool_call(
@@ -554,7 +554,7 @@ async fn handle_request(
                         .await
                         {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
+                            Err(e) => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INTERNAL_ERROR, &e.to_string())),
                         }
                     } else if t.name == "memory" {
                         match memory::handle_memory_tool_call(params, id.clone()).await {
@@ -574,10 +574,10 @@ async fn handle_request(
                             Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
                         }
                     } else {
-                        Some(error_response(id, -32601, "Tool not implemented"))
+                        Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), -32601, "Tool not implemented"))
                     }
                 }
-                None => Some(error_response(id, -32601, "Tool not found")),
+                None => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), -32601, "Tool not found")),
             }
         }
 
