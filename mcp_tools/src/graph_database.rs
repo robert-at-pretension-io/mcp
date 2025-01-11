@@ -1020,84 +1020,37 @@ pub async fn handle_graph_tool_call(
                 Ok(success_response(id, serde_json::to_value(tool_res)?))
             }
         }
-        "get_most_connected" => {
-            let most_connected_params: GetMostConnectedParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid get_most_connected parameters: {}", e))
-            };
-            let limit = most_connected_params.limit.unwrap_or(10);
-            let nodes = graph_manager.get_most_connected_nodes(limit);
-            let nodes_info: Vec<_> = nodes.into_iter().map(|(_, node, edge_count)| {
-                json!({
-                    "name": node.name,
-                    "description": node.description,
-                    "content": node.content,
-                    "tags": node.tags,
-                    "metadata": node.metadata,
-                    "connection_count": edge_count,
-                    "timestamp": chrono::Utc::now()
-                })
-            }).collect();
-            let tool_res = CallToolResult {
-                content: vec![ToolResponseContent {
-                    type_: "text".into(),
-                    text: json!(nodes_info).to_string(),
-                    annotations: None,
-                }],
-                is_error: Some(false),
-                _meta: None,
-                progress: None,
-                total: None
-            };
-            Ok(success_response(id, serde_json::to_value(tool_res)?))
-        }
-        "get_top_tags" => {
-            let top_tags_params: GetTopTagsParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid get_top_tags parameters: {}", e))
-            };
-            let limit = top_tags_params.limit.unwrap_or(10);
-            let tags = graph_manager.get_top_tags(limit);
-            let tags_info = tags.into_iter()
-                .map(|(tag, count)| format!("Tag: {} (used {} times)", tag, count))
-                .collect::<Vec<_>>()
-                .join("\n");
+        "get_stats" => {
+            let limit = 10; // Default limit for stats
+            let most_connected = graph_manager.get_most_connected_nodes(limit);
+            let recent = graph_manager.get_recent_nodes(limit);
+            let top_tags = graph_manager.get_top_tags(limit);
+
+            let stats = json!({
+                "most_connected": most_connected.into_iter().map(|(_, node, count)| {
+                    json!({
+                        "name": node.name,
+                        "connection_count": count
+                    })
+                }).collect::<Vec<_>>(),
+                "recent_nodes": recent.into_iter().map(|(_, node)| {
+                    json!({
+                        "name": node.name,
+                        "modified": node.date_modified
+                    })
+                }).collect::<Vec<_>>(),
+                "top_tags": top_tags.into_iter().map(|(tag, count)| {
+                    json!({
+                        "tag": tag,
+                        "count": count
+                    })
+                }).collect::<Vec<_>>()
+            });
 
             let tool_res = CallToolResult {
                 content: vec![ToolResponseContent {
                     type_: "text".into(),
-                    text: tags_info,
-                    annotations: None,
-                }],
-                is_error: Some(false),
-                _meta: None,
-                progress: None,
-                total: None,
-            };
-            Ok(success_response(id, serde_json::to_value(tool_res)?))
-        }
-        "get_recent_nodes" => {
-            let recent_params: GetRecentNodesParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid get_recent_nodes parameters: {}", e))
-            };
-            let limit = recent_params.limit.unwrap_or(10);
-            let nodes = graph_manager.get_recent_nodes(limit);
-            let nodes_info: Vec<_> = nodes.into_iter().map(|(_, node)| {
-                json!({
-                    "name": node.name,
-                    "description": node.description,
-                    "content": node.content,
-                    "tags": node.tags,
-                    "metadata": node.metadata,
-                    "date_created": node.date_created,
-                    "date_modified": node.date_modified
-                })
-            }).collect();
-            let tool_res = CallToolResult {
-                content: vec![ToolResponseContent {
-                    type_: "text".into(),
-                    text: json!(nodes_info).to_string(),
+                    text: serde_json::to_string_pretty(&stats).unwrap_or_else(|_| "{}".to_string()),
                     annotations: None,
                 }],
                 is_error: Some(false),
