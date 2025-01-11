@@ -530,6 +530,32 @@ Core Actions:
 - delete_node: Remove nodes (only if they have 0-1 connections)
 - connect_nodes: Create new relationships between existing nodes
 
+Example Usage:
+1. Create root node:
+{
+  "action": "create_node",
+  "params": {
+    "name": "Project Requirements",
+    "description": "Core project requirements and specifications",
+    "content": "Main requirements document...",
+    "is_root": true,
+    "tags": ["requirements", "documentation"]
+  }
+}
+
+2. Add child node:
+{
+  "action": "create_node",
+  "params": {
+    "name": "Authentication System",
+    "description": "User authentication requirements",
+    "content": "Detailed auth specs...",
+    "parent_name": "Project Requirements",
+    "relation": "requires",
+    "tags": ["auth", "security"]
+  }
+}
+
 Best Practices:
 1. ALWAYS search first to understand context
 2. Check get_stats regularly to understand the graph structure
