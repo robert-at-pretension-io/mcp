@@ -451,6 +451,7 @@ struct CreateNodeParams {
     name: String,
     description: String,
     content: String,
+    quotes: Option<Vec<String>>,
     is_root: Option<bool>,
     parent_name: Option<String>,
     relation: Option<String>,
@@ -582,6 +583,7 @@ Best Practices:
                                 "description": {"type": "string"},
                                 "content": {"type": "string"},
                                 "parent_name": {"type": "string"},
+                                "quotes": {"type": "string"},
                                 "relation": {"type": "string"},
                                 "tags": {"type": "array", "items": {"type": "string"}},
                                 "metadata": {"type": "object", "additionalProperties": {"type": "string"}}
