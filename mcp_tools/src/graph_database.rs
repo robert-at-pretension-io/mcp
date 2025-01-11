@@ -520,11 +520,22 @@ pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
-            r#"Knowledge Graph Tool
-ALWAYS START conversation with some calls to the knowledge graph to catch up on the user's history
+            r#"Knowledge Graph Tool for managing interconnected information.
 
-Purpose: Build comprehensive context through thorough information gathering.
-Always use this tool to search before responding search before responding."#
+Core Actions:
+- search_nodes: ALWAYS start by searching to understand context
+- get_stats: Get overview of most connected nodes, recent changes, and top tags
+- create_node: Add new information (requires parent_name & relation unless is_root=true)
+- update_node: Modify existing information
+- delete_node: Remove nodes (only if they have 0-1 connections)
+- connect_nodes: Create new relationships between existing nodes
+
+Best Practices:
+1. ALWAYS search first to understand context
+2. Check get_stats regularly to understand the graph structure
+3. Use descriptive relation names when connecting nodes
+4. Add relevant tags to help with future searches
+5. Keep node content focused and concise"#
         .into()),
         input_schema: json!({
             "type": "object",
