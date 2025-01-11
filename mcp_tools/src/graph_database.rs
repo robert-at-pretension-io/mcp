@@ -366,19 +366,6 @@ impl GraphManager {
     }
 
     // Method to get all nodes matching a tag
-    fn get_nodes_by_tag(&self, tag: &str) -> Vec<(NodeIndex, &DataNode)> {
-        self.graph.node_indices()
-            .filter_map(|idx| {
-                self.graph.node_weight(idx).and_then(|node| {
-                    if node.tags.contains(&tag.to_string()) {
-                        Some((idx, node))
-                    } else {
-                        None
-                    }
-                })
-            })
-            .collect()
-    }
 
     // Method to get all nodes with names or descriptions matching a query string
     pub(crate) fn search_nodes(&self, query: &str) -> Vec<(NodeIndex, &DataNode)> {
@@ -509,20 +496,6 @@ struct GetRecentNodesParams {
     limit: Option<usize>
 }
 
-#[derive(Deserialize)]
-struct GetNodeParams {
-    node_name: String
-}
-
-#[derive(Deserialize)]
-struct GetChildrenParams {
-    parent_node_name: String
-}
-
-#[derive(Deserialize)]
-struct GetNodesByTagParams {
-    tag: String
-}
 
 #[derive(Deserialize)]
 struct SearchNodesParams {
@@ -539,10 +512,6 @@ struct GetTopTagsParams {
     limit: Option<usize>
 }
 
-#[derive(Deserialize)]
-struct GetTagsByDateParams {
-    limit: Option<usize>
-}
 
 
 // DESCRIPTION MUST BE UNDER 1000 CHARACTERS
