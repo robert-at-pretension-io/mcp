@@ -464,11 +464,11 @@ struct CreateNodeParams {
     name: String,
     description: String,
     content: String,
-    parent_name: Option<String>, // Use name instead of index for a more user-friendly API
+    is_root: Option<bool>,
+    parent_name: Option<String>,
     relation: Option<String>,
     tags: Option<Vec<String>>,
-    metadata: Option<HashMap<String, String>>,
-    quotes: Option<Vec<String>>
+    metadata: Option<HashMap<String, String>>
 }
 
 // Parameters for updating a node
@@ -561,9 +561,9 @@ Always use this tool to search before responding search before responding."#
             "type": "object",
             "properties": {
                 "action": {
-                    "type": "string",
+                    "type": "string", 
                     "description": "The action to perform.",
-                    "enum": ["create_root", "create_node", "update_node", "delete_node", "move_node", "connect_nodes", "get_node", "get_children", "get_nodes_by_tag", "search_nodes", "get_most_connected", "get_top_tags", "get_recent_nodes", "get_tags_by_date", "find_similar_nodes", "shortest_path"]
+                    "enum": ["create_node", "update_node", "delete_node", "connect_nodes", "search_nodes", "get_stats"]
                 },
                 "params": {
                     "type": "object",
@@ -730,11 +730,12 @@ pub async fn handle_graph_tool_call(
     }
 
     match action {
-        "create_root" => {
+        "create_node" => {
             let create_params: CreateNodeParams = match serde_json::from_value(action_params.clone()) {
                 Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid create_root parameters: {}", e))
+                Err(e) => return_error!(format!("Invalid create_node parameters: {}", e))
             };
+
             let mut node = DataNode::new(
                 create_params.name,
                 create_params.description,
@@ -747,34 +748,32 @@ pub async fn handle_graph_tool_call(
             if let Some(metadata) = create_params.metadata {
                 node.metadata = metadata;
             }
-            if let Some(quotes) = create_params.quotes {
-                node.quotes = quotes;
-            }
 
-            match graph_manager.create_root(node).await {
-                Ok(idx) => {
-                    let result = json!({
-                        "message": "Root node created successfully",
-                        "node_index": idx.index(),
-                        "timestamp": chrono::Utc::now()
-                    });
-                    let tool_res = CallToolResult {
-                        content: vec![ToolResponseContent {
-                            type_: "text".into(),
-                            text: result.to_string(),
-                            annotations: None,
-                        }],
-                        is_error: Some(false),
-                        _meta: None,
-                        progress: None,
-                        total: None,
-                    };
-                    Ok(success_response(id, serde_json::to_value(tool_res)?))
+            // Handle root node creation
+            if create_params.is_root.unwrap_or(false) {
+                match graph_manager.create_root(node).await {
+                    Ok(idx) => {
+                        let result = json!({
+                            "message": "Root node created successfully",
+                            "node_index": idx.index(),
+                            "timestamp": chrono::Utc::now()
+                        });
+                        let tool_res = CallToolResult {
+                            content: vec![ToolResponseContent {
+                                type_: "text".into(),
+                                text: result.to_string(),
+                                annotations: None,
+                            }],
+                            is_error: Some(false),
+                            _meta: None,
+                            progress: None,
+                            total: None,
+                        };
+                        return Ok(success_response(id, serde_json::to_value(tool_res)?));
+                    }
+                    Err(e) => return return_error!(format!("Failed to create root node: {}", e))
                 }
-                Err(e) => return_error!(format!("Failed to create root node: {}", e))
             }
-        }
-        "create_node" => {
             let create_params: CreateNodeParams = match serde_json::from_value(action_params.clone()) {
                 Ok(p) => p,
                 Err(e) => return_error!(format!("Invalid create_node parameters: {}", e))
@@ -957,102 +956,6 @@ pub async fn handle_graph_tool_call(
                     connect_params.from_node_name, connect_params.to_node_name, connect_params.relation, e
                 ))
             }
-        }
-        "get_node" => {
-            let get_params: GetNodeParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid get_node parameters: {}", e))
-            };
-
-            if let Some((_, node)) = graph_manager.get_node_by_name(&get_params.node_name) {
-                let node_info = json!({
-                    "name": node.name,
-                    "description": node.description,
-                    "content": node.content,
-                    "tags": node.tags,
-                    "metadata": node.metadata,
-                    "timestamp": chrono::Utc::now()
-                });
-                let tool_res = CallToolResult {
-                    content: vec![ToolResponseContent {
-                        type_: "text".into(),
-                        text: node_info.to_string(),
-                        annotations: None,
-                    }],
-                    is_error: Some(false),
-                    _meta: None,
-                    progress: None,
-                    total: None
-                };
-                Ok(success_response(id, serde_json::to_value(tool_res)?))
-            } else {
-                return_error!(format!("Node '{}' not found", get_params.node_name))
-            }
-        }
-        "get_children" => {
-            let get_children_params: GetChildrenParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid get_children parameters: {}", e))
-            };
-
-            if let Some((parent_idx, _)) = graph_manager.get_node_by_name(&get_children_params.parent_node_name) {
-                let children = graph_manager.get_children(parent_idx);
-                let children_info: Vec<_> = children.into_iter().map(|(_, child, relation)| {
-                    json!({
-                        "name": child.name,
-                        "description": child.description,
-                        "content": child.content,
-                        "relation": relation,
-                        "tags": child.tags,
-                        "metadata": child.metadata,
-                        "timestamp": chrono::Utc::now()
-                    })
-                }).collect();
-                let tool_res = CallToolResult {
-                    content: vec![ToolResponseContent {
-                        type_: "text".into(),
-                        text: json!(children_info).to_string(),
-                        annotations: None,
-                    }],
-                    is_error: Some(false),
-                    _meta: None,
-                    progress: None,
-                    total: None
-                };
-                Ok(success_response(id, serde_json::to_value(tool_res)?))
-            } else {
-                return_error!(format!("Parent node '{}' not found", get_children_params.parent_node_name))
-            }
-        }
-        "get_nodes_by_tag" => {
-            let get_by_tag_params: GetNodesByTagParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid get_nodes_by_tag parameters: {}", e))
-            };
-
-            let nodes = graph_manager.get_nodes_by_tag(&get_by_tag_params.tag);
-            let nodes_info: Vec<_> = nodes.into_iter().map(|(_, node)| {
-                json!({
-                    "name": node.name,
-                    "description": node.description,
-                    "content": node.content,
-                    "tags": node.tags,
-                    "metadata": node.metadata,
-                    "timestamp": chrono::Utc::now()
-                })
-            }).collect();
-            let tool_res = CallToolResult {
-                content: vec![ToolResponseContent {
-                    type_: "text".into(),
-                    text: serde_json::to_string_pretty(&nodes_info).unwrap_or_else(|_| "[]".to_string()),
-                    annotations: None,
-                }],
-                is_error: Some(false),
-                _meta: None,
-                progress: None,
-                total: None
-            };
-            Ok(success_response(id, serde_json::to_value(tool_res)?))
         }
         "search_nodes" => {
             let search_params: SearchNodesParams = match serde_json::from_value(action_params.clone()) {
