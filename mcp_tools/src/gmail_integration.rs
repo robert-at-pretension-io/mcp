@@ -156,7 +156,11 @@ pub fn gmail_tool_info() -> ToolInfo {
                 "subject": {"type": "string", "description": "Subject of the email to send."},
                 "body": {"type": "string", "description": "Body of the email to send."},
                 "message_id": {"type": "string", "description": "Message ID to read."},
-                "page_size": {"type": "number", "description": "How many messages to list, for 'list_messages'."}
+                "page_size": {"type": "number", "description": "How many messages to list, for 'list_messages'."},
+                "search_query": {
+                    "type": "string", 
+                    "description": "Gmail search query. Examples: 'is:unread', 'from:someone@example.com', 'subject:important', 'after:2024/01/01', 'has:attachment'. Default: 'is:unread'. See https://support.google.com/mail/answer/7190?hl=en for more search operators."
+                }
             },
             "required": ["action"]
         }),
