@@ -515,210 +515,106 @@ struct GetTopTagsParams {
 
 
 
-// DESCRIPTION MUST BE UNDER 1000 CHARACTERS
-// Create a function to build the tool information
 pub fn graph_tool_info() -> ToolInfo {
     ToolInfo {
         name: "graph_tool".to_string(),
         description: Some(
-            r#"Knowledge Graph Tool for managing interconnected information.
+            r#"Simplified Knowledge Graph Tool for managing interconnected information.
 
-Core Actions:
-- search_nodes: ALWAYS start by searching to understand context
-- get_stats: Get overview of most connected nodes, recent changes, and top tags
-- create_node: Add new information (requires parent_name & relation unless is_root=true)
-- update_node: Modify existing information
-- delete_node: Remove nodes (only if they have 0-1 connections)
-- connect_nodes: Create new relationships between existing nodes
+Core Commands:
+- create_root(name, description, content, tags) - Create root node
+- create_child(name, description, content, parent, relation, tags) - Create child node
+- update_node(name, new_name, new_description, new_content, new_tags) - Update node
+- delete_node(name) - Delete node
+- connect_nodes(from, to, relation) - Connect nodes
+- search(query) - Search nodes
+- get_stats() - Get graph statistics
 
 Example Usage:
 1. Create root node:
 {
-  "action": "create_node",
-  "params": {
-    "name": "Project Requirements",
-    "description": "Core project requirements and specifications",
-    "content": "Main requirements document...",
-    "is_root": true,
-    "tags": ["requirements", "documentation"]
-  }
+  "command": "create_root",
+  "name": "Project Requirements",
+  "description": "Core project requirements",
+  "content": "Main requirements...",
+  "tags": ["requirements"]
 }
 
 2. Add child node:
 {
-  "action": "create_node",
-  "params": {
-    "name": "Authentication System",
-    "description": "User authentication requirements",
-    "content": "Detailed auth specs...",
-    "parent_name": "Project Requirements",
-    "relation": "requires",
-    "tags": ["auth", "security"]
-  }
+  "command": "create_child", 
+  "name": "Authentication",
+  "description": "Auth requirements",
+  "content": "Auth specs...",
+  "parent": "Project Requirements",
+  "relation": "requires",
+  "tags": ["auth"]
 }
 
-Best Practices:
-1. ALWAYS search first to understand context
-2. Check get_stats regularly to understand the graph structure
-3. Use descriptive relation names when connecting nodes
-4. Add relevant tags to help with future searches
-5. Keep node content focused and concise"#
-        .into()),
+3. Search:
+{
+  "command": "search",
+  "query": "auth"
+}"#.into()),
         input_schema: json!({
             "type": "object",
             "properties": {
-                "action": {
-                    "type": "string", 
-                    "description": "The action to perform.",
-                    "enum": ["create_node", "update_node", "delete_node", "connect_nodes", "search_nodes", "get_stats"]
-                },
-                "params": {
-                    "type": "object",
-                    "description": "Parameters for the action.",
-                    "oneOf": [
-                        {
-                            "type": "object",
-                            "properties": {
-                                "name": {"type": "string"},
-                                "description": {"type": "string"},
-                                "content": {"type": "string"},
-                                "parent_name": {"type": "string"},
-                                "quotes": {"type": "string"},
-                                "relation": {"type": "string"},
-                                "tags": {"type": "array", "items": {"type": "string"}},
-                                "metadata": {"type": "object", "additionalProperties": {"type": "string"}}
-                            },
-                            "required": ["name", "description", "content"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "node_name": {"type": "string"},
-                                "new_name": {"type": "string"},
-                                "new_description": {"type": "string"},
-                                "new_content": {"type": "string"},
-                                "new_tags": {"type": "array", "items": {"type": "string"}},
-                                "new_metadata": {"type": "object", "additionalProperties": {"type": "string"}}
-                            },
-                            "required": ["node_name"]
-                        },
-                        {
-                            "type": "object",
-                            "title": "MoveNodeParams",
-                            "properties": {
-                                "node_name": { "type": "string", "description": "Name of the node to move" },
-                                "new_parent_name": { "type": "string", "description": "Name of the new parent node" },
-                                "new_relation": { "type": "string", "description": "New relationship type to the parent" }
-                            },
-                            "required": ["node_name", "new_parent_name", "new_relation"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "node_name": {"type": "string"}
-                            },
-                            "required": ["node_name"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "from_node_name": {"type": "string"},
-                                "to_node_name": {"type": "string"},
-                                "relation": {"type": "string"}
-                            },
-                            "required": ["from_node_name", "to_node_name", "relation"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "node_name": {"type": "string"}
-                            },
-                            "required": ["node_name"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "parent_node_name": {"type": "string"}
-                            },
-                            "required": ["parent_node_name"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "tag": {"type": "string"}
-                            },
-                            "required": ["tag"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "query": {"type": "string"}
-                            },
-                            "required": ["query"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "node_name": {"type": "string"},
-                                "similarity_criteria": {
-                                    "type": "string",
-                                    "enum": ["tags", "metadata", "structural"]
-                                },
-                                "limit": {"type": "integer", "minimum": 1}
-                            },
-                            "required": ["node_name"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "from_node_name": {"type": "string"},
-                                "to_node_name": {"type": "string"}
-                            },
-                            "required": ["from_node_name", "to_node_name"]
-                        }
+                "command": {
+                    "type": "string",
+                    "enum": [
+                        "create_root",
+                        "create_child", 
+                        "update_node",
+                        "delete_node",
+                        "connect_nodes",
+                        "search",
+                        "get_stats"
                     ]
-                }
+                },
+                "name": {"type": "string"},
+                "description": {"type": "string"},
+                "content": {"type": "string"},
+                "parent": {"type": "string"},
+                "relation": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "query": {"type": "string"}
             },
-            "required": ["action", "params"]
+            "required": ["command"]
         }),
     }
 }
 
-// Function to handle 'tools/call' for the graph tool
 pub async fn handle_graph_tool_call(
     params: CallToolParams,
     graph_manager: &mut GraphManager,
     id: Option<Value>,
 ) -> Result<JsonRpcResponse> {
-    if graph_manager.root.is_none() && params.arguments.get("action")
-        .and_then(Value::as_str) != Some("create_root") {
-        let msg = "No root node exists. Please create a root node first with `action=create_root`.";
-        let tool_res = CallToolResult {
-            content: vec![ToolResponseContent {
-                type_: "text".into(),
-                text: msg.into(),
-                annotations: None,
-            }],
-            is_error: Some(true),
-            _meta: None,
-            progress: None,
-            total: None,
+    let command = params.arguments.get("command")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("Missing 'command' field"))?;
+
+    macro_rules! get_field {
+        ($name:expr) => {
+            params.arguments.get($name)
+                .and_then(Value::as_str)
+                .map(|s| s.to_string())
         };
-        return Ok(success_response(id, serde_json::to_value(tool_res)?));
+        ($name:expr, $default:expr) => {
+            params.arguments.get($name)
+                .and_then(Value::as_str)
+                .map(|s| s.to_string())
+                .unwrap_or($default)
+        };
     }
 
-    let action = params.arguments.get("action")
-        .and_then(Value::as_str)
-        .ok_or_else(|| anyhow!(r#"Missing or invalid 'action' field. Required fields: 'action' and 'params'.\nExample: {{"action": "get_top_tags", "params": {{"limit": 5}} }}"#))?;
-
-    let action_params = params.arguments.get("params")
-        .ok_or_else(|| {
-            let valid_actions = ["create_root", "create_node", "update_node", "delete_node", 
-                               "connect_nodes", "get_node", "get_children", "get_nodes_by_tag", 
-                               "search_nodes", "get_most_connected", "get_top_tags", "get_recent_nodes"]
-                .join(", ");
-            anyhow!("Missing 'params' field. Valid actions are: {}", valid_actions)
-        })?;
+    macro_rules! get_tags {
+        () => {
+            params.arguments.get("tags")
+                .and_then(Value::as_array)
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                .unwrap_or_else(Vec::new)
+        };
+    }
 
     macro_rules! return_error {
         ($msg:expr) => {{
@@ -737,100 +633,52 @@ pub async fn handle_graph_tool_call(
         }};
     }
 
-    match action {
-        "create_node" => {
-            let create_params: CreateNodeParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid create_node parameters: {}", e))
-            };
+    match command {
+        "create_root" => {
+            let name = get_field!("name").ok_or_else(|| anyhow!("Missing name"))?;
+            let description = get_field!("description").ok_or_else(|| anyhow!("Missing description"))?;
+            let content = get_field!("content").ok_or_else(|| anyhow!("Missing content"))?;
+            let tags = get_tags!();
 
-            let mut node = DataNode::new(
-                create_params.name,
-                create_params.description,
-                create_params.content
-            );
+            let node = DataNode::new(name, description, content);
+            node.tags = tags;
 
-            if let Some(tags) = create_params.tags {
-                node.tags = tags;
+            match graph_manager.create_root(node).await {
+                Ok(idx) => {
+                    let result = json!({
+                        "message": "Root node created",
+                        "node_index": idx.index()
+                    });
+                    Ok(success_response(id, result))
+                }
+                Err(e) => return_error!(format!("Failed to create root: {}", e))
             }
-            if let Some(metadata) = create_params.metadata {
-                node.metadata = metadata;
-            }
+        }
 
-            // Handle root node creation
-            if create_params.is_root.unwrap_or(false) {
-                match graph_manager.create_root(node).await {
-                    Ok(idx) => {
-                        let result = json!({
-                            "message": "Root node created successfully",
-                            "node_index": idx.index(),
-                            "timestamp": chrono::Utc::now()
-                        });
-                        let tool_res = CallToolResult {
-                            content: vec![ToolResponseContent {
-                                type_: "text".into(),
-                                text: result.to_string(),
-                                annotations: None,
-                            }],
-                            is_error: Some(false),
-                            _meta: None,
-                            progress: None,
-                            total: None,
-                        };
-                        return Ok(success_response(id, serde_json::to_value(tool_res)?));
-                    }
-                    Err(e) => return return_error!(format!("Failed to create root node: {}", e))
-                }
-            }
-            let create_params: CreateNodeParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid create_node parameters: {}", e))
-            };
-            let parent_name = match create_params.parent_name {
-                Some(p) => p,
-                None => return_error!("Missing 'parent_name' in create_node parameters.")
-            };
-            let relation = match create_params.relation {
-                Some(r) => r,
-                None => return_error!("Missing 'relation' in create_node parameters.")
-            };
+        "create_child" => {
+            let name = get_field!("name").ok_or_else(|| anyhow!("Missing name"))?;
+            let description = get_field!("description").ok_or_else(|| anyhow!("Missing description"))?;
+            let content = get_field!("content").ok_or_else(|| anyhow!("Missing content"))?;
+            let parent = get_field!("parent").ok_or_else(|| anyhow!("Missing parent"))?;
+            let relation = get_field!("relation").ok_or_else(|| anyhow!("Missing relation"))?;
+            let tags = get_tags!();
 
-            if let Some((parent_idx, _)) = graph_manager.get_node_by_name(&parent_name) {
-                let mut node = DataNode::new(create_params.name, create_params.description, create_params.content);
-                if let Some(tags) = create_params.tags {
-                    node.tags = tags;
-                }
-                if let Some(metadata) = create_params.metadata {
-                    node.metadata = metadata;
-                }
-                if let Some(quotes) = create_params.quotes {
-                    node.quotes = quotes;
-                }
+            let node = DataNode::new(name, description, content);
+            node.tags = tags;
 
+            if let Some((parent_idx, _)) = graph_manager.get_node_by_name(&parent) {
                 match graph_manager.create_connected_node(node, parent_idx, relation).await {
                     Ok(idx) => {
                         let result = json!({
-                            "message": "Node created successfully",
-                            "node_index": idx.index(),
-                            "timestamp": chrono::Utc::now()
+                            "message": "Child node created",
+                            "node_index": idx.index()
                         });
-                        let tool_res = CallToolResult {
-                            content: vec![ToolResponseContent {
-                                type_: "text".into(),
-                                text: result.to_string(),
-                                annotations: None,
-                            }],
-                            is_error: Some(false),
-                            _meta: None,
-                            progress: None,
-                            total: None,
-                        };
-                        Ok(success_response(id, serde_json::to_value(tool_res)?))
+                        Ok(success_response(id, result))
                     }
-                    Err(e) => return_error!(format!("Failed to create node under '{}': {}", parent_name, e))
+                    Err(e) => return_error!(format!("Failed to create child: {}", e))
                 }
             } else {
-                return_error!(format!("Parent node '{}' not found", parent_name))
+                return_error!(format!("Parent node '{}' not found", parent))
             }
         }
         "update_node" => {
@@ -965,67 +813,23 @@ pub async fn handle_graph_tool_call(
                 ))
             }
         }
-        "search_nodes" => {
-            let search_params: SearchNodesParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid search_nodes parameters: {}", e))
-            };
-
-            let nodes = graph_manager.search_nodes(&search_params.query);
+        "search" => {
+            let query = get_field!("query").ok_or_else(|| anyhow!("Missing query"))?;
+            let nodes = graph_manager.search_nodes(&query);
+            
             if nodes.is_empty() {
-                let message = format!(
-                    "No nodes found matching query '{}'\n{}",
-                    search_params.query,
-                    graph_manager.get_graph_metadata()
-                );
-                let tool_res = CallToolResult {
-                    content: vec![ToolResponseContent {
-                        type_: "text".into(),
-                        text: message,
-                        annotations: None,
-                    }],
-                    is_error: Some(true),
-                    _meta: None,
-                    progress: None,
-                    total: None
-                };
-                Ok(success_response(id, serde_json::to_value(tool_res)?))
+                return_error!("No nodes found matching query")
             } else {
-                let nodes_info: Vec<_> = nodes.into_iter().map(|(_, node)| {
+                let results = nodes.into_iter().map(|(_, node)| {
                     json!({
                         "name": node.name,
                         "description": node.description,
                         "content": node.content,
-                        "tags": node.tags,
-                        "metadata": node.metadata
+                        "tags": node.tags
                     })
-                }).collect();
-                let formatted_nodes = nodes_info.iter().map(|node| {
-                    let node_obj = node.as_object().unwrap();
-                    format!(
-                        "Node: {}\nDescription: {}\nTags: [{}]\nCreated: {}\nModified: {}\nContent: {}\n",
-                        node_obj["name"].as_str().unwrap_or(""),
-                        node_obj["description"].as_str().unwrap_or(""),
-                        node_obj["tags"].as_array().unwrap_or(&Vec::new()).iter()
-                            .map(|t| t.as_str().unwrap_or("")).collect::<Vec<_>>().join(", "),
-                        node_obj["date_created"].as_str().unwrap_or(""),
-                        node_obj["date_modified"].as_str().unwrap_or(""),
-                        node_obj["content"].as_str().unwrap_or("")
-                    )
-                }).collect::<Vec<_>>().join("\n---\n");
-
-                let tool_res = CallToolResult {
-                    content: vec![ToolResponseContent {
-                        type_: "text".into(),
-                        text: formatted_nodes,
-                        annotations: None,
-                    }],
-                    is_error: Some(false),
-                    _meta: None,
-                    progress: None,
-                    total: None
-                };
-                Ok(success_response(id, serde_json::to_value(tool_res)?))
+                }).collect::<Vec<_>>();
+                
+                Ok(success_response(id, json!(results)))
             }
         }
         "get_stats" => {
