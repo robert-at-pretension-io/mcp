@@ -521,7 +521,7 @@ pub async fn list_gmail_messages(access_token: &str, page_size: u32) -> Result<V
 pub async fn read_gmail_message(access_token: &str, message_id: &str) -> Result<String> {
     let client = Client::new();
     let url = format!(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=raw",
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}",
         message_id
     );
 
@@ -533,17 +533,31 @@ pub async fn read_gmail_message(access_token: &str, message_id: &str) -> Result<
         .json::<serde_json::Value>()
         .await?;
 
-    // The "raw" field is base64-URL-coded
-    let raw = resp
-        .get("raw")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("No 'raw' field in Gmail message"))?;
+    // Extract the message body from the payload
+    let payload = resp.get("payload")
+        .ok_or_else(|| anyhow!("No payload in Gmail message"))?;
 
-    // Decode base64 (URL-safe variant)
-    let bytes = URL_SAFE.decode(raw)?;
-    let decoded = String::from_utf8(bytes)?;
+    // Try to get the body directly from the payload first
+    if let Some(body) = payload.get("body").and_then(|b| b.get("data")).and_then(|d| d.as_str()) {
+        let bytes = URL_SAFE.decode(body)?;
+        return Ok(String::from_utf8(bytes)?);
+    }
 
-    Ok(decoded)
+    // If no direct body, look for the first text/plain part
+    if let Some(parts) = payload.get("parts").and_then(|p| p.as_array()) {
+        for part in parts {
+            if let Some(mime_type) = part.get("mimeType").and_then(|m| m.as_str()) {
+                if mime_type == "text/plain" {
+                    if let Some(body_data) = part.get("body").and_then(|b| b.get("data")).and_then(|d| d.as_str()) {
+                        let bytes = URL_SAFE.decode(body_data)?;
+                        return Ok(String::from_utf8(bytes)?);
+                    }
+                }
+            }
+        }
+    }
+
+    Err(anyhow!("Could not find message body"))
 }
 
 /// Search for messages matching `query` and return basic metadata for each.
