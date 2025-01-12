@@ -811,6 +811,7 @@ pub async fn search_gmail_messages_with_metadata(
             thread_id,
             subject,
             from,
+            to: None,
             snippet,
         };
         results.push(email_meta);
