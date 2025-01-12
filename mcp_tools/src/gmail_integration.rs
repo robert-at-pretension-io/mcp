@@ -116,7 +116,7 @@ pub struct TokenResponse {
 /// Parameters accepted by our Gmail tool.
 #[derive(Debug, Serialize, Deserialize)]
 struct GmailParams {
-    /// "auth_init", "auth_exchange", "send_message", "list_messages", "read_message", "search_messages"
+    /// "auth_init", "auth_exchange", "send_message", "list_messages", "read_message", "search_messages", "modify_message"
     action: String,
 
     /// For "auth_exchange"
@@ -127,7 +127,7 @@ struct GmailParams {
     subject: Option<String>,
     body: Option<String>,
 
-    /// For "read_message"
+    /// For "read_message" or "modify_message"
     message_id: Option<String>,
 
     /// For pagination, listing, etc.
@@ -135,6 +135,18 @@ struct GmailParams {
 
     /// For "search_messages"
     search_query: Option<String>,
+
+    // --- NEW FIELDS FOR "modify_message" ACTION ---
+    #[serde(default)]
+    archive: bool,
+    #[serde(default)]
+    mark_read: bool,
+    #[serde(default)]
+    mark_unread: bool,
+    #[serde(default)]
+    star: bool,
+    #[serde(default)]
+    unstar: bool,
 }
 
 /// Metadata about an email message
@@ -144,7 +156,7 @@ pub struct EmailMetadata {
     pub thread_id: String,
     pub subject: Option<String>,
     pub from: Option<String>,
-    /// NEW: we store the "To" header if present
+    /// Store the "To" header if present
     pub to: Option<String>,
     pub snippet: Option<String>,
 }
@@ -154,24 +166,44 @@ pub fn gmail_tool_info() -> ToolInfo {
     ToolInfo {
         name: "gmail_tool".to_string(),
         description: Some(
-            "Gmail integration tool for OAuth 2.0 login, search, and send/receive operations. Make sure to explicitly provide the authorization url to the user.".into()
+            "Gmail integration tool for OAuth 2.0 login, search, send/receive, and label operations. Make sure to explicitly provide the authorization URL to the user.".into()
         ),
         input_schema: json!({
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "description": "Action to perform: 'auth_init', 'auth_exchange', 'send_message', 'list_messages', 'read_message', 'search_messages'"
+                    "description": "Action to perform: 'auth_init', 'auth_exchange', 'send_message', 'list_messages', 'read_message', 'search_messages', 'modify_message'"
                 },
                 "code": {"type": "string", "description": "Authorization code (if 'auth_exchange')."},
                 "to": {"type": "string", "description": "Recipient email for sending messages."},
                 "subject": {"type": "string", "description": "Subject of the email to send."},
                 "body": {"type": "string", "description": "Body of the email to send."},
-                "message_id": {"type": "string", "description": "Message ID to read."},
+                "message_id": {"type": "string", "description": "Message ID to read or modify."},
                 "page_size": {"type": "number", "description": "How many messages to list, for 'list_messages'."},
                 "search_query": {
                     "type": "string", 
-                    "description": "Gmail search query. Examples: 'is:unread', 'from:someone@example.com', 'subject:important', 'after:2024/01/01', 'has:attachment'. Default: 'is:unread'. See https://support.google.com/mail/answer/7190?hl=en for more search operators."
+                    "description": "Gmail search query. Examples: 'is:unread', 'from:someone@example.com', 'subject:important', 'after:2024/01/01', 'has:attachment'. Default: 'is:unread'."
+                },
+                "archive": {
+                    "type": "boolean",
+                    "description": "If true, remove 'INBOX' label from the message (archive)."
+                },
+                "mark_read": {
+                    "type": "boolean",
+                    "description": "If true, remove 'UNREAD' label from the message."
+                },
+                "mark_unread": {
+                    "type": "boolean",
+                    "description": "If true, add 'UNREAD' label to the message."
+                },
+                "star": {
+                    "type": "boolean",
+                    "description": "If true, add 'STARRED' label to the message."
+                },
+                "unstar": {
+                    "type": "boolean",
+                    "description": "If true, remove 'STARRED' label from the message."
                 }
             },
             "required": ["action"]
@@ -193,7 +225,7 @@ pub async fn handle_gmail_tool_call(
 
     match gmail_params.action.as_str() {
         "auth_init" => {
-            // Check if we already have a valid token
+            // (same as before)
             if let Ok(Some(_token)) = read_cached_token() {
                 let content =
                     "Already authorized! No need to re-authenticate.\nUse other Gmail actions directly.";
@@ -214,7 +246,6 @@ pub async fn handle_gmail_tool_call(
                     )
                 )
             } else {
-                // 1. Generate an OAuth 2.0 URL for user consent
                 let config = GoogleOAuthConfig::from_env().map_err(|e|
                     anyhow!("Failed to load OAuth config: {}", e)
                 )?;
@@ -243,7 +274,7 @@ pub async fn handle_gmail_tool_call(
         }
 
         "auth_exchange" => {
-            // 2. Exchange the authorization code for an access/refresh token
+            // (same as before)
             let code = gmail_params.code
                 .clone()
                 .ok_or_else(|| anyhow!("'code' is required for 'auth_exchange'"))?;
@@ -282,7 +313,7 @@ pub async fn handle_gmail_tool_call(
         }
 
         "send_message" => {
-            // 3. Send an email (check for cached token)
+            // (same as before)
             let token = match read_cached_token()? {
                 Some(t) => t,
                 None => {
@@ -324,8 +355,9 @@ pub async fn handle_gmail_tool_call(
                 )
             )
         }
+
         "list_messages" => {
-            // 4. List user’s messages, but we want metadata (Subject, From, To, snippet).
+            // (same as before)
             let token = match read_cached_token()? {
                 Some(t) => t,
                 None => {
@@ -339,11 +371,8 @@ pub async fn handle_gmail_tool_call(
             };
 
             let page_size = gmail_params.page_size.unwrap_or(10);
-
-            // Call the new metadata function
             let messages = list_gmail_messages_with_metadata(&token.access_token, page_size).await?;
 
-            // Build a text output
             let mut output = String::new();
             if messages.is_empty() {
                 output.push_str("No messages found.");
@@ -382,7 +411,7 @@ pub async fn handle_gmail_tool_call(
         }
 
         "read_message" => {
-            // 5. Read message content by ID
+            // (same as before)
             let token = match read_cached_token()? {
                 Some(t) => t,
                 None => {
@@ -420,7 +449,7 @@ pub async fn handle_gmail_tool_call(
         }
 
         "search_messages" => {
-            // 6. Search for messages that match a query (unread, etc.) and return metadata
+            // (same as before)
             let token = match read_cached_token()? {
                 Some(t) => t,
                 None => {
@@ -433,20 +462,17 @@ pub async fn handle_gmail_tool_call(
                 }
             };
 
-            // Default to "is:unread" if no query is provided
             let query = gmail_params.search_query
                 .clone()
                 .unwrap_or_else(|| "is:unread".to_string());
             let page_size = gmail_params.page_size.unwrap_or(10);
 
-            // Call our new metadata function
             let messages = search_gmail_messages_with_metadata(
                 &token.access_token,
                 &query,
                 page_size
             ).await?;
 
-            // Convert to JSON or text
             let json_output = serde_json::to_string_pretty(&messages)?;
 
             Ok(
@@ -461,6 +487,76 @@ pub async fn handle_gmail_tool_call(
                                 query,
                                 json_output
                             ),
+                            annotations: None,
+                        }],
+                        is_error: Some(false),
+                        _meta: None,
+                        progress: None,
+                        total: None,
+                    })?
+                )
+            )
+        }
+
+        //
+        // ----------- NEW ACTION: "modify_message" -----------
+        //
+        "modify_message" => {
+            let token = match read_cached_token()? {
+                Some(t) => t,
+                None => {
+                    return Ok(
+                        missing_auth_response(
+                            id,
+                            "No OAuth token found. Please do 'auth_init' + 'auth_exchange' first."
+                        )
+                    );
+                }
+            };
+
+            let msg_id = gmail_params.message_id
+                .clone()
+                .ok_or_else(|| anyhow!("'message_id' is required for 'modify_message'"))?;
+
+            // Decide which labels to add or remove
+            let mut add_labels = Vec::new();
+            let mut remove_labels = Vec::new();
+
+            if gmail_params.archive {
+                // Archiving => remove "INBOX"
+                remove_labels.push("INBOX".to_string());
+            }
+            if gmail_params.mark_read {
+                // Mark as read => remove "UNREAD"
+                remove_labels.push("UNREAD".to_string());
+            }
+            if gmail_params.mark_unread {
+                // Mark as unread => add "UNREAD"
+                add_labels.push("UNREAD".to_string());
+            }
+            if gmail_params.star {
+                // Star => add "STARRED"
+                add_labels.push("STARRED".to_string());
+            }
+            if gmail_params.unstar {
+                // Unstar => remove "STARRED"
+                remove_labels.push("STARRED".to_string());
+            }
+
+            modify_gmail_message_labels(&token.access_token, &msg_id, &add_labels, &remove_labels).await?;
+
+            let summary = format!(
+                "Modified message {}. Added labels: {:?}, removed labels: {:?}",
+                msg_id, add_labels, remove_labels
+            );
+
+            Ok(
+                success_response(
+                    id,
+                    serde_json::to_value(CallToolResult {
+                        content: vec![ToolResponseContent {
+                            type_: "text".into(),
+                            text: summary,
                             annotations: None,
                         }],
                         is_error: Some(false),
@@ -643,37 +739,6 @@ pub async fn list_gmail_messages_with_metadata(
     Ok(results)
 }
 
-/// List message IDs from user’s Gmail
-pub async fn list_gmail_messages(access_token: &str, page_size: u32) -> Result<Vec<String>> {
-    let client = Client::new();
-    let url =
-        format!("https://gmail.googleapis.com/gmail/v1/users/me/messages?pageSize={}", page_size);
-
-    let resp = client
-        .get(&url)
-        .bearer_auth(access_token)
-        .send().await?
-        .json::<serde_json::Value>().await?;
-
-    let messages = match resp.get("messages") {
-        Some(arr) =>
-            arr
-                .as_array()
-                .unwrap_or(&vec![])
-                .iter()
-                .filter_map(|m|
-                    m
-                        .get("id")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                )
-                .collect(),
-        None => vec![],
-    };
-
-    Ok(messages)
-}
-
 /// Read the raw text of a single message
 pub async fn read_gmail_message(access_token: &str, message_id: &str) -> Result<String> {
     let client = Client::new();
@@ -784,6 +849,7 @@ pub async fn search_gmail_messages_with_metadata(
         // We find subject/from in `payload.headers[]`
         let mut subject = None;
         let mut from = None;
+        let mut to = None;
 
         if let Some(payload) = metadata_resp.get("payload") {
             if let Some(headers) = payload.get("headers").and_then(|h| h.as_array()) {
@@ -796,6 +862,11 @@ pub async fn search_gmail_messages_with_metadata(
                                 }
                                 "from" => {
                                     from = Some(value_str.to_string());
+                                }
+                                "to" => {
+                                    // For searching we didn't care about 'to' previously,
+                                    // but let's be consistent with the other code
+                                    to = Some(value_str.to_string());
                                 }
                                 _ => {}
                             }
@@ -811,13 +882,46 @@ pub async fn search_gmail_messages_with_metadata(
             thread_id,
             subject,
             from,
-            to: None,
+            to,
             snippet,
         };
         results.push(email_meta);
     }
 
     Ok(results)
+}
+
+/// Modify labels on a single message (e.g. archive, mark as read/unread, star, etc.)
+pub async fn modify_gmail_message_labels(
+    access_token: &str,
+    message_id: &str,
+    add_label_ids: &[String],
+    remove_label_ids: &[String],
+) -> Result<()> {
+    let client = Client::new();
+    let url = format!(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}/modify",
+        message_id
+    );
+
+    let payload = serde_json::json!({
+        "addLabelIds": add_label_ids,
+        "removeLabelIds": remove_label_ids
+    });
+
+    let resp = client
+        .post(url)
+        .bearer_auth(access_token)
+        .json(&payload)
+        .send().await?;
+
+    if !resp.status().is_success() {
+        let msg = resp.text().await.unwrap_or_default();
+        error!("Gmail modify labels error: {}", msg);
+        return Err(anyhow!("Failed to modify labels: {}", msg));
+    }
+
+    Ok(())
 }
 
 //
