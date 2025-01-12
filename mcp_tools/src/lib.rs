@@ -9,3 +9,4 @@ pub mod oracle_tool;
 pub mod scraping_bee;
 pub mod sequential_thinking;
 pub mod task_planning;
+pub mod gmail_integration;

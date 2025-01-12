@@ -1,49 +1,74 @@
 use futures::StreamExt;
-use serde_json::{json, Value};
+use serde_json::{ json, Value };
 use shared_protocol_objects::{
-    error_response, success_response, CallToolParams, CallToolResult, ClientCapabilities,
-    Implementation, InitializeResult, JsonRpcRequest, JsonRpcResponse, ListResourcesResult,
-    ListToolsResult, PromptsCapability, ReadResourceParams, ReadResourceResult, ResourceContent,
-    ResourceInfo, ResourcesCapability, ServerCapabilities, ToolInfo, ToolResponseContent,
-    ToolsCapability, INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION, PARSE_ERROR,
+    error_response,
+    success_response,
+    CallToolParams,
+    CallToolResult,
+    ClientCapabilities,
+    Implementation,
+    InitializeResult,
+    JsonRpcRequest,
+    JsonRpcResponse,
+    ListResourcesResult,
+    ListToolsResult,
+    PromptsCapability,
+    ReadResourceParams,
+    ReadResourceResult,
+    ResourceContent,
+    ResourceInfo,
+    ResourcesCapability,
+    ServerCapabilities,
+    ToolInfo,
+    ToolResponseContent,
+    ToolsCapability,
+    INTERNAL_ERROR,
+    INVALID_PARAMS,
+    LATEST_PROTOCOL_VERSION,
+    PARSE_ERROR,
     SUPPORTED_PROTOCOL_VERSIONS,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::io::{stdout, AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{mpsc, Mutex};
-use tokio::{io, task};
+use tokio::io::{ stdout, AsyncBufReadExt, AsyncWriteExt, BufReader };
+use tokio::sync::{ mpsc, Mutex };
+use tokio::{ io, task };
 use tokio_stream::wrappers::LinesStream;
-use tracing::{debug, error, info, warn, Level};
-use tracing_subscriber::{self, EnvFilter};
+use tracing::{ debug, error, info, warn, Level };
+use tracing_subscriber::{ self, EnvFilter };
 use tracing_appender;
-use mcp_tools::bash::{bash_tool_info, BashExecutor, BashParams};
-use mcp_tools::brave_search::{search_tool_info, BraveSearchClient};
-use mcp_tools::git_integration::{git_tool_info, handle_git_tool_call};
-use mcp_tools::{graph_database, memory, sequential_thinking, task_planning};
-use mcp_tools::graph_database::{graph_tool_info, handle_graph_tool_call, GraphManager};
+use mcp_tools::bash::{ bash_tool_info, BashExecutor, BashParams };
+use mcp_tools::brave_search::{ search_tool_info, BraveSearchClient };
+use mcp_tools::git_integration::{ git_tool_info, handle_git_tool_call };
+use mcp_tools::{ graph_database, memory, sequential_thinking, task_planning };
+use mcp_tools::graph_database::{ graph_tool_info, handle_graph_tool_call, GraphManager };
+use mcp_tools::gmail_integration::{ gmail_tool_info, handle_gmail_tool_call };
 use mcp_tools::process_html::extract_text_from_html;
-use mcp_tools::regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
-use mcp_tools::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
-use mcp_tools::oracle_tool::{oracle_select_tool_info, handle_oracle_select_tool_call};
+use mcp_tools::regex_replace::{ handle_regex_replace_tool_call, regex_replace_tool_info };
+use mcp_tools::scraping_bee::{ scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse };
+use mcp_tools::oracle_tool::{ oracle_select_tool_info, handle_oracle_select_tool_call };
 
 #[tokio::main]
 async fn main() {
     // Set up file appender
-    let log_dir = std::env::var("LOG_DIR").unwrap_or_else(|_| {
-        format!("{}/Developer/mcp/logs", dirs::home_dir().unwrap().display())
-    });
-    let file_appender = tracing_appender::rolling::Builder::new()
-            .rotation(tracing_appender::rolling::Rotation::NEVER)
-            .filename_prefix("mcp-server")
-            .filename_suffix("log")
-            .build(log_dir)
-            .expect("Failed to create log directory");
+    let log_dir = std::env
+        ::var("LOG_DIR")
+        .unwrap_or_else(|_| {
+            format!("{}/Developer/mcp/logs", dirs::home_dir().unwrap().display())
+        });
+    let file_appender = tracing_appender::rolling::Builder
+        ::new()
+        .rotation(tracing_appender::rolling::Rotation::NEVER)
+        .filename_prefix("mcp-server")
+        .filename_suffix("log")
+        .build(log_dir)
+        .expect("Failed to create log directory");
 
     // Initialize the tracing subscriber with both stdout and file output
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-    
-    tracing_subscriber::fmt()
+
+    tracing_subscriber
+        ::fmt()
         .with_env_filter(
             EnvFilter::from_default_env()
                 .add_directive(Level::DEBUG.into())
@@ -66,29 +91,31 @@ async fn main() {
 
     // debug!("Environment variables loaded successfully");
 
-
-    let state = Arc::new(Mutex::new(MCPServerState {
-        resources: vec![ResourceInfo {
-            uri: "file:///example.txt".into(),
-            name: "Example Text File".into(),
-            mime_type: Some("text/plain".into()),
-            description: Some("An example text resource".into()),
-        }],
-        tools: vec![
-            // git_tool_info(),
-            bash_tool_info(),
-            scraping_tool_info(),
-            search_tool_info(),
-            graph_tool_info(),
-            regex_replace_tool_info(),
-            // oracle_select_tool_info(),
-            // sequential_thinking::sequential_thinking_tool_info(),
-            // memory::memory_tool_info(),
-            //task_planning::task_planning_tool_info(),
-        ],
-        client_capabilities: None,
-        client_info: None,
-    }));
+    let state = Arc::new(
+        Mutex::new(MCPServerState {
+            resources: vec![ResourceInfo {
+                uri: "file:///example.txt".into(),
+                name: "Example Text File".into(),
+                mime_type: Some("text/plain".into()),
+                description: Some("An example text resource".into()),
+            }],
+            tools: vec![
+                // git_tool_info(),
+                bash_tool_info(),
+                scraping_tool_info(),
+                search_tool_info(),
+                graph_tool_info(),
+                regex_replace_tool_info(),
+                gmail_tool_info()
+                // oracle_select_tool_info(),
+                // sequential_thinking::sequential_thinking_tool_info(),
+                // memory::memory_tool_info(),
+                //task_planning::task_planning_tool_info(),
+            ],
+            client_capabilities: None,
+            client_info: None,
+        })
+    );
 
     let (tx_out, mut rx_out) = mpsc::unbounded_channel::<JsonRpcResponse>();
 
@@ -142,12 +169,20 @@ async fn main() {
                             intended_tool,
                             raw_json
                         );
-                        let resp = error_response(Some(Value::Number(1.into())), PARSE_ERROR, &error_msg);
+                        let resp = error_response(
+                            Some(Value::Number((1).into())),
+                            PARSE_ERROR,
+                            &error_msg
+                        );
                         let _ = tx_out.send(resp);
                         continue;
                     }
                 }
-                let resp = error_response(Some(Value::Number(1.into())), PARSE_ERROR, "Parse error");
+                let resp = error_response(
+                    Some(Value::Number((1).into())),
+                    PARSE_ERROR,
+                    "Parse error"
+                );
                 let _ = tx_out.send(resp);
                 continue;
             }
@@ -183,19 +218,23 @@ struct MCPServerState {
 async fn handle_request(
     req: JsonRpcRequest,
     state: &Arc<Mutex<MCPServerState>>,
-    tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+    tx_out: mpsc::UnboundedSender<JsonRpcResponse>
 ) -> Option<JsonRpcResponse> {
-    let id = if req.id.is_null() {
-        None
-    } else {
-        Some(req.id.clone())
-    };
+    let id = if req.id.is_null() { None } else { Some(req.id.clone()) };
 
     match req.method.as_str() {
         "initialize" => {
             let params = match req.params {
                 Some(p) => p,
-                None => return Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), -32602, "Missing params")),
+                None => {
+                    return Some(
+                        error_response(
+                            Some(id.unwrap_or(Value::Number((1).into()))),
+                            -32602,
+                            "Missing params"
+                        )
+                    );
+                }
             };
 
             let protocol_version = params
@@ -204,7 +243,13 @@ async fn handle_request(
                 .unwrap_or(LATEST_PROTOCOL_VERSION);
 
             if !SUPPORTED_PROTOCOL_VERSIONS.contains(&protocol_version) {
-                return Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), -32602, "Unsupported protocol version"));
+                return Some(
+                    error_response(
+                        Some(id.unwrap_or(Value::Number((1).into()))),
+                        -32602,
+                        "Unsupported protocol version"
+                    )
+                );
             }
 
             // Store client info and capabilities
@@ -246,7 +291,8 @@ async fn handle_request(
             Some(JsonRpcResponse {
                 jsonrpc: "2.0".to_string(),
                 id,
-                result: Some(json!({
+                result: Some(
+                    json!({
                     "protocolVersion": result.protocol_version,
                     "serverInfo": result.server_info,
                     "capabilities": {
@@ -256,7 +302,8 @@ async fn handle_request(
                         "resources": result.capabilities.resources,
                         "tools": result.capabilities.tools
                     }
-                })),
+                })
+                ),
                 error: None,
             })
         }
@@ -271,16 +318,13 @@ async fn handle_request(
         }
 
         "resources/read" => {
-            let params_res: Result<ReadResourceParams, _> =
-                serde_json::from_value(req.params.unwrap_or(Value::Null));
+            let params_res: Result<ReadResourceParams, _> = serde_json::from_value(
+                req.params.unwrap_or(Value::Null)
+            );
             let params = match params_res {
                 Ok(p) => p,
                 Err(e) => {
-                    return Some(error_response(
-                        id,
-                        -32602,
-                        &format!("Invalid params: {}", e),
-                    ))
+                    return Some(error_response(id, -32602, &format!("Invalid params: {}", e)));
                 }
             };
 
@@ -314,43 +358,45 @@ async fn handle_request(
         }
 
         "tools/call" => {
-            let params_res: Result<CallToolParams, _> =
-                serde_json::from_value(req.params.clone().unwrap_or(Value::Null));
+            let params_res: Result<CallToolParams, _> = serde_json::from_value(
+                req.params.clone().unwrap_or(Value::Null)
+            );
             let params = match params_res {
                 Ok(p) => p,
                 Err(e) => {
-                    return Some(error_response(
-                        id,
-                        -32602,
-                        &format!("Invalid params: {}", e),
-                    ))
+                    return Some(error_response(id, -32602, &format!("Invalid params: {}", e)));
                 }
             };
 
             let tool = {
                 let guard = state.lock().await;
-                guard.tools.iter().find(|t| t.name == params.name).cloned()
+                guard.tools
+                    .iter()
+                    .find(|t| t.name == params.name)
+                    .cloned()
             };
 
             match tool {
                 Some(t) => {
                     if t.name == "scrape_url" {
                         // Handle scrape_url tool
-                        let url = params
-                            .arguments
+                        let url = params.arguments
                             .get("url")
                             .and_then(Value::as_str)
                             .unwrap_or("")
                             .to_string();
                         if url.is_empty() {
-                            return Some(error_response(
-                                Some(id.unwrap_or(Value::Number(1.into()))),
-                                -32602,
-                                "Missing required argument: url",
-                            ));
+                            return Some(
+                                error_response(
+                                    Some(id.unwrap_or(Value::Number((1).into()))),
+                                    -32602,
+                                    "Missing required argument: url"
+                                )
+                            );
                         }
 
-                        let scrapingbee_api_key = std::env::var("SCRAPINGBEE_API_KEY")
+                        let scrapingbee_api_key = std::env
+                            ::var("SCRAPINGBEE_API_KEY")
                             .expect("SCRAPINGBEE_API_KEY environment variable must be set");
                         let mut client = ScrapingBeeClient::new(scrapingbee_api_key.clone());
                         client.url(&url).render_js(true);
@@ -370,14 +416,16 @@ async fn handle_request(
                                         let progress_notification = JsonRpcResponse {
                                             jsonrpc: "2.0".into(),
                                             id: None,
-                                            result: Some(json!({
+                                            result: Some(
+                                                json!({
                                                 "method": "notifications/progress",
                                                 "params": {
                                                     "progressToken": token,
                                                     "progress": 50,
                                                     "total": 100
                                                 }
-                                            })),
+                                            })
+                                            ),
                                             error: None,
                                         };
                                         let _ = tx_out.send(progress_notification);
@@ -399,11 +447,13 @@ async fn handle_request(
                             }
                             Ok(ScrapingBeeResponse::Binary(bytes)) => {
                                 // Save screenshot
-                                return Some(error_response(
-                                    id,
-                                    -32603,
-                                    &format!("Can't read binary scrapes"),
-                                ));
+                                return Some(
+                                    error_response(
+                                        id,
+                                        -32603,
+                                        &format!("Can't read binary scrapes")
+                                    )
+                                );
                             }
                             Err(e) => {
                                 let tool_res = CallToolResult {
@@ -422,11 +472,18 @@ async fn handle_request(
                         }
                     } else if t.name == "bash" {
                         // Parse bash params
-                        let bash_params: BashParams = match serde_json::from_value(params.arguments)
+                        let bash_params: BashParams = match
+                            serde_json::from_value(params.arguments)
                         {
                             Ok(p) => p,
                             Err(e) => {
-                                return Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INVALID_PARAMS, &e.to_string()))
+                                return Some(
+                                    error_response(
+                                        Some(id.unwrap_or(Value::Number((1).into()))),
+                                        INVALID_PARAMS,
+                                        &e.to_string()
+                                    )
+                                );
                             }
                         };
 
@@ -453,55 +510,82 @@ async fn handle_request(
                                 };
                                 Some(success_response(id, json!(tool_res)))
                             }
-                            Err(e) => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INTERNAL_ERROR, &e.to_string())),
+                            Err(e) =>
+                                Some(
+                                    error_response(
+                                        Some(id.unwrap_or(Value::Number((1).into()))),
+                                        INTERNAL_ERROR,
+                                        &e.to_string()
+                                    )
+                                ),
                         }
                     } else if t.name == "git" {
                         match handle_git_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INTERNAL_ERROR, &e.to_string())),
+                            Err(e) =>
+                                Some(
+                                    error_response(
+                                        Some(id.unwrap_or(Value::Number((1).into()))),
+                                        INTERNAL_ERROR,
+                                        &e.to_string()
+                                    )
+                                ),
+                        }
+                    } else if t.name == "gmail_tool" {
+                        match handle_gmail_tool_call(params, id.clone()).await {
+                            Ok(resp) => Some(resp),
+                            Err(e) =>
+                                Some(
+                                    error_response(
+                                        Some(id.unwrap_or_else(|| Value::Number((1).into()))),
+                                        -32603,
+                                        &e.to_string()
+                                    )
+                                ),
                         }
                     } else if t.name == "brave_search" {
                         let query = match params.arguments.get("query").and_then(Value::as_str) {
                             Some(q) => q.to_string(),
                             None => {
-                                return Some(error_response(
-                                    Some(id.unwrap_or(Value::Number(1.into()))),
-                                    -32602,
-                                    "Missing required argument: query",
-                                ))
+                                return Some(
+                                    error_response(
+                                        Some(id.unwrap_or(Value::Number((1).into()))),
+                                        -32602,
+                                        "Missing required argument: query"
+                                    )
+                                );
                             }
                         };
 
-                        let count = params
-                            .arguments
+                        let count = params.arguments
                             .get("count")
                             .and_then(Value::as_u64)
                             .unwrap_or(10)
                             .min(20) as u8;
 
-                        let brave_search_api_key = std::env::var("BRAVE_API_KEY")
+                        let brave_search_api_key = std::env
+                            ::var("BRAVE_API_KEY")
                             .expect("BRAVE_API_KEY environment variable must be set");
                         let client = BraveSearchClient::new(brave_search_api_key);
                         match client.search(&query).await {
                             Ok(response) => {
                                 let results = match response.web {
-                                    Some(web) => web
-                                        .results
-                                        .iter()
-                                        .take(count as usize)
-                                        .map(|result| {
-                                            format!(
-                                                "Title: {}\nURL: {}\nDescription: {}\n\n",
-                                                result.title,
-                                                result.url,
-                                                result
-                                                    .description
-                                                    .as_deref()
-                                                    .unwrap_or("No description available")
-                                            )
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .join("---\n"),
+                                    Some(web) =>
+                                        web.results
+                                            .iter()
+                                            .take(count as usize)
+                                            .map(|result| {
+                                                format!(
+                                                    "Title: {}\nURL: {}\nDescription: {}\n\n",
+                                                    result.title,
+                                                    result.url,
+                                                    result.description
+                                                        .as_deref()
+                                                        .unwrap_or("No description available")
+                                                )
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .join("---\n"),
                                     None => "No web results found".to_string(),
                                 };
 
@@ -535,26 +619,48 @@ async fn handle_request(
                         }
                     } else if t.name == "graph_tool" {
                         // Initialize with just the filename - path will be determined from env var
-                        let mut graph_manager =
-                            GraphManager::new("knowledge_graph.json".to_string());
+                        let mut graph_manager = GraphManager::new(
+                            "knowledge_graph.json".to_string()
+                        );
                         match handle_graph_tool_call(params, &mut graph_manager, id.clone()).await {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INTERNAL_ERROR, &e.to_string())),
+                            Err(e) =>
+                                Some(
+                                    error_response(
+                                        Some(id.unwrap_or(Value::Number((1).into()))),
+                                        INTERNAL_ERROR,
+                                        &e.to_string()
+                                    )
+                                ),
                         }
                     } else if t.name == "regex_replace" {
                         match handle_regex_replace_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INTERNAL_ERROR, &e.to_string())),
+                            Err(e) =>
+                                Some(
+                                    error_response(
+                                        Some(id.unwrap_or(Value::Number((1).into()))),
+                                        INTERNAL_ERROR,
+                                        &e.to_string()
+                                    )
+                                ),
                         }
                     } else if t.name == "sequential_thinking" {
-                        match sequential_thinking::handle_sequential_thinking_tool_call(
-                            params,
-                            id.clone(),
-                        )
-                        .await
+                        match
+                            sequential_thinking::handle_sequential_thinking_tool_call(
+                                params,
+                                id.clone()
+                            ).await
                         {
                             Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), INTERNAL_ERROR, &e.to_string())),
+                            Err(e) =>
+                                Some(
+                                    error_response(
+                                        Some(id.unwrap_or(Value::Number((1).into()))),
+                                        INTERNAL_ERROR,
+                                        &e.to_string()
+                                    )
+                                ),
                         }
                     } else if t.name == "memory" {
                         match memory::handle_memory_tool_call(params, id.clone()).await {
@@ -562,8 +668,8 @@ async fn handle_request(
                             Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
                         }
                     } else if t.name == "task_planning" {
-                        match task_planning::handle_task_planning_tool_call(params, id.clone())
-                            .await
+                        match
+                            task_planning::handle_task_planning_tool_call(params, id.clone()).await
                         {
                             Ok(resp) => Some(resp),
                             Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
@@ -574,10 +680,23 @@ async fn handle_request(
                             Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
                         }
                     } else {
-                        Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), -32601, "Tool not implemented"))
+                        Some(
+                            error_response(
+                                Some(id.unwrap_or(Value::Number((1).into()))),
+                                -32601,
+                                "Tool not implemented"
+                            )
+                        )
                     }
                 }
-                None => Some(error_response(Some(id.unwrap_or(Value::Number(1.into()))), -32601, "Tool not found")),
+                None =>
+                    Some(
+                        error_response(
+                            Some(id.unwrap_or(Value::Number((1).into()))),
+                            -32601,
+                            "Tool not found"
+                        )
+                    ),
             }
         }
 
