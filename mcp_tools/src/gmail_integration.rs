@@ -319,8 +319,14 @@ pub async fn handle_gmail_tool_call(
 
             // Format a text output
             let mut output = String::new();
-            for (i, msg_id) in messages.iter().enumerate() {
-                output.push_str(&format!("{}: {}\n", i + 1, msg_id));
+            for (i, msg) in messages.iter().enumerate() {
+                output.push_str(&format!("{}. ID: {}\n   From: {}\n   Subject: {}\n   Snippet: {}\n\n",
+                    i + 1,
+                    msg.id,
+                    msg.from.as_deref().unwrap_or("Unknown"),
+                    msg.subject.as_deref().unwrap_or("(No subject)"),
+                    msg.snippet.as_deref().unwrap_or("(No preview available)")
+                ));
             }
             if output.is_empty() {
                 output = "No messages found.".to_string();
