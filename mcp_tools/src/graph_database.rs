@@ -645,11 +645,18 @@ pub async fn handle_graph_tool_call(
 
             match graph_manager.create_root(node).await {
                 Ok(idx) => {
-                    let result = json!({
-                        "message": "Root node created",
-                        "node_index": idx.index()
-                    });
-                    Ok(success_response(id, result))
+                    let tool_res = CallToolResult {
+                        content: vec![ToolResponseContent {
+                            type_: "text".into(),
+                            text: format!("Root node created with index {}", idx.index()),
+                            annotations: None,
+                        }],
+                        is_error: Some(false),
+                        _meta: None,
+                        progress: None,
+                        total: None,
+                    };
+                    Ok(success_response(id, serde_json::to_value(tool_res)?))
                 }
                 Err(e) => return_error!(format!("Failed to create root: {}", e))
             }
@@ -669,11 +676,18 @@ pub async fn handle_graph_tool_call(
             if let Some((parent_idx, _)) = graph_manager.get_node_by_name(&parent) {
                 match graph_manager.create_connected_node(node, parent_idx, relation).await {
                     Ok(idx) => {
-                        let result = json!({
-                            "message": "Child node created",
-                            "node_index": idx.index()
-                        });
-                        Ok(success_response(id, result))
+                        let tool_res = CallToolResult {
+                            content: vec![ToolResponseContent {
+                                type_: "text".into(),
+                                text: format!("Child node created with index {}", idx.index()),
+                                annotations: None,
+                            }],
+                            is_error: Some(false),
+                            _meta: None,
+                            progress: None,
+                            total: None,
+                        };
+                        Ok(success_response(id, serde_json::to_value(tool_res)?))
                     }
                     Err(e) => return_error!(format!("Failed to create child: {}", e))
                 }
@@ -706,11 +720,18 @@ pub async fn handle_graph_tool_call(
 
                 match graph_manager.update_node(idx, updated_node).await {
                     Ok(_) => {
-                        let result = json!({
-                            "message": "Node updated successfully",
-                            "node": name
-                        });
-                        Ok(success_response(id, result))
+                        let tool_res = CallToolResult {
+                            content: vec![ToolResponseContent {
+                                type_: "text".into(),
+                                text: format!("Node '{}' updated successfully", name),
+                                annotations: None,
+                            }],
+                            is_error: Some(false),
+                            _meta: None,
+                            progress: None,
+                            total: None,
+                        };
+                        Ok(success_response(id, serde_json::to_value(tool_res)?))
                     }
                     Err(e) => return_error!(format!("Failed to update node '{}': {}", name, e))
                 }
@@ -724,11 +745,18 @@ pub async fn handle_graph_tool_call(
             if let Some((idx, _)) = graph_manager.get_node_by_name(&name) {
                 match graph_manager.delete_node(idx).await {
                     Ok(_) => {
-                        let result = json!({
-                            "message": "Node deleted successfully",
-                            "node": name
-                        });
-                        Ok(success_response(id, result))
+                        let tool_res = CallToolResult {
+                            content: vec![ToolResponseContent {
+                                type_: "text".into(),
+                                text: format!("Node '{}' deleted successfully", name),
+                                annotations: None,
+                            }],
+                            is_error: Some(false),
+                            _meta: None,
+                            progress: None,
+                            total: None,
+                        };
+                        Ok(success_response(id, serde_json::to_value(tool_res)?))
                     }
                     Err(e) => return_error!(format!("Failed to delete node '{}': {}", name, e))
                 }
@@ -756,13 +784,18 @@ pub async fn handle_graph_tool_call(
 
             match graph_manager.connect(from_idx, to_idx, relation.clone()).await {
                 Ok(_) => {
-                    let result = json!({
-                        "message": "Nodes connected successfully",
-                        "from": from,
-                        "to": to,
-                        "relation": relation.clone()
-                    });
-                    Ok(success_response(id, result))
+                    let tool_res = CallToolResult {
+                        content: vec![ToolResponseContent {
+                            type_: "text".into(),
+                            text: format!("Connected '{}' to '{}' with relation '{}'", from, to, relation),
+                            annotations: None,
+                        }],
+                        is_error: Some(false),
+                        _meta: None,
+                        progress: None,
+                        total: None,
+                    };
+                    Ok(success_response(id, serde_json::to_value(tool_res)?))
                 }
                 Err(e) => return_error!(format!(
                     "Failed to connect '{}' to '{}' with relation '{}': {}",
