@@ -108,7 +108,7 @@ pub struct TokenResponse {
 /// Parameters accepted by our Gmail tool.
 #[derive(Debug, Serialize, Deserialize)]
 struct GmailParams {
-    /// "auth_init", "auth_exchange", "send_message", "list_messages", "read_message"
+    /// "auth_init", "auth_exchange", "send_message", "list_messages", "read_message", "search_messages"
     action: String,
 
     /// For "auth_exchange"
@@ -124,19 +124,22 @@ struct GmailParams {
 
     /// For pagination, listing, etc.
     page_size: Option<u32>,
+
+    /// For "search_messages"
+    search_query: Option<String>,
 }
 
 /// Return a static `ToolInfo` describing the input JSON schema for your Gmail tool.
 pub fn gmail_tool_info() -> ToolInfo {
     ToolInfo {
         name: "gmail_tool".to_string(),
-        description: Some("Gmail integration tool for OAuth 2.0 login and send/receive operations.".into()),
+        description: Some("Gmail integration tool for OAuth 2.0 login, search, and send/receive operations.".into()),
         input_schema: json!({
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "description": "Action to perform: 'auth_init', 'auth_exchange', 'send_message', 'list_messages', 'read_message'"
+                    "description": "Action to perform: 'auth_init', 'auth_exchange', 'send_message', 'list_messages', 'read_message', 'search_messages'"
                 },
                 "code": {"type": "string", "description": "Authorization code (if 'auth_exchange')."},
                 "to": {"type": "string", "description": "Recipient email for sending messages."},
@@ -341,6 +344,50 @@ pub async fn handle_gmail_tool_call(
             ))
         }
 
+        "search_messages" => {
+            // 6. Search for messages that match a query (unread, etc.) and return metadata
+            let token = match read_cached_token()? {
+                Some(t) => t,
+                None => {
+                    return Ok(missing_auth_response(
+                        id, 
+                        "No OAuth token found. Please do 'auth_init' + 'auth_exchange' first."
+                    ));
+                }
+            };
+
+            // Default to "is:unread" if no query is provided
+            let query = gmail_params
+                .search_query
+                .clone()
+                .unwrap_or_else(|| "is:unread".to_string());
+            let page_size = gmail_params.page_size.unwrap_or(10);
+
+            // Call our new metadata function
+            let messages = search_gmail_messages_with_metadata(
+                &token.access_token, &query, page_size
+            ).await?;
+
+            // Convert to JSON or text
+            let json_output = serde_json::to_string_pretty(&messages)?;
+
+            Ok(success_response(
+                id,
+                serde_json::to_value(CallToolResult {
+                    content: vec![ToolResponseContent {
+                        type_: "text".into(),
+                        text: format!("Found {} messages matching '{}':\n{}", 
+                                    messages.len(), query, json_output),
+                        annotations: None,
+                    }],
+                    is_error: Some(false),
+                    _meta: None,
+                    progress: None,
+                    total: None,
+                })?,
+            ))
+        }
+
         _ => {
             // Invalid action
             Err(anyhow!("Invalid action '{}'", gmail_params.action))
@@ -464,6 +511,100 @@ pub async fn read_gmail_message(access_token: &str, message_id: &str) -> Result<
     let decoded = String::from_utf8(bytes)?;
 
     Ok(decoded)
+}
+
+/// Search for messages matching `query` and return basic metadata for each.
+pub async fn search_gmail_messages_with_metadata(
+    access_token: &str,
+    query: &str,
+    page_size: u32,
+) -> Result<Vec<EmailMetadata>> {
+    // 1. First, list the matching messages
+    let client = Client::new();
+    let list_url = format!(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages?q={}&maxResults={}",
+        urlencoding::encode(query),
+        page_size
+    );
+
+    let list_resp = client
+        .get(&list_url)
+        .bearer_auth(access_token)
+        .send()
+        .await?
+        .json::<serde_json::Value>()
+        .await?;
+
+    // The "messages" field is an array of objects with "id" and "threadId"
+    let messages = match list_resp.get("messages") {
+        Some(arr) => arr.as_array().unwrap_or(&vec![]).to_owned(),
+        None => vec![],
+    };
+
+    // 2. For each message, fetch metadata
+    let mut results = Vec::new();
+    for msg in messages {
+        let msg_id = match msg.get("id").and_then(|v| v.as_str()) {
+            Some(s) => s,
+            None => continue,
+        };
+        let thread_id = msg
+            .get("threadId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        // GET message with `format=metadata`
+        let msg_url = format!(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata",
+            msg_id
+        );
+        let metadata_resp = client
+            .get(&msg_url)
+            .bearer_auth(access_token)
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        // Extract snippet
+        let snippet = metadata_resp
+            .get("snippet")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // We find subject/from in `payload.headers[]`
+        let mut subject = None;
+        let mut from = None;
+
+        if let Some(payload) = metadata_resp.get("payload") {
+            if let Some(headers) = payload.get("headers").and_then(|h| h.as_array()) {
+                for header in headers {
+                    if let (Some(name), Some(value)) = (header.get("name"), header.get("value")) {
+                        if let (Some(name_str), Some(value_str)) = (name.as_str(), value.as_str()) {
+                            match name_str.to_lowercase().as_str() {
+                                "subject" => subject = Some(value_str.to_string()),
+                                "from" => from = Some(value_str.to_string()),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Build our struct
+        let email_meta = EmailMetadata {
+            id: msg_id.to_string(),
+            thread_id,
+            subject,
+            from,
+            snippet,
+        };
+        results.push(email_meta);
+    }
+
+    Ok(results)
 }
 
 //
