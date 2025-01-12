@@ -594,7 +594,7 @@ fn detect_intended_tool_call(json: &Value) -> Option<String> {
         (vec!["query"], "brave_search"),
         (vec!["action", "repo_path", "files", "message"], "git"),
         (
-            vec!["action", "params", "name", "description", "content"],
+            vec!["command", "name", "description", "content", "parent", "relation", "tags"],
             "graph_tool",
         ),
         (vec!["action", "params"], "sequential_thinking"),

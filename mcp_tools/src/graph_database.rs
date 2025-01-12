@@ -682,134 +682,91 @@ pub async fn handle_graph_tool_call(
             }
         }
         "update_node" => {
-            let update_params: UpdateNodeParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid update_node parameters: {}", e))
-            };
+            let name = get_field!("name").ok_or_else(|| anyhow!("Missing name"))?;
+            let new_name = get_field!("new_name");
+            let new_description = get_field!("new_description");
+            let new_content = get_field!("new_content");
+            let new_tags = get_tags!();
 
-            if let Some((idx, node)) = graph_manager.get_node_by_name(&update_params.node_name) {
-                let mut updated_node = DataNode::new(
-                    update_params.new_name.unwrap_or_else(|| node.name.clone()),
-                    update_params.new_description.unwrap_or_else(|| node.description.clone()),
-                    update_params.new_content.unwrap_or_else(|| node.content.clone()),
-                );
-
-                if let Some(tags) = update_params.new_tags {
-                    updated_node.tags = tags;
+            if let Some((idx, node)) = graph_manager.get_node_by_name(&name) {
+                let mut updated_node = node.clone();
+                
+                if let Some(name) = new_name {
+                    updated_node.name = name;
                 }
-                if let Some(metadata) = update_params.new_metadata {
-                    updated_node.metadata = metadata;
+                if let Some(desc) = new_description {
+                    updated_node.description = desc;
                 }
-                if let Some(quotes) = update_params.new_quotes {
-                    updated_node.quotes = quotes;
+                if let Some(content) = new_content {
+                    updated_node.content = content;
+                }
+                if !new_tags.is_empty() {
+                    updated_node.tags = new_tags;
                 }
 
                 match graph_manager.update_node(idx, updated_node).await {
                     Ok(_) => {
                         let result = json!({
                             "message": "Node updated successfully",
-                            "timestamp": chrono::Utc::now()
+                            "node": name
                         });
-                        let tool_res = CallToolResult {
-                            content: vec![ToolResponseContent {
-                                type_: "text".into(),
-                                text: result.to_string(),
-                                annotations: None,
-                            }],
-                            is_error: Some(false),
-                            _meta: None,
-                            progress: None,
-                            total: None,
-                        };
-                        Ok(success_response(id, serde_json::to_value(tool_res)?))
+                        Ok(success_response(id, result))
                     }
-                    Err(e) => return_error!(format!("Failed to update node '{}': {}", update_params.node_name, e))
+                    Err(e) => return_error!(format!("Failed to update node '{}': {}", name, e))
                 }
             } else {
-                return_error!(format!("Node '{}' not found", update_params.node_name))
+                return_error!(format!("Node '{}' not found", name))
             }
         }
         "delete_node" => {
-            let delete_params: DeleteNodeParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid delete_node parameters: {}", e))
-            };
-
-            match graph_manager.get_node_by_name(&delete_params.node_name) {
-                Some((idx, node)) => {
-                    // Store the name before the mutable borrow
-                    let name = node.name.clone();
-                    // Now perform the deletion
-                    match graph_manager.delete_node(idx).await {
-                        Ok(_) => {
-                            let result = json!({
-                                "message": "Node deleted successfully",
-                                "deleted_node": name,
-                                "timestamp": chrono::Utc::now()
-                            });
-                            let tool_res = CallToolResult {
-                                content: vec![ToolResponseContent {
-                                    type_: "text".into(),
-                                    text: result.to_string(),
-                                    annotations: None,
-                                }],
-                                is_error: Some(false),
-                                _meta: None,
-                                progress: None,
-                                total: None,
-                            };
-                            Ok::<JsonRpcResponse, anyhow::Error>(success_response(id, serde_json::to_value(tool_res)?))
-                        }
-                        Err(e) => return_error!(format!("Failed to delete node '{}': {}", name, e))
+            let name = get_field!("name").ok_or_else(|| anyhow!("Missing name"))?;
+            
+            if let Some((idx, _)) = graph_manager.get_node_by_name(&name) {
+                match graph_manager.delete_node(idx).await {
+                    Ok(_) => {
+                        let result = json!({
+                            "message": "Node deleted successfully",
+                            "node": name
+                        });
+                        Ok(success_response(id, result))
                     }
+                    Err(e) => return_error!(format!("Failed to delete node '{}': {}", name, e))
                 }
-                None => return_error!(format!("Node '{}' not found", delete_params.node_name))
+            } else {
+                return_error!(format!("Node '{}' not found", name))
             }
         }
         "connect_nodes" => {
-            let connect_params: ConnectNodesParams = match serde_json::from_value(action_params.clone()) {
-                Ok(p) => p,
-                Err(e) => return_error!(format!("Invalid connect_nodes parameters: {}", e))
-            };
+            let from = get_field!("from").ok_or_else(|| anyhow!("Missing 'from' node name"))?;
+            let to = get_field!("to").ok_or_else(|| anyhow!("Missing 'to' node name"))?;
+            let relation = get_field!("relation").ok_or_else(|| anyhow!("Missing relation"))?;
 
-            let from = graph_manager.get_node_by_name(&connect_params.from_node_name);
-            let to = graph_manager.get_node_by_name(&connect_params.to_node_name);
+            let from_node = graph_manager.get_node_by_name(&from);
+            let to_node = graph_manager.get_node_by_name(&to);
 
-            if from.is_none() {
-                return_error!(format!("Source node '{}' not found", connect_params.from_node_name));
+            if from_node.is_none() {
+                return_error!(format!("Source node '{}' not found", from));
             }
-            if to.is_none() {
-                return_error!(format!("Target node '{}' not found", connect_params.to_node_name));
+            if to_node.is_none() {
+                return_error!(format!("Target node '{}' not found", to));
             }
 
-            let (from_idx, _) = from.unwrap();
-            let (to_idx, _) = to.unwrap();
+            let (from_idx, _) = from_node.unwrap();
+            let (to_idx, _) = to_node.unwrap();
 
-            match graph_manager.connect(from_idx, to_idx, connect_params.relation.clone()).await {
+            match graph_manager.connect(from_idx, to_idx, relation).await {
                 Ok(_) => {
                     let result = json!({
                         "message": "Nodes connected successfully",
-                        "from": connect_params.from_node_name,
-                        "to": connect_params.to_node_name,
-                        "relation": connect_params.relation,
-                        "timestamp": chrono::Utc::now()
+                        "from": from,
+                        "to": to,
+                        "relation": relation
                     });
-                    let tool_res = CallToolResult {
-                        content: vec![ToolResponseContent {
-                            type_: "text".into(),
-                            text: result.to_string(),
-                            annotations: None,
-                        }],
-                        is_error: Some(false),
-                        _meta: None,
-                        progress: None,
-                        total: None,
-                    };
-                    Ok(success_response(id, serde_json::to_value(tool_res)?))
+                    Ok(success_response(id, result))
                 }
                 Err(e) => return_error!(format!(
                     "Failed to connect '{}' to '{}' with relation '{}': {}",
-                    connect_params.from_node_name, connect_params.to_node_name, connect_params.relation, e
+                    from, to, relation, e
                 ))
             }
         }
