@@ -143,7 +143,7 @@ pub struct EmailMetadata {
 pub fn gmail_tool_info() -> ToolInfo {
     ToolInfo {
         name: "gmail_tool".to_string(),
-        description: Some("Gmail integration tool for OAuth 2.0 login, search, and send/receive operations.".into()),
+        description: Some("Gmail integration tool for OAuth 2.0 login, search, and send/receive operations. Make sure to explicitly provide the authorization url to the user.".into()),
         input_schema: json!({
             "type": "object",
             "properties": {
