@@ -56,13 +56,26 @@ fn default_scopes() -> Vec<String> {
 
 impl GoogleOAuthConfig {
     pub fn from_env() -> Result<Self> {
+        // Check all required environment variables upfront
+        let missing_vars: Vec<&str> = vec![
+            "GOOGLE_OAUTH_CLIENT_ID",
+            "GOOGLE_OAUTH_CLIENT_SECRET", 
+            "GOOGLE_OAUTH_REDIRECT_URI"
+        ].into_iter()
+        .filter(|&var| std::env::var(var).is_err())
+        .collect();
+
+        if !missing_vars.is_empty() {
+            return Err(anyhow!(
+                "Missing required environment variables:\n{}\n\nPlease set these variables before using Gmail integration.",
+                missing_vars.join("\n")
+            ));
+        }
+
         Ok(Self {
-            client_id: std::env::var("GOOGLE_OAUTH_CLIENT_ID")
-                .map_err(|_| anyhow!("Missing GOOGLE_OAUTH_CLIENT_ID environment variable"))?,
-            client_secret: std::env::var("GOOGLE_OAUTH_CLIENT_SECRET")
-                .map_err(|_| anyhow!("Missing GOOGLE_OAUTH_CLIENT_SECRET environment variable"))?,
-            redirect_uri: std::env::var("GOOGLE_OAUTH_REDIRECT_URI")
-                .map_err(|_| anyhow!("Missing GOOGLE_OAUTH_REDIRECT_URI environment variable"))?,
+            client_id: std::env::var("GOOGLE_OAUTH_CLIENT_ID").unwrap(),
+            client_secret: std::env::var("GOOGLE_OAUTH_CLIENT_SECRET").unwrap(),
+            redirect_uri: std::env::var("GOOGLE_OAUTH_REDIRECT_URI").unwrap(),
             ..Default::default()
         })
     }
