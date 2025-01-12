@@ -176,27 +176,46 @@ pub async fn handle_gmail_tool_call(
 
     match gmail_params.action.as_str() {
         "auth_init" => {
-            // 1. Generate an OAuth 2.0 URL for user consent
-            let config = GoogleOAuthConfig::from_env()
-                .map_err(|e| anyhow!("Failed to load OAuth config: {}", e))?;
-            let auth_url = build_auth_url(&config)
-                .map_err(|e| anyhow!("Failed to build auth URL: {}", e))?;
-            let content = format!("Navigate to this URL to authorize:\n\n{}", auth_url);
+            // Check if we already have a valid token
+            if let Ok(Some(_token)) = read_cached_token() {
+                let content = "Already authorized! No need to re-authenticate.\nUse other Gmail actions directly.";
+                Ok(success_response(
+                    id,
+                    serde_json::to_value(CallToolResult {
+                        content: vec![ToolResponseContent {
+                            type_: "text".into(),
+                            text: content.to_string(),
+                            annotations: None,
+                        }],
+                        is_error: None,
+                        _meta: None,
+                        progress: None,
+                        total: None,
+                    })?,
+                ))
+            } else {
+                // 1. Generate an OAuth 2.0 URL for user consent
+                let config = GoogleOAuthConfig::from_env()
+                    .map_err(|e| anyhow!("Failed to load OAuth config: {}", e))?;
+                let auth_url = build_auth_url(&config)
+                    .map_err(|e| anyhow!("Failed to build auth URL: {}", e))?;
+                let content = format!("Navigate to this URL to authorize:\n\n{}", auth_url);
 
-            Ok(success_response(
-                id,
-                serde_json::to_value(CallToolResult {
-                    content: vec![ToolResponseContent {
-                        type_: "text".into(),
-                        text: content,
-                        annotations: None,
-                    }],
-                    is_error: None,
-                    _meta: None,
-                    progress: None,
-                    total: None,
-                })?,
-            ))
+                Ok(success_response(
+                    id,
+                    serde_json::to_value(CallToolResult {
+                        content: vec![ToolResponseContent {
+                            type_: "text".into(),
+                            text: content,
+                            annotations: None,
+                        }],
+                        is_error: None,
+                        _meta: None,
+                        progress: None,
+                        total: None,
+                    })?,
+                ))
+            }
         }
 
         "auth_exchange" => {
