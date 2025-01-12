@@ -640,7 +640,7 @@ pub async fn handle_graph_tool_call(
             let content = get_field!("content").ok_or_else(|| anyhow!("Missing content"))?;
             let tags = get_tags!();
 
-            let node = DataNode::new(name, description, content);
+            let mut node = DataNode::new(name, description, content);
             node.tags = tags;
 
             match graph_manager.create_root(node).await {
@@ -663,7 +663,7 @@ pub async fn handle_graph_tool_call(
             let relation = get_field!("relation").ok_or_else(|| anyhow!("Missing relation"))?;
             let tags = get_tags!();
 
-            let node = DataNode::new(name, description, content);
+            let mut node = DataNode::new(name, description, content);
             node.tags = tags;
 
             if let Some((parent_idx, _)) = graph_manager.get_node_by_name(&parent) {
@@ -754,13 +754,13 @@ pub async fn handle_graph_tool_call(
             let (from_idx, _) = from_node.unwrap();
             let (to_idx, _) = to_node.unwrap();
 
-            match graph_manager.connect(from_idx, to_idx, relation).await {
+            match graph_manager.connect(from_idx, to_idx, relation.clone()).await {
                 Ok(_) => {
                     let result = json!({
                         "message": "Nodes connected successfully",
                         "from": from,
                         "to": to,
-                        "relation": relation
+                        "relation": relation.clone()
                     });
                     Ok(success_response(id, result))
                 }
@@ -829,6 +829,6 @@ pub async fn handle_graph_tool_call(
             };
             Ok(success_response(id, serde_json::to_value(tool_res)?))
         }
-        _ => return_error!(format!("Invalid action '{}'. Supported actions: create_root, create_node, update_node, delete_node, connect_nodes, get_node, get_children, get_nodes_by_tag, search_nodes, get_most_connected, get_top_tags, get_recent_nodes, get_tags_by_date", action))
+        _ => return_error!(format!("Invalid action '{}'. Supported actions: create_root, create_node, update_node, delete_node, connect_nodes, get_node, get_children, get_nodes_by_tag, search_nodes, get_most_connected, get_top_tags, get_recent_nodes, get_tags_by_date", command))
     }
 }
