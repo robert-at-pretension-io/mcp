@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use std::{fs, io};
 use anyhow::{anyhow, Result};
 use reqwest::Client;
-use base64;
+use base64::engine::general_purpose::URL_SAFE;
+use base64::Engine as _;
 use tracing::{debug, error};
 
 use shared_protocol_objects::{
@@ -443,7 +444,7 @@ pub async fn read_gmail_message(access_token: &str, message_id: &str) -> Result<
         .ok_or_else(|| anyhow!("No 'raw' field in Gmail message"))?;
 
     // Decode base64 (URL-safe variant)
-    let bytes = base64::decode_config(raw, base64::URL_SAFE)?;
+    let bytes = URL_SAFE.decode(raw)?;
     let decoded = String::from_utf8(bytes)?;
 
     Ok(decoded)
