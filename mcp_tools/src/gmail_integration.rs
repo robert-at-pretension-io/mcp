@@ -129,6 +129,16 @@ struct GmailParams {
     search_query: Option<String>,
 }
 
+/// Metadata about an email message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailMetadata {
+    pub id: String,
+    pub thread_id: String,
+    pub subject: Option<String>,
+    pub from: Option<String>,
+    pub snippet: Option<String>,
+}
+
 /// Return a static `ToolInfo` describing the input JSON schema for your Gmail tool.
 pub fn gmail_tool_info() -> ToolInfo {
     ToolInfo {
