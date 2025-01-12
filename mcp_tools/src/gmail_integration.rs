@@ -55,16 +55,16 @@ fn default_scopes() -> Vec<String> {
 }
 
 impl GoogleOAuthConfig {
-    pub fn from_env() -> Self {
-        Self {
+    pub fn from_env() -> Result<Self> {
+        Ok(Self {
             client_id: std::env::var("GOOGLE_OAUTH_CLIENT_ID")
-                .expect("Missing GOOGLE_OAUTH_CLIENT_ID"),
+                .map_err(|_| anyhow!("Missing GOOGLE_OAUTH_CLIENT_ID environment variable"))?,
             client_secret: std::env::var("GOOGLE_OAUTH_CLIENT_SECRET")
-                .expect("Missing GOOGLE_OAUTH_CLIENT_SECRET"),
+                .map_err(|_| anyhow!("Missing GOOGLE_OAUTH_CLIENT_SECRET environment variable"))?,
             redirect_uri: std::env::var("GOOGLE_OAUTH_REDIRECT_URI")
-                .expect("Missing GOOGLE_OAUTH_REDIRECT_URI"),
+                .map_err(|_| anyhow!("Missing GOOGLE_OAUTH_REDIRECT_URI environment variable"))?,
             ..Default::default()
-        }
+        })
     }
 }
 
@@ -151,8 +151,10 @@ pub async fn handle_gmail_tool_call(
     match gmail_params.action.as_str() {
         "auth_init" => {
             // 1. Generate an OAuth 2.0 URL for user consent
-            let config = GoogleOAuthConfig::from_env();
-            let auth_url = build_auth_url(&config);
+            let config = GoogleOAuthConfig::from_env()
+                .map_err(|e| anyhow!("Failed to load OAuth config: {}", e))?;
+            let auth_url = build_auth_url(&config)
+                .map_err(|e| anyhow!("Failed to build auth URL: {}", e))?;
             let content = format!("Navigate to this URL to authorize:\n\n{}", auth_url);
 
             Ok(success_response(
@@ -177,7 +179,8 @@ pub async fn handle_gmail_tool_call(
                 .code
                 .clone()
                 .ok_or_else(|| anyhow!("'code' is required for 'auth_exchange'"))?;
-            let config = GoogleOAuthConfig::from_env();
+            let config = GoogleOAuthConfig::from_env()
+                .map_err(|e| anyhow!("Failed to load OAuth config: {}", e))?;
             let token_response = exchange_code_for_token(&config, &code).await?;
 
             // Store the token on disk
@@ -333,15 +336,15 @@ pub async fn handle_gmail_tool_call(
 }
 
 /// Build the Google OAuth 2.0 authorization URL to get the user’s consent.
-fn build_auth_url(config: &GoogleOAuthConfig) -> String {
+fn build_auth_url(config: &GoogleOAuthConfig) -> Result<String> {
     let scopes_str = config.scopes.join(" ");
-    format!(
+    Ok(format!(
         "{}?client_id={}&redirect_uri={}&response_type=code&scope={}&access_type=offline&prompt=consent",
         config.auth_uri,
         urlencoding::encode(&config.client_id),
         urlencoding::encode(&config.redirect_uri),
         urlencoding::encode(&scopes_str),
-    )
+    ))
 }
 
 /// Exchange an auth code for an access token & refresh token
