@@ -1,8 +1,7 @@
 use serde::{ Deserialize, Serialize };
 use serde_json::{ json, Value };
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::{ fs, io };
+use std::{ fs, io, time };
 use anyhow::{ anyhow, Result };
 use reqwest::Client;
 use base64::engine::general_purpose::URL_SAFE;
@@ -24,9 +23,14 @@ use shared_protocol_objects::{
 pub struct GmailToken {
     pub access_token: String,
     pub refresh_token: Option<String>,
-    pub expires_in: i64,
+    pub expires_in: i64,           // typically in seconds
     pub token_type: String,
     pub scope: Option<String>,
+
+    /// When did we obtain this token? (Unix timestamp, seconds)
+    /// We'll use this to check if it's expired or about to expire.
+    #[serde(default)]
+    pub obtained_at: i64,
 }
 
 /// Basic config for OAuth
@@ -136,7 +140,7 @@ struct GmailParams {
     /// For "search_messages"
     search_query: Option<String>,
 
-    // --- NEW FIELDS FOR "modify_message" ACTION ---
+    // --- Fields for "modify_message" ---
     #[serde(default)]
     archive: bool,
     #[serde(default)]
@@ -225,10 +229,9 @@ pub async fn handle_gmail_tool_call(
 
     match gmail_params.action.as_str() {
         "auth_init" => {
-            // (same as before)
+            // If we already have a token in store, skip auth
             if let Ok(Some(_token)) = read_cached_token() {
-                let content =
-                    "Already authorized! No need to re-authenticate.\nUse other Gmail actions directly.";
+                let content = "Already authorized! No need to re-authenticate.\nUse other Gmail actions directly.";
                 Ok(
                     success_response(
                         id,
@@ -246,13 +249,15 @@ pub async fn handle_gmail_tool_call(
                     )
                 )
             } else {
-                let config = GoogleOAuthConfig::from_env().map_err(|e|
-                    anyhow!("Failed to load OAuth config: {}", e)
-                )?;
-                let auth_url = build_auth_url(&config).map_err(|e|
-                    anyhow!("Failed to build auth URL: {}", e)
-                )?;
-                let content = format!("Navigate to this URL to authorize:\n\n{}", auth_url);
+                let config = GoogleOAuthConfig::from_env()
+                    .map_err(|e| anyhow!("Failed to load OAuth config: {}", e))?;
+                let auth_url = build_auth_url(&config)
+                    .map_err(|e| anyhow!("Failed to build auth URL: {}", e))?;
+
+                let content = format!(
+                    "Navigate to this URL to authorize:\n\n{}",
+                    auth_url
+                );
 
                 Ok(
                     success_response(
@@ -274,23 +279,27 @@ pub async fn handle_gmail_tool_call(
         }
 
         "auth_exchange" => {
-            // (same as before)
+            // Exchange an authorization code for an access token & refresh token
             let code = gmail_params.code
                 .clone()
                 .ok_or_else(|| anyhow!("'code' is required for 'auth_exchange'"))?;
-            let config = GoogleOAuthConfig::from_env().map_err(|e|
-                anyhow!("Failed to load OAuth config: {}", e)
-            )?;
+
+            let config = GoogleOAuthConfig::from_env()
+                .map_err(|e| anyhow!("Failed to load OAuth config: {}", e))?;
+
             let token_response = exchange_code_for_token(&config, &code).await?;
 
-            // Store the token on disk
+            let now_secs = current_epoch()?;
             let gmail_token = GmailToken {
                 access_token: token_response.access_token,
                 refresh_token: token_response.refresh_token,
                 expires_in: token_response.expires_in,
                 token_type: token_response.token_type,
                 scope: Some(token_response.scope),
+                obtained_at: now_secs,
             };
+
+            // Store the token on disk
             store_cached_token(&gmail_token)?;
 
             let success_message = "OAuth exchange successful! Access token acquired and stored.";
@@ -313,16 +322,19 @@ pub async fn handle_gmail_tool_call(
         }
 
         "send_message" => {
-            // (same as before)
-            let token = match read_cached_token()? {
-                Some(t) => t,
-                None => {
+            // Make sure we have a valid token first
+            let token = match get_or_refresh_token().await {
+                Ok(t) => t,
+                Err(e) => {
                     return Ok(
                         missing_auth_response(
                             id,
-                            "No OAuth token found. Please do 'auth_init' + 'auth_exchange' first."
+                            &format!(
+                                "Failed to get a valid token: {}. Please do 'auth_init' + 'auth_exchange'.",
+                                e
+                            )
                         )
-                    );
+                    )
                 }
             };
 
@@ -357,16 +369,18 @@ pub async fn handle_gmail_tool_call(
         }
 
         "list_messages" => {
-            // (same as before)
-            let token = match read_cached_token()? {
-                Some(t) => t,
-                None => {
+            let token = match get_or_refresh_token().await {
+                Ok(t) => t,
+                Err(e) => {
                     return Ok(
                         missing_auth_response(
                             id,
-                            "No OAuth token found. Please do 'auth_init' + 'auth_exchange' first."
+                            &format!(
+                                "Failed to get a valid token: {}. Please re-authenticate.",
+                                e
+                            )
                         )
-                    );
+                    )
                 }
             };
 
@@ -378,17 +392,15 @@ pub async fn handle_gmail_tool_call(
                 output.push_str("No messages found.");
             } else {
                 for (i, msg) in messages.iter().enumerate() {
-                    output.push_str(
-                        &format!(
-                            "{index}. ID: {id}\n   From: {from}\n   To: {to}\n   Subject: {subject}\n   Snippet: {snippet}\n\n",
-                            index = i + 1,
-                            id = msg.id,
-                            from = msg.from.as_deref().unwrap_or("Unknown"),
-                            to = msg.to.as_deref().unwrap_or("Unknown"),
-                            subject = msg.subject.as_deref().unwrap_or("(No subject)"),
-                            snippet = msg.snippet.as_deref().unwrap_or("(No preview available)")
-                        )
-                    );
+                    output.push_str(&format!(
+                        "{index}. ID: {id}\n   From: {from}\n   To: {to}\n   Subject: {subject}\n   Snippet: {snippet}\n\n",
+                        index = i + 1,
+                        id = msg.id,
+                        from = msg.from.as_deref().unwrap_or("Unknown"),
+                        to = msg.to.as_deref().unwrap_or("Unknown"),
+                        subject = msg.subject.as_deref().unwrap_or("(No subject)"),
+                        snippet = msg.snippet.as_deref().unwrap_or("(No preview available)")
+                    ));
                 }
             }
 
@@ -411,16 +423,18 @@ pub async fn handle_gmail_tool_call(
         }
 
         "read_message" => {
-            // (same as before)
-            let token = match read_cached_token()? {
-                Some(t) => t,
-                None => {
+            let token = match get_or_refresh_token().await {
+                Ok(t) => t,
+                Err(e) => {
                     return Ok(
                         missing_auth_response(
                             id,
-                            "No OAuth token found. Please do 'auth_init' + 'auth_exchange' first."
+                            &format!(
+                                "Failed to get a valid token: {}. Please re-authenticate.",
+                                e
+                            )
                         )
-                    );
+                    )
                 }
             };
 
@@ -449,16 +463,15 @@ pub async fn handle_gmail_tool_call(
         }
 
         "search_messages" => {
-            // (same as before)
-            let token = match read_cached_token()? {
-                Some(t) => t,
-                None => {
+            let token = match get_or_refresh_token().await {
+                Ok(t) => t,
+                Err(e) => {
                     return Ok(
                         missing_auth_response(
                             id,
-                            "No OAuth token found. Please do 'auth_init' + 'auth_exchange' first."
+                            &format!("Failed to get a valid token: {}.", e)
                         )
-                    );
+                    )
                 }
             };
 
@@ -498,19 +511,16 @@ pub async fn handle_gmail_tool_call(
             )
         }
 
-        //
-        // ----------- NEW ACTION: "modify_message" -----------
-        //
         "modify_message" => {
-            let token = match read_cached_token()? {
-                Some(t) => t,
-                None => {
+            let token = match get_or_refresh_token().await {
+                Ok(t) => t,
+                Err(e) => {
                     return Ok(
                         missing_auth_response(
                             id,
-                            "No OAuth token found. Please do 'auth_init' + 'auth_exchange' first."
+                            &format!("Failed to get a valid token: {}.", e)
                         )
-                    );
+                    )
                 }
             };
 
@@ -575,7 +585,9 @@ pub async fn handle_gmail_tool_call(
     }
 }
 
-/// Build the Google OAuth 2.0 authorization URL to get the user’s consent.
+/// ---------------------------------------
+/// Helper: Build the Google OAuth 2.0 authorization URL
+/// ---------------------------------------
 fn build_auth_url(config: &GoogleOAuthConfig) -> Result<String> {
     let scopes_str = config.scopes.join(" ");
     Ok(
@@ -589,7 +601,9 @@ fn build_auth_url(config: &GoogleOAuthConfig) -> Result<String> {
     )
 }
 
-/// Exchange an auth code for an access token & refresh token
+/// ---------------------------------------
+/// Helper: Exchange an auth code for an access/refresh token
+/// ---------------------------------------
 async fn exchange_code_for_token(config: &GoogleOAuthConfig, code: &str) -> Result<TokenResponse> {
     let client = Client::new();
     let params = [
@@ -609,7 +623,84 @@ async fn exchange_code_for_token(config: &GoogleOAuthConfig, code: &str) -> Resu
     Ok(response)
 }
 
+/// ---------------------------------------
+/// Helper: Refresh access token using refresh_token
+/// ---------------------------------------
+async fn refresh_access_token(token: &GmailToken) -> Result<GmailToken> {
+    let config = GoogleOAuthConfig::from_env()
+        .map_err(|e| anyhow!("Failed to load OAuth config: {}", e))?;
+
+    if token.refresh_token.is_none() {
+        return Err(anyhow!("No refresh token stored. Cannot refresh."));
+    }
+
+    let client = Client::new();
+    let params = [
+        ("client_id", config.client_id.as_str()),
+        ("client_secret", config.client_secret.as_str()),
+        ("refresh_token", token.refresh_token.as_ref().unwrap().as_str()),
+        ("grant_type", "refresh_token"),
+    ];
+
+    let response = client
+        .post(&config.token_uri)
+        .form(&params)
+        .send().await?
+        .json::<TokenResponse>().await?;
+
+    let now_secs = current_epoch()?;
+    // If Google doesn't return a new refresh_token, we keep the old one
+    let new_refresh_token = if response.refresh_token.is_some() {
+        response.refresh_token
+    } else {
+        token.refresh_token.clone()
+    };
+
+    // Build a new GmailToken
+    let new_token = GmailToken {
+        access_token: response.access_token,
+        refresh_token: new_refresh_token,
+        expires_in: response.expires_in,
+        token_type: response.token_type,
+        scope: Some(response.scope),
+        obtained_at: now_secs,
+    };
+
+    // Persist it
+    store_cached_token(&new_token)?;
+
+    Ok(new_token)
+}
+
+/// ---------------------------------------
+/// Helper: Return a guaranteed valid (not expired) token.
+/// - If existing token is still valid, return it.
+/// - If expired or near expiry, refresh.
+/// - If refresh fails, return error.
+/// ---------------------------------------
+async fn get_or_refresh_token() -> Result<GmailToken> {
+    let mut token = read_cached_token()?
+        .ok_or_else(|| anyhow!("No token found on disk."))?;
+
+    // If we are within N seconds of expiry, refresh the token.
+    // For safety, let's refresh if < 60 seconds remain.
+    let now_secs = current_epoch()?;
+    let expiry_time = token.obtained_at + token.expires_in;
+    let time_left = expiry_time - now_secs;
+
+    if time_left < 60 {
+        debug!("Access token near or past expiry, attempting refresh...");
+        token = refresh_access_token(&token).await?;
+    } else {
+        debug!("Access token is still valid with {}s left.", time_left);
+    }
+
+    Ok(token)
+}
+
+/// ---------------------------------------
 /// Send a Gmail message
+/// ---------------------------------------
 pub async fn send_gmail_message(
     access_token: &str,
     to: &str,
@@ -639,7 +730,10 @@ pub async fn send_gmail_message(
     Ok(())
 }
 
-/// Lists the user's Gmail messages (no query filter) and fetches metadata for each.
+/// ---------------------------------------
+/// List the user's Gmail messages (no query),
+/// retrieving metadata for each
+/// ---------------------------------------
 pub async fn list_gmail_messages_with_metadata(
     access_token: &str,
     page_size: u32
@@ -647,8 +741,10 @@ pub async fn list_gmail_messages_with_metadata(
     let client = Client::new();
 
     // 1. List messages (no query), limited by page_size
-    let list_url =
-        format!("https://gmail.googleapis.com/gmail/v1/users/me/messages?pageSize={}", page_size);
+    let list_url = format!(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages?pageSize={}",
+        page_size
+    );
 
     let list_resp = client
         .get(&list_url)
@@ -658,11 +754,7 @@ pub async fn list_gmail_messages_with_metadata(
 
     // "messages" is an array of { id, threadId }
     let messages = match list_resp.get("messages") {
-        Some(arr) =>
-            arr
-                .as_array()
-                .unwrap_or(&vec![])
-                .to_owned(),
+        Some(arr) => arr.as_array().unwrap_or(&vec![]).to_owned(),
         None => vec![],
     };
 
@@ -671,19 +763,19 @@ pub async fn list_gmail_messages_with_metadata(
     for msg in messages {
         let msg_id = match msg.get("id").and_then(|v| v.as_str()) {
             Some(s) => s,
-            None => {
-                continue;
-            }
+            None => continue,
         };
+
         let thread_id = msg
             .get("threadId")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        // GET message with `format=metadata`
-        let msg_url =
-            format!("https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata", msg_id);
+        let msg_url = format!(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata",
+            msg_id
+        );
         let metadata_resp = client
             .get(&msg_url)
             .bearer_auth(access_token)
@@ -724,7 +816,6 @@ pub async fn list_gmail_messages_with_metadata(
             }
         }
 
-        // Build the EmailMetadata
         let email_meta = EmailMetadata {
             id: msg_id.to_string(),
             thread_id,
@@ -739,7 +830,9 @@ pub async fn list_gmail_messages_with_metadata(
     Ok(results)
 }
 
+/// ---------------------------------------
 /// Read the raw text of a single message
+/// ---------------------------------------
 pub async fn read_gmail_message(access_token: &str, message_id: &str) -> Result<String> {
     let client = Client::new();
     let url = format!("https://gmail.googleapis.com/gmail/v1/users/me/messages/{}", message_id);
@@ -750,30 +843,29 @@ pub async fn read_gmail_message(access_token: &str, message_id: &str) -> Result<
         .send().await?
         .json::<serde_json::Value>().await?;
 
-    // Extract the message body from the payload
-    let payload = resp.get("payload").ok_or_else(|| anyhow!("No payload in Gmail message"))?;
+    let payload = resp
+        .get("payload")
+        .ok_or_else(|| anyhow!("No payload in Gmail message"))?;
 
-    // Try to get the body directly from the payload first
-    if
-        let Some(body) = payload
-            .get("body")
-            .and_then(|b| b.get("data"))
-            .and_then(|d| d.as_str())
+    // Try to get the body directly from the top-level payload
+    if let Some(body_data) = payload
+        .get("body")
+        .and_then(|b| b.get("data"))
+        .and_then(|d| d.as_str())
     {
-        let bytes = URL_SAFE.decode(body)?;
+        let bytes = URL_SAFE.decode(body_data)?;
         return Ok(String::from_utf8(bytes)?);
     }
 
-    // If no direct body, look for the first text/plain part
+    // Otherwise, look in payload.parts for the first text/plain
     if let Some(parts) = payload.get("parts").and_then(|p| p.as_array()) {
         for part in parts {
             if let Some(mime_type) = part.get("mimeType").and_then(|m| m.as_str()) {
                 if mime_type == "text/plain" {
-                    if
-                        let Some(body_data) = part
-                            .get("body")
-                            .and_then(|b| b.get("data"))
-                            .and_then(|d| d.as_str())
+                    if let Some(body_data) = part
+                        .get("body")
+                        .and_then(|b| b.get("data"))
+                        .and_then(|d| d.as_str())
                     {
                         let bytes = URL_SAFE.decode(body_data)?;
                         return Ok(String::from_utf8(bytes)?);
@@ -786,13 +878,15 @@ pub async fn read_gmail_message(access_token: &str, message_id: &str) -> Result<
     Err(anyhow!("Could not find message body"))
 }
 
-/// Search for messages matching `query` and return basic metadata for each.
+/// ---------------------------------------
+/// Search for messages matching `query`
+/// and return basic metadata
+/// ---------------------------------------
 pub async fn search_gmail_messages_with_metadata(
     access_token: &str,
     query: &str,
     page_size: u32
 ) -> Result<Vec<EmailMetadata>> {
-    // 1. First, list the matching messages
     let client = Client::new();
     let list_url = format!(
         "https://gmail.googleapis.com/gmail/v1/users/me/messages?q={}&maxResults={}",
@@ -806,47 +900,39 @@ pub async fn search_gmail_messages_with_metadata(
         .send().await?
         .json::<serde_json::Value>().await?;
 
-    // The "messages" field is an array of objects with "id" and "threadId"
     let messages = match list_resp.get("messages") {
-        Some(arr) =>
-            arr
-                .as_array()
-                .unwrap_or(&vec![])
-                .to_owned(),
+        Some(arr) => arr.as_array().unwrap_or(&vec![]).to_owned(),
         None => vec![],
     };
 
-    // 2. For each message, fetch metadata
     let mut results = Vec::new();
     for msg in messages {
         let msg_id = match msg.get("id").and_then(|v| v.as_str()) {
             Some(s) => s,
-            None => {
-                continue;
-            }
+            None => continue,
         };
+
         let thread_id = msg
             .get("threadId")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        // GET message with `format=metadata`
-        let msg_url =
-            format!("https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata", msg_id);
+        let msg_url = format!(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata",
+            msg_id
+        );
         let metadata_resp = client
             .get(&msg_url)
             .bearer_auth(access_token)
             .send().await?
             .json::<serde_json::Value>().await?;
 
-        // Extract snippet
         let snippet = metadata_resp
             .get("snippet")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        // We find subject/from in `payload.headers[]`
         let mut subject = None;
         let mut from = None;
         let mut to = None;
@@ -864,8 +950,6 @@ pub async fn search_gmail_messages_with_metadata(
                                     from = Some(value_str.to_string());
                                 }
                                 "to" => {
-                                    // For searching we didn't care about 'to' previously,
-                                    // but let's be consistent with the other code
                                     to = Some(value_str.to_string());
                                 }
                                 _ => {}
@@ -876,22 +960,23 @@ pub async fn search_gmail_messages_with_metadata(
             }
         }
 
-        // Build our struct
-        let email_meta = EmailMetadata {
+        results.push(EmailMetadata {
             id: msg_id.to_string(),
             thread_id,
             subject,
             from,
             to,
             snippet,
-        };
-        results.push(email_meta);
+        });
     }
 
     Ok(results)
 }
 
-/// Modify labels on a single message (e.g. archive, mark as read/unread, star, etc.)
+/// ---------------------------------------
+/// Modify labels on a single message
+/// (archive, mark as read/unread, star, etc.)
+/// ---------------------------------------
 pub async fn modify_gmail_message_labels(
     access_token: &str,
     message_id: &str,
@@ -924,20 +1009,17 @@ pub async fn modify_gmail_message_labels(
     Ok(())
 }
 
-//
-// -------------------- TOKEN STORAGE LOGIC --------------------
-//
+/// ---------------------------------------
+/// TOKEN STORAGE + Utility
+/// ---------------------------------------
 
-/// Get the path to `~/token_store/gmail_token.json`, creating the directory if needed.
 fn get_token_store_path() -> Result<PathBuf> {
-    let home_dir = dirs
-        ::home_dir()
+    let home_dir = dirs::home_dir()
         .ok_or_else(|| anyhow!("Unable to determine the user's home directory"))?;
 
     let token_store_dir = home_dir.join("token_store");
     if !token_store_dir.exists() {
-        fs
-            ::create_dir_all(&token_store_dir)
+        fs::create_dir_all(&token_store_dir)
             .map_err(|e| anyhow!("Failed to create token_store dir: {}", e))?;
     }
 
@@ -945,7 +1027,6 @@ fn get_token_store_path() -> Result<PathBuf> {
     Ok(token_file)
 }
 
-/// Read the token from the token store (if it exists).
 fn read_cached_token() -> Result<Option<GmailToken>> {
     let token_file = get_token_store_path()?;
     if !token_file.exists() {
@@ -957,7 +1038,6 @@ fn read_cached_token() -> Result<Option<GmailToken>> {
     Ok(Some(token))
 }
 
-/// Write the token to the token store.
 fn store_cached_token(token: &GmailToken) -> Result<()> {
     let token_file = get_token_store_path()?;
     let data = serde_json::to_string_pretty(token)?;
@@ -965,7 +1045,15 @@ fn store_cached_token(token: &GmailToken) -> Result<()> {
     Ok(())
 }
 
-/// Helper that returns a "please authenticate" response.
+/// Return the current Unix epoch time in seconds
+fn current_epoch() -> Result<i64> {
+    let now = time::SystemTime::now()
+        .duration_since(time::UNIX_EPOCH)
+        .map_err(|e| anyhow!("Failed to get system time: {}", e))?;
+    Ok(now.as_secs() as i64)
+}
+
+/// Return a "please authenticate" response
 fn missing_auth_response(id: Option<Value>, msg: &str) -> JsonRpcResponse {
     success_response(
         id,

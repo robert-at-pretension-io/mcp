@@ -47,6 +47,7 @@ use mcp_tools::process_html::extract_text_from_html;
 use mcp_tools::regex_replace::{ handle_regex_replace_tool_call, regex_replace_tool_info };
 use mcp_tools::scraping_bee::{ scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse };
 use mcp_tools::oracle_tool::{ oracle_select_tool_info, handle_oracle_select_tool_call };
+use mcp_tools::email_validator::{ neverbounce_tool_info, handle_neverbounce_tool_call };
 
 #[tokio::main]
 async fn main() {
@@ -106,7 +107,8 @@ async fn main() {
                 search_tool_info(),
                 graph_tool_info(),
                 regex_replace_tool_info(),
-                gmail_tool_info()
+                gmail_tool_info(),
+                neverbounce_tool_info(),
                 // oracle_select_tool_info(),
                 // sequential_thinking::sequential_thinking_tool_info(),
                 // memory::memory_tool_info(),
@@ -519,6 +521,17 @@ async fn handle_request(
                                     )
                                 ),
                         }
+                    } else if t.name == "never_bounce_tool" {
+                        // Here we call the handler function
+                        match handle_neverbounce_tool_call(params, id.clone()).await {
+                            Ok(resp) => Some(resp),
+                            Err(e) => Some(error_response(
+                                Some(id.unwrap_or(Value::Number((1).into()))),
+                                -32603,
+                                &e.to_string()
+                            )),
+                        }
+                    
                     } else if t.name == "git" {
                         match handle_git_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
