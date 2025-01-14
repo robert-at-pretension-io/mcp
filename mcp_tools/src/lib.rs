@@ -11,3 +11,4 @@ pub mod sequential_thinking;
 pub mod task_planning;
 pub mod gmail_integration;
 pub mod email_validator;
+pub mod long_running_task;
