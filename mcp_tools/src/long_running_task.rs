@@ -254,33 +254,23 @@ pub fn long_running_tool_info() -> ToolInfo {
     ToolInfo {
         name: "long_running_tool".to_string(),
         description: Some(
-            r#"
-Run long-running bash commands asynchronously, with partial output streaming.
-Commands:
-- start_task
-- get_status
-- list_tasks
-
-For start_task: 
-{
-  "command": "start_task",
-  "commandString": "sleep 5; echo Hello",
-  "reason": "Testing partial logs"
-}
-
-For get_status:
-{
-  "command": "get_status",
-  "taskId": "task-123"
-}
-
-For list_tasks:
-{
-  "command": "list_tasks",
-  "status": "running"   // or "ended", "error", etc.
-}
-"#
-            .to_string(),
+            "Executes long-running bash commands with real-time output streaming. Use this for:
+            
+            1. Running background processes
+            2. Monitoring command progress
+            3. Capturing partial output
+            4. Managing multiple concurrent tasks
+            
+            Key features:
+            - Real-time stdout/stderr streaming
+            - Persistent task tracking
+            - Status monitoring (running/ended/error)
+            - Task listing with filters
+            
+            Example commands:
+            - Start: {'command':'start_task','commandString':'long_running.sh','reason':'Processing data'}
+            - Check: {'command':'get_status','taskId':'task-123'}
+            - List: {'command':'list_tasks','status':'running'}".to_string(),
         ),
         input_schema: json!({
             "type": "object",
