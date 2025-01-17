@@ -67,9 +67,29 @@ pub fn regex_replace_tool_info() -> shared_protocol_objects::ToolInfo {
     shared_protocol_objects::ToolInfo {
         name: "regex_replace".to_string(),
         description: Some(
-            "Regex replacement tool.
+            "Regex text replacement tool. Use this to:
             
-            Use this to replace text using regex patterns.".to_string()
+            1. Find and replace text patterns in files
+            2. Perform precise text transformations
+            3. Modify configuration files
+            4. Update code files with patterns
+            
+            Important notes:
+            - Only replaces if exactly one match is found
+            - Uses Rust regex syntax (https://docs.rs/regex/latest/regex/)
+            - Preserves file permissions and encoding
+            - Returns success only if exactly one replacement is made
+            
+            Example patterns:
+            - 'foo\\d+' matches 'foo123' but not 'foo'
+            - '^\\s*#' matches comment lines
+            - '[A-Z][a-z]+' matches capitalized words
+            - '\\b\\w{4}\\b' matches 4-letter words
+            
+            Example replacements:
+            - Update version: 'v1.2.3' → 'v2.0.0'
+            - Fix typos: 'recieve' → 'receive'
+            - Normalize formatting: '\\s+' → ' '".to_string()
         ),
         input_schema: serde_json::json!({
             "type": "object",
