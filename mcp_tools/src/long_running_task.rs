@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::process::Stdio;  // <-- use std::process::Stdio
+use std::process::Stdio;
 
 use tokio::{fs, sync::Mutex};
-use tokio::process::Command;  // <-- from tokio
-use futures::StreamExt;        // for lines.next()
-use tokio_util::codec::{FramedRead, LinesCodec};  // for line-by-line reading
+use tokio::process::Command;
+use futures::StreamExt;
+use tokio_util::codec::{FramedRead, LinesCodec};
 use tracing::debug;
 
 use shared_protocol_objects::{
@@ -23,6 +23,7 @@ pub struct LongRunningTaskManager {
     pub persistence_path: std::path::PathBuf,
 }
 
+/// Each task includes the original command, partial logs, final status, and a reason.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskState {
     pub task_id: String,
@@ -33,6 +34,9 @@ pub struct TaskState {
     pub stdout: String,
     #[serde(default)]
     pub stderr: String,
+    /// A new field to store *why* we created this task.
+    #[serde(default)]
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -81,7 +85,7 @@ impl LongRunningTaskManager {
     }
 
     /// Spawns a background task that reads partial stdout/stderr
-    pub async fn spawn_task(&self, command: &str) -> Result<String> {
+    pub async fn spawn_task(&self, command: &str, reason: &str) -> Result<String> {
         let task_id = format!("task-{}", uuid::Uuid::new_v4());
         let task_id_clone = task_id.clone();
         let mut state = TaskState {
@@ -90,8 +94,10 @@ impl LongRunningTaskManager {
             status: TaskStatus::Created,
             stdout: String::new(),
             stderr: String::new(),
+            reason: reason.to_string(),
         };
 
+        // Insert initial record in the tasks map
         {
             let mut guard = self.tasks_in_memory.lock().await;
             guard.insert(task_id.clone(), state.clone());
@@ -107,7 +113,7 @@ impl LongRunningTaskManager {
             }
             let _ = manager_clone.save().await;
 
-            // Use std::process::Stdio (imported above)
+            // Launch the process
             let mut child = Command::new("bash")
                 .arg("-c")
                 .arg(&state.command)
@@ -126,6 +132,7 @@ impl LongRunningTaskManager {
                             while let Some(item) = lines.next().await {
                                 match item {
                                     Ok(line) => {
+                                        // Append partial stdout
                                         let mut guard = manager_for_stdout.tasks_in_memory.lock().await;
                                         if let Some(ts) = guard.get_mut(&task_id_for_stdout) {
                                             ts.stdout.push_str(&line);
@@ -175,7 +182,7 @@ impl LongRunningTaskManager {
                         });
                     }
 
-                    // Wait on the child's final exit
+                    // Wait on final exit
                     match child.wait().await {
                         Ok(status) => {
                             if status.success() {
@@ -199,9 +206,14 @@ impl LongRunningTaskManager {
                 }
             }
 
-            // final update
+            // Merge partial logs in aggregator with final `state`
             {
                 let mut guard = manager_clone.tasks_in_memory.lock().await;
+                if let Some(ts) = guard.get(&task_id) {
+                    state.stdout = ts.stdout.clone();
+                    state.stderr = ts.stderr.clone();
+                }
+                // Overwrite aggregator with final state
                 guard.insert(task_id.clone(), state.clone());
             }
             let _ = manager_clone.save().await;
@@ -218,6 +230,24 @@ impl LongRunningTaskManager {
             .ok_or_else(|| anyhow!("Task not found: {}", task_id))?;
         Ok(st.clone())
     }
+
+    /// New method to list tasks by optional status filter
+    pub async fn list_tasks(&self, filter_status: Option<TaskStatus>) -> Vec<TaskState> {
+        let guard = self.tasks_in_memory.lock().await;
+        guard
+            .values()
+            .filter(|task| {
+                // If no filter provided, return all
+                // If filter provided, return only tasks matching that status
+                if let Some(ref wanted) = filter_status {
+                    task.status == *wanted
+                } else {
+                    true
+                }
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 pub fn long_running_tool_info() -> ToolInfo {
@@ -229,15 +259,37 @@ Run long-running bash commands asynchronously, with partial output streaming.
 Commands:
 - start_task
 - get_status
+- list_tasks
+
+For start_task: 
+{
+  "command": "start_task",
+  "commandString": "sleep 5; echo Hello",
+  "reason": "Testing partial logs"
+}
+
+For get_status:
+{
+  "command": "get_status",
+  "taskId": "task-123"
+}
+
+For list_tasks:
+{
+  "command": "list_tasks",
+  "status": "running"   // or "ended", "error", etc.
+}
 "#
             .to_string(),
         ),
         input_schema: json!({
             "type": "object",
             "properties": {
-                "command": { "type": "string", "enum": ["start_task", "get_status"] },
+                "command": { "type": "string", "enum": ["start_task", "get_status", "list_tasks"] },
                 "commandString": { "type": "string" },
-                "taskId": { "type": "string" }
+                "taskId": { "type": "string" },
+                "reason": { "type": "string" },
+                "status": { "type": "string" }  // e.g. "running", "ended", "error"
             },
             "required": ["command"]
         }),
@@ -261,13 +313,24 @@ pub async fn handle_long_running_tool_call(
                 .and_then(Value::as_str)
                 .ok_or_else(|| anyhow!("Missing 'commandString'"))?;
 
-            let task_id = manager.spawn_task(command_string).await?;
+            let reason = params.arguments
+                .get("reason")
+                .and_then(Value::as_str)
+                .unwrap_or("No reason given");
+
+            let task_id = manager.spawn_task(command_string, reason).await?;
 
             let tool_res = CallToolResult {
                 content: vec![ToolResponseContent {
                     type_: "text".into(),
-                    text: format!("Task started with id: {}", task_id),
-                    annotations: Some(HashMap::from([("task_id".to_string(), json!(task_id))])),
+                    text: format!(
+                        "Task started with id: {}\nReason: {}",
+                        task_id, reason
+                    ),
+                    annotations: Some(HashMap::from([
+                        ("task_id".to_string(), json!(task_id)),
+                        ("reason".to_string(), json!(reason))
+                    ])),
                 }],
                 is_error: Some(false),
                 _meta: None,
@@ -288,8 +351,8 @@ pub async fn handle_long_running_tool_call(
                 content: vec![ToolResponseContent {
                     type_: "text".into(),
                     text: format!(
-                        "Task ID: {}\nStatus: {:?}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                        task_id, state.status, state.stdout, state.stderr
+                        "Task ID: {}\nStatus: {:?}\nReason: {}\nCommand: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                        task_id, state.status, state.reason, state.command, state.stdout, state.stderr
                     ),
                     annotations: None,
                 }],
@@ -300,8 +363,50 @@ pub async fn handle_long_running_tool_call(
             };
             Ok(success_response(id, serde_json::to_value(tool_res)?))
         }
+        "list_tasks" => {
+            let status_str = params.arguments
+                .get("status")
+                .and_then(Value::as_str);
+
+            // Convert status_str => Option<TaskStatus>
+            let filter_status = match status_str {
+                Some("created") => Some(TaskStatus::Created),
+                Some("running") => Some(TaskStatus::Running),
+                Some("ended") => Some(TaskStatus::Ended),
+                Some("error") => Some(TaskStatus::Error),
+                None => None,        // no filter => all tasks
+                _ => None,           // unrecognized => return all or error
+            };
+
+            let tasks = manager.list_tasks(filter_status).await;
+
+            let tasks_json: Vec<Value> = tasks.iter().map(|t| {
+                json!({
+                    "taskId": t.task_id,
+                    "status": t.status,
+                    "reason": t.reason,
+                    "command": t.command,
+                    "stdoutLen": t.stdout.len(),
+                    "stderrLen": t.stderr.len()
+                })
+            }).collect();
+
+            let tool_res = CallToolResult {
+                content: vec![ToolResponseContent {
+                    type_: "text".to_string(),
+                    text: serde_json::to_string_pretty(&tasks_json)
+                        .unwrap_or("[]".to_string()),
+                    annotations: None,
+                }],
+                is_error: Some(false),
+                _meta: None,
+                progress: None,
+                total: None,
+            };
+            Ok(success_response(id, serde_json::to_value(tool_res)?))
+        }
         _ => {
-            let msg = format!("Invalid command '{}'. Use start_task or get_status", command);
+            let msg = format!("Invalid command '{}'. Use start_task, get_status, or list_tasks", command);
             Ok(error_response(id, INVALID_PARAMS, &msg))
         }
     }
