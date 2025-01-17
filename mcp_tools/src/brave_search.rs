@@ -84,9 +84,33 @@ pub fn search_tool_info() -> ToolInfo {
     ToolInfo {
         name: "brave_search".into(),
         description: Some(
-            "Web search tool.
+            "Web search tool using Brave Search API. Use this to:
             
-            Use this to search the web for information.".into()
+            1. Find current information from the web
+            2. Research topics with multiple sources
+            3. Verify facts and claims
+            4. Get up-to-date news and developments
+            
+            Important notes:
+            - Always provide specific search queries with relevant keywords
+            - Results include title, URL, description and metadata
+            - Can return up to 20 results per query
+            - Results are ranked by relevance
+            - Includes safe search filtering by default
+            - Results may include freshness indicators (page_age, page_fetched)
+            
+            Best practices:
+            - Use quotes for exact phrases: \"machine learning\"
+            - Use site: for specific domains: site:wikipedia.org AI
+            - Use filetype: for specific formats: filetype:pdf
+            - Use - to exclude terms: AI -artificial
+            - Use OR for alternatives: python OR javascript
+            
+            Example queries:
+            - \"latest developments in quantum computing 2024\"
+            - \"how does blockchain work site:medium.com\"
+            - \"climate change impacts filetype:pdf\"
+            - \"best practices for Rust programming OR Go programming\"".into()
         ),
         input_schema: json!({
             "type": "object",
