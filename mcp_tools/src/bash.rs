@@ -38,9 +38,26 @@ impl BashExecutor {
         ToolInfo {
             name: "bash".to_string(),
             description: Some(
-                "System command execution tool.
+                "Executes bash shell commands on the host system. Use this tool to:
                 
-                Use this to run shell commands and system utilities.".to_string()
+                1. Run system commands and utilities
+                2. Check file/directory status
+                3. Process text/data with command line tools
+                4. Manage files and directories
+                
+                Important notes:
+                - Always provide the full command including any required flags
+                - Use absolute paths or specify working directory (cwd)
+                - Commands run with the same permissions as the host process
+                - Output is limited to stdout/stderr (no interactive prompts)
+                - Commands run in a non-interactive shell (sh)
+                
+                Example commands:
+                - 'ls -l /path/to/dir' to list directory contents
+                - 'grep pattern file.txt' to search text
+                - 'mkdir -p /path/to/new/dir' to create directories
+                - 'cat file.txt | wc -l' to count lines
+                - 'find /path -name \"*.txt\"' to search for files".to_string()
             ),
             input_schema: json!({})
         }
