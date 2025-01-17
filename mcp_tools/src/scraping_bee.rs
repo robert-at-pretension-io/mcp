@@ -31,9 +31,41 @@ pub fn scraping_tool_info() -> ToolInfo {
     ToolInfo {
         name: "scrape_url".into(),
         description: Some(
-            "Web scraping tool.
+            "Web scraping tool using ScrapingBee API. Use this to:
             
-            Use this to extract content from web pages.".into()
+            1. Extract text content from web pages
+            2. Scrape JavaScript-rendered pages
+            3. Download page resources (HTML, JSON, etc)
+            4. Access content behind paywalls or login walls
+            5. Bypass anti-scraping protections
+            
+            Important notes:
+            - Always provide complete URLs including protocol (http:// or https://)
+            - JavaScript rendering is enabled by default
+            - Uses premium proxies to avoid blocks
+            - Supports stealth mode to prevent detection
+            - Can handle complex modern web pages
+            - Returns both text and binary content
+            
+            Best practices:
+            - Use for pages that require JavaScript rendering
+            - Specify exact URLs for targeted scraping
+            - Handle both success and error responses
+            - Check content type before processing
+            - Use for pages that block normal scraping
+            
+            Example use cases:
+            - Scrape product details from e-commerce sites
+            - Extract article content from news sites
+            - Download JSON data from API endpoints
+            - Capture rendered HTML from SPAs
+            - Bypass Cloudflare protection
+            
+            Limitations:
+            - Requires valid URLs
+            - May not work with highly protected sites
+            - Rate limits may apply
+            - Binary content requires special handling".into()
         ),
         input_schema: json!({
             "type": "object",
