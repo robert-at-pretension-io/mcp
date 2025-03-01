@@ -55,7 +55,8 @@ pub struct JsonRpcRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonRpcResponse {
     pub jsonrpc: String,
-    pub id: Option<Value>,
+    // We need to always include id (not make it optional) to satisfy the Claude Desktop client
+    pub id: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -243,7 +244,7 @@ pub struct ListToolsResult {
 pub fn success_response(id: Option<Value>, result: Value) -> JsonRpcResponse {
     JsonRpcResponse {
         jsonrpc: "2.0".to_string(),
-        id,
+        id: id.unwrap_or(Value::Null),
         result: Some(result),
         error: None,
     }
@@ -252,7 +253,7 @@ pub fn success_response(id: Option<Value>, result: Value) -> JsonRpcResponse {
 pub fn error_response(id: Option<Value>, code: i64, message: &str) -> JsonRpcResponse {
     JsonRpcResponse {
         jsonrpc: "2.0".to_string(),
-        id: id.or(Some(Value::Null)),
+        id: id.unwrap_or(Value::Null),
         result: None,
         error: Some(JsonRpcError {
             code,

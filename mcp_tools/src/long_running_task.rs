@@ -250,36 +250,56 @@ impl LongRunningTaskManager {
     }
 }
 
+/// A helper function to retrieve the last `n` lines from a string.
+fn last_n_lines(s: &str, n: usize) -> String {
+    let lines: Vec<&str> = s.lines().collect();
+    if lines.len() > n {
+        lines[lines.len() - n..].join("\n")
+    } else {
+        s.to_string()
+    }
+}
+
 pub fn long_running_tool_info() -> ToolInfo {
     ToolInfo {
         name: "long_running_tool".to_string(),
         description: Some(
-            "Executes long-running bash commands with real-time output streaming. Use this for:
-            
-            1. Running background processes
-            2. Monitoring command progress
-            3. Capturing partial output
-            4. Managing multiple concurrent tasks
-            
-            Key features:
-            - Real-time stdout/stderr streaming
-            - Persistent task tracking
-            - Status monitoring (running/ended/error)
-            - Task listing with filters
-            
-            Example commands:
-            - Start: {'command':'start_task','commandString':'long_running.sh','reason':'Processing data'}
-            - Check: {'command':'get_status','taskId':'task-123'}
-            - List: {'command':'list_tasks','status':'running'}".to_string(),
+            "Manages long-running background tasks, particularly for operations that may exceed typical API timeouts. Use this to:
+
+            1. **Start a new task** (`start_task`): Initiate a long-running command or script.
+            2. **Check task status** (`get_status`): Get the current status of a task (Created, Running, Ended, Error). You can also specify how many trailing lines to return (default is 100).
+            3. **Retrieve task output** (still `get_status`): Access the stdout and stderr of a task, partially or in full. By default, only the last 100 lines are returned.
+            4. **List tasks** (`list_tasks`): Get a list of all tasks, optionally filtered by status (created, running, ended, error).
+            ".to_string(),
         ),
         input_schema: json!({
             "type": "object",
             "properties": {
-                "command": { "type": "string", "enum": ["start_task", "get_status", "list_tasks"] },
-                "commandString": { "type": "string" },
-                "taskId": { "type": "string" },
-                "reason": { "type": "string" },
-                "status": { "type": "string" }  // e.g. "running", "ended", "error"
+                "command": {
+                    "type": "string",
+                    "enum": ["start_task", "get_status", "list_tasks"],
+                    "description": "The command to run against the long-running tool."
+                },
+                "commandString": {
+                    "type": "string",
+                    "description": "The command line string to spawn when starting a new task."
+                },
+                "taskId": {
+                    "type": "string",
+                    "description": "The ID of the task to retrieve status for."
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "A human-friendly reason or rationale for creating this task."
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Optional filter for `list_tasks` (created, running, ended, error)."
+                },
+                "lines": {
+                    "type": "integer",
+                    "description": "How many trailing lines from stdout/stderr to return when using `get_status`. Defaults to 100."
+                }
             },
             "required": ["command"]
         }),
@@ -335,14 +355,32 @@ pub async fn handle_long_running_tool_call(
                 .and_then(Value::as_str)
                 .ok_or_else(|| anyhow!("Missing 'taskId'"))?;
 
+            // new parameter that determines how many trailing lines are returned.
+            let lines_to_return = params.arguments
+                .get("lines")
+                .and_then(Value::as_u64)
+                .map(|v| v as usize)
+                .unwrap_or(100); // default is 100
+
             let state = manager.get_task_status(task_id).await?;
+
+            // Get only the last N lines of stdout/stderr
+            let stdout_short = last_n_lines(&state.stdout, lines_to_return);
+            let stderr_short = last_n_lines(&state.stderr, lines_to_return);
 
             let tool_res = CallToolResult {
                 content: vec![ToolResponseContent {
                     type_: "text".into(),
                     text: format!(
-                        "Task ID: {}\nStatus: {:?}\nReason: {}\nCommand: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                        task_id, state.status, state.reason, state.command, state.stdout, state.stderr
+                        "Task ID: {}\nStatus: {:?}\nReason: {}\nCommand: {}\n\n(Showing last {} lines) STDOUT:\n{}\n\n(Showing last {} lines) STDERR:\n{}",
+                        task_id,
+                        state.status,
+                        state.reason,
+                        state.command,
+                        lines_to_return,
+                        stdout_short,
+                        lines_to_return,
+                        stderr_short
                     ),
                     annotations: None,
                 }],
@@ -365,7 +403,7 @@ pub async fn handle_long_running_tool_call(
                 Some("ended") => Some(TaskStatus::Ended),
                 Some("error") => Some(TaskStatus::Error),
                 None => None,        // no filter => all tasks
-                _ => None,           // unrecognized => return all or error
+                _ => None,           // unrecognized => return all
             };
 
             let tasks = manager.list_tasks(filter_status).await;

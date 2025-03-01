@@ -4,13 +4,11 @@ use mcp_tools::brave_search::{search_tool_info, BraveSearchClient};
 use mcp_tools::email_validator::{handle_neverbounce_tool_call, neverbounce_tool_info};
 use mcp_tools::git_integration::{git_tool_info, handle_git_tool_call};
 use mcp_tools::gmail_integration::{gmail_tool_info, handle_gmail_tool_call};
-use mcp_tools::graph_database::{graph_tool_info, handle_graph_tool_call, GraphManager};
 use mcp_tools::long_running_task::{handle_long_running_tool_call, long_running_tool_info};
 use mcp_tools::oracle_tool::{handle_oracle_select_tool_call, oracle_select_tool_info};
 use mcp_tools::process_html::extract_text_from_html;
 use mcp_tools::regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
 use mcp_tools::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
-use mcp_tools::{graph_database, memory, sequential_thinking, task_planning};
 use serde_json::{json, Value};
 use shared_protocol_objects::{
     error_response, success_response, CallToolParams, CallToolResult, ClientCapabilities,
@@ -85,13 +83,12 @@ async fn main() {
         }],
         tools: vec![
             // git_tool_info(),
-            bash_tool_info(),
+            // bash_tool_info(),
             scraping_tool_info(),
             search_tool_info(),
-            graph_tool_info(),
             regex_replace_tool_info(),
-            gmail_tool_info(),
-            neverbounce_tool_info(),
+            // gmail_tool_info(),
+            // neverbounce_tool_info(),
             long_running_tool_info(),
             // oracle_select_tool_info(),
             // sequential_thinking::sequential_thinking_tool_info(),
@@ -207,11 +204,8 @@ async fn handle_request(
     state: &Arc<Mutex<MCPServerState>>,
     tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
 ) -> Option<JsonRpcResponse> {
-    let id = if req.id.is_null() {
-        None
-    } else {
-        Some(req.id.clone())
-    };
+    // Keep the id (even if null) to ensure proper JSON-RPC format
+    let id = Some(req.id.clone());
 
     match req.method.as_str() {
         "initialize" => {
@@ -277,7 +271,7 @@ async fn handle_request(
 
             Some(JsonRpcResponse {
                 jsonrpc: "2.0".to_string(),
-                id,
+                id: id.unwrap_or(Value::Null),
                 result: Some(json!({
                     "protocolVersion": result.protocol_version,
                     "serverInfo": result.server_info,
@@ -401,7 +395,7 @@ async fn handle_request(
                                     if let Some(token) = meta.get("progressToken") {
                                         let progress_notification = JsonRpcResponse {
                                             jsonrpc: "2.0".into(),
-                                            id: None,
+                                            id: Value::Null,
                                             result: Some(json!({
                                                 "method": "notifications/progress",
                                                 "params": {
@@ -608,18 +602,7 @@ async fn handle_request(
                                 Some(success_response(id, json!(tool_res)))
                             }
                         }
-                    } else if t.name == "graph_tool" {
-                        // Initialize with just the filename - path will be determined from env var
-                        let mut graph_manager =
-                            GraphManager::new("knowledge_graph.json".to_string());
-                        match handle_graph_tool_call(params, &mut graph_manager, id.clone()).await {
-                            Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(
-                                Some(id.unwrap_or(Value::Number((1).into()))),
-                                INTERNAL_ERROR,
-                                &e.to_string(),
-                            )),
-                        }
+
                     } else if t.name == "regex_replace" {
                         match handle_regex_replace_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
@@ -629,32 +612,7 @@ async fn handle_request(
                                 &e.to_string(),
                             )),
                         }
-                    } else if t.name == "sequential_thinking" {
-                        match sequential_thinking::handle_sequential_thinking_tool_call(
-                            params,
-                            id.clone(),
-                        )
-                        .await
-                        {
-                            Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(
-                                Some(id.unwrap_or(Value::Number((1).into()))),
-                                INTERNAL_ERROR,
-                                &e.to_string(),
-                            )),
-                        }
-                    } else if t.name == "memory" {
-                        match memory::handle_memory_tool_call(params, id.clone()).await {
-                            Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
-                        }
-                    } else if t.name == "task_planning" {
-                        match task_planning::handle_task_planning_tool_call(params, id.clone())
-                            .await
-                        {
-                            Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
-                        }
+
                     } else if t.name == "oracle_select" {
                         match handle_oracle_select_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),

@@ -98,19 +98,7 @@ pub fn search_tool_info() -> ToolInfo {
             - Results are ranked by relevance
             - Includes safe search filtering by default
             - Results may include freshness indicators (page_age, page_fetched)
-            
-            Best practices:
-            - Use quotes for exact phrases: \"machine learning\"
-            - Use site: for specific domains: site:wikipedia.org AI
-            - Use filetype: for specific formats: filetype:pdf
-            - Use - to exclude terms: AI -artificial
-            - Use OR for alternatives: python OR javascript
-            
-            Example queries:
-            - \"latest developments in quantum computing 2024\"
-            - \"how does blockchain work site:medium.com\"
-            - \"climate change impacts filetype:pdf\"
-            - \"best practices for Rust programming OR Go programming\"".into()
+            ".into()
         ),
         input_schema: json!({
             "type": "object",

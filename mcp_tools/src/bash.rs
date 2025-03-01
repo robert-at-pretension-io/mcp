@@ -50,14 +50,7 @@ impl BashExecutor {
                 - Use absolute paths or specify working directory (cwd)
                 - Commands run with the same permissions as the host process
                 - Output is limited to stdout/stderr (no interactive prompts)
-                - Commands run in a non-interactive shell (sh)
-                
-                Example commands:
-                - 'ls -l /path/to/dir' to list directory contents
-                - 'grep pattern file.txt' to search text
-                - 'mkdir -p /path/to/new/dir' to create directories
-                - 'cat file.txt | wc -l' to count lines
-                - 'find /path -name \"*.txt\"' to search for files".to_string()
+                - Commands run in a non-interactive shell (sh)".to_string()
             ),
             input_schema: json!({})
         }
