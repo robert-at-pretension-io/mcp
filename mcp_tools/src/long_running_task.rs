@@ -311,6 +311,8 @@ pub async fn handle_long_running_tool_call(
     manager: &LongRunningTaskManager,
     id: Option<Value>,
 ) -> Result<JsonRpcResponse> {
+    // Ensure id is never null to satisfy Claude Desktop client
+    let id = Some(id.unwrap_or(Value::String("long_running".into())));
     let command = params.arguments
         .get("command")
         .and_then(Value::as_str)

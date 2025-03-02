@@ -14,6 +14,8 @@ pub struct RegexReplaceParams {
 }
 
 pub async fn handle_regex_replace_tool_call(params: CallToolParams, id: Option<Value>) -> Result<JsonRpcResponse> {
+    // Ensure id is never null to satisfy Claude Desktop client
+    let id = Some(id.unwrap_or(Value::String("regex_replace".into())));
     let args: RegexReplaceParams = serde_json::from_value(params.arguments)
         .map_err(|e| anyhow!("Invalid arguments: {}", e))?;
 

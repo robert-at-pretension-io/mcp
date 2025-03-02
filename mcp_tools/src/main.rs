@@ -11,8 +11,8 @@ use mcp_tools::regex_replace::{handle_regex_replace_tool_call, regex_replace_too
 use mcp_tools::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
 use serde_json::{json, Value};
 use shared_protocol_objects::{
-    error_response, success_response, CallToolParams, CallToolResult, ClientCapabilities,
-    Implementation, InitializeResult, JsonRpcRequest, JsonRpcResponse, ListResourcesResult,
+    create_notification, error_response, success_response, CallToolParams, CallToolResult, ClientCapabilities,
+    Implementation, InitializeResult, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, ListResourcesResult,
     ListToolsResult, PromptsCapability, ReadResourceParams, ReadResourceResult, ResourceContent,
     ResourceInfo, ResourcesCapability, ServerCapabilities, ToolInfo, ToolResponseContent,
     ToolsCapability, INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION, PARSE_ERROR,
@@ -75,12 +75,7 @@ async fn main() {
     }
 
     let state = Arc::new(Mutex::new(MCPServerState {
-        resources: vec![ResourceInfo {
-            uri: "file:///example.txt".into(),
-            name: "Example Text File".into(),
-            mime_type: Some("text/plain".into()),
-            description: Some("An example text resource".into()),
-        }],
+        resources: vec![], // No sample resources
         tools: vec![
             // git_tool_info(),
             // bash_tool_info(),
@@ -208,6 +203,23 @@ async fn handle_request(
     let id = Some(req.id.clone());
 
     match req.method.as_str() {
+        "prompts/list" => {
+            // Return an empty list of prompts
+            let result = json!({
+                "prompts": []
+            });
+            return Some(success_response(id, result));
+        },
+        
+        "prompts/get" => {
+            // Always return "prompt not found" error
+            return Some(error_response(
+                id,
+                -32601,
+                "Prompt not found"
+            ));
+        },
+        
         "initialize" => {
             let params = match req.params {
                 Some(p) => p,
@@ -254,7 +266,7 @@ async fn handle_request(
                     experimental: Some(HashMap::new()),
                     logging: Some(json!({})),
                     prompts: Some(PromptsCapability {
-                        list_changed: false,
+                        list_changed: true,  // We support prompts and prompt updates
                     }),
                     resources: Some(ResourcesCapability {
                         subscribe: false,
@@ -393,16 +405,23 @@ async fn handle_request(
                                 };
                                 if let Some(meta) = meta {
                                     if let Some(token) = meta.get("progressToken") {
+                                        // Create a proper JSON-RPC notification using our helper
+                                        let notification = create_notification(
+                                            "notifications/progress",
+                                            json!({
+                                                "progressToken": token,
+                                                "progress": 50,
+                                                "total": 100
+                                            })
+                                        );
+                                        
+                                        // Convert to JSON-RPC response format for sending
                                         let progress_notification = JsonRpcResponse {
-                                            jsonrpc: "2.0".into(),
-                                            id: Value::Null,
+                                            jsonrpc: notification.jsonrpc,
+                                            id: Value::Null,  // Notifications have null id
                                             result: Some(json!({
-                                                "method": "notifications/progress",
-                                                "params": {
-                                                    "progressToken": token,
-                                                    "progress": 50,
-                                                    "total": 100
-                                                }
+                                                "method": notification.method,
+                                                "params": notification.params
                                             })),
                                             error: None,
                                         };

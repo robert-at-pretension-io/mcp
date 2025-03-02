@@ -54,12 +54,22 @@ pub fn scraping_tool_info() -> ToolInfo {
 
 impl ScrapingBeeClient {
     pub fn new(api_key: String) -> Self {
+        // Create a client with a 30-second timeout
+        // According to MCP spec, we should give tools reasonable time but prevent indefinite hangs
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| {
+                error!("Failed to build HTTP client with timeout, using default client");
+                reqwest::Client::new()
+            });
+            
         ScrapingBeeClient {
-            client: reqwest::Client::new(),
+            client,
             api_key,
             base_url: "https://app.scrapingbee.com/api/v1/".to_string(),
             url: None,
-            render_js: false,
+            render_js: true,
         }
     }
 
@@ -101,17 +111,32 @@ impl ScrapingBeeClient {
                 ("api_key", &self.api_key),
                 ("url", &request_body.url),
                 ("render_js", &request_body.render_js.to_string()),
-                ("premium_proxy", &"true".to_string()),  // Use premium proxy for better success rate
-                ("stealth_proxy", &"true".to_string()),  // Enable stealth mode to avoid detection
-                ("country_code", &"us".to_string()),     // Route through US proxies
-                ("block_resources", &"false".to_string()) // Load all page resources
+                ("premium_proxy", &"true".to_string()),
+                ("block_ads", &"true".to_string()),      // Block ads to reduce page load time
+                ("block_resources", &"true".to_string()), // Block unnecessary resources like images
+                ("timeout", &"15000".to_string())        // 15 seconds timeout on ScrapingBee side
             ]);
 
         // Clone and build request for logging
         debug!("Full request URL: {}", request.try_clone().unwrap().build()?.url());
 
         info!("Sending request to ScrapingBee API");
-        let response = request.send().await?;
+        let response = match request.send().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                error!("Failed to send request to ScrapingBee: {}", e);
+                
+                if e.is_timeout() {
+                    error!("Request to ScrapingBee timed out");
+                    return Err(anyhow!("Request to ScrapingBee timed out after 20 seconds"));
+                } else if e.is_connect() {
+                    error!("Connection error to ScrapingBee API");
+                    return Err(anyhow!("Failed to connect to ScrapingBee API: {}", e));
+                }
+                
+                return Err(anyhow!("ScrapingBee request failed: {}", e));
+            }
+        };
 
         let status = response.status();
         info!("Received response with status: {}", status);

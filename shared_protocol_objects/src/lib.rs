@@ -48,8 +48,7 @@ pub struct JsonRpcRequest {
     pub method: String,
     #[serde(default)]
     pub params: Option<Value>,
-    #[serde(default)]
-    pub id: Value,
+    pub id: Value,  // Required according to JSON-RPC spec
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,6 +262,16 @@ pub fn error_response(id: Option<Value>, code: i64, message: &str) -> JsonRpcRes
     }
 }
 
+/// Create a standard notification according to the JSON-RPC 2.0 specification.
+/// Unlike requests and responses, notifications don't have an ID.
+pub fn create_notification(method: &str, params: Value) -> JsonRpcNotification {
+    JsonRpcNotification {
+        jsonrpc: "2.0".to_string(),
+        method: method.to_string(),
+        params,
+    }
+}
+
 /// Notification types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgressNotification {
@@ -274,6 +283,13 @@ pub struct ProgressNotification {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceUpdateNotification {
     pub uri: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonRpcNotification {
+    pub jsonrpc: String,
+    pub method: String,
+    pub params: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
