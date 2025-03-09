@@ -509,6 +509,43 @@ async fn handle_request(
                                 &e.to_string(),
                             )),
                         }
+                    } else if t.name == "quick_bash" {
+                        let quick_bash_params: QuickBashParams = match serde_json::from_value(params.arguments.clone()) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                return Some(error_response(
+                                    Some(id.unwrap_or(Value::Number((1).into()))),
+                                    INVALID_PARAMS,
+                                    &e.to_string(),
+                                ));
+                            }
+                        };
+                        match handle_quick_bash(quick_bash_params).await {
+                            Ok(result) => {
+                                let tool_res = CallToolResult {
+                                    content: vec![ToolResponseContent {
+                                        type_: "text".into(),
+                                        text: format!(
+                                            "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                                            result.status,
+                                            result.stdout,
+                                            result.stderr
+                                        ),
+                                        annotations: None,
+                                    }],
+                                    is_error: Some(!result.success),
+                                    _meta: None,
+                                    progress: None,
+                                    total: None,
+                                };
+                                Some(success_response(id, json!(tool_res)))
+                            }
+                            Err(e) => Some(error_response(
+                                Some(id.unwrap_or(Value::Number((1).into()))),
+                                INTERNAL_ERROR,
+                                &e.to_string(),
+                            )),
+                        }
                     } else if t.name == "long_running_tool" {
 
                             // Acquire the lock and clone out the manager
