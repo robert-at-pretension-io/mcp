@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use mcp_tools::bash::{bash_tool_info, BashExecutor, BashParams};
+use mcp_tools::bash::{bash_tool_info, BashExecutor, BashParams, QuickBashParams, quick_bash_tool_info, handle_quick_bash};
 use mcp_tools::brave_search::{search_tool_info, BraveSearchClient};
 use mcp_tools::email_validator::{handle_neverbounce_tool_call, neverbounce_tool_info};
 use mcp_tools::git_integration::{git_tool_info, handle_git_tool_call};
@@ -78,10 +78,11 @@ async fn main() {
         resources: vec![], // No sample resources
         tools: vec![
             // git_tool_info(),
-            // bash_tool_info(),
+            bash_tool_info(),
             scraping_tool_info(),
             search_tool_info(),
             regex_replace_tool_info(),
+            quick_bash_tool_info(),
             // gmail_tool_info(),
             // neverbounce_tool_info(),
             long_running_tool_info(),
