@@ -72,9 +72,9 @@ fn extract_text_from_node(nodes: &[Node], result: &mut String, depth: usize) {
                             
                             if !link_text.trim().is_empty() {
                                 result.push_str(&link_text.trim());
-                                result.push_str(&format!(" [{:?}]", href));
+                                result.push_str(&format!(" [{}]", href));
                             } else {
-                                result.push_str(&format!("[{:?}]", href));
+                                result.push_str(&format!("[{}]", href));
                             }
                             continue;
                         }
@@ -97,6 +97,9 @@ fn extract_text_from_node(nodes: &[Node], result: &mut String, depth: usize) {
             },
             Node::Comment(_) => {
                 // Ignore comments
+            },
+            Node::DocumentType(_) => {
+                // Ignore doctype
             }
         }
     }
