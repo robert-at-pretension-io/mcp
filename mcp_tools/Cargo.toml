@@ -27,7 +27,7 @@ tokio-stream = {version = "0.1.16", features = ["io-util"]}
 uuid = { version = "1.7.0", features = ["v4"] }
 markup5ever_rcdom = "0.3.0"
 html5ever = "0.29.0"
-html2text = "0.13.5"
+html-parser = "0.7"
 mime_guess = "2.0.5"
 thiserror = "2.0.5"
 petgraph = "0.6.4"
