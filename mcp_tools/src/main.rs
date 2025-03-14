@@ -377,9 +377,10 @@ async fn handle_request(
             // Find the tool implementation by name
             let tool_impl = {
                 let guard = state.lock().await;
+                // Clone the tool implementation to avoid borrowing issues
                 guard.tool_impls.iter()
                     .find(|t| t.name() == params.name)
-                    .map(|tool| tool.clone())
+                    .cloned()
             };
 
             match tool_impl {
