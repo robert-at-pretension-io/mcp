@@ -70,7 +70,7 @@ impl AiderExecutor {
 
         // Add API key if available in environment
         if let Some(key) = api_key {
-            cmd_args.push("--api-key".to_string());
+            cmd_args.push("--anthropic-api-key".to_string());
             cmd_args.push(key);
         }
 
@@ -137,8 +137,8 @@ pub fn aider_tool_info() -> ToolInfo {
             - A detailed message describing what changes to make
             
             Environment variables:
-            - AIDER_API_KEY: Your API key for the LLM service
-            - AIDER_MODEL: The model to use (e.g., 'gpt-4', 'claude-3-opus-20240229')
+            - AIDER_API_KEY: Your Anthropic API key
+            - AIDER_MODEL: The model to use (e.g., 'claude-3-opus-20240229', 'claude-3-sonnet-20240229')
             
             Best practices for messages:
             - Be specific about what files or components to modify
