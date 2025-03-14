@@ -2,15 +2,14 @@ use futures::StreamExt;
 use mcp_tools::long_running_task::LongRunningTaskManager;
 use mcp_tools::tool_impls::{create_tools, LongRunningTaskTool};
 use mcp_tools::tool_trait::{Tool, ensure_id, standard_error_response, standard_success_response};
-
 use serde_json::{json, Value};
 use shared_protocol_objects::{
-    create_notification, error_response, success_response, CallToolParams, CallToolResult,
-    ClientCapabilities, Implementation, InitializeResult, JsonRpcNotification, JsonRpcRequest,
-    JsonRpcResponse, ListResourcesResult, ListToolsResult, PromptsCapability, ReadResourceParams,
-    ReadResourceResult, ResourceContent, ResourceInfo, ResourcesCapability, ServerCapabilities,
-    ToolInfo, ToolResponseContent, ToolsCapability, INTERNAL_ERROR, INVALID_PARAMS,
-    LATEST_PROTOCOL_VERSION, PARSE_ERROR, SUPPORTED_PROTOCOL_VERSIONS,
+    error_response, success_response, CallToolParams, ClientCapabilities, Implementation, 
+    InitializeResult, JsonRpcRequest, JsonRpcResponse, ListResourcesResult, ListToolsResult, 
+    PromptsCapability, ReadResourceParams, ReadResourceResult, ResourceContent, ResourceInfo, 
+    ResourcesCapability, ServerCapabilities, ToolInfo, ToolResponseContent, ToolsCapability, 
+    INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION, PARSE_ERROR, 
+    SUPPORTED_PROTOCOL_VERSIONS,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -51,14 +50,6 @@ async fn main() {
         .init();
 
     info!("Starting MCP server...");
-
-    // Verify required environment variables are present
-    // let _scrapingbee_key = std::env::var("SCRAPINGBEE_API_KEY")
-    //     .expect("SCRAPINGBEE_API_KEY environment variable must be set");
-    // let _brave_key = std::env::var("BRAVE_API_KEY")
-    //     .expect("BRAVE_API_KEY environment variable must be set");
-
-    // debug!("Environment variables loaded successfully");
 
     // Create a new manager with a persistence filename
     let my_manager = LongRunningTaskManager::new("tasks.json".to_string());
@@ -179,8 +170,6 @@ async fn main() {
     let _ = printer_handle.await;
 }
 
-use mcp_tools::long_running_task::LongRunningTaskManager;
-
 #[derive(Debug)]
 struct MCPServerState {
     resources: Vec<ResourceInfo>,
@@ -248,7 +237,7 @@ async fn handle_request(
                 None => {
                     return Some(error_response(
                         Some(id.unwrap_or(Value::Number((1).into()))),
-                        -32602,
+                        INVALID_PARAMS,
                         "Missing params",
                     ));
                 }
@@ -338,7 +327,7 @@ async fn handle_request(
                 Err(e) => {
                     return Some(error_response(
                         id,
-                        -32602,
+                        INVALID_PARAMS,
                         &format!("Invalid params: {}", e),
                     ));
                 }
@@ -414,14 +403,14 @@ async fn handle_request(
                     warn!("Tool not found: {}", params.name);
                     Some(standard_error_response(
                         id,
-                        -32601,
+                        -32601, // Method not found
                         &format!("Tool not found: {}", params.name)
                     ))
                 }
             }
         }
 
-        _ => Some(error_response(id, -32601, "Method not found")),
+        _ => Some(error_response(id, -32601, "Method not found")), // -32601 is standard code for method not found
     }
 }
 
