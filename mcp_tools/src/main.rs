@@ -191,6 +191,35 @@ struct MCPServerState {
     long_running_manager: LongRunningTaskManager,
 }
 
+// Helper function to create standardized error responses
+fn create_error_response(id: Option<Value>, code: i64, message: &str) -> JsonRpcResponse {
+    error_response(id, code, message)
+}
+
+// Helper function to create standardized success responses
+fn create_success_response(id: Option<Value>, result: Value) -> JsonRpcResponse {
+    success_response(id, result)
+}
+
+// Initialize the tool handlers map
+fn initialize_tool_handlers() -> HashMap<String, ToolHandler> {
+    let mut handlers = HashMap::new();
+    
+    handlers.insert("scrape_url".to_string(), handle_scrape_url_tool);
+    handlers.insert("bash".to_string(), handle_bash_tool);
+    handlers.insert("quick_bash".to_string(), handle_quick_bash_tool);
+    handlers.insert("long_running_tool".to_string(), handle_long_running_tool);
+    handlers.insert("never_bounce_tool".to_string(), handle_neverbounce_tool);
+    handlers.insert("git".to_string(), handle_git_tool);
+    handlers.insert("gmail_tool".to_string(), handle_gmail_tool);
+    handlers.insert("brave_search".to_string(), handle_brave_search_tool);
+    handlers.insert("regex_replace".to_string(), handle_regex_replace_tool);
+    handlers.insert("oracle_select".to_string(), handle_oracle_select_tool);
+    handlers.insert("aider".to_string(), handle_aider_tool);
+    
+    handlers
+}
+
 async fn handle_request(
     req: JsonRpcRequest,
     state: &Arc<Mutex<MCPServerState>>,
@@ -394,6 +423,354 @@ async fn handle_request(
 
         _ => Some(error_response(id, -32601, "Method not found")),
     }
+}
+
+// Individual tool handler functions
+
+fn handle_scrape_url_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    _state: &Arc<Mutex<MCPServerState>>,
+    tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        let url = params
+            .arguments
+            .get("url")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("Missing required argument: url"))?
+            .to_string();
+
+        if url.is_empty() {
+            return Ok(create_error_response(
+                id,
+                INVALID_PARAMS,
+                "Missing required argument: url",
+            ));
+        }
+
+        let scrapingbee_api_key = std::env::var("SCRAPINGBEE_API_KEY")
+            .map_err(|_| anyhow::anyhow!("SCRAPINGBEE_API_KEY environment variable must be set"))?;
+        
+        let mut client = ScrapingBeeClient::new(scrapingbee_api_key);
+        client.url(&url).render_js(true);
+
+        let result = client.execute().await;
+
+        match result {
+            Ok(ScrapingBeeResponse::Text(body)) => {
+                // Send progress notification if requested
+                let meta = params.arguments.get("_meta").cloned();
+                if let Some(meta) = meta {
+                    if let Some(token) = meta.get("progressToken") {
+                        // Create a proper JSON-RPC notification using our helper
+                        let notification = create_notification(
+                            "notifications/progress",
+                            json!({
+                                "progressToken": token,
+                                "progress": 50,
+                                "total": 100
+                            }),
+                        );
+
+                        // Convert to JSON-RPC response format for sending
+                        let progress_notification = JsonRpcResponse {
+                            jsonrpc: notification.jsonrpc,
+                            id: Value::Null, // Notifications have null id
+                            result: Some(json!({
+                                "method": notification.method,
+                                "params": notification.params
+                            })),
+                            error: None,
+                        };
+                        let _ = tx_out.send(progress_notification);
+                    }
+                }
+
+                let tool_res = CallToolResult {
+                    content: vec![ToolResponseContent {
+                        type_: "text".into(),
+                        text: extract_text_from_html(&body, Some(&url)),
+                        annotations: None,
+                    }],
+                    is_error: None,
+                    _meta: None,
+                    progress: None,
+                    total: None,
+                };
+                Ok(create_success_response(id, json!(tool_res)))
+            }
+            Ok(ScrapingBeeResponse::Binary(_)) => {
+                Ok(create_error_response(
+                    id,
+                    -32603,
+                    "Can't read binary scrapes",
+                ))
+            }
+            Err(e) => {
+                let tool_res = CallToolResult {
+                    content: vec![ToolResponseContent {
+                        type_: "text".into(),
+                        text: format!("Error: {}", e),
+                        annotations: None,
+                    }],
+                    is_error: Some(true),
+                    _meta: None,
+                    progress: None,
+                    total: None,
+                };
+                Ok(create_success_response(id, json!(tool_res)))
+            }
+        }
+    })
+}
+
+fn handle_bash_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    _state: &Arc<Mutex<MCPServerState>>,
+    _tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        // Parse bash params
+        let bash_params: BashParams = serde_json::from_value(params.arguments)
+            .map_err(|e| anyhow::anyhow!("Invalid bash parameters: {}", e))?;
+
+        let executor = BashExecutor::new();
+
+        // Execute command
+        let result = executor.execute(bash_params).await?;
+        
+        let tool_res = CallToolResult {
+            content: vec![ToolResponseContent {
+                type_: "text".into(),
+                text: format!(
+                    "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                    result.status,
+                    result.stdout,
+                    result.stderr
+                ),
+                annotations: None,
+            }],
+            is_error: Some(!result.success),
+            _meta: None,
+            progress: None,
+            total: None,
+        };
+        
+        Ok(create_success_response(id, json!(tool_res)))
+    })
+}
+
+fn handle_quick_bash_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    _state: &Arc<Mutex<MCPServerState>>,
+    _tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        let quick_bash_params: QuickBashParams = serde_json::from_value(params.arguments)
+            .map_err(|e| anyhow::anyhow!("Invalid quick bash parameters: {}", e))?;
+        
+        let result = handle_quick_bash(quick_bash_params).await?;
+        
+        let tool_res = CallToolResult {
+            content: vec![ToolResponseContent {
+                type_: "text".into(),
+                text: format!(
+                    "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                    result.status,
+                    result.stdout,
+                    result.stderr
+                ),
+                annotations: None,
+            }],
+            is_error: Some(!result.success),
+            _meta: None,
+            progress: None,
+            total: None,
+        };
+        
+        Ok(create_success_response(id, json!(tool_res)))
+    })
+}
+
+fn handle_long_running_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    state: &Arc<Mutex<MCPServerState>>,
+    _tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        // Acquire the lock and clone out the manager
+        let manager = {
+            let guard = state.lock().await;
+            guard.long_running_manager.clone()
+        };
+
+        let resp = handle_long_running_tool_call(params, &manager, id.clone()).await?;
+        Ok(resp)
+    })
+}
+
+fn handle_neverbounce_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    _state: &Arc<Mutex<MCPServerState>>,
+    _tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        let resp = handle_neverbounce_tool_call(params, id.clone()).await?;
+        Ok(resp)
+    })
+}
+
+fn handle_git_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    _state: &Arc<Mutex<MCPServerState>>,
+    _tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        let resp = handle_git_tool_call(params, id.clone()).await?;
+        Ok(resp)
+    })
+}
+
+fn handle_gmail_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    _state: &Arc<Mutex<MCPServerState>>,
+    _tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        let resp = handle_gmail_tool_call(params, id.clone()).await?;
+        Ok(resp)
+    })
+}
+
+fn handle_brave_search_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    _state: &Arc<Mutex<MCPServerState>>,
+    _tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        let query = params
+            .arguments
+            .get("query")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("Missing required argument: query"))?
+            .to_string();
+
+        let count = params
+            .arguments
+            .get("count")
+            .and_then(Value::as_u64)
+            .unwrap_or(10)
+            .min(20) as u8;
+
+        let brave_search_api_key = std::env::var("BRAVE_API_KEY")
+            .map_err(|_| anyhow::anyhow!("BRAVE_API_KEY environment variable must be set"))?;
+        
+        let client = BraveSearchClient::new(brave_search_api_key);
+        let response = client.search(&query).await?;
+        
+        let results = match response.web {
+            Some(web) => web
+                .results
+                .iter()
+                .take(count as usize)
+                .map(|result| {
+                    format!(
+                        "Title: {}\nURL: {}\nDescription: {}\n\n",
+                        result.title,
+                        result.url,
+                        result
+                            .description
+                            .as_deref()
+                            .unwrap_or("No description available")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("---\n"),
+            None => "No web results found".to_string(),
+        };
+
+        let tool_res = CallToolResult {
+            content: vec![ToolResponseContent {
+                type_: "text".into(),
+                text: results,
+                annotations: None,
+            }],
+            is_error: None,
+            _meta: None,
+            progress: None,
+            total: None,
+        };
+        
+        Ok(create_success_response(id, json!(tool_res)))
+    })
+}
+
+fn handle_regex_replace_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    _state: &Arc<Mutex<MCPServerState>>,
+    _tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        let resp = handle_regex_replace_tool_call(params, id.clone()).await?;
+        Ok(resp)
+    })
+}
+
+fn handle_oracle_select_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    _state: &Arc<Mutex<MCPServerState>>,
+    _tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        let resp = handle_oracle_select_tool_call(params, id.clone()).await?;
+        Ok(resp)
+    })
+}
+
+fn handle_aider_tool(
+    params: CallToolParams,
+    id: Option<Value>,
+    _state: &Arc<Mutex<MCPServerState>>,
+    _tx_out: mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>> {
+    Box::pin(async move {
+        // Parse aider params from the CallToolParams
+        let aider_params: AiderParams = serde_json::from_value(params.arguments)
+            .map_err(|e| anyhow::anyhow!("Invalid aider parameters: {}", e))?;
+
+        let result = handle_aider_tool_call(aider_params).await?;
+        
+        let tool_res = CallToolResult {
+            content: vec![ToolResponseContent {
+                type_: "text".to_string(),
+                text: format!(
+                    "Aider execution {}\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                    if result.success { "succeeded" } else { "failed" },
+                    result.directory,
+                    result.status,
+                    result.stdout,
+                    result.stderr
+                ),
+                annotations: None,
+            }],
+            is_error: Some(!result.success),
+            _meta: None,
+            progress: None,
+            total: None,
+        };
+        
+        Ok(create_success_response(id, serde_json::to_value(tool_res).unwrap()))
+    })
 }
 
 fn detect_intended_tool_call(json: &Value) -> Option<String> {
