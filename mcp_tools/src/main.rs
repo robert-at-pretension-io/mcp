@@ -209,6 +209,14 @@ fn initialize_tool_handlers() -> HashMap<String, ToolHandler> {
     handlers
 }
 
+// Type alias for tool handler functions
+type ToolHandler = fn(
+    CallToolParams,
+    Option<Value>,
+    &Arc<Mutex<MCPServerState>>,
+    mpsc::UnboundedSender<JsonRpcResponse>,
+) -> Pin<Box<dyn Future<Output = Result<JsonRpcResponse, anyhow::Error>> + Send>>;
+
 async fn handle_request(
     req: JsonRpcRequest,
     state: &Arc<Mutex<MCPServerState>>,
