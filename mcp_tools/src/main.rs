@@ -674,30 +674,46 @@ async fn handle_request(
                             Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
                         }
                     } else if t.name == "aider" {
-                        
-
-                        let result = handle_aider_tool_call(params).await?;
-
-                        let tool_res = CallToolResult {
-                            content: vec![ToolResponseContent {
-                                type_: "text".to_string(),
-                                text: format!(
-                                    "Aider execution {}\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                                    if result.success { "succeeded" } else { "failed" },
-                                    result.directory,
-                                    result.status,
-                                    result.stdout,
-                                    result.stderr
-                                ),
-                                annotations: None,
-                            }],
-                            is_error: Some(!result.success),
-                            _meta: None,
-                            progress: None,
-                            total: None,
+                        // Parse aider params from the CallToolParams
+                        let aider_params: AiderParams = match serde_json::from_value(params.arguments) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                return Some(error_response(
+                                    Some(id.unwrap_or(Value::Number((1).into()))),
+                                    INVALID_PARAMS,
+                                    &e.to_string(),
+                                ));
+                            }
                         };
 
-                        Some(success_response(id, serde_json::to_value(tool_res).unwrap()))
+                        match handle_aider_tool_call(aider_params).await {
+                            Ok(result) => {
+                                let tool_res = CallToolResult {
+                                    content: vec![ToolResponseContent {
+                                        type_: "text".to_string(),
+                                        text: format!(
+                                            "Aider execution {}\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                                            if result.success { "succeeded" } else { "failed" },
+                                            result.directory,
+                                            result.status,
+                                            result.stdout,
+                                            result.stderr
+                                        ),
+                                        annotations: None,
+                                    }],
+                                    is_error: Some(!result.success),
+                                    _meta: None,
+                                    progress: None,
+                                    total: None,
+                                };
+                                Some(success_response(id, serde_json::to_value(tool_res).unwrap()))
+                            },
+                            Err(e) => Some(error_response(
+                                Some(id.unwrap_or(Value::Number((1).into()))),
+                                INTERNAL_ERROR,
+                                &e.to_string(),
+                            )),
+                        }
                     } else {
                         Some(error_response(
                             Some(id.unwrap_or(Value::Number((1).into()))),
