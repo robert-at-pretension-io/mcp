@@ -251,7 +251,7 @@ async fn handle_request(
             if !SUPPORTED_PROTOCOL_VERSIONS.contains(&protocol_version) {
                 return Some(error_response(
                     Some(id.unwrap_or(Value::Number((1).into()))),
-                    -32602,
+                    INVALID_PARAMS,
                     "Unsupported protocol version",
                 ));
             }
