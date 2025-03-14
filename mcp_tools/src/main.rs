@@ -374,19 +374,22 @@ async fn handle_request(
                 }
             };
 
-            // Find the tool implementation by name
-            let tool_impl = {
+            // Find the tool implementation by name and execute it directly
+            let result = {
                 let guard = state.lock().await;
-                // Clone the tool implementation to avoid borrowing issues
-                guard.tool_impls.iter()
-                    .find(|t| t.name() == params.name)
-                    .cloned()
-            };
-
-            match tool_impl {
-                Some(tool) => {
+                if let Some(tool) = guard.tool_impls.iter().find(|t| t.name() == params.name) {
+                    // Execute the tool while holding the lock
                     debug!("Executing tool: {}", tool.name());
-                    match tool.execute(params, id.clone()).await {
+                    Some(tool.execute(params.clone(), id.clone()))
+                } else {
+                    None
+                }
+            };
+            
+            match result {
+                Some(future) => {
+                    // Await the future outside the lock
+                    match future.await {
                         Ok(response) => Some(response),
                         Err(e) => {
                             error!("Tool execution error: {}", e);
@@ -407,6 +410,7 @@ async fn handle_request(
                     ))
                 }
             }
+
         }
 
         _ => Some(error_response(id, -32601, "Method not found")), // -32601 is standard code for method not found
