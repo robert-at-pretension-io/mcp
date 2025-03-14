@@ -56,6 +56,10 @@ impl AiderExecutor {
             return Err(anyhow!("Message cannot be empty"));
         }
 
+        // Get API key and model from environment variables
+        let api_key = std::env::var("AIDER_API_KEY").ok();
+        let model = std::env::var("AIDER_MODEL").ok();
+
         // Build the command
         let mut cmd_args = vec![
             "--message".to_string(),
@@ -63,6 +67,18 @@ impl AiderExecutor {
             "--yes-always".to_string(),
             "--no-detect-urls".to_string(),
         ];
+
+        // Add API key if available in environment
+        if let Some(key) = api_key {
+            cmd_args.push("--api-key".to_string());
+            cmd_args.push(key);
+        }
+
+        // Add model if available in environment
+        if let Some(m) = model {
+            cmd_args.push("--model".to_string());
+            cmd_args.push(m);
+        }
 
         // Add any additional options
         cmd_args.extend(params.options.iter().cloned());
@@ -119,6 +135,10 @@ pub fn aider_tool_info() -> ToolInfo {
             The tool requires:
             - A directory path where the code exists
             - A detailed message describing what changes to make
+            
+            Environment variables:
+            - AIDER_API_KEY: Your API key for the LLM service
+            - AIDER_MODEL: The model to use (e.g., 'gpt-4', 'claude-3-opus-20240229')
             
             Best practices for messages:
             - Be specific about what files or components to modify
