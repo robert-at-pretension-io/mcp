@@ -65,8 +65,8 @@ impl Tool for ScrapingBeeTool {
             
             match client.execute().await {
                 Ok(ScrapingBeeResponse::Text(body)) => {
-                    let extracted_text = extract_text_from_html(&body, Some(&url));
-                    let tool_res = standard_tool_result(extracted_text, None);
+                    let markdown = extract_text_from_html(&body, Some(&url));
+                    let tool_res = standard_tool_result(markdown, None);
                     Ok(standard_success_response(id, json!(tool_res)))
                 }
                 Ok(ScrapingBeeResponse::Binary(_)) => {
