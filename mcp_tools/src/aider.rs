@@ -135,7 +135,7 @@ pub fn aider_tool_info() -> ToolInfo {
             
             The tool requires:
             - A directory path where the code exists
-            - A detailed message describing what changes to make. Please only describe one change per message. If you need to make multiple changes, please submit multiple requests.
+            - A detailed message describing what changes to make. Please only describe one change per message. If you need to make multiple changes, please submit multiple requests. You must include all context required because this tool doesn't have any memory of previous requests.
             
             Best practices for messages:
             - Be specific about what files or components to modify

@@ -82,54 +82,25 @@ To use this MCP tools project with Claude Desktop, you need to create a configur
 
 ### Example Configuration
 
-#### macOS
 
 ```json
-{
-  "mcp_servers": [
-    {
-      "name": "Local MCP Server",
-      "url": "http://localhost:8080",
-      "enabled": true
+  {
+    "mcpServers": {
+      "tools": {
+        "command": "[where ever you write the executable]",
+        "args": [],
+        "env": {
+          "SCRAPINGBEE_API_KEY": "[your key here]",
+          "BRAVE_API_KEY": "[your key here]",
+          "KNOWLEDGE_GRAPH_DIR": "[knowledge graph directory]",
+          "AIDER_API_KEY" : "[only anthropic models now, so only anthropic api key]",
+	      "AIDER_MODEL": "anthropic/claude-3-7-sonnet-20250219"  
+        }
+      }
     }
-  ]
-}
+  }
 ```
 
-#### Windows
-
-```json
-{
-  "mcp_servers": [
-    {
-      "name": "Local MCP Server",
-      "url": "http://localhost:8080",
-      "enabled": true
-    }
-  ]
-}
-```
-
-### Advanced Configuration
-
-You can configure multiple MCP servers and toggle them as needed:
-
-```json
-{
-  "mcp_servers": [
-    {
-      "name": "Local Development Server",
-      "url": "http://localhost:8080",
-      "enabled": true
-    },
-    {
-      "name": "Production Server",
-      "url": "http://example.com:8080",
-      "enabled": false
-    }
-  ]
-}
-```
 
 ## Troubleshooting
 
