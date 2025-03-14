@@ -1,4 +1,4 @@
-use html2md_rs::{parser::safe_parse_html, to_md::{from_html_to_md, safe_from_html_to_md}};
+use html2md_rs::to_md::from_html_to_md;
 use tracing::{debug, warn};
 use url::Url;
 
@@ -8,7 +8,7 @@ use url::Url;
 /// the CommonMark specification. It also adds source information if a URL is provided.
 pub fn extract_text_from_html(html: &str, url: Option<&str>) -> String {
     // Convert HTML to Markdown
-    let mut markdown = match std::panic::catch_unwind(|| safe_from_html_to_md(html.to_string())) {
+    let mut markdown = match std::panic::catch_unwind(|| from_html_to_md(html)) {
         Ok(md) => md,
         Err(e) => {
             warn!("Failed to parse HTML: {:?}", e);
