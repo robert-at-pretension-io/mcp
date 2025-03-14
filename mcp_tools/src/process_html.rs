@@ -8,7 +8,7 @@ use url::Url;
 /// the CommonMark specification. It also adds source information if a URL is provided.
 pub fn extract_text_from_html(html: &str, url: Option<&str>) -> String {
     // Convert HTML to Markdown
-    let mut markdown = match std::panic::catch_unwind(|| from_html_to_md(html)) {
+    let mut markdown = match std::panic::catch_unwind(|| from_html_to_md(html.to_string())) {
         Ok(md) => md,
         Err(e) => {
             warn!("Failed to parse HTML: {:?}", e);

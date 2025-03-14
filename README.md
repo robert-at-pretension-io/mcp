@@ -23,7 +23,7 @@ The Model Context Protocol (MCP) is an open standard developed by Anthropic that
 
 2. Build the project:
    ```bash
-   cargo build --release
+   cd mcp_tools && cargo build --release
    ```
 
 3. Set up the required environment variables (see below)
@@ -35,7 +35,6 @@ The following environment variables are required or optional depending on which 
 
 | Variable | Required For | Description |
 |----------|-------------|-------------|
-| `LOG_DIR` | All | Directory for log files (default: `~/Developer/mcp/logs`) |
 | `SCRAPINGBEE_API_KEY` | Web Scraping | API key for ScrapingBee service |
 | `BRAVE_API_KEY` | Brave Search | API key for Brave Search API |
 | `AIDER_API_KEY` | Aider Tool | Your Anthropic API key for Aider (without the 'anthropic=' prefix) |
@@ -71,22 +70,6 @@ The default configuration enables the following tools:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Running
-
-You can run the MCP server using the provided shell script:
-
-```bash
-./mcp-server.sh
-```
-
-This script sets up the necessary environment variables, configures logging, and starts the MCP server. By default, it runs the server in debug mode with enhanced logging.
-
-You can also pass additional command-line arguments to the server:
-
-```bash
-./mcp-server.sh --port 8080
-```
 
 ## Configuring Claude Desktop
 
@@ -179,7 +162,3 @@ You can configure multiple MCP servers and toggle them as needed:
 3. Use a tool like Postman to test the MCP server API endpoints directly.
 4. Verify that all required environment variables are correctly set.
 5. Restart both the MCP server and Claude Desktop after making configuration changes.
-
-## License
-
-[Specify the license here]

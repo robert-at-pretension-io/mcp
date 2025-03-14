@@ -135,11 +135,7 @@ pub fn aider_tool_info() -> ToolInfo {
             
             The tool requires:
             - A directory path where the code exists
-            - A detailed message describing what changes to make
-            
-            Environment variables:
-            - AIDER_API_KEY: Your Anthropic API key (without the 'anthropic=' prefix)
-            - AIDER_MODEL: The model to use (e.g., 'claude-3-opus-20240229', 'claude-3-sonnet-20240229')
+            - A detailed message describing what changes to make. Please only describe one change per message. If you need to make multiple changes, please submit multiple requests.
             
             Best practices for messages:
             - Be specific about what files or components to modify
