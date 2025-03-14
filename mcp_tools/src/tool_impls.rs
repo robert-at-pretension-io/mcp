@@ -12,7 +12,7 @@ use crate::oracle_tool::{handle_oracle_select_tool_call, oracle_select_tool_info
 use crate::process_html::extract_text_from_html;
 use crate::regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
 use crate::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
-use crate::tool_trait::{Tool, ensure_id, standard_error_response, standard_success_response, standard_tool_result};
+use crate::tool_trait::{ExecuteFuture, Tool, ensure_id, standard_error_response, standard_success_response, standard_tool_result};
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
@@ -49,31 +49,35 @@ impl Tool for ScrapingBeeTool {
         scraping_tool_info()
     }
     
-    async fn execute(&self, params: CallToolParams, id: Option<Value>) -> Result<JsonRpcResponse> {
-        let url = params
-            .arguments
-            .get("url")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("Missing required argument: url"))?
-            .to_string();
-            
-        let mut client = ScrapingBeeClient::new(self.api_key.clone());
-        client.url(&url).render_js(true);
+    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
+        let api_key = self.api_key.clone();
         
-        match client.execute().await {
-            Ok(ScrapingBeeResponse::Text(body)) => {
-                let extracted_text = extract_text_from_html(&body, Some(&url));
-                let tool_res = standard_tool_result(extracted_text, None);
-                Ok(standard_success_response(id, json!(tool_res)))
+        Box::pin(async move {
+            let url = params
+                .arguments
+                .get("url")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow!("Missing required argument: url"))?
+                .to_string();
+                
+            let mut client = ScrapingBeeClient::new(api_key);
+            client.url(&url).render_js(true);
+            
+            match client.execute().await {
+                Ok(ScrapingBeeResponse::Text(body)) => {
+                    let extracted_text = extract_text_from_html(&body, Some(&url));
+                    let tool_res = standard_tool_result(extracted_text, None);
+                    Ok(standard_success_response(id, json!(tool_res)))
+                }
+                Ok(ScrapingBeeResponse::Binary(_)) => {
+                    Err(anyhow!("Can't read binary scrapes"))
+                }
+                Err(e) => {
+                    let tool_res = standard_tool_result(format!("Error: {}", e), Some(true));
+                    Ok(standard_success_response(id, json!(tool_res)))
+                }
             }
-            Ok(ScrapingBeeResponse::Binary(_)) => {
-                Err(anyhow!("Can't read binary scrapes"))
-            }
-            Err(e) => {
-                let tool_res = standard_tool_result(format!("Error: {}", e), Some(true));
-                Ok(standard_success_response(id, json!(tool_res)))
-            }
-        }
+        })
     }
 }
 
@@ -90,24 +94,26 @@ impl Tool for BashTool {
         bash_tool_info()
     }
     
-    async fn execute(&self, params: CallToolParams, id: Option<Value>) -> Result<JsonRpcResponse> {
-        let bash_params: BashParams = serde_json::from_value(params.arguments)?;
-        let executor = BashExecutor::new();
-        
-        match executor.execute(bash_params).await {
-            Ok(result) => {
-                let text = format!(
-                    "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                    result.status,
-                    result.stdout,
-                    result.stderr
-                );
-                
-                let tool_res = standard_tool_result(text, Some(!result.success));
-                Ok(standard_success_response(id, json!(tool_res)))
+    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
+        Box::pin(async move {
+            let bash_params: BashParams = serde_json::from_value(params.arguments)?;
+            let executor = BashExecutor::new();
+            
+            match executor.execute(bash_params).await {
+                Ok(result) => {
+                    let text = format!(
+                        "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                        result.status,
+                        result.stdout,
+                        result.stderr
+                    );
+                    
+                    let tool_res = standard_tool_result(text, Some(!result.success));
+                    Ok(standard_success_response(id, json!(tool_res)))
+                }
+                Err(e) => Err(anyhow!(e))
             }
-            Err(e) => Err(anyhow!(e))
-        }
+        })
     }
 }
 
@@ -124,23 +130,25 @@ impl Tool for QuickBashTool {
         quick_bash_tool_info()
     }
     
-    async fn execute(&self, params: CallToolParams, id: Option<Value>) -> Result<JsonRpcResponse> {
-        let quick_bash_params: QuickBashParams = serde_json::from_value(params.arguments)?;
-        
-        match handle_quick_bash(quick_bash_params).await {
-            Ok(result) => {
-                let text = format!(
-                    "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                    result.status,
-                    result.stdout,
-                    result.stderr
-                );
-                
-                let tool_res = standard_tool_result(text, Some(!result.success));
-                Ok(standard_success_response(id, json!(tool_res)))
+    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
+        Box::pin(async move {
+            let quick_bash_params: QuickBashParams = serde_json::from_value(params.arguments)?;
+            
+            match handle_quick_bash(quick_bash_params).await {
+                Ok(result) => {
+                    let text = format!(
+                        "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                        result.status,
+                        result.stdout,
+                        result.stderr
+                    );
+                    
+                    let tool_res = standard_tool_result(text, Some(!result.success));
+                    Ok(standard_success_response(id, json!(tool_res)))
+                }
+                Err(e) => Err(anyhow!(e))
             }
-            Err(e) => Err(anyhow!(e))
-        }
+        })
     }
 }
 
@@ -168,54 +176,58 @@ impl Tool for BraveSearchTool {
         search_tool_info()
     }
     
-    async fn execute(&self, params: CallToolParams, id: Option<Value>) -> Result<JsonRpcResponse> {
-        let query = params
-            .arguments
-            .get("query")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("Missing required argument: query"))?
-            .to_string();
-            
-        let count = params
-            .arguments
-            .get("count")
-            .and_then(Value::as_u64)
-            .unwrap_or(10)
-            .min(20) as u8;
-            
-        let client = BraveSearchClient::new(self.api_key.clone());
+    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
+        let api_key = self.api_key.clone();
         
-        match client.search(&query).await {
-            Ok(response) => {
-                let results = match response.web {
-                    Some(web) => web
-                        .results
-                        .iter()
-                        .take(count as usize)
-                        .map(|result| {
-                            format!(
-                                "Title: {}\nURL: {}\nDescription: {}\n\n",
-                                result.title,
-                                result.url,
-                                result
-                                    .description
-                                    .as_deref()
-                                    .unwrap_or("No description available")
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("---\n"),
-                    None => "No web results found".to_string(),
-                };
+        Box::pin(async move {
+            let query = params
+                .arguments
+                .get("query")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow!("Missing required argument: query"))?
+                .to_string();
                 
-                let tool_res = standard_tool_result(results, None);
-                Ok(standard_success_response(id, json!(tool_res)))
+            let count = params
+                .arguments
+                .get("count")
+                .and_then(Value::as_u64)
+                .unwrap_or(10)
+                .min(20) as u8;
+                
+            let client = BraveSearchClient::new(api_key);
+            
+            match client.search(&query).await {
+                Ok(response) => {
+                    let results = match response.web {
+                        Some(web) => web
+                            .results
+                            .iter()
+                            .take(count as usize)
+                            .map(|result| {
+                                format!(
+                                    "Title: {}\nURL: {}\nDescription: {}\n\n",
+                                    result.title,
+                                    result.url,
+                                    result
+                                        .description
+                                        .as_deref()
+                                        .unwrap_or("No description available")
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("---\n"),
+                        None => "No web results found".to_string(),
+                    };
+                    
+                    let tool_res = standard_tool_result(results, None);
+                    Ok(standard_success_response(id, json!(tool_res)))
+                }
+                Err(e) => {
+                    let tool_res = standard_tool_result(format!("Search error: {}", e), Some(true));
+                    Ok(standard_success_response(id, json!(tool_res)))
+                }
             }
-            Err(e) => {
-                let tool_res = standard_tool_result(format!("Search error: {}", e), Some(true));
-                Ok(standard_success_response(id, json!(tool_res)))
-            }
-        }
+        })
     }
 }
 
@@ -232,25 +244,27 @@ impl Tool for AiderTool {
         aider_tool_info()
     }
     
-    async fn execute(&self, params: CallToolParams, id: Option<Value>) -> Result<JsonRpcResponse> {
-        let aider_params: AiderParams = serde_json::from_value(params.arguments)?;
-        
-        match handle_aider_tool_call(aider_params).await {
-            Ok(result) => {
-                let text = format!(
-                    "Aider execution {}\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                    if result.success { "succeeded" } else { "failed" },
-                    result.directory,
-                    result.status,
-                    result.stdout,
-                    result.stderr
-                );
-                
-                let tool_res = standard_tool_result(text, Some(!result.success));
-                Ok(standard_success_response(id, json!(tool_res)))
+    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
+        Box::pin(async move {
+            let aider_params: AiderParams = serde_json::from_value(params.arguments)?;
+            
+            match handle_aider_tool_call(aider_params).await {
+                Ok(result) => {
+                    let text = format!(
+                        "Aider execution {}\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                        if result.success { "succeeded" } else { "failed" },
+                        result.directory,
+                        result.status,
+                        result.stdout,
+                        result.stderr
+                    );
+                    
+                    let tool_res = standard_tool_result(text, Some(!result.success));
+                    Ok(standard_success_response(id, json!(tool_res)))
+                }
+                Err(e) => Err(anyhow!(e))
             }
-            Err(e) => Err(anyhow!(e))
-        }
+        })
     }
 }
 
@@ -275,13 +289,17 @@ impl Tool for LongRunningTaskTool {
         long_running_tool_info()
     }
     
-    async fn execute(&self, params: CallToolParams, id: Option<Value>) -> Result<JsonRpcResponse> {
-        let manager = {
-            let guard = self.manager.lock().await;
-            guard.clone()
-        };
+    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
+        let manager = Arc::clone(&self.manager);
         
-        handle_long_running_tool_call(params, &manager, id).await
+        Box::pin(async move {
+            let manager_clone = {
+                let guard = manager.lock().await;
+                guard.clone()
+            };
+            
+            handle_long_running_tool_call(params, &manager_clone, id).await
+        })
     }
 }
 

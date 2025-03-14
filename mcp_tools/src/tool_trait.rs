@@ -2,6 +2,11 @@ use anyhow::Result;
 use serde_json::Value;
 use shared_protocol_objects::{CallToolParams, JsonRpcResponse};
 use std::fmt::Debug;
+use std::future::Future;
+use std::pin::Pin;
+
+/// Type alias for the async execute result
+pub type ExecuteFuture = Pin<Box<dyn Future<Output = Result<JsonRpcResponse>> + Send>>;
 
 /// Trait for implementing MCP tools
 pub trait Tool: Send + Sync + Debug {
@@ -12,7 +17,10 @@ pub trait Tool: Send + Sync + Debug {
     fn info(&self) -> shared_protocol_objects::ToolInfo;
     
     /// Execute the tool with the given parameters
-    async fn execute(&self, params: CallToolParams, id: Option<Value>) -> Result<JsonRpcResponse>;
+    /// 
+    /// This returns a boxed future instead of being an async function
+    /// to make the trait object-safe.
+    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture;
 }
 
 /// Helper function to standardize ID handling
