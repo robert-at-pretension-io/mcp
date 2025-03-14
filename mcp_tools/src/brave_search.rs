@@ -84,20 +84,26 @@ pub fn search_tool_info() -> ToolInfo {
     ToolInfo {
         name: "brave_search".into(),
         description: Some(
-            "Web search tool using Brave Search API. Use this to:
+            "Web search tool powered by Brave Search that retrieves relevant results from across the internet. Use this to:
             
-            1. Find current information from the web
-            2. Research topics with multiple sources
-            3. Verify facts and claims
-            4. Get up-to-date news and developments
+            1. Find current information and facts from the web
+            2. Research topics with results from multiple sources
+            3. Verify claims or check information accuracy
+            4. Discover recent news, trends, and developments
+            5. Find specific websites, documentation, or resources
             
-            Important notes:
-            - Always provide specific search queries with relevant keywords
-            - Results include title, URL, description and metadata
-            - Can return up to 20 results per query
-            - Results are ranked by relevance
-            - Includes safe search filtering by default
-            - Results may include freshness indicators (page_age, page_fetched)
+            Tips for effective searches:
+            - Use specific keywords rather than full questions
+            - Include important technical terms, names, or identifiers
+            - Add date ranges for time-sensitive information
+            - Use quotes for exact phrase matching
+            
+            Each result contains:
+            - Title and URL of the webpage
+            - Brief description of the content
+            - Age indicators showing content freshness
+            
+            The search defaults to returning 10 results but can provide up to 20 with the count parameter.
             ".into()
         ),
         input_schema: json!({

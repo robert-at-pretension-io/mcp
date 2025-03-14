@@ -8,3 +8,4 @@ pub mod scraping_bee;
 pub mod gmail_integration;
 pub mod email_validator;
 pub mod long_running_task;
+pub mod aider;

@@ -264,12 +264,26 @@ pub fn long_running_tool_info() -> ToolInfo {
     ToolInfo {
         name: "long_running_tool".to_string(),
         description: Some(
-            "Manages long-running background tasks, particularly for operations that may exceed typical API timeouts. Use this to:
+            "Task management system for running commands that may take minutes or hours to complete. This tool handles:
 
-            1. **Start a new task** (`start_task`): Initiate a long-running command or script.
-            2. **Check task status** (`get_status`): Get the current status of a task (Created, Running, Ended, Error). You can also specify how many trailing lines to return (default is 100).
-            3. **Retrieve task output** (still `get_status`): Access the stdout and stderr of a task, partially or in full. By default, only the last 100 lines are returned.
-            4. **List tasks** (`list_tasks`): Get a list of all tasks, optionally filtered by status (created, running, ended, error).
+            1. **Task creation** with `start_task`: Launch shell commands that will continue running after your conversation ends
+            2. **Status monitoring** with `get_status`: Check if tasks are still running and view their real-time output
+            3. **Output inspection** with `get_status`: Review both standard output and error streams from running or completed tasks
+            4. **Task organization** with `list_tasks`: View all active and completed tasks with filtering options
+            
+            Key benefits:
+            - Runs asynchronously in the background, independent of API timeouts
+            - Persists between sessions (tasks continue even if you close this conversation)
+            - Captures all stdout and stderr output for inspection
+            - Provides detailed task status and progress information
+            - Maintains a record of completed tasks with their full output
+            
+            Common use cases:
+            - Long-running data processing jobs
+            - Compilation of large codebases
+            - Extended test suites that take significant time
+            - Scheduled maintenance tasks
+            - Monitoring system operations
             ".to_string(),
         ),
         input_schema: json!({

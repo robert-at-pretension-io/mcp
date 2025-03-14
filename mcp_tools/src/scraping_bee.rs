@@ -31,10 +31,24 @@ pub fn scraping_tool_info() -> ToolInfo {
     ToolInfo {
         name: "scrape_url".into(),
         description: Some(
-            "Web scraping tool using ScrapingBee API. Extracts content from web pages, including JavaScript-rendered content. \
-            Always provide complete URLs (http:// or https://). Returns HTML, text, or binary data. \
-            Use for: product details, articles, JSON APIs, and single-page apps. \
-            JavaScript rendering is enabled by default.".into()
+            "Web scraping tool that extracts and processes content from websites. Use this to:
+            
+            1. Extract text from webpages (news, articles, documentation)
+            2. Gather product information from e-commerce sites
+            3. Retrieve data from sites with JavaScript-rendered content
+            4. Access content behind cookie notifications or simple overlays
+            
+            Important notes:
+            - Always provide complete URLs including protocol (e.g., 'https://example.com')
+            - JavaScript rendering is enabled by default
+            - Content is automatically processed to extract readable text
+            - Safe mode filters out potentially harmful content
+            - May take up to 30 seconds for complex pages
+            
+            Example queries:
+            - News article: 'https://news.site.com/article/12345'
+            - Product page: 'https://shop.example.com/products/item-name'
+            - Documentation: 'https://docs.domain.org/tutorial'".into()
         ),
         input_schema: json!({
             "type": "object",

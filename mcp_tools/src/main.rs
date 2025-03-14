@@ -85,7 +85,7 @@ async fn main() {
             // bash_tool_info(),
             scraping_tool_info(),
             search_tool_info(),
-            regex_replace_tool_info(),
+            // regex_replace_tool_info(),
             quick_bash_tool_info(),
             aider_tool_info(),
             // gmail_tool_info(),
