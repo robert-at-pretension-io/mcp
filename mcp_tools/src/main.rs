@@ -1,5 +1,9 @@
 use futures::StreamExt;
-use mcp_tools::bash::{bash_tool_info, BashExecutor, BashParams, QuickBashParams, quick_bash_tool_info, handle_quick_bash};
+use mcp_tools::aider::{aider_tool_info, handle_aider_tool_call, AiderParams};
+use mcp_tools::bash::{
+    bash_tool_info, handle_quick_bash, quick_bash_tool_info, BashExecutor, BashParams,
+    QuickBashParams,
+};
 use mcp_tools::brave_search::{search_tool_info, BraveSearchClient};
 use mcp_tools::email_validator::{handle_neverbounce_tool_call, neverbounce_tool_info};
 use mcp_tools::git_integration::{git_tool_info, handle_git_tool_call};
@@ -9,14 +13,15 @@ use mcp_tools::oracle_tool::{handle_oracle_select_tool_call, oracle_select_tool_
 use mcp_tools::process_html::extract_text_from_html;
 use mcp_tools::regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
 use mcp_tools::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
+
 use serde_json::{json, Value};
 use shared_protocol_objects::{
-    create_notification, error_response, success_response, CallToolParams, CallToolResult, ClientCapabilities,
-    Implementation, InitializeResult, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, ListResourcesResult,
-    ListToolsResult, PromptsCapability, ReadResourceParams, ReadResourceResult, ResourceContent,
-    ResourceInfo, ResourcesCapability, ServerCapabilities, ToolInfo, ToolResponseContent,
-    ToolsCapability, INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION, PARSE_ERROR,
-    SUPPORTED_PROTOCOL_VERSIONS,
+    create_notification, error_response, success_response, CallToolParams, CallToolResult,
+    ClientCapabilities, Implementation, InitializeResult, JsonRpcNotification, JsonRpcRequest,
+    JsonRpcResponse, ListResourcesResult, ListToolsResult, PromptsCapability, ReadResourceParams,
+    ReadResourceResult, ResourceContent, ResourceInfo, ResourcesCapability, ServerCapabilities,
+    ToolInfo, ToolResponseContent, ToolsCapability, INTERNAL_ERROR, INVALID_PARAMS,
+    LATEST_PROTOCOL_VERSION, PARSE_ERROR, SUPPORTED_PROTOCOL_VERSIONS,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -66,7 +71,6 @@ async fn main() {
 
     // debug!("Environment variables loaded successfully");
 
-
     // Create a new manager with a persistence filename
     let my_manager = LongRunningTaskManager::new("tasks.json".to_string());
     // If you like, load any persisted tasks now
@@ -78,11 +82,12 @@ async fn main() {
         resources: vec![], // No sample resources
         tools: vec![
             // git_tool_info(),
-            bash_tool_info(),
+            // bash_tool_info(),
             scraping_tool_info(),
             search_tool_info(),
             regex_replace_tool_info(),
             quick_bash_tool_info(),
+            aider_tool_info(),
             // gmail_tool_info(),
             // neverbounce_tool_info(),
             long_running_tool_info(),
@@ -95,7 +100,6 @@ async fn main() {
         client_info: None,
         long_running_manager: my_manager, // <--- store the manager
     }));
-
 
     let (tx_out, mut rx_out) = mpsc::unbounded_channel::<JsonRpcResponse>();
 
@@ -192,7 +196,7 @@ struct MCPServerState {
     tools: Vec<ToolInfo>,
     client_capabilities: Option<ClientCapabilities>,
     client_info: Option<Implementation>,
-    long_running_manager: LongRunningTaskManager,  // <--- new field
+    long_running_manager: LongRunningTaskManager, // <--- new field
 }
 
 async fn handle_request(
@@ -210,17 +214,13 @@ async fn handle_request(
                 "prompts": []
             });
             return Some(success_response(id, result));
-        },
-        
+        }
+
         "prompts/get" => {
             // Always return "prompt not found" error
-            return Some(error_response(
-                id,
-                -32601,
-                "Prompt not found"
-            ));
-        },
-        
+            return Some(error_response(id, -32601, "Prompt not found"));
+        }
+
         "initialize" => {
             let params = match req.params {
                 Some(p) => p,
@@ -267,7 +267,7 @@ async fn handle_request(
                     experimental: Some(HashMap::new()),
                     logging: Some(json!({})),
                     prompts: Some(PromptsCapability {
-                        list_changed: true,  // We support prompts and prompt updates
+                        list_changed: true, // We support prompts and prompt updates
                     }),
                     resources: Some(ResourcesCapability {
                         subscribe: false,
@@ -413,13 +413,13 @@ async fn handle_request(
                                                 "progressToken": token,
                                                 "progress": 50,
                                                 "total": 100
-                                            })
+                                            }),
                                         );
-                                        
+
                                         // Convert to JSON-RPC response format for sending
                                         let progress_notification = JsonRpcResponse {
                                             jsonrpc: notification.jsonrpc,
-                                            id: Value::Null,  // Notifications have null id
+                                            id: Value::Null, // Notifications have null id
                                             result: Some(json!({
                                                 "method": notification.method,
                                                 "params": notification.params
@@ -510,16 +510,17 @@ async fn handle_request(
                             )),
                         }
                     } else if t.name == "quick_bash" {
-                        let quick_bash_params: QuickBashParams = match serde_json::from_value(params.arguments.clone()) {
-                            Ok(p) => p,
-                            Err(e) => {
-                                return Some(error_response(
-                                    Some(id.unwrap_or(Value::Number((1).into()))),
-                                    INVALID_PARAMS,
-                                    &e.to_string(),
-                                ));
-                            }
-                        };
+                        let quick_bash_params: QuickBashParams =
+                            match serde_json::from_value(params.arguments.clone()) {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    return Some(error_response(
+                                        Some(id.unwrap_or(Value::Number((1).into()))),
+                                        INVALID_PARAMS,
+                                        &e.to_string(),
+                                    ));
+                                }
+                            };
                         match handle_quick_bash(quick_bash_params).await {
                             Ok(result) => {
                                 let tool_res = CallToolResult {
@@ -547,8 +548,7 @@ async fn handle_request(
                             )),
                         }
                     } else if t.name == "long_running_tool" {
-
-                            // Acquire the lock and clone out the manager
+                        // Acquire the lock and clone out the manager
                         let manager = {
                             let guard = state.lock().await;
                             guard.long_running_manager.clone()
@@ -659,7 +659,6 @@ async fn handle_request(
                                 Some(success_response(id, json!(tool_res)))
                             }
                         }
-
                     } else if t.name == "regex_replace" {
                         match handle_regex_replace_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
@@ -669,12 +668,36 @@ async fn handle_request(
                                 &e.to_string(),
                             )),
                         }
-
                     } else if t.name == "oracle_select" {
                         match handle_oracle_select_tool_call(params, id.clone()).await {
                             Ok(resp) => Some(resp),
                             Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
                         }
+                    } else if t.name == "aider" {
+                        
+
+                        let result = handle_aider_tool_call(params).await?;
+
+                        let tool_res = CallToolResult {
+                            content: vec![ToolResponseContent {
+                                type_: "text".to_string(),
+                                text: format!(
+                                    "Aider execution {}\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                                    if result.success { "succeeded" } else { "failed" },
+                                    result.directory,
+                                    result.status,
+                                    result.stdout,
+                                    result.stderr
+                                ),
+                                annotations: None,
+                            }],
+                            is_error: Some(!result.success),
+                            _meta: None,
+                            progress: None,
+                            total: None,
+                        };
+
+                        Some(success_response(id, serde_json::to_value(tool_res).unwrap()))
                     } else {
                         Some(error_response(
                             Some(id.unwrap_or(Value::Number((1).into()))),
