@@ -70,8 +70,9 @@ impl AiderExecutor {
 
         // Add API key if available in environment
         if let Some(key) = api_key {
-            cmd_args.push("--anthropic-api-key".to_string());
-            cmd_args.push(key);
+            // Pass the API key directly without requiring provider= format
+            cmd_args.push("--api-key".to_string());
+            cmd_args.push(format!("anthropic={}", key));
         }
 
         // Add model if available in environment
@@ -137,7 +138,7 @@ pub fn aider_tool_info() -> ToolInfo {
             - A detailed message describing what changes to make
             
             Environment variables:
-            - AIDER_API_KEY: Your Anthropic API key
+            - AIDER_API_KEY: Your Anthropic API key (without the 'anthropic=' prefix)
             - AIDER_MODEL: The model to use (e.g., 'claude-3-opus-20240229', 'claude-3-sonnet-20240229')
             
             Best practices for messages:
