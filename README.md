@@ -72,6 +72,114 @@ The default configuration enables the following tools:
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+## Running
+
+You can run the MCP server using the provided shell script:
+
+```bash
+./mcp-server.sh
+```
+
+This script sets up the necessary environment variables, configures logging, and starts the MCP server. By default, it runs the server in debug mode with enhanced logging.
+
+You can also pass additional command-line arguments to the server:
+
+```bash
+./mcp-server.sh --port 8080
+```
+
+## Configuring Claude Desktop
+
+To use this MCP tools project with Claude Desktop, you need to create a configuration file that tells Claude Desktop how to connect to your MCP server.
+
+### Configuration File Location
+
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+### Example Configuration
+
+#### macOS
+
+```json
+{
+  "mcp_servers": [
+    {
+      "name": "Local MCP Server",
+      "url": "http://localhost:8080",
+      "enabled": true
+    }
+  ]
+}
+```
+
+#### Windows
+
+```json
+{
+  "mcp_servers": [
+    {
+      "name": "Local MCP Server",
+      "url": "http://localhost:8080",
+      "enabled": true
+    }
+  ]
+}
+```
+
+### Advanced Configuration
+
+You can configure multiple MCP servers and toggle them as needed:
+
+```json
+{
+  "mcp_servers": [
+    {
+      "name": "Local Development Server",
+      "url": "http://localhost:8080",
+      "enabled": true
+    },
+    {
+      "name": "Production Server",
+      "url": "http://example.com:8080",
+      "enabled": false
+    }
+  ]
+}
+```
+
+## Troubleshooting
+
+### Common Issues with MCP Servers in Claude Desktop
+
+1. **Connection Refused**
+   - **Symptom**: Claude Desktop reports "Connection refused" when trying to connect to the MCP server.
+   - **Solution**: Ensure the MCP server is running and listening on the configured port. Check for any firewall rules that might be blocking the connection.
+
+2. **Authentication Failed**
+   - **Symptom**: Claude Desktop can connect to the server but reports authentication failures.
+   - **Solution**: Verify that any required API keys are correctly set in your environment variables.
+
+3. **Tool Not Found**
+   - **Symptom**: Claude attempts to use a tool but receives a "Tool not found" error.
+   - **Solution**: Check that the tool is enabled in your MCP server configuration and that all required dependencies for that tool are installed.
+
+4. **Logs Not Appearing**
+   - **Symptom**: You're not seeing expected log output.
+   - **Solution**: Verify the LOG_DIR environment variable is set correctly and that the directory exists with proper write permissions.
+
+5. **Slow Response Times**
+   - **Symptom**: Tools take a long time to respond or time out.
+   - **Solution**: Check your internet connection if the tool relies on external services. Consider increasing timeout values in the server configuration.
+
+### Debugging Tips
+
+1. Check the MCP server logs at `$LOG_DIR/mcp-server.log` for detailed error information.
+2. Run the server with increased verbosity by setting `RUST_LOG="mcp_tools=trace,debug"`.
+3. Use a tool like Postman to test the MCP server API endpoints directly.
+4. Verify that all required environment variables are correctly set.
+5. Restart both the MCP server and Claude Desktop after making configuration changes.
+
 ## License
 
 [Specify the license here]
