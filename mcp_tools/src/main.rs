@@ -1,18 +1,7 @@
 use futures::StreamExt;
-use mcp_tools::aider::{aider_tool_info, handle_aider_tool_call, AiderParams};
-use mcp_tools::bash::{
-    bash_tool_info, handle_quick_bash, quick_bash_tool_info, BashExecutor, BashParams,
-    QuickBashParams,
-};
-use mcp_tools::brave_search::{search_tool_info, BraveSearchClient};
-use mcp_tools::email_validator::{handle_neverbounce_tool_call, neverbounce_tool_info};
-use mcp_tools::git_integration::{git_tool_info, handle_git_tool_call};
-use mcp_tools::gmail_integration::{gmail_tool_info, handle_gmail_tool_call};
-use mcp_tools::long_running_task::{handle_long_running_tool_call, long_running_tool_info};
-use mcp_tools::oracle_tool::{handle_oracle_select_tool_call, oracle_select_tool_info};
-use mcp_tools::process_html::extract_text_from_html;
-use mcp_tools::regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
-use mcp_tools::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
+use mcp_tools::long_running_task::LongRunningTaskManager;
+use mcp_tools::tool_impls::{create_tools, LongRunningTaskTool};
+use mcp_tools::tool_trait::{Tool, ensure_id, standard_error_response, standard_success_response};
 
 use serde_json::{json, Value};
 use shared_protocol_objects::{
@@ -78,27 +67,29 @@ async fn main() {
         error!("Failed to load tasks: {}", err);
     }
 
+    // Create tool implementations
+    let mut tool_impls = match create_tools().await {
+        Ok(tools) => tools,
+        Err(e) => {
+            error!("Failed to create tools: {}", e);
+            Vec::new()
+        }
+    };
+    
+    // Add LongRunningTaskTool which needs the manager
+    let manager_arc = Arc::new(Mutex::new(my_manager.clone()));
+    tool_impls.push(Box::new(LongRunningTaskTool::new(manager_arc)));
+    
+    // Extract tool info for registration
+    let tool_infos = tool_impls.iter().map(|t| t.info()).collect();
+
     let state = Arc::new(Mutex::new(MCPServerState {
         resources: vec![], // No sample resources
-        tools: vec![
-            // git_tool_info(),
-            // bash_tool_info(),
-            scraping_tool_info(),
-            search_tool_info(),
-            // regex_replace_tool_info(),
-            quick_bash_tool_info(),
-            aider_tool_info(),
-            // gmail_tool_info(),
-            // neverbounce_tool_info(),
-            long_running_tool_info(),
-            // oracle_select_tool_info(),
-            // sequential_thinking::sequential_thinking_tool_info(),
-            // memory::memory_tool_info(),
-            //task_planning::task_planning_tool_info(),
-        ],
+        tools: tool_infos,
+        tool_impls,
         client_capabilities: None,
         client_info: None,
-        long_running_manager: my_manager, // <--- store the manager
+        long_running_manager: my_manager,
     }));
 
     let (tx_out, mut rx_out) = mpsc::unbounded_channel::<JsonRpcResponse>();
@@ -194,9 +185,10 @@ use mcp_tools::long_running_task::LongRunningTaskManager;
 struct MCPServerState {
     resources: Vec<ResourceInfo>,
     tools: Vec<ToolInfo>,
+    tool_impls: Vec<Box<dyn Tool>>,
     client_capabilities: Option<ClientCapabilities>,
     client_info: Option<Implementation>,
-    long_running_manager: LongRunningTaskManager, // <--- new field
+    long_running_manager: LongRunningTaskManager,
 }
 
 async fn handle_request(
@@ -358,375 +350,45 @@ async fn handle_request(
             let params = match params_res {
                 Ok(p) => p,
                 Err(e) => {
-                    return Some(error_response(
+                    return Some(standard_error_response(
                         id,
-                        -32602,
+                        INVALID_PARAMS,
                         &format!("Invalid params: {}", e),
                     ));
                 }
             };
 
-            let tool = {
+            // Find the tool implementation by name
+            let tool_impl = {
                 let guard = state.lock().await;
-                guard.tools.iter().find(|t| t.name == params.name).cloned()
+                guard.tool_impls.iter()
+                    .find(|t| t.name() == params.name)
+                    .cloned()
             };
 
-            match tool {
-                Some(t) => {
-                    if t.name == "scrape_url" {
-                        // Handle scrape_url tool
-                        let url = params
-                            .arguments
-                            .get("url")
-                            .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .to_string();
-                        if url.is_empty() {
-                            return Some(error_response(
-                                Some(id.unwrap_or(Value::Number((1).into()))),
-                                -32602,
-                                "Missing required argument: url",
-                            ));
-                        }
-
-                        let scrapingbee_api_key = std::env::var("SCRAPINGBEE_API_KEY")
-                            .expect("SCRAPINGBEE_API_KEY environment variable must be set");
-                        let mut client = ScrapingBeeClient::new(scrapingbee_api_key.clone());
-                        client.url(&url).render_js(true);
-
-                        let result = client.execute().await;
-
-                        match result {
-                            Ok(ScrapingBeeResponse::Text(body)) => {
-                                // Send progress notification if requested
-                                let meta = if let Some(params) = &req.params {
-                                    params.get("_meta").cloned()
-                                } else {
-                                    None
-                                };
-                                if let Some(meta) = meta {
-                                    if let Some(token) = meta.get("progressToken") {
-                                        // Create a proper JSON-RPC notification using our helper
-                                        let notification = create_notification(
-                                            "notifications/progress",
-                                            json!({
-                                                "progressToken": token,
-                                                "progress": 50,
-                                                "total": 100
-                                            }),
-                                        );
-
-                                        // Convert to JSON-RPC response format for sending
-                                        let progress_notification = JsonRpcResponse {
-                                            jsonrpc: notification.jsonrpc,
-                                            id: Value::Null, // Notifications have null id
-                                            result: Some(json!({
-                                                "method": notification.method,
-                                                "params": notification.params
-                                            })),
-                                            error: None,
-                                        };
-                                        let _ = tx_out.send(progress_notification);
-                                    }
-                                }
-
-                                let tool_res = CallToolResult {
-                                    content: vec![ToolResponseContent {
-                                        type_: "text".into(),
-                                        text: extract_text_from_html(&body, Some(&url)),
-                                        annotations: None,
-                                    }],
-                                    is_error: None,
-                                    _meta: None,
-                                    progress: None,
-                                    total: None,
-                                };
-                                Some(success_response(id, json!(tool_res)))
-                            }
-                            Ok(ScrapingBeeResponse::Binary(bytes)) => {
-                                // Save screenshot
-                                return Some(error_response(
-                                    id,
-                                    -32603,
-                                    &format!("Can't read binary scrapes"),
-                                ));
-                            }
-                            Err(e) => {
-                                let tool_res = CallToolResult {
-                                    content: vec![ToolResponseContent {
-                                        type_: "text".into(),
-                                        text: format!("Error: {}", e),
-                                        annotations: None,
-                                    }],
-                                    is_error: Some(true),
-                                    _meta: None,
-                                    progress: None,
-                                    total: None,
-                                };
-                                Some(success_response(id, json!(tool_res)))
-                            }
-                        }
-                    } else if t.name == "bash" {
-                        // Parse bash params
-                        let bash_params: BashParams = match serde_json::from_value(params.arguments)
-                        {
-                            Ok(p) => p,
-                            Err(e) => {
-                                return Some(error_response(
-                                    Some(id.unwrap_or(Value::Number((1).into()))),
-                                    INVALID_PARAMS,
-                                    &e.to_string(),
-                                ));
-                            }
-                        };
-
-                        let executor = BashExecutor::new();
-
-                        // Execute command
-                        match executor.execute(bash_params).await {
-                            Ok(result) => {
-                                let tool_res = CallToolResult {
-                                    content: vec![ToolResponseContent {
-                                        type_: "text".into(),
-                                        text: format!(
-                                            "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                                            result.status,
-                                            result.stdout,
-                                            result.stderr
-                                        ),
-                                        annotations: None,
-                                    }],
-                                    is_error: Some(!result.success),
-                                    _meta: None,
-                                    progress: None,
-                                    total: None,
-                                };
-                                Some(success_response(id, json!(tool_res)))
-                            }
-                            Err(e) => Some(error_response(
-                                Some(id.unwrap_or(Value::Number((1).into()))),
+            match tool_impl {
+                Some(tool) => {
+                    debug!("Executing tool: {}", tool.name());
+                    match tool.execute(params, id.clone()).await {
+                        Ok(response) => Some(response),
+                        Err(e) => {
+                            error!("Tool execution error: {}", e);
+                            Some(standard_error_response(
+                                id,
                                 INTERNAL_ERROR,
-                                &e.to_string(),
-                            )),
+                                &format!("Tool execution failed: {}", e)
+                            ))
                         }
-                    } else if t.name == "quick_bash" {
-                        let quick_bash_params: QuickBashParams =
-                            match serde_json::from_value(params.arguments.clone()) {
-                                Ok(p) => p,
-                                Err(e) => {
-                                    return Some(error_response(
-                                        Some(id.unwrap_or(Value::Number((1).into()))),
-                                        INVALID_PARAMS,
-                                        &e.to_string(),
-                                    ));
-                                }
-                            };
-                        match handle_quick_bash(quick_bash_params).await {
-                            Ok(result) => {
-                                let tool_res = CallToolResult {
-                                    content: vec![ToolResponseContent {
-                                        type_: "text".into(),
-                                        text: format!(
-                                            "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                                            result.status,
-                                            result.stdout,
-                                            result.stderr
-                                        ),
-                                        annotations: None,
-                                    }],
-                                    is_error: Some(!result.success),
-                                    _meta: None,
-                                    progress: None,
-                                    total: None,
-                                };
-                                Some(success_response(id, json!(tool_res)))
-                            }
-                            Err(e) => Some(error_response(
-                                Some(id.unwrap_or(Value::Number((1).into()))),
-                                INTERNAL_ERROR,
-                                &e.to_string(),
-                            )),
-                        }
-                    } else if t.name == "long_running_tool" {
-                        // Acquire the lock and clone out the manager
-                        let manager = {
-                            let guard = state.lock().await;
-                            guard.long_running_manager.clone()
-                        };
-
-                        match handle_long_running_tool_call(params, &manager, id.clone()).await {
-                            Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
-                        }
-                    } else if t.name == "never_bounce_tool" {
-                        // Here we call the handler function
-                        match handle_neverbounce_tool_call(params, id.clone()).await {
-                            Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(
-                                Some(id.unwrap_or(Value::Number((1).into()))),
-                                -32603,
-                                &e.to_string(),
-                            )),
-                        }
-                    } else if t.name == "git" {
-                        match handle_git_tool_call(params, id.clone()).await {
-                            Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(
-                                Some(id.unwrap_or(Value::Number((1).into()))),
-                                INTERNAL_ERROR,
-                                &e.to_string(),
-                            )),
-                        }
-                    } else if t.name == "gmail_tool" {
-                        match handle_gmail_tool_call(params, id.clone()).await {
-                            Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(
-                                Some(id.unwrap_or_else(|| Value::Number((1).into()))),
-                                -32603,
-                                &e.to_string(),
-                            )),
-                        }
-                    } else if t.name == "brave_search" {
-                        let query = match params.arguments.get("query").and_then(Value::as_str) {
-                            Some(q) => q.to_string(),
-                            None => {
-                                return Some(error_response(
-                                    Some(id.unwrap_or(Value::Number((1).into()))),
-                                    -32602,
-                                    "Missing required argument: query",
-                                ));
-                            }
-                        };
-
-                        let count = params
-                            .arguments
-                            .get("count")
-                            .and_then(Value::as_u64)
-                            .unwrap_or(10)
-                            .min(20) as u8;
-
-                        let brave_search_api_key = std::env::var("BRAVE_API_KEY")
-                            .expect("BRAVE_API_KEY environment variable must be set");
-                        let client = BraveSearchClient::new(brave_search_api_key);
-                        match client.search(&query).await {
-                            Ok(response) => {
-                                let results = match response.web {
-                                    Some(web) => web
-                                        .results
-                                        .iter()
-                                        .take(count as usize)
-                                        .map(|result| {
-                                            format!(
-                                                "Title: {}\nURL: {}\nDescription: {}\n\n",
-                                                result.title,
-                                                result.url,
-                                                result
-                                                    .description
-                                                    .as_deref()
-                                                    .unwrap_or("No description available")
-                                            )
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .join("---\n"),
-                                    None => "No web results found".to_string(),
-                                };
-
-                                let tool_res = CallToolResult {
-                                    content: vec![ToolResponseContent {
-                                        type_: "text".into(),
-                                        text: results,
-                                        annotations: None,
-                                    }],
-                                    is_error: None,
-                                    _meta: None,
-                                    progress: None,
-                                    total: None,
-                                };
-                                Some(success_response(id, json!(tool_res)))
-                            }
-                            Err(e) => {
-                                let tool_res = CallToolResult {
-                                    content: vec![ToolResponseContent {
-                                        type_: "text".into(),
-                                        text: format!("Search error: {}", e),
-                                        annotations: None,
-                                    }],
-                                    is_error: Some(true),
-                                    _meta: None,
-                                    progress: None,
-                                    total: None,
-                                };
-                                Some(success_response(id, json!(tool_res)))
-                            }
-                        }
-                    } else if t.name == "regex_replace" {
-                        match handle_regex_replace_tool_call(params, id.clone()).await {
-                            Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(
-                                Some(id.unwrap_or(Value::Number((1).into()))),
-                                INTERNAL_ERROR,
-                                &e.to_string(),
-                            )),
-                        }
-                    } else if t.name == "oracle_select" {
-                        match handle_oracle_select_tool_call(params, id.clone()).await {
-                            Ok(resp) => Some(resp),
-                            Err(e) => Some(error_response(id, INTERNAL_ERROR, &e.to_string())),
-                        }
-                    } else if t.name == "aider" {
-                        // Parse aider params from the CallToolParams
-                        let aider_params: AiderParams = match serde_json::from_value(params.arguments) {
-                            Ok(p) => p,
-                            Err(e) => {
-                                return Some(error_response(
-                                    Some(id.unwrap_or(Value::Number((1).into()))),
-                                    INVALID_PARAMS,
-                                    &e.to_string(),
-                                ));
-                            }
-                        };
-
-                        match handle_aider_tool_call(aider_params).await {
-                            Ok(result) => {
-                                let tool_res = CallToolResult {
-                                    content: vec![ToolResponseContent {
-                                        type_: "text".to_string(),
-                                        text: format!(
-                                            "Aider execution {}\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                                            if result.success { "succeeded" } else { "failed" },
-                                            result.directory,
-                                            result.status,
-                                            result.stdout,
-                                            result.stderr
-                                        ),
-                                        annotations: None,
-                                    }],
-                                    is_error: Some(!result.success),
-                                    _meta: None,
-                                    progress: None,
-                                    total: None,
-                                };
-                                Some(success_response(id, serde_json::to_value(tool_res).unwrap()))
-                            },
-                            Err(e) => Some(error_response(
-                                Some(id.unwrap_or(Value::Number((1).into()))),
-                                INTERNAL_ERROR,
-                                &e.to_string(),
-                            )),
-                        }
-                    } else {
-                        Some(error_response(
-                            Some(id.unwrap_or(Value::Number((1).into()))),
-                            -32601,
-                            "Tool not implemented",
-                        ))
                     }
                 }
-                None => Some(error_response(
-                    Some(id.unwrap_or(Value::Number((1).into()))),
-                    -32601,
-                    "Tool not found",
-                )),
+                None => {
+                    warn!("Tool not found: {}", params.name);
+                    Some(standard_error_response(
+                        id,
+                        -32601,
+                        &format!("Tool not found: {}", params.name)
+                    ))
+                }
             }
         }
 
