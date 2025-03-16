@@ -86,8 +86,23 @@ impl AiderExecutor {
                 provider, provider_env_key);
         }
         
-        // Get model from params or environment variables
-        let model = params.model.or_else(|| std::env::var("AIDER_MODEL").ok());
+        // Get model from params, environment variables, or set default based on provider
+        let model = params.model
+            .or_else(|| std::env::var("AIDER_MODEL").ok())
+            .or_else(|| {
+                // Set default models based on provider
+                match provider.to_lowercase().as_str() {
+                    "anthropic" => {
+                        debug!("Using default Anthropic model: claude-3-5-sonnet-20241022");
+                        Some("claude-3-5-sonnet-20241022".to_string())
+                    },
+                    "openai" => {
+                        debug!("Using default OpenAI model: gpt-4o-2024-05-13");
+                        Some("gpt-4o-2024-05-13".to_string())
+                    },
+                    _ => None
+                }
+            });
 
         // Build the command
         let mut cmd_args = vec![
@@ -105,9 +120,12 @@ impl AiderExecutor {
         }
 
         // Add model if available
-        if let Some(m) = model {
+        if let Some(m) = &model {
             cmd_args.push("--model".to_string());
-            cmd_args.push(m);
+            cmd_args.push(m.clone());
+            info!("Using provider '{}' with model '{}'", provider, m);
+        } else {
+            info!("Using provider '{}' with no specific model", provider);
         }
 
         // Add thinking tokens for Anthropic models
