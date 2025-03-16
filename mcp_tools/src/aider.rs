@@ -132,16 +132,20 @@ pub fn aider_tool_info() -> ToolInfo {
             3. Fix bugs in code
             4. Refactor or improve existing code
             5. Make structural changes across multiple files
+
+            When using aider, make sure to pass ALL of the context into the message needed for a particular issue. don't just provide the solution.
             
             The tool requires:
             - A directory path where the code exists
             - A detailed message describing what changes to make. Please only describe one change per message. If you need to make multiple changes, please submit multiple requests. You must include all context required because this tool doesn't have any memory of previous requests.
             
             Best practices for messages:
-            - Be specific about what files or components to modify
-            - Describe the desired behavior or functionality clearly
-            - Provide context about the existing codebase structure
-            - Include any constraints or requirements to follow
+            - Clearly describe the problem we're seeing in the tests
+            - Show the relevant code that's failing
+            - Explain why it's failing
+            - Provide the specific error messages
+            - Outline the approach to fix it
+            - Include any related code that might be affected by the changes
             
             Examples of good messages:
             - \"Add unit tests for the Customer class in src/models/customer.rb testing the validation logic\"
