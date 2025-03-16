@@ -125,41 +125,6 @@ impl Tool for BashTool {
     }
 }
 
-// QuickBash Tool Implementation
-#[derive(Debug)]
-pub struct QuickBashTool;
-
-impl Tool for QuickBashTool {
-    fn name(&self) -> &str {
-        "quick_bash"
-    }
-    
-    fn info(&self) -> shared_protocol_objects::ToolInfo {
-        quick_bash_tool_info()
-    }
-    
-    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
-        Box::pin(async move {
-            let quick_bash_params: QuickBashParams = serde_json::from_value(params.arguments)?;
-            
-            match handle_quick_bash(quick_bash_params).await {
-                Ok(result) => {
-                    let text = format!(
-                        "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                        result.status,
-                        result.stdout,
-                        result.stderr
-                    );
-                    
-                    let tool_res = standard_tool_result(text, Some(!result.success));
-                    Ok(standard_success_response(id, json!(tool_res)))
-                }
-                Err(e) => Err(anyhow!(e))
-            }
-        })
-    }
-}
-
 // BraveSearch Tool Implementation
 #[derive(Debug)]
 pub struct BraveSearchTool {
@@ -405,15 +370,14 @@ pub async fn create_tools() -> Result<Vec<Box<dyn Tool>>> {
         warn!("BraveSearch tool not available: missing API key");
     }
     
-    // Add GoogleSearch tool if environment variables are set
-    if let Ok(google_search_tool) = GoogleSearchTool::new() {
-        tools.push(Box::new(google_search_tool));
-    } else {
-        warn!("GoogleSearch tool not available: missing API key or search engine ID");
-    }
+    // // Add GoogleSearch tool if environment variables are set
+    // if let Ok(google_search_tool) = GoogleSearchTool::new() {
+    //     tools.push(Box::new(google_search_tool));
+    // } else {
+    //     warn!("GoogleSearch tool not available: missing API key or search engine ID");
+    // }
     
     // Add other tools that don't require special initialization
-    tools.push(Box::new(QuickBashTool));
     tools.push(Box::new(BashTool));
     tools.push(Box::new(AiderTool));
     

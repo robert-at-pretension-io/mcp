@@ -13,6 +13,8 @@ The Model Context Protocol (MCP) is an open standard developed by Anthropic that
 - Rust (latest stable version)
 - Cargo (comes with Rust)
 
+-- or just complain to the repo owner and he'll make a binary for you... donations accepted ;)
+
 ### Steps
 
 1. Clone the repository:
@@ -26,7 +28,7 @@ The Model Context Protocol (MCP) is an open standard developed by Anthropic that
    cd mcp_tools && cargo build --release
    ```
 3. get the generated binary location
-3. Set up the required environment variables (see below)
+3. Set up the required environment variables (claude desktop json) (see below)
 
 
 ## Environment Variables
@@ -39,8 +41,6 @@ The following environment variables are required or optional depending on which 
 | `BRAVE_API_KEY` | Brave Search | API key for Brave Search API |
 | `ANTHROPIC_API_KEY` | Aider Tool (Anthropic) | Your Anthropic API key |
 | `OPENAI_API_KEY` | Aider Tool (OpenAI) | Your OpenAI API key |
-| `GEMINI_API_KEY` | Aider Tool (Gemini) | Your Google Gemini API key |
-| `DEEPSEEK_API_KEY` | Aider Tool (DeepSeek) | Your DeepSeek API key |
 
 ### Additional Tool-Specific Variables
 
@@ -73,11 +73,10 @@ The default configuration enables the following tools:
 
 The Aider tool has been enhanced with multi-provider support:
 
-- **Multiple AI Providers**: Now supports Anthropic (Claude), OpenAI (GPT), Google (Gemini), and DeepSeek models
+- **Multiple AI Providers**: Now supports Anthropic (Claude), OpenAI (GPT)
 - **Provider Selection**: Specify which AI provider to use via the `provider` parameter
 - **Model Configuration**: Each provider has sensible defaults, but specific models can be requested
 - **Thinking/Reasoning**: Enhanced prompting for step-by-step reasoning
-- **Streaming Support**: Real-time response streaming where supported by the provider
 
 See the [Aider Tool README](./AIDER-README.md) for more details and usage examples.
 
@@ -96,6 +95,9 @@ To use this MCP tools project with Claude Desktop, you need to create a configur
 
 ### Example Configuration
 
+NOTE: YOU CAN HAVE **ONE** OF OR **BOTH** ANTHROPIC_API_KEY **AND** OPENAI_API_KEY BUT THEN YOU'LL NEED TO TELL CLAUDE WHICH PROVIDER WHILE CHATTING WITH IT. YOU CAN ALSO TELL CLAUDE WHICH MODEL BUT THEN YOU NEED TO SPECIFY IT EXACTLY AS AIDER EXPECTS MODELS TO BE SPECIFIED.
+
+by default, the model will be set to the best default models according to the leaderboard.
 
 ```json
   {
@@ -106,16 +108,14 @@ To use this MCP tools project with Claude Desktop, you need to create a configur
         "env": {
           "SCRAPINGBEE_API_KEY": "[your key here]",
           "BRAVE_API_KEY": "[your key here]",
-          "KNOWLEDGE_GRAPH_DIR": "[knowledge graph directory]",
           "ANTHROPIC_API_KEY": "[your anthropic api key]",
-          "OPENAI_API_KEY": "[your openai api key]",
-          "GEMINI_API_KEY": "[your gemini api key]",
-          "DEEPSEEK_API_KEY": "[your deepseek api key]"
+          "OPENAI_API_KEY": "[your openai api key]"
         }
       }
     }
   }
 ```
+
 
 
 ## Troubleshooting
