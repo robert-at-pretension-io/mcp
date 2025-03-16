@@ -92,12 +92,12 @@ impl AiderExecutor {
                 // Set default models based on provider
                 match provider.to_lowercase().as_str() {
                     "anthropic" => {
-                        debug!("Using default Anthropic model: claude-3-5-sonnet-20241022");
-                        Some("claude-3-5-sonnet-20241022".to_string())
+                        debug!("Using default Anthropic model: anthropic/claude-3-7-sonnet-20250219");
+                        Some("anthropic/claude-3-7-sonnet-20250219".to_string())
                     },
                     "openai" => {
-                        debug!("Using default OpenAI model: gpt-4o-2024-05-13");
-                        Some("gpt-4o-2024-05-13".to_string())
+                        debug!("Using default OpenAI model: openai/o1");
+                        Some("openai/o1".to_string())
                     },
                     _ => None
                 }
@@ -128,32 +128,28 @@ impl AiderExecutor {
         }
 
         // Add thinking tokens for Anthropic models
-        if let Some(tokens) = params.thinking_tokens {
-            if provider.to_lowercase() == "anthropic" {
-                cmd_args.push("--thinking-tokens".to_string());
-                cmd_args.push(tokens.to_string());
-            } else {
-                debug!("Ignoring thinking_tokens as provider is not Anthropic");
-            }
+        if provider.to_lowercase() == "anthropic" {
+            let tokens = params.thinking_tokens.unwrap_or(32000);
+            cmd_args.push("--thinking-tokens".to_string());
+            cmd_args.push(tokens.to_string());
+            debug!("Using thinking_tokens: {}", tokens);
         }
 
         // Add reasoning effort for OpenAI models
-        if let Some(effort) = &params.reasoning_effort {
-            if provider.to_lowercase() == "openai" {
-                // Validate reasoning_effort - only allow "auto", "low", "medium", "high"
-                let valid_efforts = [ "low", "medium", "high"];
-                let validated_effort = if valid_efforts.contains(&effort.to_lowercase().as_str()) {
-                    effort.clone()
-                } else {
-                    error!("Invalid reasoning_effort '{}'. Defaulting to 'medium'", effort);
-                    "medium".to_string()
-                };
-                
-                cmd_args.push("--reasoning-effort".to_string());
-                cmd_args.push(validated_effort);
+        if provider.to_lowercase() == "openai" {
+            let effort = params.reasoning_effort.as_deref().unwrap_or("high");
+            // Validate reasoning_effort - only allow "auto", "low", "medium", "high"
+            let valid_efforts = ["auto", "low", "medium", "high"];
+            let validated_effort = if valid_efforts.contains(&effort.to_lowercase().as_str()) {
+                effort.to_string()
             } else {
-                debug!("Ignoring reasoning_effort as provider is not OpenAI");
-            }
+                error!("Invalid reasoning_effort '{}'. Defaulting to 'high'", effort);
+                "high".to_string()
+            };
+            
+            cmd_args.push("--reasoning-effort".to_string());
+            cmd_args.push(validated_effort);
+            debug!("Using reasoning_effort: {}", validated_effort);
         }
 
         // Add any additional options
@@ -259,8 +255,8 @@ pub fn aider_tool_info() -> ToolInfo {
             MODEL AND PROVIDER OPTIONS:
             This tool supports both Anthropic (Claude) and OpenAI models. You can specify which provider and model to use:
             
-            - Default provider: 'anthropic' with model 'claude-3-5-sonnet-20241022'
-            - Alternative provider: 'openai' with default model 'gpt-4o-2024-05-13'
+            - Default provider: 'anthropic' with model 'anthropic/claude-3-7-sonnet-20250219'
+            - Alternative provider: 'openai' with default model 'openai/o1'
             
             Examples of provider/model usage:
             - Basic usage (uses default Anthropic model): {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\"}
@@ -268,11 +264,11 @@ pub fn aider_tool_info() -> ToolInfo {
             - Specify provider and model: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"anthropic\", \"model\": \"claude-3-opus-20240229\"}
             
             ADVANCED FEATURES:
-            - For Anthropic models (Claude), you can set 'thinking_tokens' to control how much thinking the model does before responding:
-              Example: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"anthropic\", \"thinking_tokens\": 2000}
+            - For Anthropic models (Claude), the default 'thinking_tokens' is set to 32000 for optimal performance, but you can override it:
+              Example: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"anthropic\", \"thinking_tokens\": 16000}
             
-            - For OpenAI models, you can set 'reasoning_effort' to control the level of reasoning:
-              Example: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"openai\", \"reasoning_effort\": \"high\"}
+            - For OpenAI models, the default 'reasoning_effort' is set to 'high' for optimal performance, but you can override it:
+              Example: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"openai\", \"reasoning_effort\": \"medium\"}
               Valid values: 'auto', 'low', 'medium', 'high'
             
             Note: The tool will look for API keys in environment variables. It first checks for provider-specific keys 
@@ -487,7 +483,7 @@ mod tests {
             let effort_index = cmd_args.iter().position(|arg| arg == "--reasoning-effort").unwrap();
             assert_eq!(cmd_args[effort_index + 1], "high");
             
-            // Test invalid reasoning_effort with OpenAI - should default to auto
+            // Test invalid reasoning_effort with OpenAI - should default to high
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
@@ -501,7 +497,7 @@ mod tests {
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--reasoning-effort".to_string()));
             let effort_index = cmd_args.iter().position(|arg| arg == "--reasoning-effort").unwrap();
-            assert_eq!(cmd_args[effort_index + 1], "auto");
+            assert_eq!(cmd_args[effort_index + 1], "high");
             
             // Test reasoning_effort with Anthropic - should be ignored
             let params = AiderParams {
