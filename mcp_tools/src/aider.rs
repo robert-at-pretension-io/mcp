@@ -59,15 +59,30 @@ impl AiderExecutor {
 
     /// Helper method to build command arguments for testing
     pub fn build_command_args(&self, params: &AiderParams) -> Vec<String> {
-        // Get provider from params or default to "anthropic"
-        let mut provider = params.provider.clone().unwrap_or_else(|| "anthropic".to_string());
-        
-        // Validate provider - only allow "anthropic" or "openai"
-        let supported_providers = ["anthropic", "openai"];
-        if !supported_providers.contains(&provider.to_lowercase().as_str()) {
-            error!("Unsupported provider '{}'. Defaulting to 'anthropic'", provider);
-            provider = "anthropic".to_string();
-        }
+        // Determine provider: first use explicit parameter, otherwise detect available API keys
+        let provider = if let Some(p) = params.provider.clone() {
+            let p_l = p.to_lowercase();
+            if p_l != "anthropic" && p_l != "openai" {
+                error!("Unsupported provider '{}'. Defaulting to 'anthropic'", p);
+                "anthropic".to_string()
+            } else {
+                p_l
+            }
+        } else {
+            let has_anthropic = std::env::var("ANTHROPIC_API_KEY").is_ok();
+            let has_openai = std::env::var("OPENAI_API_KEY").is_ok();
+            if has_anthropic && !has_openai {
+                "anthropic".to_string()
+            } else if has_openai && !has_anthropic {
+                "openai".to_string()
+            } else if has_anthropic && has_openai {
+                // If both providers have keys, maintain current default preference
+                "anthropic".to_string()
+            } else {
+                // Default to anthropic if no API keys are found
+                "anthropic".to_string()
+            }
+        };
         
         // Check for provider-specific API key first, then fall back to AIDER_API_KEY
         let provider_env_key = format!("{}_API_KEY", provider.to_uppercase());
