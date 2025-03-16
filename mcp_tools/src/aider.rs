@@ -22,6 +22,12 @@ pub struct AiderParams {
     /// The model to use (e.g., "claude-3-opus-20240229")
     #[serde(default)]
     pub model: Option<String>,
+    /// Number of thinking tokens for Anthropic models
+    #[serde(default)]
+    pub thinking_tokens: Option<u32>,
+    /// Reasoning effort level for OpenAI models
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -102,6 +108,26 @@ impl AiderExecutor {
         if let Some(m) = model {
             cmd_args.push("--model".to_string());
             cmd_args.push(m);
+        }
+
+        // Add thinking tokens for Anthropic models
+        if let Some(tokens) = params.thinking_tokens {
+            if provider.to_lowercase() == "anthropic" {
+                cmd_args.push("--thinking-tokens".to_string());
+                cmd_args.push(tokens.to_string());
+            } else {
+                debug!("Ignoring thinking_tokens as provider is not Anthropic");
+            }
+        }
+
+        // Add reasoning effort for OpenAI models
+        if let Some(effort) = &params.reasoning_effort {
+            if provider.to_lowercase() == "openai" {
+                cmd_args.push("--reasoning-effort".to_string());
+                cmd_args.push(effort.clone());
+            } else {
+                debug!("Ignoring reasoning_effort as provider is not OpenAI");
+            }
         }
 
         // Add any additional options
@@ -204,6 +230,14 @@ pub fn aider_tool_info() -> ToolInfo {
                 "model": {
                     "type": "string",
                     "description": "The model to use (e.g., 'claude-3-opus-20240229'). Falls back to AIDER_MODEL environment variable if not specified."
+                },
+                "thinking_tokens": {
+                    "type": "integer",
+                    "description": "Number of thinking tokens to use for Anthropic models (Claude). Higher values allow more thorough reasoning."
+                },
+                "reasoning_effort": {
+                    "type": "string",
+                    "description": "Reasoning effort level for OpenAI models. Values: 'auto', 'low', 'medium', 'high'."
                 }
             },
             "required": ["directory", "message"],
