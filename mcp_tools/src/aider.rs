@@ -16,6 +16,12 @@ pub struct AiderParams {
     /// Additional options to pass to aider (optional)
     #[serde(default)]
     pub options: Vec<String>,
+    /// The provider to use (e.g., "anthropic", "openai")
+    #[serde(default)]
+    pub provider: Option<String>,
+    /// The model to use (e.g., "claude-3-opus-20240229")
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -56,9 +62,14 @@ impl AiderExecutor {
             return Err(anyhow!("Message cannot be empty"));
         }
 
-        // Get API key and model from environment variables
+        // Get API key from environment variables
         let api_key = std::env::var("AIDER_API_KEY").ok();
-        let model = std::env::var("AIDER_MODEL").ok();
+        
+        // Get model from params or environment variables
+        let model = params.model.or_else(|| std::env::var("AIDER_MODEL").ok());
+        
+        // Get provider from params or default to "anthropic"
+        let provider = params.provider.clone().unwrap_or_else(|| "anthropic".to_string());
 
         // Build the command
         let mut cmd_args = vec![
@@ -70,12 +81,12 @@ impl AiderExecutor {
 
         // Add API key if available in environment
         if let Some(key) = api_key {
-            // Pass the API key directly without requiring provider= format
+            // Pass the API key with the specified provider
             cmd_args.push("--api-key".to_string());
-            cmd_args.push(format!("anthropic={}", key));
+            cmd_args.push(format!("{}={}", provider, key));
         }
 
-        // Add model if available in environment
+        // Add model if available
         if let Some(m) = model {
             cmd_args.push("--model".to_string());
             cmd_args.push(m);
@@ -173,6 +184,14 @@ pub fn aider_tool_info() -> ToolInfo {
                         "type": "string"
                     },
                     "description": "Additional command-line options to pass to aider (optional)"
+                },
+                "provider": {
+                    "type": "string",
+                    "description": "The provider to use (e.g., 'anthropic', 'openai'). Defaults to 'anthropic' if not specified."
+                },
+                "model": {
+                    "type": "string",
+                    "description": "The model to use (e.g., 'claude-3-opus-20240229'). Falls back to AIDER_MODEL environment variable if not specified."
                 }
             },
             "required": ["directory", "message"],
