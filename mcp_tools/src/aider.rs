@@ -141,12 +141,12 @@ impl AiderExecutor {
         if let Some(effort) = &params.reasoning_effort {
             if provider.to_lowercase() == "openai" {
                 // Validate reasoning_effort - only allow "auto", "low", "medium", "high"
-                let valid_efforts = ["auto", "low", "medium", "high"];
+                let valid_efforts = [ "low", "medium", "high"];
                 let validated_effort = if valid_efforts.contains(&effort.to_lowercase().as_str()) {
                     effort.clone()
                 } else {
-                    error!("Invalid reasoning_effort '{}'. Defaulting to 'auto'", effort);
-                    "auto".to_string()
+                    error!("Invalid reasoning_effort '{}'. Defaulting to 'medium'", effort);
+                    "medium".to_string()
                 };
                 
                 cmd_args.push("--reasoning-effort".to_string());
@@ -246,6 +246,7 @@ pub fn aider_tool_info() -> ToolInfo {
             - Provide the specific error messages
             - Outline the approach to fix it
             - Include any related code that might be affected by the changes
+            - Specify the file paths that include relevent context for the problem
             
             Examples of good messages:
             - \"Add unit tests for the Customer class in src/models/customer.rb testing the validation logic\"
