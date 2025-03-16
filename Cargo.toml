@@ -21,11 +21,11 @@ eventsource-stream = "0.2"
 tokio = { version = "1.0", features = ["full"] }
 
 # Specify compatible versions for dependencies that require newer rustc
-bitstream-io = "=2.5.0"     # 2.6.0 requires rustc 1.79
-image-webp = "=0.1.3"        # 0.2.1 requires rustc 1.80.1
-litemap = "=0.7.1"           # 0.7.5 requires rustc 1.81
-native-tls = "=0.2.11"       # 0.2.14 requires rustc 1.80.0
-zerofrom = "=0.1.5"          # 0.1.6 requires rustc 1.81
+bitstream-io = "2.5.0"     # 2.6.0 requires rustc 1.79
+image-webp = "0.1.3"        # 0.2.1 requires rustc 1.80.1
+litemap = "0.7.1"           # 0.7.5 requires rustc 1.81
+native-tls = "0.2.11"       # 0.2.14 requires rustc 1.80.0
+zerofrom = "0.1.5"          # 0.1.6 requires rustc 1.81
 
 [profile.release]
 lto = true
