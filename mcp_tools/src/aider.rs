@@ -97,7 +97,7 @@ impl AiderExecutor {
                     },
                     "openai" => {
                         debug!("Using default OpenAI model: openai/o1");
-                        Some("openai/o1".to_string())
+                        Some("openai/o3-mini".to_string())
                     },
                     _ => None
                 }
@@ -138,8 +138,8 @@ impl AiderExecutor {
         // Add reasoning effort for OpenAI models
         if provider.to_lowercase() == "openai" {
             let effort = params.reasoning_effort.as_deref().unwrap_or("high");
-            // Validate reasoning_effort - only allow "auto", "low", "medium", "high"
-            let valid_efforts = ["auto", "low", "medium", "high"];
+            // Validate reasoning_effort - only allow "low", "medium", "high"
+            let valid_efforts = ["low", "medium", "high"];
             let validated_effort = if valid_efforts.contains(&effort.to_lowercase().as_str()) {
                 effort.to_string()
             } else {
@@ -148,7 +148,7 @@ impl AiderExecutor {
             };
             
             cmd_args.push("--reasoning-effort".to_string());
-            cmd_args.push(validated_effort);
+            cmd_args.push(validated_effort.clone());
             debug!("Using reasoning_effort: {}", validated_effort);
         }
 
@@ -244,11 +244,6 @@ pub fn aider_tool_info() -> ToolInfo {
             - Include any related code that might be affected by the changes
             - Specify the file paths that include relevent context for the problem
             
-            Examples of good messages:
-            - \"Add unit tests for the Customer class in src/models/customer.rb testing the validation logic\"
-            - \"Implement pagination for the user listing API in the controllers/users_controller.js file\"
-            - \"Fix the bug in utils/date_formatter.py where dates before 1970 aren't handled correctly\"
-            - \"Refactor the authentication middleware in middleware/auth.js to use async/await instead of callbacks\"
             
             Note: This tool runs aider with the --yes-always flag which automatically accepts all proposed changes.
             
@@ -256,7 +251,7 @@ pub fn aider_tool_info() -> ToolInfo {
             This tool supports both Anthropic (Claude) and OpenAI models. You can specify which provider and model to use:
             
             - Default provider: 'anthropic' with model 'anthropic/claude-3-7-sonnet-20250219'
-            - Alternative provider: 'openai' with default model 'openai/o1'
+            - Alternative provider: 'openai' with default model 'openai/o3-mini'
             
             Examples of provider/model usage:
             - Basic usage (uses default Anthropic model): {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\"}
