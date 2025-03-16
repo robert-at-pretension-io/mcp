@@ -11,3 +11,4 @@ pub mod long_running_task;
 pub mod aider;
 pub mod tool_trait;
 pub mod tool_impls;
+pub mod google_search;
