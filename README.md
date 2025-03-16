@@ -37,8 +37,10 @@ The following environment variables are required or optional depending on which 
 |----------|-------------|-------------|
 | `SCRAPINGBEE_API_KEY` | Web Scraping | API key for ScrapingBee service |
 | `BRAVE_API_KEY` | Brave Search | API key for Brave Search API |
-| `AIDER_API_KEY` | Aider Tool | Your Anthropic API key for Aider (without the 'anthropic=' prefix) |
-| `AIDER_MODEL` | Aider Tool | The model to use (e.g., 'claude-3-opus-20240229', 'claude-3-sonnet-20240229') |
+| `ANTHROPIC_API_KEY` | Aider Tool (Anthropic) | Your Anthropic API key |
+| `OPENAI_API_KEY` | Aider Tool (OpenAI) | Your OpenAI API key |
+| `GEMINI_API_KEY` | Aider Tool (Gemini) | Your Google Gemini API key |
+| `DEEPSEEK_API_KEY` | Aider Tool (DeepSeek) | Your DeepSeek API key |
 
 ### Additional Tool-Specific Variables
 
@@ -64,8 +66,20 @@ The default configuration enables the following tools:
 1. **Web Scraping Tool (`scrape_url`)**: Extracts and processes content from websites
 2. **Brave Search Tool (`brave_search`)**: Retrieves search results from Brave Search
 3. **Quick Bash Tool (`quick_bash`)**: Executes simple shell commands
-4. **Aider Tool (`aider`)**: AI pair programming tool for making targeted code changes
+4. **Aider Tool (`aider`)**: AI pair programming tool for making targeted code changes with multi-provider support
 5. **Long Running Task Tool (`long_running_tool`)**: Manages background tasks that may take minutes or hours to complete
+
+## Aider Tool Enhancements
+
+The Aider tool has been enhanced with multi-provider support:
+
+- **Multiple AI Providers**: Now supports Anthropic (Claude), OpenAI (GPT), Google (Gemini), and DeepSeek models
+- **Provider Selection**: Specify which AI provider to use via the `provider` parameter
+- **Model Configuration**: Each provider has sensible defaults, but specific models can be requested
+- **Thinking/Reasoning**: Enhanced prompting for step-by-step reasoning
+- **Streaming Support**: Real-time response streaming where supported by the provider
+
+See the [Aider Tool README](./AIDER-README.md) for more details and usage examples.
 
 ## Contributing
 
@@ -93,8 +107,10 @@ To use this MCP tools project with Claude Desktop, you need to create a configur
           "SCRAPINGBEE_API_KEY": "[your key here]",
           "BRAVE_API_KEY": "[your key here]",
           "KNOWLEDGE_GRAPH_DIR": "[knowledge graph directory]",
-          "AIDER_API_KEY" : "[only anthropic models now, so only anthropic api key]",
-	      "AIDER_MODEL": "anthropic/claude-3-7-sonnet-20250219"  
+          "ANTHROPIC_API_KEY": "[your anthropic api key]",
+          "OPENAI_API_KEY": "[your openai api key]",
+          "GEMINI_API_KEY": "[your gemini api key]",
+          "DEEPSEEK_API_KEY": "[your deepseek api key]"
         }
       }
     }
