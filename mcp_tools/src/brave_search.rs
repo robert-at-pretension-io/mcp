@@ -104,7 +104,8 @@ pub fn search_tool_info() -> ToolInfo {
             - Age indicators showing content freshness
             
             The search defaults to returning 10 results but can provide up to 20 with the count parameter.
-            ".into()
+            
+            NOTE: This tool requires the BRAVE_API_KEY environment variable to be set.".into()
         ),
         input_schema: json!({
             "type": "object",
