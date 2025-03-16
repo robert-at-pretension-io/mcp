@@ -244,9 +244,27 @@ pub fn aider_tool_info() -> ToolInfo {
             
             Note: This tool runs aider with the --yes-always flag which automatically accepts all proposed changes.
             
-            Advanced features:
-            - For Anthropic models (Claude), you can set 'thinking_tokens' to control how much thinking the model does before responding
-            - For OpenAI models, you can set 'reasoning_effort' to control the level of reasoning (e.g., 'auto', 'low', 'medium', 'high')"
+            MODEL AND PROVIDER OPTIONS:
+            This tool supports both Anthropic (Claude) and OpenAI models. You can specify which provider and model to use:
+            
+            - Default provider: 'anthropic' with model 'claude-3-5-sonnet-20241022'
+            - Alternative provider: 'openai' with default model 'gpt-4o-2024-05-13'
+            
+            Examples of provider/model usage:
+            - Basic usage (uses default Anthropic model): {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\"}
+            - Specify provider: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"openai\"}
+            - Specify provider and model: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"anthropic\", \"model\": \"claude-3-opus-20240229\"}
+            
+            ADVANCED FEATURES:
+            - For Anthropic models (Claude), you can set 'thinking_tokens' to control how much thinking the model does before responding:
+              Example: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"anthropic\", \"thinking_tokens\": 2000}
+            
+            - For OpenAI models, you can set 'reasoning_effort' to control the level of reasoning:
+              Example: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"openai\", \"reasoning_effort\": \"high\"}
+              Valid values: 'auto', 'low', 'medium', 'high'
+            
+            Note: The tool will look for API keys in environment variables. It first checks for provider-specific keys 
+            (ANTHROPIC_API_KEY or OPENAI_API_KEY) and then falls back to AIDER_API_KEY if needed."
                 .to_string(),
         ),
         input_schema: json!({
