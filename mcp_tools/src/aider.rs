@@ -62,14 +62,26 @@ impl AiderExecutor {
             return Err(anyhow!("Message cannot be empty"));
         }
 
-        // Get API key from environment variables
-        let api_key = std::env::var("AIDER_API_KEY").ok();
+        // Get provider from params or default to "anthropic"
+        let provider = params.provider.clone().unwrap_or_else(|| "anthropic".to_string());
+        
+        // Check for provider-specific API key first, then fall back to AIDER_API_KEY
+        let provider_env_key = format!("{}_API_KEY", provider.to_uppercase());
+        let api_key = std::env::var(&provider_env_key)
+            .or_else(|_| {
+                debug!("Provider-specific API key {} not found, falling back to AIDER_API_KEY", provider_env_key);
+                std::env::var("AIDER_API_KEY")
+            })
+            .ok();
+            
+        // Log warning if no API key is found
+        if api_key.is_none() {
+            error!("No API key found for provider '{}'. Checked {} and AIDER_API_KEY", 
+                provider, provider_env_key);
+        }
         
         // Get model from params or environment variables
         let model = params.model.or_else(|| std::env::var("AIDER_MODEL").ok());
-        
-        // Get provider from params or default to "anthropic"
-        let provider = params.provider.clone().unwrap_or_else(|| "anthropic".to_string());
 
         // Build the command
         let mut cmd_args = vec![
