@@ -73,7 +73,14 @@ impl AiderExecutor {
         }
 
         // Get provider from params or default to "anthropic"
-        let provider = params.provider.clone().unwrap_or_else(|| "anthropic".to_string());
+        let mut provider = params.provider.clone().unwrap_or_else(|| "anthropic".to_string());
+        
+        // Validate provider - only allow "anthropic" or "openai"
+        let supported_providers = ["anthropic", "openai"];
+        if !supported_providers.contains(&provider.to_lowercase().as_str()) {
+            error!("Unsupported provider '{}'. Defaulting to 'anthropic'", provider);
+            provider = "anthropic".to_string();
+        }
         
         // Check for provider-specific API key first, then fall back to AIDER_API_KEY
         let provider_env_key = format!("{}_API_KEY", provider.to_uppercase());
@@ -145,8 +152,17 @@ impl AiderExecutor {
         // Add reasoning effort for OpenAI models
         if let Some(effort) = &params.reasoning_effort {
             if provider.to_lowercase() == "openai" {
+                // Validate reasoning_effort - only allow "auto", "low", "medium", "high"
+                let valid_efforts = ["auto", "low", "medium", "high"];
+                let validated_effort = if valid_efforts.contains(&effort.to_lowercase().as_str()) {
+                    effort.clone()
+                } else {
+                    error!("Invalid reasoning_effort '{}'. Defaulting to 'auto'", effort);
+                    "auto".to_string()
+                };
+                
                 cmd_args.push("--reasoning-effort".to_string());
-                cmd_args.push(effort.clone());
+                cmd_args.push(validated_effort);
             } else {
                 debug!("Ignoring reasoning_effort as provider is not OpenAI");
             }
