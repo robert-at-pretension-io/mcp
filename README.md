@@ -25,7 +25,7 @@ The Model Context Protocol (MCP) is an open standard developed by Anthropic that
    ```bash
    cd mcp_tools && cargo build --release
    ```
-
+3. get the generated binary location
 3. Set up the required environment variables (see below)
 
 
