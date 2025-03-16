@@ -202,7 +202,11 @@ pub fn aider_tool_info() -> ToolInfo {
             - \"Fix the bug in utils/date_formatter.py where dates before 1970 aren't handled correctly\"
             - \"Refactor the authentication middleware in middleware/auth.js to use async/await instead of callbacks\"
             
-            Note: This tool runs aider with the --yes-always flag which automatically accepts all proposed changes."
+            Note: This tool runs aider with the --yes-always flag which automatically accepts all proposed changes.
+            
+            Advanced features:
+            - For Anthropic models (Claude), you can set 'thinking_tokens' to control how much thinking the model does before responding
+            - For OpenAI models, you can set 'reasoning_effort' to control the level of reasoning (e.g., 'auto', 'low', 'medium', 'high')"
                 .to_string(),
         ),
         input_schema: json!({
