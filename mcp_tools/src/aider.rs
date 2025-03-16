@@ -44,6 +44,10 @@ pub struct AiderResult {
     pub directory: String,
     /// The message that was sent to aider
     pub message: String,
+    /// The provider that was used (e.g., "anthropic", "openai")
+    pub provider: String,
+    /// The model that was used (e.g., "claude-3-opus-20240229")
+    pub model: Option<String>,
 }
 
 pub struct AiderExecutor;
@@ -183,6 +187,8 @@ impl AiderExecutor {
             stderr,
             directory: params.directory,
             message: params.message,
+            provider: provider.clone(),
+            model: model.clone(),
         })
     }
 }

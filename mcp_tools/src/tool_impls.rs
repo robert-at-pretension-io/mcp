@@ -250,9 +250,15 @@ impl Tool for AiderTool {
             
             match handle_aider_tool_call(aider_params).await {
                 Ok(result) => {
+                    let model_info = match &result.model {
+                        Some(model) => format!("Provider: {} | Model: {}", result.provider, model),
+                        None => format!("Provider: {}", result.provider),
+                    };
+                    
                     let text = format!(
-                        "Aider execution {}\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                        "Aider execution {} [{}]\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
                         if result.success { "succeeded" } else { "failed" },
+                        model_info,
                         result.directory,
                         result.status,
                         result.stdout,
