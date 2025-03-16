@@ -57,21 +57,8 @@ impl AiderExecutor {
         AiderExecutor
     }
 
-    pub async fn execute(&self, params: AiderParams) -> Result<AiderResult> {
-        // Validate directory exists
-        let dir_path = PathBuf::from(&params.directory);
-        if !dir_path.exists() {
-            return Err(anyhow!("Directory '{}' does not exist", params.directory));
-        }
-        if !dir_path.is_dir() {
-            return Err(anyhow!("Path '{}' is not a directory", params.directory));
-        }
-
-        // Basic validation of the message
-        if params.message.trim().is_empty() {
-            return Err(anyhow!("Message cannot be empty"));
-        }
-
+    /// Helper method to build command arguments for testing
+    pub fn build_command_args(&self, params: &AiderParams) -> Vec<String> {
         // Get provider from params or default to "anthropic"
         let mut provider = params.provider.clone().unwrap_or_else(|| "anthropic".to_string());
         
@@ -99,6 +86,7 @@ impl AiderExecutor {
         
         // Get model from params, environment variables, or set default based on provider
         let model = params.model
+            .clone()
             .or_else(|| std::env::var("AIDER_MODEL").ok())
             .or_else(|| {
                 // Set default models based on provider
@@ -170,6 +158,29 @@ impl AiderExecutor {
 
         // Add any additional options
         cmd_args.extend(params.options.iter().cloned());
+        
+        cmd_args
+    }
+
+    pub async fn execute(&self, params: AiderParams) -> Result<AiderResult> {
+        // Validate directory exists
+        let dir_path = PathBuf::from(&params.directory);
+        if !dir_path.exists() {
+            return Err(anyhow!("Directory '{}' does not exist", params.directory));
+        }
+        if !dir_path.is_dir() {
+            return Err(anyhow!("Path '{}' is not a directory", params.directory));
+        }
+
+        // Basic validation of the message
+        if params.message.trim().is_empty() {
+            return Err(anyhow!("Message cannot be empty"));
+        }
+
+        // Build command arguments
+        let cmd_args = self.build_command_args(&params);
+        let provider = params.provider.clone().unwrap_or_else(|| "anthropic".to_string());
+        let model = params.model.clone();
 
         debug!("Running aider with args: {:?}", cmd_args);
         info!("Executing aider in directory: {}", params.directory);
@@ -312,4 +323,200 @@ pub fn aider_tool_info() -> ToolInfo {
 pub async fn handle_aider_tool_call(params: AiderParams) -> Result<AiderResult> {
     let executor = AiderExecutor::new();
     executor.execute(params).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::path::Path;
+    use tokio::fs;
+    use tokio::runtime::Runtime;
+
+    // Helper function to create a temporary directory for testing
+    async fn create_temp_dir() -> Result<String> {
+        let temp_dir = format!("/tmp/aider_test_{}", std::process::id());
+        if !Path::new(&temp_dir).exists() {
+            fs::create_dir_all(&temp_dir).await?;
+        }
+        Ok(temp_dir)
+    }
+
+    // Test provider validation logic
+    #[test]
+    fn test_provider_validation() {
+        let rt = Runtime::new().unwrap();
+        
+        rt.block_on(async {
+            let temp_dir = create_temp_dir().await.unwrap();
+            let executor = AiderExecutor::new();
+            
+            // Test with valid provider: anthropic
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("anthropic".to_string()),
+                model: None,
+                thinking_tokens: None,
+                reasoning_effort: None,
+            };
+            
+            // We don't actually execute the command, just check the validation logic
+            // by inspecting the command that would be built
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--api-key".to_string()));
+            
+            // Test with valid provider: openai
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("openai".to_string()),
+                model: None,
+                thinking_tokens: None,
+                reasoning_effort: None,
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--api-key".to_string()));
+            
+            // Test with invalid provider - should default to anthropic
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("invalid_provider".to_string()),
+                model: None,
+                thinking_tokens: None,
+                reasoning_effort: None,
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            // The provider should be defaulted to anthropic
+            assert!(cmd_args.iter().any(|arg| arg.contains("anthropic=")));
+            
+            fs::remove_dir_all(temp_dir).await.unwrap();
+        });
+    }
+    
+    // Test default model selection logic
+    #[test]
+    fn test_default_model_selection() {
+        let rt = Runtime::new().unwrap();
+        
+        rt.block_on(async {
+            let temp_dir = create_temp_dir().await.unwrap();
+            let executor = AiderExecutor::new();
+            
+            // Test default model for anthropic
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("anthropic".to_string()),
+                model: None,
+                thinking_tokens: None,
+                reasoning_effort: None,
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--model".to_string()));
+            let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
+            assert_eq!(cmd_args[model_index + 1], "claude-3-5-sonnet-20241022");
+            
+            // Test default model for openai
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("openai".to_string()),
+                model: None,
+                thinking_tokens: None,
+                reasoning_effort: None,
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--model".to_string()));
+            let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
+            assert_eq!(cmd_args[model_index + 1], "gpt-4o-2024-05-13");
+            
+            // Test custom model overrides default
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("anthropic".to_string()),
+                model: Some("claude-3-opus-20240229".to_string()),
+                thinking_tokens: None,
+                reasoning_effort: None,
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--model".to_string()));
+            let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
+            assert_eq!(cmd_args[model_index + 1], "claude-3-opus-20240229");
+            
+            fs::remove_dir_all(temp_dir).await.unwrap();
+        });
+    }
+    
+    // Test reasoning_effort validation
+    #[test]
+    fn test_reasoning_effort_validation() {
+        let rt = Runtime::new().unwrap();
+        
+        rt.block_on(async {
+            let temp_dir = create_temp_dir().await.unwrap();
+            let executor = AiderExecutor::new();
+            
+            // Test valid reasoning_effort with OpenAI
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("openai".to_string()),
+                model: None,
+                thinking_tokens: None,
+                reasoning_effort: Some("high".to_string()),
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--reasoning-effort".to_string()));
+            let effort_index = cmd_args.iter().position(|arg| arg == "--reasoning-effort").unwrap();
+            assert_eq!(cmd_args[effort_index + 1], "high");
+            
+            // Test invalid reasoning_effort with OpenAI - should default to auto
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("openai".to_string()),
+                model: None,
+                thinking_tokens: None,
+                reasoning_effort: Some("invalid_effort".to_string()),
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--reasoning-effort".to_string()));
+            let effort_index = cmd_args.iter().position(|arg| arg == "--reasoning-effort").unwrap();
+            assert_eq!(cmd_args[effort_index + 1], "auto");
+            
+            // Test reasoning_effort with Anthropic - should be ignored
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("anthropic".to_string()),
+                model: None,
+                thinking_tokens: None,
+                reasoning_effort: Some("high".to_string()),
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(!cmd_args.contains(&"--reasoning-effort".to_string()));
+            
+            fs::remove_dir_all(temp_dir).await.unwrap();
+        });
+    }
 }
