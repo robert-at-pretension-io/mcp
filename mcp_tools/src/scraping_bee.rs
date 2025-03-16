@@ -48,7 +48,9 @@ pub fn scraping_tool_info() -> ToolInfo {
             Example queries:
             - News article: 'https://news.site.com/article/12345'
             - Product page: 'https://shop.example.com/products/item-name'
-            - Documentation: 'https://docs.domain.org/tutorial'".into()
+            - Documentation: 'https://docs.domain.org/tutorial'
+            
+            NOTE: This tool requires the SCRAPINGBEE_API_KEY environment variable to be set.".into()
         ),
         input_schema: json!({
             "type": "object",
