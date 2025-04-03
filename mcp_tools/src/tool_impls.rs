@@ -9,6 +9,7 @@ use crate::git_integration::{git_tool_info, handle_git_tool_call};
 use crate::gmail_integration::{gmail_tool_info, handle_gmail_tool_call};
 use crate::google_search::{google_search_tool_info, GoogleSearchClient, GoogleSearchResult};
 use crate::long_running_task::{handle_long_running_tool_call, long_running_tool_info, LongRunningTaskManager};
+use crate::mermaid_chart::{handle_mermaid_chart_tool_call, mermaid_chart_tool_info, MermaidChartParams};
 use crate::oracle_tool::{handle_oracle_select_tool_call, oracle_select_tool_info};
 use crate::process_html::extract_text_from_html;
 use crate::regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
@@ -68,8 +69,26 @@ impl Tool for ScrapingBeeTool {
                 .ok_or_else(|| anyhow!("Missing required argument: url"))?
                 .to_string();
                 
+            // Get optional render_js parameter (default: true for compatibility)
+            let render_js = params
+                .arguments
+                .get("render_js")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+                
             let mut client = ScrapingBeeClient::new(api_key);
-            client.url(&url).render_js(true);
+            client
+                .url(&url)
+                .render_js(render_js)
+                .block_resources(true)
+                .block_ads(true);
+                
+            // Set a shorter timeout for faster responses if not using JS rendering
+            if !render_js {
+                client.timeout(8000); // 8 seconds is enough for static content
+            }
+            
+            info!("Scraping URL: {} (render_js: {})", url, render_js);
             
             match client.execute().await {
                 Ok(ScrapingBeeResponse::Text(body)) => {
@@ -352,6 +371,29 @@ impl Tool for LongRunningTaskTool {
     }
 }
 
+// MermaidChart Tool Implementation
+#[derive(Debug)]
+pub struct MermaidChartTool;
+
+impl Tool for MermaidChartTool {
+    fn name(&self) -> &str {
+        "mermaid_chart"
+    }
+    
+    fn info(&self) -> shared_protocol_objects::ToolInfo {
+        mermaid_chart_tool_info()
+    }
+    
+    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
+        Box::pin(async move {
+            let mermaid_params: MermaidChartParams = serde_json::from_value(params.arguments)?;
+            
+            // Pass errors directly from the handler which now has proper error handling
+            handle_mermaid_chart_tool_call(mermaid_params, id.clone()).await
+        })
+    }
+}
+
 // Factory function to create all available tools
 pub async fn create_tools() -> Result<Vec<Box<dyn Tool>>> {
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
@@ -370,16 +412,10 @@ pub async fn create_tools() -> Result<Vec<Box<dyn Tool>>> {
         warn!("BraveSearch tool not available: missing API key");
     }
     
-    // // Add GoogleSearch tool if environment variables are set
-    // if let Ok(google_search_tool) = GoogleSearchTool::new() {
-    //     tools.push(Box::new(google_search_tool));
-    // } else {
-    //     warn!("GoogleSearch tool not available: missing API key or search engine ID");
-    // }
-    
     // Add other tools that don't require special initialization
     tools.push(Box::new(BashTool));
     tools.push(Box::new(AiderTool));
+    tools.push(Box::new(MermaidChartTool));
     
     // Note: LongRunningTaskTool is added separately in main.rs since it needs the manager
     

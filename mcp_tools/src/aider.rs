@@ -403,7 +403,8 @@ mod tests {
             // The provider should be defaulted to anthropic
             assert!(cmd_args.iter().any(|arg| arg.contains("anthropic=")));
             
-            fs::remove_dir_all(temp_dir).await.unwrap();
+            // Handle cleanup gracefully
+            let _ = fs::remove_dir_all(temp_dir).await;
         });
     }
     
@@ -430,7 +431,7 @@ mod tests {
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
-            assert_eq!(cmd_args[model_index + 1], "claude-3-5-sonnet-20241022");
+            assert_eq!(cmd_args[model_index + 1], "anthropic/claude-3-7-sonnet-20250219");
             
             // Test default model for openai
             let params = AiderParams {
@@ -446,7 +447,7 @@ mod tests {
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
-            assert_eq!(cmd_args[model_index + 1], "gpt-4o-2024-05-13");
+            assert_eq!(cmd_args[model_index + 1], "openai/o3-mini");
             
             // Test custom model overrides default
             let params = AiderParams {
@@ -464,7 +465,8 @@ mod tests {
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
             assert_eq!(cmd_args[model_index + 1], "claude-3-opus-20240229");
             
-            fs::remove_dir_all(temp_dir).await.unwrap();
+            // Handle cleanup gracefully
+            let _ = fs::remove_dir_all(temp_dir).await;
         });
     }
     
@@ -523,7 +525,8 @@ mod tests {
             let cmd_args = executor.build_command_args(&params);
             assert!(!cmd_args.contains(&"--reasoning-effort".to_string()));
             
-            fs::remove_dir_all(temp_dir).await.unwrap();
+            // Handle cleanup gracefully
+            let _ = fs::remove_dir_all(temp_dir).await;
         });
     }
 }

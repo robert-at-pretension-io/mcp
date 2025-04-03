@@ -16,6 +16,10 @@ pub enum ScrapingBeeResponse {
 struct ScrapingBeeRequest {
     url: String,
     render_js: bool,
+    premium_proxy: bool,
+    block_ads: bool,
+    block_resources: bool,
+    timeout: u32,
 }
 
 #[derive(Clone)]
@@ -25,13 +29,17 @@ pub struct ScrapingBeeClient {
     base_url: String,
     url: Option<String>,
     render_js: bool,
+    premium_proxy: bool,
+    block_ads: bool,
+    block_resources: bool,
+    timeout: u32,
 }
 
 pub fn scraping_tool_info() -> ToolInfo {
     ToolInfo {
         name: "scrape_url".into(),
         description: Some(
-            "Web scraping tool that extracts and processes content from websites. Use this to:
+            "Web scraping tool that extracts and processes content from websites, now with improved performance. Use this to:
             
             1. Extract text from webpages (news, articles, documentation)
             2. Gather product information from e-commerce sites
@@ -40,10 +48,10 @@ pub fn scraping_tool_info() -> ToolInfo {
             
             Important notes:
             - Always provide complete URLs including protocol (e.g., 'https://example.com')
-            - JavaScript rendering is enabled by default
+            - JavaScript rendering is enabled by default for compatibility
             - Content is automatically processed to extract readable text
             - Safe mode filters out potentially harmful content
-            - May take up to 30 seconds for complex pages
+            - Set render_js=false for static sites to get faster responses
             
             Example queries:
             - News article: 'https://news.site.com/article/12345'
@@ -59,6 +67,11 @@ pub fn scraping_tool_info() -> ToolInfo {
                     "type": "string",
                     "description": "The complete URL of the webpage to read and analyze",
                     "format": "uri"
+                },
+                "render_js": {
+                    "type": "boolean",
+                    "description": "Whether to render JavaScript (default: true; set to false for faster scraping of static sites)",
+                    "default": true
                 }
             },
             "required": ["url"],
@@ -70,10 +83,9 @@ pub fn scraping_tool_info() -> ToolInfo {
 
 impl ScrapingBeeClient {
     pub fn new(api_key: String) -> Self {
-        // Create a client with a 30-second timeout
-        // According to MCP spec, we should give tools reasonable time but prevent indefinite hangs
+        // Create a client with a 20-second timeout for faster response
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(20))
             .build()
             .unwrap_or_else(|_| {
                 error!("Failed to build HTTP client with timeout, using default client");
@@ -85,7 +97,12 @@ impl ScrapingBeeClient {
             api_key,
             base_url: "https://app.scrapingbee.com/api/v1/".to_string(),
             url: None,
-            render_js: true,
+            // Default to JS rendering for compatibility
+            render_js: true,  
+            premium_proxy: true,
+            block_ads: true,
+            block_resources: true,
+            timeout: 15000, // 15 seconds default timeout for JS rendering
         }
     }
 
@@ -99,6 +116,26 @@ impl ScrapingBeeClient {
         self
     }
 
+    pub fn premium_proxy(&mut self, enabled: bool) -> &mut Self {
+        self.premium_proxy = enabled;
+        self
+    }
+
+    pub fn block_ads(&mut self, enabled: bool) -> &mut Self {
+        self.block_ads = enabled;
+        self
+    }
+
+    pub fn block_resources(&mut self, enabled: bool) -> &mut Self {
+        self.block_resources = enabled;
+        self
+    }
+
+    pub fn timeout(&mut self, ms: u32) -> &mut Self {
+        self.timeout = ms;
+        self
+    }
+
     pub async fn execute(&self) -> Result<ScrapingBeeResponse> {
         info!("Starting ScrapingBee request execution");
         let url = self.url.as_ref().ok_or_else(|| {
@@ -106,20 +143,21 @@ impl ScrapingBeeClient {
             anyhow!("URL not set")
         })?;
 
-        info!("Preparing ScrapingBee request for URL: {}", url);
-        debug!("Request parameters: render_js={}", self.render_js);
-
+        debug!("Preparing ScrapingBee request for URL: {}", url);
+        
         let request_body = ScrapingBeeRequest {
             url: url.to_string(),
             render_js: self.render_js,
+            premium_proxy: self.premium_proxy,
+            block_ads: self.block_ads,
+            block_resources: self.block_resources,
+            timeout: self.timeout,
         };
 
-        info!("Setting up request headers");
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, HeaderValue::from_static("*/*"));
-        debug!("Using API key: {}", self.api_key.chars().take(5).collect::<String>() + "...");
-
-        info!("Building ScrapingBee API request");
+        
+        debug!("Building ScrapingBee API request");
         let request = self.client
             .get(&self.base_url)
             .headers(headers)
@@ -127,10 +165,10 @@ impl ScrapingBeeClient {
                 ("api_key", &self.api_key),
                 ("url", &request_body.url),
                 ("render_js", &request_body.render_js.to_string()),
-                ("premium_proxy", &"true".to_string()),
-                ("block_ads", &"true".to_string()),      // Block ads to reduce page load time
-                ("block_resources", &"true".to_string()), // Block unnecessary resources like images
-                ("timeout", &"15000".to_string())        // 15 seconds timeout on ScrapingBee side
+                ("premium_proxy", &self.premium_proxy.to_string()),
+                ("block_ads", &self.block_ads.to_string()),
+                ("block_resources", &self.block_resources.to_string()),
+                ("timeout", &self.timeout.to_string()),
             ]);
 
         // Clone and build request for logging

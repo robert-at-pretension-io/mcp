@@ -12,3 +12,4 @@ pub mod aider;
 pub mod tool_trait;
 pub mod tool_impls;
 pub mod google_search;
+pub mod mermaid_chart;
