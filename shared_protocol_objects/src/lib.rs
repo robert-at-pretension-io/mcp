@@ -2,9 +2,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
+// Export the new modules
+pub mod rpc;
+pub mod client;
+#[cfg(feature = "examples")]
+pub mod examples;
+
 /// Core protocol version constants
-pub const LATEST_PROTOCOL_VERSION: &str = "2024-11-05";
-pub const SUPPORTED_PROTOCOL_VERSIONS: [&str; 2] = ["2024-11-05", "2024-10-07"];
+pub const LATEST_PROTOCOL_VERSION: &str = "2025-03-26";
+pub const SUPPORTED_PROTOCOL_VERSIONS: [&str; 3] = ["2025-03-26", "2024-11-05", "2024-10-07"];
 
 /// Standard JSON-RPC error codes
 pub const PARSE_ERROR: i64 = -32700;
