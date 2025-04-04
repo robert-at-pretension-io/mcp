@@ -2,37 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::path::Path;
-use futures::Stream;
-use std::pin::Pin;
 use shared_protocol_objects::Role;
-
-#[derive(Debug, Clone)]
-pub enum StreamEvent {
-    MessageStart {
-        message_id: String,
-    },
-    ContentBlockStart {
-        index: usize,
-    },
-    ContentDelta {
-        index: usize,
-        text: String,
-    },
-    ContentBlockStop {
-        index: usize,
-    },
-    MessageDelta {
-        stop_reason: Option<String>,
-        usage: Option<Value>,
-    },
-    MessageStop,
-    Error {
-        error_type: String,
-        message: String,
-    },
-}
-
-pub type StreamResult = Pin<Box<dyn Stream<Item = Result<StreamEvent>> + Send>>;
 
 /// Content types that can be sent to AI models
 #[derive(Debug, Clone)]
@@ -82,12 +52,6 @@ pub trait AIRequestBuilder: Send {
     
     /// Execute the request and get response as a single string
     async fn execute(self: Box<Self>) -> Result<String>;
-    
-    /// Execute the request and get a stream of events
-    async fn execute_streaming(self: Box<Self>) -> Result<StreamResult>;
-    
-    /// Enable or disable streaming mode
-    fn streaming(self: Box<Self>, enabled: bool) -> Box<dyn AIRequestBuilder>;
 }
 
 /// Core trait for AI model implementations
@@ -109,24 +73,9 @@ pub struct ModelCapabilities {
     pub supports_images: bool,
     pub supports_system_messages: bool,
     pub supports_function_calling: bool,
-    pub supports_streaming: bool,
     pub supports_vision: bool,
     pub max_tokens: Option<u32>,
     pub supports_json_mode: bool,
-    pub streaming_mode: StreamingMode,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StreamingMode {
-    None,
-    TextOnly,
-    FullContent,
-}
-
-impl Default for StreamingMode {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// Factory for creating AI clients

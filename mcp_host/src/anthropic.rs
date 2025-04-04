@@ -2,8 +2,7 @@ use anyhow::{Result, Context};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
-use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, StreamResult};
-use crate::streaming::parse_sse_stream;
+use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig};
 
 use shared_protocol_objects::Role;
 
@@ -30,7 +29,6 @@ impl AIClient for AnthropicClient {
             client: self.clone(),
             messages: Vec::new(),
             config: None,
-            stream: false,
         })
     }
 
@@ -44,16 +42,10 @@ pub struct AnthropicCompletionBuilder {
     client: AnthropicClient,
     messages: Vec<(Role, String)>,
     config: Option<GenerationConfig>,
-    stream: bool,
 }
 
 #[async_trait]
 impl AIRequestBuilder for AnthropicCompletionBuilder {
-    fn streaming(mut self: Box<Self>, enabled: bool) -> Box<dyn AIRequestBuilder> {
-        self.stream = enabled;
-        self
-    }
-
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.messages.push((Role::System, content));
         self
@@ -86,69 +78,6 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
         self
     }
 
-    async fn execute_streaming(self: Box<Self>) -> Result<StreamResult> {
-        log::debug!("[Anthropic] Starting streaming execution");
-        
-        // Extract system message if present
-        let (system_message, other_messages): (Vec<_>, Vec<_>) = self.messages.iter()
-            .partition(|(role, _)| matches!(role, Role::System));
-        
-        log::debug!("[Anthropic] System messages: {:?}", system_message);
-        log::debug!("[Anthropic] Other messages: {:?}", other_messages);
-
-        // Build the payload
-        let mut payload = json!({
-            "model": self.client.model,
-            "messages": other_messages.iter().map(|(role, content)| {
-                json!({
-                    "role": match role {
-                        Role::User => "user",
-                        Role::Assistant => "assistant",
-                        _ => unreachable!()
-                    },
-                    "content": content
-                })
-            }).collect::<Vec<_>>(),
-            "stream": true,
-            "max_tokens": 1024
-        });
-
-        // Add system message if present
-        if let Some((_, system_content)) = system_message.first() {
-            payload.as_object_mut().unwrap()
-                .insert("system".to_string(), json!(system_content));
-        }
-
-        if let Some(cfg) = &self.config {
-            if let Some(max_tokens) = cfg.max_tokens {
-                payload.as_object_mut().unwrap().insert("max_tokens".to_string(), json!(max_tokens));
-            }
-        }
-
-        log::debug!("[Anthropic] Sending streaming request with payload: {:?}", payload);
-        
-        let client = Client::new();
-        let response = client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", &self.client.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("accept", "text/event-stream")
-            .header("content-type", "application/json")
-            .json(&payload)
-            .send()
-            .await?;
-
-        log::debug!("[Anthropic] Got response with status: {}", response.status());
-
-        if !response.status().is_success() {
-            let error = response.text().await?;
-            return Err(anyhow::anyhow!("Anthropic API error: {}", error));
-        }
-
-        let stream = response.bytes_stream();
-        Ok(Box::pin(parse_sse_stream(stream)))
-    }
-
     async fn execute(self: Box<Self>) -> Result<String> {
         // Extract system message if present
         let (system_message, other_messages): (Vec<_>, Vec<_>) = self.messages.iter()
@@ -167,7 +96,6 @@ impl AIRequestBuilder for AnthropicCompletionBuilder {
                     "content": content
                 })
             }).collect::<Vec<_>>(),
-            "stream": self.stream,
             "max_tokens": 1024
         });
 

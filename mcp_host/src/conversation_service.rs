@@ -1,12 +1,9 @@
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocket};
 use serde_json::Value;
-use crate::MCPHost;
 use crate::conversation_state::ConversationState;
 use crate::ai_client::{ AIClient };
-use console::style;
-
-use lazy_static::lazy_static;
+use crate::MCPHost;
 
 use shared_protocol_objects::Role;
 
@@ -114,28 +111,35 @@ pub async fn handle_assistant_response(
             let _ = ws.send(Message::Text(start_msg.to_string())).await;
         }
 
-        match host.call_tool(server_name, &tool_name, args).await {
-            Ok(result) => {
-                if let Some(ref mut ws) = socket {
-                    let end_msg = serde_json::json!({
-                        "type": "tool_call_end",
-                        "tool_name": &tool_name
-                    });
-                    let _ = ws.send(Message::Text(end_msg.to_string())).await;
-                }
-                
-                println!(
-                    "{}",
-                    crate::conversation_state::format_tool_response(&tool_name, &result)
-                );
-                let combo = format!("Tool '{tool_name}' returned: {}", result.trim());
-                state.add_assistant_message(&combo);
+        // Call the tool
+        let tool_result = host.call_tool(server_name, &tool_name, args.clone()).await;
+        
+        // Handle success case
+        if tool_result.is_ok() {
+            let result_string = tool_result.as_ref().unwrap();
+            
+            if let Some(ref mut ws) = socket {
+                let end_msg = serde_json::json!({
+                    "type": "tool_call_end",
+                    "tool_name": &tool_name
+                });
+                let _ = ws.send(Message::Text(end_msg.to_string())).await;
             }
-            Err(e) => {
-                let error_msg = format!("Tool '{tool_name}' error: {e}");
-                state.add_assistant_message(&error_msg);
-                log::error!("{}", error_msg);
-            }
+            
+            println!(
+                "{}",
+                crate::conversation_state::format_tool_response(&tool_name, result_string)
+            );
+            let combo = format!("Tool '{tool_name}' returned: {}", result_string.trim());
+            state.add_assistant_message(&combo);
+        }
+        
+        // Handle error case
+        if tool_result.is_err() {
+            let error = tool_result.as_ref().err().unwrap();
+            let error_msg = format!("Tool '{tool_name}' error: {}", error);
+            state.add_assistant_message(&error_msg);
+            log::error!("{}", error_msg);
         }
     }
 

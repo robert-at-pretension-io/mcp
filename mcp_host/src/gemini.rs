@@ -1,12 +1,11 @@
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, Context};
 use log::{debug, error};
-use crate::ai_client::{AIClient, AIRequestBuilder,GenerationConfig};
+use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::path::Path;
 use std::fs;
-use crate::ai_client::StreamResult;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeminiContentPart {
@@ -126,7 +125,6 @@ impl<'a> AIClient for GeminiClient {
             system_instruction: None,
             contents: Vec::new(),
             generation_config: None,
-            stream: false,
         })
     }
 
@@ -136,7 +134,6 @@ impl<'a> AIClient for GeminiClient {
             system_instruction: None,
             contents: Vec::new(),
             generation_config: None,
-            stream: false,
         })
     }
 }
@@ -147,52 +144,10 @@ pub struct GeminiCompletionBuilder {
     contents: Vec<GeminiContent>,
     system_instruction: Option<GeminiSystemInstruction>,
     generation_config: Option<GeminiGenerationConfig>,
-    stream: bool,
 }
 
 #[async_trait]
 impl AIRequestBuilder for GeminiCompletionBuilder {
-    fn streaming(mut self: Box<Self>, enabled: bool) -> Box<dyn AIRequestBuilder> {
-        self.stream = enabled;
-        self
-    }
-
-    async fn execute_streaming(self: Box<Self>) -> Result<StreamResult> {
-        let mut config = self.generation_config.unwrap_or_default();
-        if config.top_p.is_none() {
-            config.top_p = Some(0.95);
-        }
-    
-        let request = GeminiRequest {
-            contents: self.contents,
-            system_instruction: self.system_instruction.clone(),
-            generation_config: Some(config),
-            safety_settings: Some(GeminiClient::default_safety_settings()),
-        };
-    
-        debug!("Sending streaming request to Gemini API");
-        let client = reqwest::Client::new();
-        let response = client
-            .post(&self.client.endpoint)
-            .header("Content-Type", "application/json") 
-            .header("Authorization", format!("Bearer {}", &self.client.api_key))
-            .json(&request)
-            .send()
-            .await?;
-    
-        debug!("Response received, status: {}", response.status());
-        let status = response.status().clone();
-        let status_two = response.status().clone();
-        if !status.is_success() {
-            let error_text = response.text().await?;
-            error!("API error response: {}", error_text);
-            return Err(anyhow::anyhow!("API request failed with status {}: {}", 
-            status_two, error_text));
-        }
-
-        let stream = response.bytes_stream();
-        Ok(crate::streaming::parse_sse_stream(stream))
-    }
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         let system_instruction = GeminiSystemInstruction {
             parts: vec![GeminiContentPart {
