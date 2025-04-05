@@ -1,18 +1,8 @@
 use anyhow::Result;
-
-mod ai_client;
-mod anthropic;
-mod deepseek;
-mod gemini;
-mod openai;
-mod conversation_service;
-mod conversation_state;
-mod repl;
-mod main_repl;
-mod host;
+use mcp_host::main_repl; // Use the main_repl module from the library crate
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Simply forward to the REPL implementation
+    // Simply forward to the REPL implementation defined in the library
     main_repl::main().await
 }
