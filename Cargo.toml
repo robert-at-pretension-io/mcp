@@ -36,7 +36,3 @@ codegen-units = 1
 
 [patch.crates-io]
 # Apply patches if needed to ensure compatibility with rustc 1.75.0
-
-[features]
-# Feature flag to enable RLLM integration
-use_rllm = ["dep:rllm"]
