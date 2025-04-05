@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities}; // Removed unused Content
 use shared_protocol_objects::Role;
 use rllm::builder::{LLMBackend, LLMBuilder};
-use rllm::chat::{ChatMessage, ChatRole};
-use rllm::llm::Llm; // Import the correct Llm type
+use rllm::chat::{ChatMessage, ChatRole, MessageType}; // Import MessageType
+use rllm::Llm; // Import Llm from the crate root
 use std::path::Path;
 use log; // Import log crate
 
@@ -182,7 +182,7 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 rllm_messages.push(ChatMessage {
                     role: chat_role,
                     content: content.clone().into(), // Use .into() for String -> ChatContent conversion
-                    message_type: Some("text".to_string()), // Add the missing message_type field
+                    message_type: MessageType::Text, // Use the correct enum variant
                 });
             } else if matches!(role, Role::System) {
                 // System messages are handled above by client.system(), skip here
