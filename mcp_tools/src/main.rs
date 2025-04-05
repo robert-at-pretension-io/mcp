@@ -62,6 +62,10 @@ async fn main() {
         .init();
 
     info!("Starting MCP server...");
+    info!("RUST_LOG environment: {:?}", std::env::var("RUST_LOG"));
+    info!("MCP_TOOLS_ENABLED: {:?}", std::env::var("MCP_TOOLS_ENABLED"));
+    info!("Current directory: {:?}", std::env::current_dir().unwrap_or_default());
+    info!("Process ID: {}", std::process::id());
 
     // Create a new manager with a persistence filename
     let my_manager = LongRunningTaskManager::new("tasks.json".to_string());
@@ -149,8 +153,14 @@ async fn main() {
         });
     }
 
+    info!("End of input stream reached");
+    info!("Waiting 5 seconds before shutdown...");
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    
     drop(tx_out);
     let _ = printer_handle.await;
+    
+    info!("MCP server shutdown complete");
 }
 
 #[derive(Debug)]
@@ -201,9 +211,15 @@ async fn handle_request(
         }
 
         "initialize" => {
+            info!("Handling initialize request with id: {:?}", id);
+            
             let params = match req.params {
-                Some(p) => p,
+                Some(p) => {
+                    info!("Initialize params: {}", serde_json::to_string_pretty(&p).unwrap_or_default());
+                    p
+                },
                 None => {
+                    warn!("Missing params in initialize request");
                     return Some(error_response(
                         Some(id.unwrap_or(Value::Number((1).into()))),
                         INVALID_PARAMS,
@@ -212,32 +228,82 @@ async fn handle_request(
                 }
             };
 
-            let protocol_version = params
-                .get("protocolVersion")
-                .and_then(|v| v.as_str())
-                .unwrap_or(LATEST_PROTOCOL_VERSION);
+            let protocol_version = match params.get("protocol_version") {
+                Some(v) => {
+                    info!("Got protocol_version field: {:?}", v);
+                    v.as_str().unwrap_or(LATEST_PROTOCOL_VERSION)
+                },
+                None => {
+                    // Try legacy key
+                    match params.get("protocolVersion") {
+                        Some(v) => {
+                            info!("Got protocolVersion field: {:?}", v);
+                            v.as_str().unwrap_or(LATEST_PROTOCOL_VERSION)
+                        },
+                        None => {
+                            warn!("No protocol version found, using latest: {}", LATEST_PROTOCOL_VERSION);
+                            LATEST_PROTOCOL_VERSION
+                        }
+                    }
+                }
+            };
+            
+            info!("Using protocol version: {}", protocol_version);
+            info!("Supported versions: {:?}", SUPPORTED_PROTOCOL_VERSIONS);
 
             if !SUPPORTED_PROTOCOL_VERSIONS.contains(&protocol_version) {
+                warn!("Unsupported protocol version: {}", protocol_version);
                 return Some(error_response(
                     Some(id.unwrap_or(Value::Number((1).into()))),
                     INVALID_PARAMS,
-                    "Unsupported protocol version",
+                    &format!("Unsupported protocol version: {}. Supported versions: {:?}", 
+                             protocol_version, SUPPORTED_PROTOCOL_VERSIONS),
                 ));
             }
 
             // Store client info and capabilities
-            if let Some(client_info) = params.get("clientInfo") {
-                if let Ok(info) = serde_json::from_value(client_info.clone()) {
-                    let mut guard = state.lock().await;
-                    guard.client_info = Some(info);
+            let client_info_field = if params.get("clientInfo").is_some() {
+                "clientInfo"
+            } else if params.get("client_info").is_some() {
+                "client_info"
+            } else {
+                ""
+            };
+            
+            if !client_info_field.is_empty() {
+                if let Some(client_info) = params.get(client_info_field) {
+                    info!("Got client info: {:?}", client_info);
+                    if let Ok(info) = serde_json::from_value(client_info.clone()) {
+                        let mut guard = state.lock().await;
+                        guard.client_info = Some(info);
+                        info!("Stored client info");
+                    } else {
+                        warn!("Failed to parse client info");
+                    }
                 }
+            } else {
+                warn!("No client info provided");
             }
 
-            if let Some(capabilities) = params.get("capabilities") {
-                if let Ok(caps) = serde_json::from_value(capabilities.clone()) {
-                    let mut guard = state.lock().await;
-                    guard.client_capabilities = Some(caps);
+            let capabilities_field = if params.get("capabilities").is_some() {
+                "capabilities"
+            } else {
+                ""
+            };
+            
+            if !capabilities_field.is_empty() {
+                if let Some(capabilities) = params.get(capabilities_field) {
+                    info!("Got capabilities: {:?}", capabilities);
+                    if let Ok(caps) = serde_json::from_value(capabilities.clone()) {
+                        let mut guard = state.lock().await;
+                        guard.client_capabilities = Some(caps);
+                        info!("Stored capabilities");
+                    } else {
+                        warn!("Failed to parse capabilities");
+                    }
                 }
+            } else {
+                warn!("No capabilities provided");
             }
 
             let result = InitializeResult {
@@ -260,8 +326,8 @@ async fn handle_request(
                 },
                 _meta: None,
             };
-
-            Some(JsonRpcResponse {
+            
+            let response = JsonRpcResponse {
                 jsonrpc: "2.0".to_string(),
                 id: id.unwrap_or(Value::Null),
                 result: Some(json!({
@@ -276,7 +342,12 @@ async fn handle_request(
                     }
                 })),
                 error: None,
-            })
+            };
+            
+            info!("Sending initialize response: {}", 
+                  serde_json::to_string_pretty(&response).unwrap_or_default());
+                  
+            Some(response)
         }
 
         "resources/list" => {

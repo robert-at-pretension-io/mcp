@@ -1,19 +1,26 @@
 use anyhow::{anyhow, Result};
 use serde_json::Value;
 use std::path::PathBuf;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-use super::connections::ServerConnections;
-use shared_protocol_objects::client::ReplClient;
+// Removed old import: use shared_protocol_objects::client::ReplClient;
+use crate::host::server_manager::ManagedServer;
 
 /// Command processor for the REPL
 pub struct CommandProcessor {
-    connections: ServerConnections,
+    servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
+    current_server: Option<String>,
+    config_path: Option<PathBuf>,
 }
 
 impl CommandProcessor {
-    pub fn new() -> Self {
+    pub fn new(servers: Arc<Mutex<HashMap<String, ManagedServer>>>) -> Self {
         Self {
-            connections: ServerConnections::new(),
+            servers,
+            current_server: None,
+            config_path: None,
         }
     }
     
@@ -35,8 +42,8 @@ impl CommandProcessor {
         match cmd.as_str() {
             "help" => self.cmd_help(),
             "exit" | "quit" => Ok("exit".to_string()),
-            "servers" => self.cmd_servers(),
-            "use" => self.cmd_use(args),
+            "servers" => self.cmd_servers().await,
+            "use" => self.cmd_use(args).await,
             "tools" => self.cmd_tools(args).await,
             "call" => self.cmd_call(args).await,
             _ => Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
@@ -57,14 +64,15 @@ impl CommandProcessor {
         )
     }
     
-    /// List connected servers
-    pub fn cmd_servers(&self) -> Result<String> {
-        let servers = self.connections.server_names();
+    /// List available servers
+    pub async fn cmd_servers(&self) -> Result<String> {
+        let servers_map = self.servers.lock().await;
+        let servers: Vec<String> = servers_map.keys().cloned().collect();
         if servers.is_empty() {
-            return Ok("No servers connected".to_string());
+            return Ok("No servers available".to_string());
         }
         
-        let current = self.connections.current_server_name();
+        let current = self.current_server.as_deref();
         let server_list = servers.iter()
             .map(|name| {
                 if Some(name.as_str()) == current {
@@ -76,30 +84,42 @@ impl CommandProcessor {
             .collect::<Vec<_>>()
             .join("\n");
             
-        Ok(format!("Connected servers:\n{}", server_list))
+        Ok(format!("Available servers:\n{}", server_list))
     }
     
     /// Set the current server
-    pub fn cmd_use(&mut self, args: &[String]) -> Result<String> {
+    pub async fn cmd_use(&mut self, args: &[String]) -> Result<String> {
         if args.is_empty() {
-            self.connections.set_current_server(None)?;
+            self.current_server = None;
             return Ok("Cleared current server selection".to_string());
         }
         
         let server_name = &args[0];
-        self.connections.set_current_server(Some(server_name.clone()))?;
-        Ok(format!("Now using server '{}'", server_name))
+        // Check if server exists
+        let servers_map = self.servers.lock().await;
+        if servers_map.contains_key(server_name) {
+            self.current_server = Some(server_name.clone());
+            Ok(format!("Now using server '{}'", server_name))
+        } else {
+            Err(anyhow!("Server '{}' not found", server_name))
+        }
     }
     
     /// List tools for a server
     pub async fn cmd_tools(&self, args: &[String]) -> Result<String> {
-        let server = self.get_server(args)?;
-        let tools = server.list_tools().await?;
-        
+        let server_name = self.get_target_server_name(args)?;
+
+        let servers_map = self.servers.lock().await;
+        let server = servers_map.get(&server_name)
+            .ok_or_else(|| anyhow!("Internal error: Server '{}' vanished", server_name))?;
+
+        // Call list_tools directly on the ManagedServer's client
+        let tools = server.client.list_tools().await?;
+
         if tools.is_empty() {
-            return Ok(format!("No tools available on {}", server.name()));
+            return Ok(format!("No tools available on {}", server_name));
         }
-        
+
         let tool_list = tools.iter()
             .map(|tool| {
                 let desc = tool.description.as_deref().unwrap_or("No description");
@@ -107,8 +127,8 @@ impl CommandProcessor {
             })
             .collect::<Vec<_>>()
             .join("\n");
-            
-        Ok(format!("Tools on {}:\n{}", server.name(), tool_list))
+
+        Ok(format!("Tools on {}:\n{}", server_name, tool_list))
     }
     
     /// Call a tool
@@ -119,34 +139,25 @@ impl CommandProcessor {
         
         let tool_name = &args[0];
         
-        // Determine server (from args or current)
-        let server = if args.len() > 1 && !args[1].starts_with('{') {
-            self.connections.get_server(&args[1])
-                .ok_or_else(|| anyhow!("Server '{}' not found", args[1]))?
-        } else {
-            self.get_server(&[])?
+        // Determine server name and JSON args
+        let (server_name, json_arg_opt) = self.parse_call_args(args)?;
+        let args_value: Value = match json_arg_opt {
+            Some(json_str) => serde_json::from_str(&json_str)
+                           .map_err(|e| anyhow!("Invalid JSON: {}", e))?,
+            None => serde_json::json!({}), // Default to empty object
         };
-        
-        // Parse JSON arguments (from args or as empty object)
-        let json_arg = if args.len() > 1 && args[1].starts_with('{') {
-            args[1].clone()
-        } else if args.len() > 2 {
-            args[2].clone()
-        } else {
-            "{}".to_string()
-        };
-        
-        let args_value: Value = serde_json::from_str(&json_arg)
-            .map_err(|e| anyhow!("Invalid JSON: {}", e))?;
-            
-        // Call the tool
-        let result = server.call_tool(tool_name, args_value).await?;
+
+        // Lock map, get server, call tool
+        let servers_map = self.servers.lock().await;
+        let server = servers_map.get(&server_name)
+            .ok_or_else(|| anyhow!("Internal error: Server '{}' vanished", server_name))?;
+        let result = server.client.call_tool(tool_name, args_value).await?;
         
         // Format result
         let mut output = if result.is_error.unwrap_or(false) {
-            format!("Tool '{}' returned an error:\n", tool_name)
+            format!("Tool '{}' on server '{}' returned an error:\n", tool_name, server_name)
         } else {
-            format!("Tool '{}' result:\n", tool_name)
+            format!("Tool '{}' result from server '{}':\n", tool_name, server_name)
         };
         
         for content in result.content {
@@ -157,136 +168,139 @@ impl CommandProcessor {
         Ok(output)
     }
     
-    /// Get server from args or current
-    fn get_server<'a>(&'a self, args: &[String]) -> Result<&'a dyn ReplClient> {
+    // Helper methods
+    
+    /// Helper to get the server name to target
+    fn get_target_server_name(&self, args: &[String]) -> Result<String> {
         if !args.is_empty() {
-            self.connections.get_server(&args[0])
-                .ok_or_else(|| anyhow!("Server '{}' not found", args[0]))
+            // Explicit server name provided
+            Ok(args[0].clone())
         } else {
-            self.connections.get_current_server()
-                .ok_or_else(|| anyhow!("No server specified and no current server selected"))
+            // Use current server if set
+            self.current_server.clone()
+                .ok_or_else(|| anyhow!("No server specified and no current server selected. Use 'use <server>'."))
         }
     }
-    
-    // Public getters/setters for the connections
-    
-    pub fn add_server(&mut self, client: Box<dyn ReplClient>) -> Result<()> {
-        self.connections.add_server(client)
+
+    /// Helper to parse arguments for the 'call' command
+    fn parse_call_args(&self, args: &[String]) -> Result<(String, Option<String>)> {
+        // args[0] is the tool name
+
+        // Determine server name (arg[1] unless it's JSON) or use current
+        let (server_name, json_arg_index) = if args.len() > 1 && !args[1].starts_with('{') {
+            (args[1].clone(), 2) // Server specified in arg[1], JSON might be in arg[2]
+        } else {
+            // Server not specified or arg[1] is JSON, use current
+            let current = self.current_server.clone().ok_or_else(|| {
+                anyhow!("No server specified and no current server selected for tool call.")
+            })?;
+            (current, 1) // JSON might be in arg[1]
+        };
+
+        // Extract JSON argument if present
+        let json_arg = if args.len() > json_arg_index {
+            Some(args[json_arg_index].clone())
+        } else {
+            None
+        };
+
+        Ok((server_name, json_arg))
     }
     
-    pub fn remove_server(&mut self, name: &str) -> Result<Box<dyn ReplClient>> {
-        self.connections.remove_server(name)
-    }
-    
-    pub fn server_names(&self) -> Vec<String> {
-        self.connections.server_names()
-    }
+    // Public methods for server management
     
     pub fn current_server_name(&self) -> Option<&str> {
-        self.connections.current_server_name()
+        self.current_server.as_deref()
     }
     
     pub fn set_config_path(&mut self, path: PathBuf) {
-        self.connections.set_config_path(path);
+        self.config_path = Some(path);
     }
     
-    pub async fn close(self) -> Result<()> {
-        self.connections.close_all().await
+    pub async fn close(&self) -> Result<()> {
+        // Nothing to close now, since we don't own the servers
+        Ok(())
     }
 }
 
-impl Default for CommandProcessor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// Remove Default implementation since we now require servers parameter
+// impl Default for CommandProcessor {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::repl::test_utils::MockTransport;
-    use shared_protocol_objects::rpc::{McpClient, McpClientBuilder};
-    use async_trait::async_trait;
     
-    // Create a wrapper that implements ReplClient for McpClient<MockTransport>
-    struct MockReplClient {
-        client: McpClient<MockTransport>,
-        name: String,
-    }
-    
-    #[async_trait]
-    impl shared_protocol_objects::client::ReplClient for MockReplClient {
-        fn name(&self) -> &str {
-            &self.name
-        }
-        
-        async fn list_tools(&self) -> Result<Vec<shared_protocol_objects::ToolInfo>> {
-            self.client.list_tools().await
-        }
-        
-        async fn call_tool(&self, tool_name: &str, args: Value) -> Result<shared_protocol_objects::CallToolResult> {
-            self.client.call_tool(tool_name, args).await
-        }
-        
-        async fn close(self: Box<Self>) -> Result<()> {
-            self.client.close().await
-        }
-    }
+    // Removed old ReplClient implementation that is no longer needed
     
     async fn setup_test_processor() -> CommandProcessor {
-        let mut processor = CommandProcessor::new();
+        // Import what we need for tests
+        use std::process::Stdio;
+        use tokio::process::Child;
+        // Use test utils for MockTransport
+        use crate::host::server_manager::testing::{McpClient, ProcessTransport};
         
-        // Create mock client 1
-        let transport1 = MockTransport::new();
-        let mut client1 = McpClientBuilder::new(transport1)
-            .client_info("test1", "1.0.0")
-            .build();
+        // Create a HashMap of servers
+        let servers_map = Arc::new(Mutex::new(HashMap::new()));
         
-        // Initialize the client first
-        let caps = shared_protocol_objects::ClientCapabilities {
-            experimental: None,
-            sampling: None,
-            roots: None,
-        };
-        client1.initialize(caps).await.unwrap();
+        // Create the processor with the map
+        let processor = CommandProcessor::new(Arc::clone(&servers_map));
+        
+        // Add mock servers to the map
+        {
+            let mut servers = servers_map.lock().await;
             
-        let repl_client1 = Box::new(MockReplClient {
-            client: client1,
-            name: "server1".to_string(),
-        });
-        
-        // Create mock client 2
-        let mut transport2 = MockTransport::new();
-        transport2.add_tool("special_tool", "A special tool", serde_json::json!({}));
-        transport2.add_call_result("special_tool", "Special tool result");
-        
-        let mut client2 = McpClientBuilder::new(transport2)
-            .client_info("test2", "1.0.0")
-            .build();
+            // Create server1
+            let cmd1 = tokio::process::Command::new("echo")
+                .arg("test")
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+                
+            // Create transport for server1
+            let transport1 = MockTransport::new();
+            let client1 = McpClient { _transport: transport1 };
             
-        // Initialize the client first
-        let caps = shared_protocol_objects::ClientCapabilities {
-            experimental: None,
-            sampling: None,
-            roots: None,
-        };
-        client2.initialize(caps).await.unwrap();
+            // Create server2 with special tool
+            let cmd2 = tokio::process::Command::new("echo")
+                .arg("test")
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+                
+            // Create transport for server2 with tool
+            let mut transport2 = MockTransport::new();
+            transport2.add_tool("special_tool", "A special tool", serde_json::json!({}));
+            transport2.add_call_result("special_tool", "Special tool result");
+            let client2 = McpClient { _transport: transport2 };
             
-        let repl_client2 = Box::new(MockReplClient {
-            client: client2,
-            name: "server2".to_string(),
-        });
-        
-        // Add the clients
-        processor.add_server(repl_client1).unwrap();
-        processor.add_server(repl_client2).unwrap();
+            // Insert the servers
+            servers.insert("server1".to_string(), ManagedServer {
+                name: "server1".to_string(),
+                process: cmd1,
+                client: client1,
+                capabilities: None,
+            });
+            
+            servers.insert("server2".to_string(), ManagedServer {
+                name: "server2".to_string(),
+                process: cmd2,
+                client: client2,
+                capabilities: None,
+            });
+        }
         
         processor
     }
     
     #[tokio::test]
     async fn test_help_command() {
-        let mut processor = CommandProcessor::new();
+        let servers_map = Arc::new(Mutex::new(HashMap::new()));
+        let mut processor = CommandProcessor::new(servers_map);
         let result = processor.process("help").await.unwrap();
         assert!(result.contains("Available commands"));
         assert!(result.contains("servers"));

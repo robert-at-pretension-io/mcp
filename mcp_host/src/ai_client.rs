@@ -65,6 +65,11 @@ pub trait AIClient: Send + Sync {
     
     /// Get the model's name/identifier
     fn model_name(&self) -> String;
+    
+    /// Get the model's capabilities
+    fn capabilities(&self) -> ModelCapabilities {
+        ModelCapabilities::default()
+    }
 }
 
 /// Capabilities of an AI model
@@ -95,6 +100,13 @@ impl AIClientFactory {
                     .ok_or_else(|| anyhow::anyhow!("Anthropic API key not provided"))?;
                 let model = config["model"].as_str().unwrap_or("claude-3-sonnet-20240229");
                 let client = crate::anthropic::AnthropicClient::new(api_key.to_string(), model.to_string());
+                Ok(Box::new(client))
+            }
+            "openai" => {
+                let api_key = config["api_key"].as_str()
+                    .ok_or_else(|| anyhow::anyhow!("OpenAI API key not provided"))?;
+                let model = config["model"].as_str().unwrap_or("gpt-4o-mini");
+                let client = crate::openai::OpenAIClient::new(api_key.to_string(), model.to_string());
                 Ok(Box::new(client))
             }
             _ => Err(anyhow::anyhow!("Unknown AI provider: {}", provider))

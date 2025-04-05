@@ -1,5 +1,7 @@
 // Enhanced MCP Host REPL Implementation 
 // Merges REPL simplicity with CLI prompt enhancements
+// Keep connections module for tests, will remove later
+#[cfg(test)]
 mod connections;
 mod command;
 mod helper;
@@ -8,24 +10,25 @@ mod test_utils;
 
 pub use command::CommandProcessor;
 pub use helper::ReplHelper;
-pub use connections::ServerConnections;
+// Remove ServerConnections from public API
+// pub use connections::ServerConnections;
 
-// Import ReplClient and adapter from shared library
-pub use shared_protocol_objects::client::{ReplClient, ProcessClientAdapter};
+// Import required types
+use crate::host::server_manager::ManagedServer;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::process::Command;
 
 use anyhow::{anyhow, Result};
 use console::style;
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
-use serde_json::Value;
 use std::path::PathBuf;
-use tokio::process::Command;
 use tokio::time::Duration;
 use crate::conversation_service::handle_assistant_response;
 use crate::host::MCPHost;
 use shared_protocol_objects::Role;
-use shared_protocol_objects::rpc::{McpClientBuilder, ProcessTransport};
-use shared_protocol_objects::client::McpClientAdapter;
 
 /// Main REPL implementation with enhanced CLI features
 pub struct Repl {
@@ -38,7 +41,7 @@ pub struct Repl {
 
 impl Repl {
     /// Create a new REPL
-    pub fn new() -> Result<Self> {
+    pub fn new(servers: Arc<Mutex<HashMap<String, ManagedServer>>>) -> Result<Self> {
         // Set up config directory
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -55,9 +58,9 @@ impl Repl {
             let _ = editor.load_history(&history_path);
         }
         
-        // Create helper and command processor
+        // Create helper and command processor with servers map
         let helper = ReplHelper::new();
-        let command_processor = CommandProcessor::new();
+        let command_processor = CommandProcessor::new(servers);
         
         Ok(Self {
             editor,
@@ -120,8 +123,12 @@ impl Repl {
                         }
                     }
                     
-                    // Update helper with current server names
-                    self.helper.update_server_names(self.command_processor.server_names());
+                    // Lock the servers to get the current server names
+                    if let Some(host) = &self.host {
+                        let servers = host.servers.lock().await;
+                        let server_names: Vec<String> = servers.keys().cloned().collect();
+                        self.helper.update_server_names(server_names);
+                    }
                 }
                 Err(ReadlineError::Interrupted) => {
                     println!("^C");
@@ -141,9 +148,8 @@ impl Repl {
         // Save history
         let _ = self.editor.save_history(&self.history_path);
         
-        // Close all connections
-        let cmd_processor = std::mem::take(&mut self.command_processor);
-        cmd_processor.close().await?;
+        // Close the command processor (now a no-op)
+        self.command_processor.close().await?;
         
         Ok(())
     }
@@ -189,24 +195,10 @@ impl Repl {
                                     }
                                 }
                                 
-                                // Add the decision request as a system message
-                                let tools_info = state.tools.iter()
-                                    .map(|t| format!("- {}: {}", 
-                                        t.name, 
-                                        t.description.as_ref().unwrap_or(&"No description".to_string())
-                                    ))
-                                    .collect::<Vec<String>>()
-                                    .join("\n");
+                                // Use the smiley-delimited format system prompt
+                                let smiley_prompt = crate::conversation_service::generate_smiley_tool_system_prompt(&state.tools);
                                 
-                                let decision_prompt = format!(
-                                    "Given the conversation so far, decide whether to call a tool or provide a direct response to the user. \
-                                    You must respond with a JSON object with a 'choice' field set to either 'tool_call' or 'finish_response'.\n\n\
-                                    Available tools:\n{}\n\n\
-                                    Format: {{\"choice\": \"tool_call\"}} or {{\"choice\": \"finish_response\"}}", 
-                                    tools_info
-                                );
-                                
-                                builder = builder.system(decision_prompt);
+                                builder = builder.system(smiley_prompt);
                                 
                                 builder.execute().await
                             }
@@ -251,76 +243,20 @@ impl Repl {
             return Ok(());
         }
         
-        // Otherwise, use the REPL's own config loading
-        let config_path = PathBuf::from(config_path);
-        let config_str = tokio::fs::read_to_string(&config_path).await?;
-        let config: Value = serde_json::from_str(&config_str)?;
-        
-        // Get the mcpServers object
-        let servers = config.get("mcpServers")
-            .ok_or_else(|| anyhow!("No 'mcpServers' key found in config"))?
-            .as_object()
-            .ok_or_else(|| anyhow!("'mcpServers' is not an object"))?;
-            
-        for (name, server_config) in servers {
-            let cmd_value = server_config.get("command")
-                .ok_or_else(|| anyhow!("Server '{}' is missing 'command' field", name))?;
-                
-            let command = cmd_value.as_str()
-                .ok_or_else(|| anyhow!("Server '{}' command is not a string", name))?;
-                
-            // Create a Map that lives for the whole scope
-            let default_map = serde_json::Map::new();
-            let env = server_config.get("env")
-                .and_then(|v| v.as_object())
-                .unwrap_or(&default_map);
-                
-            // Build the command
-            let mut cmd_parts = command.split_whitespace();
-            let cmd_name = cmd_parts.next().ok_or_else(|| anyhow!("Empty command"))?;
-            
-            let mut cmd = Command::new(cmd_name);
-            cmd.args(cmd_parts);
-            
-            // Add environment variables
-            for (key, value) in env {
-                if let Some(val_str) = value.as_str() {
-                    cmd.env(key, val_str);
-                }
-            }
-            
-            // Start the server 
-            println!("Starting server '{}'...", style(name).yellow());
-            self.start_server(name, cmd).await?;
-        }
+        // We should always have a host now, so this code path should not be reached
+        // For backward compatibility, we'll log a warning
+        println!("{}", style("Warning: No host available. REPL-based config loading is deprecated.").yellow());
         
         // Set config path
-        self.command_processor.set_config_path(config_path);
+        self.command_processor.set_config_path(PathBuf::from(config_path));
         
         Ok(())
     }
     
-    /// Start a server with the given command
-    pub async fn start_server(&mut self, name: &str, command: Command) -> Result<()> {
-        println!("Starting server: {}", style(name).yellow());
-        
-        // Create the transport
-        let transport = ProcessTransport::new(command).await?;
-        
-        // Create and initialize the client
-        let client = McpClientBuilder::new(transport)
-            .client_info("mcp-host-repl", "1.0.0")
-            .connect().await?;
-            
-        // Create the adapter
-        let adapter = Box::new(ProcessClientAdapter::new(client, name.to_string()));
-        
-        // Add the server
-        self.command_processor.add_server(adapter)?;
-        
-        // Update helper with current server names
-        self.helper.update_server_names(self.command_processor.server_names());
-        
+    /// This method is deprecated and will be removed
+    #[deprecated(note = "Use MCPHost.start_server instead")]
+    pub async fn start_server(&mut self, _name: &str, _command: Command) -> Result<()> {
+        println!("{}", style("Warning: Direct server start is deprecated. Use an MCPHost instance instead.").yellow());
         Ok(())
     }
 }

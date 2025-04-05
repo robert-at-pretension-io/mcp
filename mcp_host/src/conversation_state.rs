@@ -82,11 +82,18 @@ impl ConversationState {
         let mut state = Self {
             messages: Vec::new(),
             system_prompt: system_prompt.clone(),
-            tools,
+            tools: tools.clone(),
         };
 
-        // Add the system prompt as the first system message
-        state.add_system_message(&system_prompt);
+        // Generate a combined system prompt including the smiley tool format instructions
+        let combined_prompt = format!(
+            "{}\n\n{}", 
+            system_prompt,
+            crate::conversation_service::generate_smiley_tool_system_prompt(&tools)
+        );
+
+        // Add the combined system prompt as the first system message
+        state.add_system_message(&combined_prompt);
         state
     }
 

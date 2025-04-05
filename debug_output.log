@@ -1,0 +1,25 @@
+Warning: Could not initialize tracing: SetLoggerError(())
+[2025-04-05T01:16:39Z INFO  mcp_host::main_repl] MCP Host Enhanced REPL starting
+MCP REPL starting...
+Current directory: "/home/elliot/Projects/mcp"
+Command line args: ["/home/elliot/Projects/mcp/target/debug/mcp_repl", "load_config", "/home/elliot/Projects/mcp/debug_config.json"]
+[2025-04-05T01:16:39Z INFO  mcp_host::main_repl] Initializing MCPHost...
+[2025-04-05T01:16:39Z INFO  mcp_host::host] Initializing DeepSeek client with model: deepseek-chat
+[2025-04-05T01:16:39Z INFO  mcp_host::host] Got DeepSeek API key
+[2025-04-05T01:16:39Z INFO  mcp_host::main_repl] Loading config from command line: /home/elliot/Projects/mcp/debug_config.json
+Loading configuration from: /home/elliot/Projects/mcp/debug_config.json
+Config file exists: /home/elliot/Projects/mcp/debug_config.json
+Absolute path: "/home/elliot/Projects/mcp/debug_config.json"
+File size: 446 bytes
+File content preview: {
+  "mcpServers": {
+    "default": {
+      "command": "/home/elliot/Projects/mcp/target/debug/mcp_to
+[2025-04-05T01:16:39Z INFO  mcp_host::host::server_manager] Loading configuration from: /home/elliot/Projects/mcp/debug_config.json
+[2025-04-05T01:16:39Z INFO  mcp_host::host::server_manager] Config file exists according to std::path
+[2025-04-05T01:16:39Z INFO  mcp_host::host::server_manager] Successfully read config file with std::fs: /home/elliot/Projects/mcp/debug_config.json
+[2025-04-05T01:16:39Z INFO  mcp_host::host::server_manager] Content length: 446
+[2025-04-05T01:16:39Z INFO  mcp_host::host::server_manager] Successfully parsed config from std::fs
+[2025-04-05T01:16:39Z INFO  mcp_host::host::server_manager] Found 1 servers in config
+[2025-04-05T01:16:39Z INFO  mcp_host::host::server_manager] Starting server 'default' with command: MCP_TOOLS_ENABLED="bash,git_integration,google_search,brave_search,scraping_bee,mermaid_chart,regex_replace,long_running_task" RUST_LOG="debug" "/home/elliot/Projects/mcp/target/debug/mcp_tools"
+[2025-04-05T01:16:39Z INFO  mcp_host::host::server_manager] Creating MCP client with ProcessTransport

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "default": {
+      "command": "./target/debug/mcp_tools",
+      "env": {}
+    }
+  }
+}

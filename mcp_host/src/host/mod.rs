@@ -14,9 +14,9 @@ use shared_protocol_objects::Implementation;
 use server_manager::ManagedServer;
 
 pub struct MCPHost {
-    servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
-    client_info: Implementation,
-    request_timeout: Duration,
+    pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
+    pub client_info: Implementation,
+    pub request_timeout: Duration,
     ai_client: Option<Box<dyn AIClient>>,
 }
 
@@ -54,7 +54,7 @@ impl MCPHost {
 
     /// Run the REPL interface
     pub async fn run_repl(&self) -> Result<()> {
-        let mut repl = crate::repl::Repl::new()?.with_host(self.clone());
+        let mut repl = crate::repl::Repl::new(Arc::clone(&self.servers))?.with_host(self.clone());
         repl.run().await
     }
 
@@ -124,37 +124,19 @@ impl MCPHost {
         // Create the conversation state
         let mut state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list.clone());
         
-        // Create a structured JSON format instruction
-        let hidden_instruction = format!(
-            "[GUIDANCE]\n\
-            You are a helpful assistant who can call tools when useful. Follow these guidelines:\n\
-            - Use tools only when additional context or information is needed\n\
-            - Consider running tools if the user's request requires it\n\n\
-            TOOL CALLING FORMAT:\n\
-            When calling a tool, ALWAYS respond with a JSON object using this format:\n\
-            {{\n\
-                \"tool\": \"tool_name\",\n\
-                \"arguments\": {{\n\
-                    ... parameters for the tool ...\n\
-                }}\n\
-            }}\n\n\
-            TOOLS:\n{}\n
-            
-            IMPORTANT: Your entire response must be a valid JSON object and nothing else.
-            ",
-            tools_str
-        );
+        // Use the new smiley-delimited JSON format for tool calling
+        let smiley_instruction = crate::conversation_service::generate_smiley_tool_system_prompt(&tool_info_list);
 
-        log::debug!("hidden_instruction is {:?}", &hidden_instruction);
+        log::debug!("smiley_instruction is {:?}", &smiley_instruction);
 
-        // Add the hidden instruction as a user message
-        state.add_user_message(&hidden_instruction);
+        // Add the smiley instruction as a system message
+        state.add_system_message(&smiley_instruction);
 
         Ok(state)
     }
 
     /// Generate a system prompt with tool information
-    fn generate_system_prompt(&self, tools: &[serde_json::Value]) -> String {
+    pub fn generate_system_prompt(&self, tools: &[serde_json::Value]) -> String {
         let tools_section = serde_json::to_string_pretty(&serde_json::json!({ "tools": tools })).unwrap_or_else(|_| "".to_string());
 
         format!(

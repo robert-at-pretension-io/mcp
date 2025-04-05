@@ -1,5 +1,5 @@
 use anyhow::Result;
-use mcp_host::host::server_manager::{ServerManager, ManagedServer, McpClient, ProcessTransport};
+use mcp_host::host::server_manager::{ServerManager, ManagedServer};
 use shared_protocol_objects::{
     Implementation, ToolInfo
 };
@@ -50,7 +50,7 @@ async fn test_list_server_tools() -> Result<()> {
         .spawn()?;
         
     // Create a mock client with default test implementation
-    let client = McpClient::new(ProcessTransport::default());
+    let client = mcp_host::host::server_manager::testing::create_test_client();
     
     // Add a mock server
     {
@@ -95,7 +95,7 @@ async fn test_call_tool() -> Result<()> {
         .spawn()?;
         
     // Create a mock client
-    let client = McpClient::new(ProcessTransport::default());
+    let client = mcp_host::host::server_manager::testing::create_test_client();
     
     // Add a mock server
     {
@@ -205,7 +205,7 @@ async fn test_stop_server() -> Result<()> {
         .spawn()?;
         
     // Create a mock client
-    let client = McpClient::new(ProcessTransport::default());
+    let client = mcp_host::host::server_manager::testing::create_test_client();
     
     // Add a mock server
     {
@@ -314,7 +314,7 @@ async fn test_multiple_tool_calls() -> Result<()> {
         .spawn()?;
         
     // Create a mock client
-    let client = McpClient::new(ProcessTransport::default());
+    let client = mcp_host::host::server_manager::testing::create_test_client();
     
     // Add a mock server
     {
@@ -407,7 +407,7 @@ async fn test_tool_call_error() -> Result<()> {
         .spawn()?;
     
     // Use the default client for simplicity
-    let client = McpClient::new(ProcessTransport {});
+    let client = mcp_host::host::server_manager::testing::create_test_client();
     
     // Add a mock server 
     {

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {},
+  "ai_provider": {
+    "provider": "deepseek",
+    "model": "deepseek-chat"
+  },
+  "timeouts": {
+    "request": 120,
+    "tool": 300
+  }
+}

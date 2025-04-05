@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "default": {
+      "command": "../target/debug/mcp_tools",
+      "env": {
+        "RUST_LOG": "debug",
+        "MCP_TOOLS_ENABLED": "bash,git_integration,google_search,brave_search,scraping_bee,mermaid_chart,regex_replace,long_running_task"
+      }
+    }
+  }
+}

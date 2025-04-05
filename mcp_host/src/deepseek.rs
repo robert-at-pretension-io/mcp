@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, Context};
+use anyhow::Result;
 use async_trait::async_trait;
 use async_openai::{
     config::OpenAIConfig,
@@ -9,7 +9,6 @@ use async_openai::{
     },
     Client,
 };
-use log::{debug, error};
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig};
 use shared_protocol_objects::Role;
 

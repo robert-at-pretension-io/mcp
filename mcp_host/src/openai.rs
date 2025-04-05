@@ -1,11 +1,11 @@
 use anyhow::{Result, Context};
 use async_trait::async_trait;
-use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, Role, Content};
+use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, Content, ModelCapabilities};
+use shared_protocol_objects::Role;
 use serde_json::{json, Value};
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use std::path::Path;
 use reqwest;
-use crate::ai_client::StreamResult;
 
 
 #[derive(Debug, Clone)]
@@ -17,7 +17,7 @@ pub struct OpenAIClient {
 }
 
 impl OpenAIClient {
-    pub fn new(api_key: String, model: String) -> Self {
+    pub fn new(api_key: String, _model: String) -> Self {
         info!("Creating new OpenAIClient with provided API key");
         // For chat completions, the standard endpoint is "https://api.openai.com/v1/chat/completions"
         // The 'model' field is provided in the JSON payload itself, not in the endpoint URL.
@@ -58,7 +58,6 @@ impl AIClient for OpenAIClient {
             client: self.clone(),
             messages: Vec::new(),
             config: None,
-            stream: false,
         })
     }
 
@@ -67,8 +66,18 @@ impl AIClient for OpenAIClient {
             client: self.clone(),
             messages: Vec::new(),
             config: None,
-            stream: false,
         })
+    }
+    
+    fn capabilities(&self) -> ModelCapabilities {
+        ModelCapabilities {
+            supports_images: false,
+            supports_system_messages: true,
+            supports_function_calling: true,
+            supports_vision: false,
+            max_tokens: Some(4096),
+            supports_json_mode: true,
+        }
     }
 }
 
@@ -77,19 +86,10 @@ pub struct OpenAICompletionBuilder {
     client: OpenAIClient,
     messages: Vec<(Role, String)>,
     config: Option<GenerationConfig>,
-    stream: bool,
 }
 
 #[async_trait]
 impl AIRequestBuilder for OpenAICompletionBuilder {
-    fn streaming(mut self: Box<Self>, enabled: bool) -> Box<dyn AIRequestBuilder> {
-        self.stream = enabled;
-        self
-    }
-
-    async fn execute_streaming(self: Box<Self>) -> Result<StreamResult> {
-        Err(anyhow::anyhow!("Streaming not yet implemented for OpenAI"))
-    }
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.messages.push((Role::System, content));
         self
@@ -136,7 +136,8 @@ impl AIRequestBuilder for OpenAICompletionBuilder {
 
         let mut payload = json!({
             "model": model,
-            "messages": payload_messages
+            "messages": payload_messages,
+            "response_format": { "type": "json_object" }
         });
 
         if let Some(cfg) = &self.config {

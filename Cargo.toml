@@ -3,7 +3,9 @@ resolver = "2"
 members = [
     "shared_protocol_objects",
     "mcp_host", 
-    "mcp_tools"
+    "mcp_tools",
+    "mcp_test",
+    "repl_test"
 ]
 default-members = ["mcp_host"]
 

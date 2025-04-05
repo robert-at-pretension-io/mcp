@@ -131,15 +131,19 @@ pub struct ToolsCapability {
 /// Initialize types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InitializeParams {
+    #[serde(rename = "protocolVersion")]
     pub protocol_version: String,
     pub capabilities: ClientCapabilities,
+    #[serde(rename = "clientInfo")]
     pub client_info: Implementation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InitializeResult {
+    #[serde(rename = "protocolVersion")]
     pub protocol_version: String,
     pub capabilities: ServerCapabilities,
+    #[serde(rename = "serverInfo")]
     pub server_info: Implementation,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub _meta: Option<Value>,
