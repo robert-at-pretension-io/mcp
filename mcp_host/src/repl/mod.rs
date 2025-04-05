@@ -262,7 +262,7 @@ impl Repl {
 }
 
 /// Truncate a string to a maximum number of lines.
-fn truncate_lines(text: &str, max_lines: usize) -> String {
+pub fn truncate_lines(text: &str, max_lines: usize) -> String { // Make this function public
     let lines: Vec<&str> = text.lines().collect();
     if lines.len() <= max_lines {
         text.to_string()

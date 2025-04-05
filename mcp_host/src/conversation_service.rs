@@ -1,7 +1,8 @@
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocket};
+use console::style; // Import the style function
 use serde_json::Value;
-use std::sync::Arc; // Add this import
+use std::sync::Arc;
 use crate::conversation_state::ConversationState;
 use crate::ai_client::{ AIClient };
 use crate::host::MCPHost;
