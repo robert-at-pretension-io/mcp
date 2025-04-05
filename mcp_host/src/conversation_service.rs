@@ -207,7 +207,7 @@ async fn execute_tool_and_continue(
     tool_name: &str,
     args: serde_json::Value,
     state: &mut ConversationState,
-    client: &Box<dyn AIClient>,
+    client: Arc<dyn AIClient>, // Change to Arc
     socket: &mut Option<&mut WebSocket>
 ) -> Result<()> {
     // Execute the tool
@@ -226,7 +226,7 @@ async fn continue_conversation_after_tools(
     host: &MCPHost,
     server_name: &str,
     state: &mut ConversationState,
-    client: &Box<dyn AIClient>,
+    client: Arc<dyn AIClient>, // Change to Arc
     socket: &mut Option<&mut WebSocket>
 ) -> Result<()> {
     // Create a builder with all conversation context
@@ -254,7 +254,8 @@ async fn continue_conversation_after_tools(
             // Process this next response for more tool calls or final answer
             // Need to transfer ownership of the socket reference
             let socket_copy = socket.take();
-            Box::pin(handle_assistant_response(host, &next_response, server_name, state, client, socket_copy)).await
+            // Clone the Arc for the recursive call
+            Box::pin(handle_assistant_response(host, &next_response, server_name, state, client.clone(), socket_copy)).await 
         },
         Err(e) => {
             log::error!("Error getting next response: {}", e);
