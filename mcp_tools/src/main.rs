@@ -131,7 +131,7 @@ async fn main() {
             Ok(value) => {
                 if value.get("id").is_some() {
                     // It likely has an ID, try parsing as Request
-                    match serde_json::from_value::<JsonRpcRequest>(value) {
+                    match serde_json::from_value::<JsonRpcRequest>(value.clone()) { // Clone value here
                         Ok(req) => {
                             debug!("Parsed as Request: {:?}", req);
                             let state_clone = Arc::clone(&state);
