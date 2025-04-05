@@ -6,7 +6,7 @@ use shared_protocol_objects::Role;
 use rllm::builder::LLMBackend;
 
 // Import RLLMClient from our local rllm_adapter module
-use mcp_host::rllm_adapter::RLLMClient;
+use crate::rllm_adapter::RLLMClient;
 
 /// Content types that can be sent to AI models
 #[derive(Debug, Clone)]
