@@ -5,8 +5,8 @@ use std::path::Path;
 use shared_protocol_objects::Role;
 use rllm::builder::LLMBackend;
 
-// Import RLLMClient from its module
-use crate::rllm_adapter::RLLMClient;
+// Import RLLMClient from the crate
+use mcp_host::RLLMClient;
 
 /// Content types that can be sent to AI models
 #[derive(Debug, Clone)]
