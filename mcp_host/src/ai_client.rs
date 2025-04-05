@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::path::Path;
 use shared_protocol_objects::Role;
 use rllm::builder::LLMBackend;
+use crate::rllm_adapter;
 // Removed problematic import - we'll use crate-relative paths instead
 
 /// Content types that can be sent to AI models
@@ -91,7 +92,7 @@ pub struct AIClientFactory;
 impl AIClientFactory {
     pub fn create(provider: &str, config: Value) -> Result<Box<dyn AIClient>> {
         // Use the factory function from rllm_adapter
-        crate::rllm_adapter::create_rllm_client_for_provider(provider, config)
+        rllm_adapter::create_rllm_client_for_provider(provider, config)
     }
 }
 
