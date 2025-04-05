@@ -121,8 +121,14 @@ pub fn setup_logging() -> Option<WorkerGuard> {
             
         // Try to initialize, but don't panic if it fails
         match subscriber.try_init() {
-            Ok(_) => info!("Tracing initialized successfully"),
-            Err(e) => eprintln!("Warning: Could not initialize tracing: {:?}", e)
+            Ok(_) => {
+                info!("Tracing initialized successfully");
+                Some(guard) // Return the guard
+            },
+            Err(e) => {
+                eprintln!("Warning: Could not initialize tracing: {:?}", e);
+                None // No guard if init fails
+            }
         }
     } else {
         // Fallback to basic stderr logging if file appender fails
