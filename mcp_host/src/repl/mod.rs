@@ -261,6 +261,17 @@ impl Repl {
     }
 }
 
+/// Truncate a string to a maximum number of lines.
+fn truncate_lines(text: &str, max_lines: usize) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.len() <= max_lines {
+        text.to_string()
+    } else {
+        let truncated_lines = lines.into_iter().take(max_lines).collect::<Vec<_>>();
+        format!("{}\n\n{}", truncated_lines.join("\n"), style("... (output truncated)").dim())
+    }
+}
+
 /// Helper function for progress spinner
 pub async fn with_progress<F, T>(msg: String, future: F) -> T 
 where
