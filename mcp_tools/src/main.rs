@@ -131,8 +131,14 @@ async fn main() {
             }
             Err(e) => {
                 error!("Failed to parse request line: '{}'. Error: {}", line, e); // Log the problematic line
-                let resp =
-                    error_response(Some(Value::Number((1).into())), PARSE_ERROR, "Parse error");
+                
+                // Attempt to extract the ID from the invalid JSON string
+                let id_value = serde_json::from_str::<Value>(&line)
+                    .ok()
+                    .and_then(|v| v.get("id").cloned())
+                    .unwrap_or(Value::Null); // Default to null if ID can't be extracted
+
+                let resp = error_response(Some(id_value), PARSE_ERROR, "Parse error");
                 let _ = tx_out.send(resp);
                 continue;
             }
