@@ -109,7 +109,7 @@ pub fn setup_logging() -> Option<WorkerGuard> {
         .filename_suffix("log")
         .build(log_dir) {
         
-        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender); // Rename _guard to guard
         
         let subscriber = tracing_subscriber::fmt()
             .with_max_level(tracing::Level::DEBUG) // Change level to DEBUG
