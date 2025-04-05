@@ -4,11 +4,12 @@ use tracing_appender;
 use std::time::Duration;
 use log::info;
 use console::style;
+use tracing_appender::non_blocking::WorkerGuard; // Import the guard type
 
 /// Main entry point for the MCP host REPL
 pub async fn main() -> Result<()> {
-    // Setup logging
-    setup_logging();
+    // Setup logging and keep the guard alive
+    let _logging_guard = setup_logging();
     
     // Print startup info
     println!("MCP REPL starting...");
@@ -78,7 +79,8 @@ pub async fn main() -> Result<()> {
     host.run_repl().await
 }
 
-pub fn setup_logging() {
+// Return the WorkerGuard to keep it alive
+pub fn setup_logging() -> Option<WorkerGuard> { 
     // Check if tracing should be disabled
     if std::env::var("DISABLE_TRACING").is_ok() {
         // Just use basic env_logger
@@ -86,7 +88,7 @@ pub fn setup_logging() {
             Ok(_) => info!("Basic logging initialized"),
             Err(_) => eprintln!("Warning: Failed to initialize logger, another logger may be active")
         }
-        return;
+        return None; // No guard for env_logger
     }
     
     // Try to set up file appender for persistent logs if env_logger didn't initialize
@@ -126,7 +128,9 @@ pub fn setup_logging() {
         // Fallback to basic stderr logging if file appender fails
         eprintln!("Warning: Could not create file appender, falling back to stderr logging.");
         env_logger::builder().filter_level(log::LevelFilter::Info).init();
+        None // No guard for fallback
     }
     
-    info!("MCP Host Enhanced REPL starting");
+    // This log might happen before the guard takes effect, which is fine.
+    // info!("MCP Host Enhanced REPL starting"); 
 }
