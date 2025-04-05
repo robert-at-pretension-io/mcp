@@ -243,14 +243,20 @@ impl MCPHostBuilder {
         log::info!("Initializing DeepSeek client with model: {}", model_name);
 
         // Retrieve the DeepSeek API key from an environment variable
-        match std::env::var("DEEPSEEK_API_KEY") {
+        let deepseek_key_result = std::env::var("DEEPSEEK_API_KEY");
+        log::debug!("Result of reading DEEPSEEK_API_KEY: {:?}", deepseek_key_result);
+
+        match deepseek_key_result {
             Ok(api_key) => {
-                log::info!("Got DeepSeek API key");
+                log::info!("Got DeepSeek API key (length: {})", api_key.len());
                 let client = crate::deepseek::DeepSeekClient::new(api_key, model_name);
                 Ok(Some(Box::new(client) as Box<dyn AIClient>))
             },
-            Err(_) => {
+            Err(e) => {
+                log::warn!("Failed to get DEEPSEEK_API_KEY: {}", e);
+                // This log message is slightly misleading as we only checked DeepSeek here
                 log::info!("No AI client configured. Set MCP_AI_PROVIDER and corresponding API key (OPENAI_API_KEY or GEMINI_API_KEY or ANTHROPIC_API_KEY or DEEPSEEK_API_KEY)");
+                log::info!("Returning Ok(None) for default AI client creation.");
                 Ok(None)
             }
         }
