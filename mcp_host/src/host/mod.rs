@@ -9,9 +9,10 @@ use anyhow::Result;
 use tokio::sync::Mutex;
 use std::collections::HashMap;
 
-use crate::ai_client::AIClient;
+use crate::ai_client::{AIClient, AIClientFactory}; // Add AIClientFactory
 use shared_protocol_objects::Implementation;
 use server_manager::ManagedServer;
+use crate::host::config::AIProviderConfig; // Import AIProviderConfig
 
 pub struct MCPHost {
     pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
@@ -177,7 +178,8 @@ impl MCPHost {
 
 /// Builder for MCPHost configuration
 pub struct MCPHostBuilder {
-    ai_client: Option<Box<dyn AIClient>>,
+    ai_client: Option<Box<dyn AIClient>>, // Allow manual override
+    ai_provider_config: Option<AIProviderConfig>, // Add config option
     request_timeout: Option<Duration>,
     client_info: Option<Implementation>,
 }
@@ -187,17 +189,26 @@ impl MCPHostBuilder {
     pub fn new() -> Self {
         Self {
             ai_client: None,
+            ai_provider_config: None, // Initialize new field
             request_timeout: None,
             client_info: None,
         }
     }
     
-    /// Set the AI client
+    /// Set the AI client directly (overrides config)
     pub fn ai_client(mut self, client: Box<dyn AIClient>) -> Self {
         self.ai_client = Some(client);
+        self.ai_provider_config = None; // Clear config if client is set directly
         self
     }
-    
+
+    /// Set the AI provider configuration from loaded config
+    pub fn ai_provider_config(mut self, config: AIProviderConfig) -> Self {
+        if self.ai_client.is_none() { // Only set if ai_client wasn't set directly
+            self.ai_provider_config = Some(config);
+        }
+        self
+    }
     /// Set the request timeout
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = Some(timeout);
@@ -215,12 +226,16 @@ impl MCPHostBuilder {
     
     /// Build the MCPHost
     pub async fn build(self) -> Result<MCPHost> {
-        // Create AI client if not provided
-        let ai_client = match self.ai_client {
-            Some(client) => Some(client),
-            None => Self::create_default_ai_client().await?,
+        // Create AI client based on direct setting or config
+        let ai_client = if let Some(client) = self.ai_client {
+             log::info!("Using directly provided AI client.");
+             Some(client)
+        } else {
+             // Use config if provided, otherwise default (which might be None)
+             let config = self.ai_provider_config.unwrap_or_default();
+             Self::create_ai_client(config).await?
         };
-        
+
         let request_timeout = self.request_timeout.unwrap_or(Duration::from_secs(120));
         
         let client_info = self.client_info.unwrap_or_else(|| Implementation {
@@ -236,28 +251,48 @@ impl MCPHostBuilder {
         })
     }
 
-    /// Create the default AI client based on environment variables
-    async fn create_default_ai_client() -> Result<Option<Box<dyn AIClient>>> {
-        // Try to get the AI provider from environment
-        let model_name = "deepseek-chat".to_string();
-        log::info!("Initializing DeepSeek client with model: {}", model_name);
+    /// Create the AI client based on configuration
+    async fn create_ai_client(config: AIProviderConfig) -> Result<Option<Box<dyn AIClient>>> {
+        let provider = config.provider.to_lowercase();
+        let model = config.model; // Use model from config
 
-        // Retrieve the DeepSeek API key from an environment variable
-        let deepseek_key_result = std::env::var("DEEPSEEK_API_KEY");
-        log::debug!("Result of reading DEEPSEEK_API_KEY: {:?}", deepseek_key_result);
+        log::info!("Attempting to create AI client for provider: '{}', model: '{}'", provider, model);
 
-        match deepseek_key_result {
+        let api_key_var = match provider.as_str() {
+            "deepseek" => "DEEPSEEK_API_KEY",
+            "anthropic" => "ANTHROPIC_API_KEY",
+            "openai" => "OPENAI_API_KEY",
+            "gemini" => "GEMINI_API_KEY", // Assuming Gemini might be added later
+            _ => {
+                log::warn!("Unsupported AI provider specified in config: '{}'. No AI client will be created.", provider);
+                return Ok(None);
+            }
+        };
+
+        match std::env::var(api_key_var) {
             Ok(api_key) => {
-                log::info!("Got DeepSeek API key (length: {})", api_key.len());
-                let client = crate::deepseek::DeepSeekClient::new(api_key, model_name);
-                Ok(Some(Box::new(client) as Box<dyn AIClient>))
+                log::info!("Found API key for provider '{}' in environment variable '{}'.", provider, api_key_var);
+                // Use AIClientFactory to create the client
+                // Note: AIClientFactory needs the config as Value, let's create a simple one
+                let factory_config = serde_json::json!({
+                    "api_key": api_key,
+                    "model": model // Pass the model name from config
+                });
+
+                match AIClientFactory::create(&provider, factory_config) {
+                    Ok(client) => {
+                        log::info!("Successfully created AI client for provider '{}' with model '{}'", provider, client.model_name());
+                        Ok(Some(client))
+                    },
+                    Err(e) => {
+                        log::error!("Failed to create AI client using factory for provider '{}': {}", provider, e);
+                        Err(e) // Propagate the factory error
+                    }
+                }
             },
             Err(e) => {
-                log::warn!("Failed to get DEEPSEEK_API_KEY: {}", e);
-                // This log message is slightly misleading as we only checked DeepSeek here
-                log::info!("No AI client configured. Set MCP_AI_PROVIDER and corresponding API key (OPENAI_API_KEY or GEMINI_API_KEY or ANTHROPIC_API_KEY or DEEPSEEK_API_KEY)");
-                log::info!("Returning Ok(None) for default AI client creation.");
-                Ok(None)
+                log::warn!("Failed to get API key from environment variable '{}' for provider '{}': {}. No AI client created.", api_key_var, provider, e);
+                Ok(None) // It's not an error if the key isn't set, just means no client
             }
         }
     }

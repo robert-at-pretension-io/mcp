@@ -15,67 +15,65 @@ pub async fn main() -> Result<()> {
     println!("Current directory: {:?}", std::env::current_dir().unwrap_or_default());
     println!("Command line args: {:?}", std::env::args().collect::<Vec<_>>());
     
-    // Initialize the MCPHost
-    info!("Initializing MCPHost...");
-    let host = crate::host::MCPHost::builder()
-        .request_timeout(Duration::from_secs(120))
-        .client_info("mcp-host-repl", "1.0.0")
-        .build()
-        .await?;
-    
     // Parse command line arguments
     let args: Vec<String> = std::env::args().collect();
+    let mut config_path_opt: Option<&str> = None;
     
-    // Check for config file
+    // Check for config file argument
     if args.len() > 2 && args[1] == "load_config" {
-        let config_path = &args[2];
-        info!("Loading config from command line: {}", config_path);
+        config_path_opt = Some(&args[2]);
+        info!("Config path specified: {}", args[2]);
+    } else {
+        println!("No config file specified. Use 'load_config <config_path>' to load a configuration.");
+        // Optionally, you could try loading a default path here or exit
+    }
+
+    // Load configuration if path is provided
+    let config = if let Some(config_path) = config_path_opt {
         println!("{}", style(format!("Loading configuration from: {}", config_path)).yellow());
-        
-        // Verify file exists
-        let path = std::path::Path::new(config_path);
-        if path.exists() {
-            println!("Config file exists: {}", config_path);
-            println!("Absolute path: {:?}", path.canonicalize().unwrap_or_default());
-            println!("File size: {} bytes", std::fs::metadata(path).map(|m| m.len()).unwrap_or(0));
-            
-            // Try reading it directly first
-            match std::fs::read_to_string(path) {
-                Ok(content) => {
-                    println!("File content preview: {}", &content[..content.len().min(100)]);
-                },
-                Err(e) => {
-                    println!("Error reading file directly: {}", e);
-                }
-            }
-        } else {
-            println!("{}", style(format!("Warning: Config file does not exist: {}", config_path)).red());
-        }
-        
-        match host.load_config(config_path).await {
-            Ok(_) => println!("{}", style("Successfully loaded config!").green()),
+        match crate::host::config::Config::load(config_path).await {
+            Ok(cfg) => {
+                println!("{}", style("Successfully loaded config!").green());
+                Some(cfg)
+            },
             Err(e) => {
                 println!("{}", style(format!("Error loading config: {}", e)).red());
-                // Try creating a minimal config directly
-                println!("Attempting to continue with a minimal default config...");
-                let mut config = crate::host::config::Config::default();
-                config.servers.insert(
-                    "default".to_string(), 
-                    crate::host::config::ServerConfig {
-                        command: "/home/elliot/Projects/mcp/target/debug/mcp_tools".to_string(),
-                        env: std::collections::HashMap::new(),
-                    }
-                );
-                match host.configure(config).await {
-                    Ok(_) => println!("{}", style("Successfully configured with default!").green()),
-                    Err(e) => println!("{}", style(format!("Error configuring with default: {}", e)).red()),
-                }
+                println!("Attempting to continue with default settings...");
+                None
             }
         }
     } else {
-        println!("No config file specified. Use 'load_config <config_path>' to load a configuration.");
+        None
+    };
+
+    // Initialize the MCPHost, passing AI provider config if available
+    info!("Initializing MCPHost...");
+    let mut host_builder = crate::host::MCPHost::builder()
+        .request_timeout(Duration::from_secs(120)) // Example timeout
+        .client_info("mcp-host-repl", "1.0.0");
+
+    if let Some(ref cfg) = config {
+        host_builder = host_builder.ai_provider_config(cfg.ai_provider.clone());
+        // Apply timeouts from config if needed
+        host_builder = host_builder.request_timeout(Duration::from_secs(cfg.timeouts.request));
     }
-    
+
+    let host = host_builder.build().await?;
+    info!("MCPHost initialized.");
+
+    // Configure the host with the loaded server configurations (if config was loaded)
+    if let Some(cfg) = config {
+         // We only need the servers part now
+        let server_config = crate::host::config::Config {
+             servers: cfg.servers,
+             ai_provider: Default::default(), // Not needed here
+             timeouts: Default::default(), // Not needed here
+        };
+        if let Err(e) = host.configure(server_config).await {
+             println!("{}", style(format!("Error applying server configurations: {}", e)).red());
+        }
+    }
+
     // Run the REPL interface
     host.run_repl().await
 }
