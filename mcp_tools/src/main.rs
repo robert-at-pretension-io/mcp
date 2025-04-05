@@ -130,7 +130,7 @@ async fn main() {
                 req
             }
             Err(e) => {
-                error!("Failed to parse request: {}", e);
+                error!("Failed to parse request line: '{}'. Error: {}", line, e); // Log the problematic line
                 let resp =
                     error_response(Some(Value::Number((1).into())), PARSE_ERROR, "Parse error");
                 let _ = tx_out.send(resp);
