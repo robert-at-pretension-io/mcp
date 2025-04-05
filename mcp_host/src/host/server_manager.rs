@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Result};
-use log::{debug, error, info, warn, trace};
+use log::{debug, error, info}; // Removed unused trace, warn
 use serde_json::Value;
 use shared_protocol_objects::{
     ClientCapabilities, Implementation, ServerCapabilities, ToolInfo, CallToolResult
 };
-use async_trait::async_trait;
+// Removed unused async_trait
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::sync::Arc;

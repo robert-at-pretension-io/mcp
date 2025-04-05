@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use std::process::Stdio;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex}; // Removed unused mpsc
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
@@ -31,6 +31,7 @@ pub trait Transport: Send + Sync + 'static {
 
 /// Transport for communicating with a child process via stdin/stdout
 pub struct ProcessTransport {
+    #[allow(dead_code)] // Allow unused field for now
     process: Child,
     pub stdin: Arc<Mutex<ChildStdin>>,
     pub stdout: Arc<Mutex<ChildStdout>>,
@@ -68,8 +69,9 @@ impl ProcessTransport {
         
         Ok(transport)
     }
-    
+
     /// Start the background task for listening to incoming notifications
+    #[allow(dead_code)] // Allow unused method for now
     async fn start_notification_listener(&self) -> Result<()> {
         let stdout = Arc::clone(&self.stdout);
         let notification_handler = Arc::clone(&self.notification_handler);

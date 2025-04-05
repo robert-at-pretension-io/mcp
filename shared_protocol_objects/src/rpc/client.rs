@@ -5,14 +5,14 @@ use anyhow::{anyhow, Result};
 use futures::future::BoxFuture;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+// Removed unused imports: AsyncBufReadExt, AsyncWriteExt, BufReader
 use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::{
     CallToolParams, CallToolResult, ClientCapabilities, Implementation, InitializeParams,
-    InitializeResult, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, LATEST_PROTOCOL_VERSION,
+    InitializeResult, JsonRpcNotification, JsonRpcRequest, LATEST_PROTOCOL_VERSION, // Removed unused JsonRpcResponse
     ProgressNotification, ReadResourceParams, ReadResourceResult, ResourceContent,
     ResourceInfo, ServerCapabilities, ToolInfo, ToolResponseContent, SUPPORTED_PROTOCOL_VERSIONS,
 };
@@ -26,6 +26,7 @@ pub struct McpClient<T: Transport> {
     protocol_version: String,
     server_info: Option<Implementation>,
     server_capabilities: Option<ServerCapabilities>,
+    #[allow(dead_code)] // Allow unused field for now
     request_timeout: Duration,
     initialized: bool,
     id_generator: Arc<IdGenerator>,
@@ -626,9 +627,10 @@ impl<T: Transport> McpClientBuilder<T> {
 }
 
 /// Convenience function to create a client with process transport
+#[allow(dead_code)] // Allow unused function for now
 pub async fn connect_to_process(command: Command) -> Result<McpClient<ProcessTransport>> {
     let transport = ProcessTransport::new(command).await?;
-    
+
     McpClientBuilder::new(transport)
         .connect()
         .await
