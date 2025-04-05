@@ -10,7 +10,6 @@ pub mod main_repl;
 pub mod conversation_state;
 pub mod host;
 pub mod smiley_tool_parser;
-#[cfg(feature = "use_rllm")] // Conditionally compile the module
 pub mod rllm_adapter; 
 
 // Re-export key components 
@@ -18,3 +17,4 @@ pub use crate::host::MCPHost;
 pub use crate::host::config;
 pub use crate::host::error::{HostError, Result};
 pub use crate::host::server_manager::ManagedServer;
+pub use crate::rllm_adapter::RLLMClient;
