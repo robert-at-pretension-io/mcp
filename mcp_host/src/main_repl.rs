@@ -110,7 +110,7 @@ pub fn setup_logging() {
         let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
         
         let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
+            .with_max_level(tracing::Level::DEBUG) // Change level to DEBUG
             .with_writer(non_blocking)
             .with_thread_ids(true)
             .with_file(true)
