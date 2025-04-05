@@ -163,9 +163,9 @@ async fn main() {
                             // TODO: Implement notification handling if needed
                             // For now, just log it
                             info!("Received notification: {}", notif.method);
-                            if let Some(params) = notif.params {
-                                debug!("Notification params: {:?}", params);
-                            }
+                            // The params field is already a Value, not an Option<Value>
+                            let params = notif.params; 
+                            debug!("Notification params: {:?}", params);
                         }
                         Err(e) => {
                             // It had no 'id' but failed to parse as Notification? Log error.
