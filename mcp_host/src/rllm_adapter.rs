@@ -4,11 +4,12 @@ use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabi
 use shared_protocol_objects::Role;
 use rllm::builder::{LLMBackend, LLMBuilder};
 use rllm::chat::{ChatMessage, ChatRole};
+use rllm::llm::Llm; // Import the correct Llm type
 use std::path::Path;
 use log; // Import log crate
 
 pub struct RLLMClient {
-    llm: rllm::Llm, // Corrected type name from LLM to Llm
+    llm: Llm, // Use the imported Llm type
     model_name: String,
     backend: LLMBackend,
 }
@@ -114,7 +115,7 @@ impl AIClient for RLLMClient {
 
 #[derive(Debug)] // Add Debug derive
 struct RLLMRequestBuilder {
-    client: rllm::Llm, // Corrected type name from LLM to Llm
+    client: Llm, // Use the imported Llm type
     messages: Vec<(Role, String)>,
     config: Option<GenerationConfig>,
     system: Option<String>,
@@ -181,6 +182,7 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 rllm_messages.push(ChatMessage {
                     role: chat_role,
                     content: content.clone().into(), // Use .into() for String -> ChatContent conversion
+                    message_type: Some("text".to_string()), // Add the missing message_type field
                 });
             } else if matches!(role, Role::System) {
                 // System messages are handled above by client.system(), skip here
