@@ -123,40 +123,71 @@ async fn main() {
         }
 
         debug!("Received input: {}", line);
-        let parsed: Result<JsonRpcRequest, _> = serde_json::from_str(&line);
-        let req = match parsed {
-            Ok(req) => {
-                debug!("Parsed request: {:?}", req);
-                req
+
+        // First, parse as generic Value to check for 'id'
+        let value_parse_result: Result<Value, _> = serde_json::from_str(&line);
+
+        match value_parse_result {
+            Ok(value) => {
+                if value.get("id").is_some() {
+                    // It likely has an ID, try parsing as Request
+                    match serde_json::from_value::<JsonRpcRequest>(value) {
+                        Ok(req) => {
+                            debug!("Parsed as Request: {:?}", req);
+                            let state_clone = Arc::clone(&state);
+                            let tx_out_clone = tx_out.clone();
+                            task::spawn(async move {
+                                debug!("Handling request: {:?}", req);
+                                let resp = handle_request(req, &state_clone, tx_out_clone.clone()).await;
+                                if let Some(resp) = resp {
+                                    debug!("Got response: {:?}", resp);
+                                    let _ = tx_out_clone.send(resp);
+                                } else {
+                                    warn!("No response generated for request");
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            // It had an 'id' but still failed to parse as Request? Log error.
+                            error!("Failed to parse JSON with 'id' as Request: '{}'. Error: {}", line, e);
+                            let id_value = value.get("id").cloned().unwrap_or(Value::Null);
+                            let resp = error_response(Some(id_value), PARSE_ERROR, "Parse error (invalid request structure)");
+                            let _ = tx_out.send(resp);
+                        }
+                    }
+                } else {
+                    // No 'id', try parsing as Notification
+                    match serde_json::from_value::<shared_protocol_objects::JsonRpcNotification>(value) {
+                        Ok(notif) => {
+                            debug!("Parsed as Notification: {:?}", notif);
+                            // TODO: Implement notification handling if needed
+                            // For now, just log it
+                            info!("Received notification: {}", notif.method);
+                            if let Some(params) = notif.params {
+                                debug!("Notification params: {:?}", params);
+                            }
+                        }
+                        Err(e) => {
+                            // It had no 'id' but failed to parse as Notification? Log error.
+                            error!("Failed to parse JSON without 'id' as Notification: '{}'. Error: {}", line, e);
+                            // Cannot send error response for notification parse failure according to spec
+                        }
+                    }
+                }
             }
             Err(e) => {
-                error!("Failed to parse request line: '{}'. Error: {}", line, e); // Log the problematic line
-                
-                // Attempt to extract the ID from the invalid JSON string
-                let id_value = serde_json::from_str::<Value>(&line)
+                // Failed even to parse as generic Value - this is a definite Parse Error
+                error!("Failed to parse input as JSON Value: '{}'. Error: {}", line, e);
+                // Attempt to extract the ID from the invalid JSON string (best effort)
+                 let id_value = serde_json::from_str::<Value>(&line)
                     .ok()
                     .and_then(|v| v.get("id").cloned())
                     .unwrap_or(Value::Null); // Default to null if ID can't be extracted
 
                 let resp = error_response(Some(id_value), PARSE_ERROR, "Parse error");
                 let _ = tx_out.send(resp);
-                continue;
             }
-        };
-
-        let state = Arc::clone(&state);
-        let tx_out_clone = tx_out.clone();
-
-        task::spawn(async move {
-            debug!("Handling request: {:?}", req);
-            let resp = handle_request(req, &state, tx_out_clone.clone()).await;
-            if let Some(resp) = resp {
-                debug!("Got response: {:?}", resp);
-                let _ = tx_out_clone.send(resp);
-            } else {
-                warn!("No response generated for request");
-            }
-        });
+        }
     }
 
     info!("End of input stream reached");
