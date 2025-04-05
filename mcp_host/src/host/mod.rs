@@ -18,7 +18,7 @@ pub struct MCPHost {
     pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
     pub client_info: Implementation,
     pub request_timeout: Duration,
-    ai_client: Option<Box<dyn AIClient>>,
+    ai_client: Option<Arc<dyn AIClient>>, // Use Arc for shared ownership
 }
 
 impl Clone for MCPHost {
@@ -27,7 +27,7 @@ impl Clone for MCPHost {
             servers: Arc::clone(&self.servers),
             client_info: self.client_info.clone(),
             request_timeout: self.request_timeout,
-            ai_client: None, // AI client isn't cloneable, but that's ok for our purposes
+            ai_client: self.ai_client.clone(), // Clone the Arc itself
         }
     }
 }
@@ -171,8 +171,8 @@ impl MCPHost {
     }
 
     /// Get the AI client
-    pub fn ai_client(&self) -> Option<&Box<dyn AIClient>> {
-        self.ai_client.as_ref()
+    pub fn ai_client(&self) -> Option<Arc<dyn AIClient>> { // Return the Arc
+        self.ai_client.clone() // Clone the Arc for the caller
     }
 }
 
@@ -233,7 +233,8 @@ impl MCPHostBuilder {
         } else {
              // Use config if provided, otherwise default (which might be None)
              let config = self.ai_provider_config.unwrap_or_default();
-             Self::create_ai_client(config).await?
+             // Wrap the created client in Arc
+             Self::create_ai_client(config).await?.map(Arc::new) 
         };
 
         let request_timeout = self.request_timeout.unwrap_or(Duration::from_secs(120));
