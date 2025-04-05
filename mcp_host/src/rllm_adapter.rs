@@ -19,17 +19,85 @@ impl RLLMClient {
     /// Create a new RLLMClient with the given API key, model name, and backend
     pub fn new(api_key: String, model: String, backend: LLMBackend) -> Result<Self> {
         log::info!("Creating RLLMClient for backend: {:?}, model: {}", backend, model);
+        
+        // Validate parameters before building
+        if model.is_empty() {
+            return Err(anyhow!("Model name cannot be empty"));
+        }
+        
+        // Check if API key is required but missing
+        let key_required = matches!(
+            backend,
+            LLMBackend::OpenAI | LLMBackend::Anthropic | LLMBackend::Google | 
+            LLMBackend::DeepSeek | LLMBackend::XAI | LLMBackend::Groq
+        );
+        
+        if key_required && api_key.is_empty() {
+            return Err(anyhow!("API key is required for {:?} backend", backend));
+        }
+        
+        // Build with appropriate options
         let mut builder = LLMBuilder::new()
             .backend(backend.clone())
             .model(&model);
 
-        // Only add API key if it's not empty (Ollama doesn't need one)
+        // Only add API key if it's not empty (Ollama and some others don't need one)
         if !api_key.is_empty() {
             builder = builder.api_key(api_key);
         }
+        
+        // Add specific backend configurations
+        match backend {
+            LLMBackend::OpenAI => {
+                // Configure OpenAI-specific settings
+                if model.contains("gpt-4") && !model.contains("vision") && !model.contains("o") {
+                    log::warn!("Using GPT-4 model without vision capability. For vision support, use gpt-4-vision or gpt-4o models.");
+                }
+            },
+            LLMBackend::Ollama => {
+                // For Ollama, we might want to check that the server is running
+                // or validate that the model exists
+                log::info!("Using Ollama backend with model {}. Ensure Ollama server is running and the model is pulled.", model);
+                
+                // Set Ollama API host if custom
+                if let Ok(host) = std::env::var("OLLAMA_HOST") {
+                    if !host.is_empty() {
+                        log::debug!("Using custom Ollama host: {}", host);
+                        builder = builder.host(&host);
+                    }
+                }
+            },
+            LLMBackend::Anthropic => {
+                // Any Anthropic-specific configurations
+                if !model.contains("claude") {
+                    log::warn!("Model name '{}' doesn't contain 'claude'. Ensure this is a valid Anthropic model name.", model);
+                }
+            },
+            _ => {
+                // No specific configurations for other backends yet
+            }
+        }
 
-        let llm = builder.build()
-            .map_err(|e| anyhow!("Failed to build RLLM client: {}", e))?;
+        // Build the client
+        let llm = match builder.build() {
+            Ok(client) => client,
+            Err(e) => {
+                let error_msg = format!("Failed to build RLLM client for {:?} with model {}: {}", 
+                                      backend, model, e);
+                log::error!("{}", error_msg);
+                
+                // Add more context to common errors
+                if e.to_string().contains("authentication") || e.to_string().contains("authorization") {
+                    return Err(anyhow!("{} - Check your API key is valid and has sufficient permissions", error_msg));
+                } else if e.to_string().contains("model") && e.to_string().contains("not found") {
+                    return Err(anyhow!("{} - Verify the model name is correct and accessible with your account", error_msg));
+                } else if e.to_string().contains("network") || e.to_string().contains("connection") {
+                    return Err(anyhow!("{} - Check your network connection and ensure the API endpoint is accessible", error_msg));
+                }
+                
+                return Err(anyhow!(error_msg));
+            }
+        };
 
         Ok(Self {
             llm,
@@ -79,76 +147,166 @@ impl AIClient for RLLMClient {
     }
     
     fn capabilities(&self) -> ModelCapabilities {
-        log::debug!("Getting capabilities for RLLM backend: {:?}", self.backend);
+        log::debug!("Getting capabilities for RLLM backend: {:?} with model {}", self.backend, self.model_name);
         
-        // Set capabilities based on the backend
+        // Model-specific capability overrides based on known model names
+        if self.model_name.starts_with("gpt-4") || self.model_name.starts_with("gpt-4o") {
+            if self.model_name.contains("vision") || self.model_name.contains("o") {
+                // GPT-4 Vision or GPT-4o models
+                return ModelCapabilities {
+                    supports_images: true,
+                    supports_system_messages: true,
+                    supports_function_calling: true,
+                    supports_vision: true,
+                    max_tokens: Some(4096),
+                    supports_json_mode: true,
+                };
+            }
+        } else if self.model_name.starts_with("gpt-3.5") {
+            // GPT-3.5 models generally don't support vision
+            return ModelCapabilities {
+                supports_images: false,
+                supports_system_messages: true,
+                supports_function_calling: true,
+                supports_vision: false,
+                max_tokens: Some(4096),
+                supports_json_mode: true,
+            };
+        } else if self.model_name.contains("claude-3") {
+            // Claude 3 models
+            if self.model_name.contains("opus") {
+                return ModelCapabilities {
+                    supports_images: true,
+                    supports_system_messages: true, 
+                    supports_function_calling: true,
+                    supports_vision: true,
+                    max_tokens: Some(200000), // Claude 3 Opus has very high token limit
+                    supports_json_mode: true,
+                };
+            } else if self.model_name.contains("sonnet") {
+                return ModelCapabilities {
+                    supports_images: true,
+                    supports_system_messages: true,
+                    supports_function_calling: true,
+                    supports_vision: true,
+                    max_tokens: Some(180000), // Claude 3 Sonnet has high token limit
+                    supports_json_mode: true,
+                };
+            } else if self.model_name.contains("haiku") {
+                return ModelCapabilities {
+                    supports_images: true,
+                    supports_system_messages: true,
+                    supports_function_calling: true,
+                    supports_vision: true,
+                    max_tokens: Some(150000), // Claude 3 Haiku
+                    supports_json_mode: true,
+                };
+            }
+        } else if self.model_name.contains("gemini") {
+            // Specific Gemini model capabilities
+            if self.model_name.contains("pro") || self.model_name.contains("1.5") {
+                return ModelCapabilities {
+                    supports_images: true,
+                    supports_system_messages: true,
+                    supports_function_calling: true,
+                    supports_vision: true,
+                    max_tokens: Some(8192),
+                    supports_json_mode: true,
+                };
+            } else if self.model_name.contains("flash") {
+                return ModelCapabilities {
+                    supports_images: false, // Flash models typically don't support vision
+                    supports_system_messages: true,
+                    supports_function_calling: true,
+                    supports_vision: false,
+                    max_tokens: Some(8192),
+                    supports_json_mode: true,
+                };
+            }
+        }
+        
+        // Default capabilities based on backend if no specific model match
         match self.backend {
             LLMBackend::OpenAI => ModelCapabilities {
-                supports_images: true, // OpenAI models like gpt-4 support images
+                supports_images: true, // Most newer OpenAI models support images
                 supports_system_messages: true,
-                supports_function_calling: true, // OpenAI supports function calling
-                supports_vision: true, // OpenAI supports vision
-                max_tokens: Some(4096), // Example, adjust per specific model if needed
-                supports_json_mode: true, // OpenAI supports JSON mode
+                supports_function_calling: true,
+                supports_vision: true, // Default to true for newer models
+                max_tokens: Some(4096),
+                supports_json_mode: true,
             },
             LLMBackend::Anthropic => ModelCapabilities {
                 supports_images: true, // Claude 3 models support images
-                supports_system_messages: true, // Anthropic supports system prompts
-                supports_function_calling: true, // Claude 3 supports tool use
-                supports_vision: true, // Claude 3 supports vision
-                max_tokens: Some(4096), // Example, adjust per specific model
-                supports_json_mode: true, // Claude 3 supports JSON mode
-            },
-            LLMBackend::Ollama => ModelCapabilities {
-                supports_images: false, // Ollama support varies by model, default false
                 supports_system_messages: true,
-                supports_function_calling: false, // Generally not supported directly via Ollama API
-                supports_vision: false, // Varies by model, default false
-                max_tokens: Some(2048), // Common default, adjust as needed
-                supports_json_mode: false, // Varies by model, default false
+                supports_function_calling: true,
+                supports_vision: true,
+                max_tokens: Some(100000), // Claude models generally have high token limits
+                supports_json_mode: true,
+            },
+            LLMBackend::Ollama => {
+                // For Ollama, try to determine capabilities from model name
+                let vision_capable = self.model_name.contains("llava") || 
+                                    self.model_name.contains("bakllava") || 
+                                    self.model_name.contains("vision");
+                
+                let function_calling = self.model_name.contains("Function") || 
+                                      self.model_name.contains("tool") ||
+                                      self.model_name.contains("llama-3");
+                
+                ModelCapabilities {
+                    supports_images: vision_capable,
+                    supports_system_messages: true, // Most Ollama models support system messages
+                    supports_function_calling: function_calling,
+                    supports_vision: vision_capable,
+                    max_tokens: Some(2048), // Conservative default for Ollama
+                    supports_json_mode: self.model_name.contains("coder") || 
+                                       self.model_name.contains("wizard") ||
+                                       self.model_name.contains("llama-3"),
+                }
             },
             LLMBackend::DeepSeek => ModelCapabilities {
-                supports_images: false, // DeepSeek doesn't generally support image input
+                supports_images: false,
                 supports_system_messages: true,
-                supports_function_calling: false,
+                supports_function_calling: self.model_name.contains("coder"), // DeepSeek-Coder supports function calling
                 supports_vision: false,
-                max_tokens: Some(4096),
-                supports_json_mode: true, // For DeepSeek-Coder it supports good JSON
+                max_tokens: Some(8192), // DeepSeek models have good context lengths
+                supports_json_mode: true, // Especially good for DeepSeek-Coder
             },
             LLMBackend::XAI => ModelCapabilities {
                 supports_images: true, // Grok-2 supports image input
                 supports_system_messages: true,
-                supports_function_calling: true, // Grok supports function calling 
+                supports_function_calling: true, 
                 supports_vision: true,
-                max_tokens: Some(4096),
+                max_tokens: Some(8192), // Grok has large context
                 supports_json_mode: true,
             },
             LLMBackend::Phind => ModelCapabilities {
-                supports_images: false, // Phind doesn't support image input
+                supports_images: false,
                 supports_system_messages: true,
-                supports_function_calling: false,
+                supports_function_calling: self.model_name.contains("34b"), // Latest Phind models support function calling
                 supports_vision: false,
                 max_tokens: Some(4096),
                 supports_json_mode: true, // Good for code/technical content
             },
             LLMBackend::Groq => ModelCapabilities {
-                supports_images: false, // Groq doesn't support image input currently
+                supports_images: false,
                 supports_system_messages: true,
-                supports_function_calling: false,
+                supports_function_calling: false, // Groq doesn't support function calling directly yet
                 supports_vision: false,
                 max_tokens: Some(4096),
                 supports_json_mode: true,
             },
             LLMBackend::Google => ModelCapabilities {
-                supports_images: true, // Gemini supports images
+                supports_images: true, // Gemini models generally support images
                 supports_system_messages: true,
-                supports_function_calling: true, // Gemini supports function calling
+                supports_function_calling: true,
                 supports_vision: true,
                 max_tokens: Some(8192), // Gemini has high limits
                 supports_json_mode: true,
             },
             _ => {
-                log::warn!("Capabilities not defined for RLLM backend: {:?}. Using default.", self.backend);
+                log::warn!("Capabilities not defined for RLLM backend: {:?} with model {}. Using default capabilities.", 
+                          self.backend, self.model_name);
                 ModelCapabilities::default()
             }
         }
@@ -180,19 +338,45 @@ impl AIRequestBuilder for RLLMRequestBuilder {
     fn user_with_image(self: Box<Self>, text: String, image_path: &Path) -> Result<Box<dyn AIRequestBuilder>> {
         log::debug!("Adding user message with image for RLLM request: {}", image_path.display());
         
+        // Verify image file exists first
+        if !image_path.exists() {
+            let error_msg = format!("Image file does not exist: {}", image_path.display());
+            log::error!("{}", error_msg);
+            return Err(anyhow!(error_msg));
+        }
+        
+        // Check file size
+        if let Ok(metadata) = std::fs::metadata(image_path) {
+            let size_mb = metadata.len() as f64 / 1_048_576.0;
+            if size_mb > 20.0 {
+                log::warn!("Image file is {:.2} MB, which may be too large for some models (recommended < 20MB)", size_mb);
+            }
+        }
+        
         // Check if the model supports images
         if !self.client.vision_supported() {
-            log::warn!("The selected model does not support images. The image will be ignored.");
+            log::warn!("The selected model {} with backend {:?} does not support images. The image will be ignored.", 
+                      self.client.model_name(), self.client.backend());
+            
             return Ok(Box::new(RLLMRequestBuilder {
                 client: self.client,
                 messages: {
                     let mut msgs = self.messages;
-                    msgs.push((Role::User, format!("{} [Image described at {}]", text, image_path.display())));
+                    msgs.push((Role::User, format!("{} [Image described at {} was not processed because the model doesn't support vision]", 
+                                                  text, image_path.display())));
                     msgs
                 },
                 config: self.config,
                 system: self.system,
             }));
+        }
+        
+        // Log image format information
+        if let Some(extension) = image_path.extension().and_then(|e| e.to_str()) {
+            let format = extension.to_lowercase();
+            if !["jpg", "jpeg", "png", "gif", "webp"].contains(&format.as_str()) {
+                log::warn!("Image format '{}' might not be supported by all models. Recommended formats: JPG, PNG, WebP", format);
+            }
         }
         
         // Attempt to load the image for models that support it
@@ -211,13 +395,23 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 }))
             },
             Err(e) => {
-                log::warn!("Failed to add image to RLLM client: {}", e);
-                // Fall back to text-only
+                let error_msg = format!("Failed to add image to RLLM client: {}", e);
+                log::error!("{}", error_msg);
+                
+                // Determine if we should return an error or fall back to text-only
+                if e.to_string().contains("unsupported format") || 
+                   e.to_string().contains("invalid image") {
+                    return Err(anyhow!("Invalid image format or corrupted image: {}", e));
+                }
+                
+                // Fall back to text-only as last resort
+                log::warn!("Falling back to text-only message without image");
                 Ok(Box::new(RLLMRequestBuilder {
                     client: self.client,
                     messages: {
                         let mut msgs = self.messages;
-                        msgs.push((Role::User, format!("{} [Image failed to load from {}]", text, image_path.display())));
+                        msgs.push((Role::User, format!("{} [Image at {} failed to load: {}]", 
+                                                    text, image_path.display(), e)));
                         msgs
                     },
                     config: self.config,
@@ -230,19 +424,46 @@ impl AIRequestBuilder for RLLMRequestBuilder {
     fn user_with_image_url(self: Box<Self>, text: String, image_url: String) -> Box<dyn AIRequestBuilder> {
         log::debug!("Adding user message with image URL for RLLM request: {}", image_url);
         
-        // Check if the model supports images
-        if !self.client.vision_supported() {
-            log::warn!("The selected model does not support images. The image URL will be ignored.");
+        // Basic URL validation
+        if !image_url.starts_with("http://") && !image_url.starts_with("https://") {
+            log::error!("Invalid image URL format: {}", image_url);
             return Box::new(RLLMRequestBuilder {
                 client: self.client,
                 messages: {
                     let mut msgs = self.messages;
-                    msgs.push((Role::User, format!("{} [Image from URL: {}]", text, image_url)));
+                    msgs.push((Role::User, format!("{} [Invalid image URL format: {}]", text, image_url)));
                     msgs
                 },
                 config: self.config,
                 system: self.system,
             });
+        }
+        
+        // Check if the model supports images
+        if !self.client.vision_supported() {
+            log::warn!("The selected model {} with backend {:?} does not support images. The image URL will be ignored.",
+                      self.client.model_name(), self.client.backend());
+            
+            return Box::new(RLLMRequestBuilder {
+                client: self.client,
+                messages: {
+                    let mut msgs = self.messages;
+                    msgs.push((Role::User, format!("{} [Image from URL: {} was not processed because the model doesn't support vision]", 
+                                                  text, image_url)));
+                    msgs
+                },
+                config: self.config,
+                system: self.system,
+            });
+        }
+        
+        // Check for supported URL patterns/file extensions
+        let url_lower = image_url.to_lowercase();
+        let supported_extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
+        let has_supported_ext = supported_extensions.iter().any(|ext| url_lower.ends_with(ext));
+        
+        if !has_supported_ext && !url_lower.contains("?") {  // Skip check if URL has query params
+            log::warn!("Image URL doesn't have a common image extension (.jpg, .png, etc). Some models may reject it.");
         }
         
         // Attempt to add the image URL for models that support it
@@ -261,13 +482,29 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 })
             },
             Err(e) => {
-                log::warn!("Failed to add image URL to RLLM client: {}", e);
+                let error_msg = format!("Failed to add image URL to RLLM client: {}", e);
+                log::error!("{}", error_msg);
+                
+                // Provide more specific error message based on common failures
+                let error_detail = if e.to_string().contains("403") {
+                    "URL access forbidden (403)"
+                } else if e.to_string().contains("404") {
+                    "URL not found (404)"
+                } else if e.to_string().contains("timeout") {
+                    "Connection timeout"
+                } else if e.to_string().contains("invalid") {
+                    "Invalid image format"
+                } else {
+                    "Unknown error"
+                };
+                
                 // Fall back to text-only
                 Box::new(RLLMRequestBuilder {
                     client: self.client,
                     messages: {
                         let mut msgs = self.messages;
-                        msgs.push((Role::User, format!("{} [Image URL failed to load: {}]", text, image_url)));
+                        msgs.push((Role::User, format!("{} [Image URL failed to load: {} - {}]", 
+                                                      text, error_detail, e)));
                         msgs
                     },
                     config: self.config,
@@ -290,8 +527,10 @@ impl AIRequestBuilder for RLLMRequestBuilder {
     }
 
     async fn execute(self: Box<Self>) -> Result<String> {
-        log::info!("Executing RLLM request with backend: {:?}", self.client.backend());
+        log::info!("Executing RLLM request with backend: {:?}, model: {}", 
+                  self.client.backend(), self.client.model_name());
         let mut client = self.client.clone();
+        let backend = client.backend();
 
         // Apply system message if provided
         if let Some(system_content) = &self.system {
@@ -303,6 +542,8 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         let mut rllm_messages = Vec::new();
         for (role, content) in &self.messages {
             let chat_role = RLLMClient::convert_role(role);
+            log::debug!("Adding message with role: {:?}, content length: {}", 
+                       chat_role, content.len());
             rllm_messages.push(ChatMessage {
                 role: chat_role,
                 content: content.clone().into(),
@@ -312,8 +553,11 @@ impl AIRequestBuilder for RLLMRequestBuilder {
 
         // Apply configuration if provided
         if let Some(cfg) = &self.config {
-            // Common parameters
+            // Common parameters that apply to all backends
             if let Some(temp) = cfg.temperature {
+                if temp < 0.0 || temp > 2.0 {
+                    log::warn!("Temperature {} is outside recommended range (0.0-2.0), but will attempt to apply", temp);
+                }
                 log::debug!("Setting temperature: {}", temp);
                 client = client.temperature(temp);
             }
@@ -324,39 +568,97 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             }
             
             if let Some(top_p) = cfg.top_p {
+                if top_p < 0.0 || top_p > 1.0 {
+                    log::warn!("Top_p {} is outside valid range (0.0-1.0), but will attempt to apply", top_p);
+                }
                 log::debug!("Setting top_p: {}", top_p);
                 client = client.top_p(top_p);
             }
             
-            // OpenAI-specific parameters
-            if matches!(client.backend(), LLMBackend::OpenAI) {
-                if let Some(freq_penalty) = cfg.frequency_penalty {
-                    log::debug!("Setting frequency_penalty: {}", freq_penalty);
-                    client = client.frequency_penalty(freq_penalty);
-                }
-                
-                if let Some(pres_penalty) = cfg.presence_penalty {
-                    log::debug!("Setting presence_penalty: {}", pres_penalty);
-                    client = client.presence_penalty(pres_penalty);
+            // Backend-specific parameters
+            match backend {
+                LLMBackend::OpenAI => {
+                    // OpenAI-specific parameters
+                    if let Some(freq_penalty) = cfg.frequency_penalty {
+                        if freq_penalty < -2.0 || freq_penalty > 2.0 {
+                            log::warn!("Frequency penalty {} is outside OpenAI's recommended range (-2.0 to 2.0)", freq_penalty);
+                        }
+                        log::debug!("Setting OpenAI frequency_penalty: {}", freq_penalty);
+                        client = client.frequency_penalty(freq_penalty);
+                    }
+                    
+                    if let Some(pres_penalty) = cfg.presence_penalty {
+                        if pres_penalty < -2.0 || pres_penalty > 2.0 {
+                            log::warn!("Presence penalty {} is outside OpenAI's recommended range (-2.0 to 2.0)", pres_penalty);
+                        }
+                        log::debug!("Setting OpenAI presence_penalty: {}", pres_penalty);
+                        client = client.presence_penalty(pres_penalty);
+                    }
+                },
+                LLMBackend::Anthropic => {
+                    // Anthropic-specific parameters
+                    if let Some(top_k) = cfg.top_k {
+                        log::debug!("Setting Anthropic top_k: {}", top_k);
+                        // Apply if the rllm crate supports this parameter
+                        if let Err(e) = client.set_param("top_k", top_k) {
+                            log::warn!("Failed to set top_k parameter for Anthropic: {}", e);
+                        }
+                    }
+                },
+                LLMBackend::Google => {
+                    // Google/Gemini-specific parameters
+                    if let Some(candidate_count) = cfg.n {
+                        log::debug!("Setting Google candidate_count: {}", candidate_count);
+                        if let Err(e) = client.set_param("candidate_count", candidate_count) {
+                            log::warn!("Failed to set candidate_count parameter for Google: {}", e);
+                        }
+                    }
+                },
+                _ => {
+                    // Other backends may have specific parameters in the future
+                    log::debug!("No backend-specific parameters for {:?}", backend);
                 }
             }
             
-            // Models that support JSON mode
-            if self.client.json_supported() {
+            // Handle JSON mode if the model supports it
+            if let Some(json_mode) = cfg.json_mode {
+                if json_mode && self.client.json_supported() {
+                    log::debug!("Enabling JSON mode for supported model");
+                    client = client.json(true);
+                } else if json_mode {
+                    log::warn!("JSON mode requested but not supported by the model {}", 
+                              self.client.model_name());
+                }
+            } else if cfg.response_format.as_deref() == Some("json") && self.client.json_supported() {
+                // Also check response_format field which is used by some clients
+                log::debug!("Enabling JSON mode via response_format");
                 client = client.json(true);
-                log::debug!("Enabled JSON mode for supported model");
             }
         }
         
         // Execute the request and handle errors
         log::debug!("Sending chat request to RLLM backend with {} messages", rllm_messages.len());
+        let start_time = std::time::Instant::now();
+        
         match client.chat(&rllm_messages) {
             Ok(result) => {
-                log::info!("RLLM request successful, received response of {} characters", result.len());
+                let elapsed = start_time.elapsed();
+                log::info!(
+                    "RLLM request successful in {:.2}s, received response of {} characters",
+                    elapsed.as_secs_f64(),
+                    result.len()
+                );
                 Ok(result)
             },
             Err(e) => {
-                let error_msg = format!("RLLM chat execution failed: {}", e);
+                let elapsed = start_time.elapsed();
+                let backend_name = format!("{:?}", backend);
+                let error_msg = format!(
+                    "RLLM chat execution failed after {:.2}s with backend {}: {}. Check API key validity, network connectivity, and model availability.",
+                    elapsed.as_secs_f64(),
+                    backend_name,
+                    e
+                );
                 log::error!("{}", error_msg);
                 Err(anyhow!(error_msg))
             }
