@@ -227,14 +227,14 @@ impl MCPHostBuilder {
     /// Build the MCPHost
     pub async fn build(self) -> Result<MCPHost> {
         // Create AI client based on direct setting or config
-        let ai_client = if let Some(client) = self.ai_client {
+        let ai_client: Option<Arc<dyn AIClient>> = if let Some(client) = self.ai_client {
              log::info!("Using directly provided AI client.");
-             Some(client)
+             Some(Arc::from(client)) // Wrap the Box in Arc
         } else {
              // Use config if provided, otherwise default (which might be None)
              let config = self.ai_provider_config.unwrap_or_default();
-             // Wrap the created client in Arc
-             Self::create_ai_client(config).await?.map(Arc::new) 
+             // Map the Option<Box> inside the Result to Option<Arc>
+             Self::create_ai_client(config).await?.map(Arc::from) 
         };
 
         let request_timeout = self.request_timeout.unwrap_or(Duration::from_secs(120));

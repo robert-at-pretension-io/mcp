@@ -94,7 +94,7 @@ pub async fn handle_assistant_response(
     incoming_response: &str,
     server_name: &str,
     state: &mut ConversationState,
-    client: &Box<dyn AIClient>,
+    client: Arc<dyn AIClient>, // Change to Arc<dyn AIClient>
     mut socket: Option<&mut WebSocket>
 ) -> Result<()> {
     // Use Box::pin for recursive async functions
