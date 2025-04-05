@@ -91,9 +91,6 @@ pub fn setup_logging() {
         return;
     }
     
-    // Try to use env_logger first
-    let _ = env_logger::try_init();
-    
     // Try to set up file appender for persistent logs if env_logger didn't initialize
     let log_dir = std::env::var("LOG_DIR")
         .unwrap_or_else(|_| {
@@ -101,7 +98,10 @@ pub fn setup_logging() {
                 .map(|h| format!("{}/Developer/mcp/logs", h.display()))
                 .unwrap_or_else(|| "logs".to_string())
         });
-    
+    // Ensure log directory exists
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        eprintln!("Warning: Could not create log directory {}: {}", log_dir, e);
+    }
     // Only try to initialize tracing if we're not disabling it
     if let Ok(file_appender) = tracing_appender::rolling::Builder::new()
         .rotation(tracing_appender::rolling::Rotation::NEVER)
@@ -124,6 +124,10 @@ pub fn setup_logging() {
             Ok(_) => info!("Tracing initialized successfully"),
             Err(e) => eprintln!("Warning: Could not initialize tracing: {:?}", e)
         }
+    } else {
+        // Fallback to basic stderr logging if file appender fails
+        eprintln!("Warning: Could not create file appender, falling back to stderr logging.");
+        env_logger::builder().filter_level(log::LevelFilter::Info).init();
     }
     
     info!("MCP Host Enhanced REPL starting");
