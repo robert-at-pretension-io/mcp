@@ -17,4 +17,4 @@ pub use crate::host::MCPHost;
 pub use crate::host::config;
 pub use crate::host::error::{HostError, Result};
 pub use crate::host::server_manager::ManagedServer;
-pub use crate::rllm_adapter::RLLMClient;
+pub use crate::rllm_adapter::{RLLMClient, create_rllm_client_for_provider};
