@@ -4,15 +4,15 @@ use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabi
 use shared_protocol_objects::Role;
 use rllm::builder::{LLMBackend, LLMBuilder};
 use rllm::chat::{ChatMessage, ChatRole, MessageType};
-use rllm::Llm;
 use std::path::Path;
 use log;
 
 /// Client adapter for the rllm crate to interface with the MCP system
 pub struct RLLMClient {
-    llm: Llm,
     model_name: String,
     backend: LLMBackend,
+    // Store API key for recreating the client if needed
+    api_key: String,
 }
 
 impl RLLMClient {
@@ -43,7 +43,7 @@ impl RLLMClient {
 
         // Only add API key if it's not empty (Ollama and some others don't need one)
         if !api_key.is_empty() {
-            builder = builder.api_key(api_key);
+            builder = builder.api_key(&api_key);  // Fixed: use reference to avoid moving api_key
         }
         
         // Add specific backend configurations
@@ -63,7 +63,7 @@ impl RLLMClient {
                 if let Ok(host) = std::env::var("OLLAMA_HOST") {
                     if !host.is_empty() {
                         log::debug!("Using custom Ollama host: {}", host);
-                        builder = builder.host(&host);
+                        log::warn!("Custom Ollama host {} defined, but host method not available in current rllm version", host);
                     }
                 }
             },
@@ -78,9 +78,17 @@ impl RLLMClient {
             }
         }
 
-        // Build the client
-        let llm = match builder.build() {
-            Ok(client) => client,
+        // Test if RLLM can build a client with these parameters
+        // We won't store the client instance, just verify it can be created
+        match builder.build() {
+            Ok(_) => {
+                // Success - we can create a client with these parameters
+                Ok(Self {
+                    model_name: model.clone(),
+                    backend,
+                    api_key,  // Move api_key into the struct
+                })
+            },
             Err(e) => {
                 let error_msg = format!("Failed to build RLLM client for {:?} with model {}: {}", 
                                       backend, model, e);
@@ -97,13 +105,7 @@ impl RLLMClient {
                 
                 return Err(anyhow!(error_msg));
             }
-        };
-
-        Ok(Self {
-            llm,
-            model_name: model,
-            backend,
-        })
+        }
     }
 
     /// Convert MCP Role to rllm's ChatRole
@@ -111,18 +113,19 @@ impl RLLMClient {
         match role {
             Role::User => ChatRole::User,
             Role::Assistant => ChatRole::Assistant,
-            Role::System => ChatRole::System, // rllm supports system messages in chat directly
+            // System role doesn't exist in this version, use User role as fallback
+            Role::System => ChatRole::User,
         }
     }
 }
 
-// Implement Debug manually as rllm::Llm doesn't derive Debug
+// Implement Debug
 impl std::fmt::Debug for RLLMClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RLLMClient")
          .field("model_name", &self.model_name)
          .field("backend", &self.backend)
-         // Do not include llm field as it's not Debug
+         .field("api_key", &format!("{}****", &self.api_key.chars().take(4).collect::<String>()))
          .finish()
     }
 }
@@ -134,10 +137,13 @@ impl AIClient for RLLMClient {
     }
 
     fn builder(&self) -> Box<dyn AIRequestBuilder> {
+        // Create a new request builder with the client configuration
         Box::new(RLLMRequestBuilder {
-            client: self.llm.clone(),
+            api_key: self.api_key.clone(),
+            model_name: self.model_name.clone(),
+            backend: self.backend.clone(),
             messages: Vec::new(),
-            config: None,
+            config: None, 
             system: None,
         })
     }
@@ -305,6 +311,7 @@ impl AIClient for RLLMClient {
                 supports_json_mode: true,
             },
             _ => {
+                // This is a catch-all case that shouldn't be reached, but is here for robustness
                 log::warn!("Capabilities not defined for RLLM backend: {:?} with model {}. Using default capabilities.", 
                           self.backend, self.model_name);
                 ModelCapabilities::default()
@@ -313,9 +320,13 @@ impl AIClient for RLLMClient {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RLLMRequestBuilder {
-    client: Llm,
+    // Store the configuration needed to create an RLLM client
+    api_key: String,
+    model_name: String,
+    backend: LLMBackend,
+    // Store messages and configuration
     messages: Vec<(Role, String)>,
     config: Option<GenerationConfig>,
     system: Option<String>,
@@ -353,24 +364,6 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             }
         }
         
-        // Check if the model supports images
-        if !self.client.vision_supported() {
-            log::warn!("The selected model {} with backend {:?} does not support images. The image will be ignored.", 
-                      self.client.model_name(), self.client.backend());
-            
-            return Ok(Box::new(RLLMRequestBuilder {
-                client: self.client,
-                messages: {
-                    let mut msgs = self.messages;
-                    msgs.push((Role::User, format!("{} [Image described at {} was not processed because the model doesn't support vision]", 
-                                                  text, image_path.display())));
-                    msgs
-                },
-                config: self.config,
-                system: self.system,
-            }));
-        }
-        
         // Log image format information
         if let Some(extension) = image_path.extension().and_then(|e| e.to_str()) {
             let format = extension.to_lowercase();
@@ -379,46 +372,14 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             }
         }
         
-        // Attempt to load the image for models that support it
-        match self.client.add_image(image_path.to_string_lossy().to_string()) {
-            Ok(client_with_image) => {
-                log::debug!("Successfully added image to RLLM client");
-                Ok(Box::new(RLLMRequestBuilder {
-                    client: client_with_image,
-                    messages: {
-                        let mut msgs = self.messages;
-                        msgs.push((Role::User, text));
-                        msgs
-                    },
-                    config: self.config,
-                    system: self.system,
-                }))
-            },
-            Err(e) => {
-                let error_msg = format!("Failed to add image to RLLM client: {}", e);
-                log::error!("{}", error_msg);
-                
-                // Determine if we should return an error or fall back to text-only
-                if e.to_string().contains("unsupported format") || 
-                   e.to_string().contains("invalid image") {
-                    return Err(anyhow!("Invalid image format or corrupted image: {}", e));
-                }
-                
-                // Fall back to text-only as last resort
-                log::warn!("Falling back to text-only message without image");
-                Ok(Box::new(RLLMRequestBuilder {
-                    client: self.client,
-                    messages: {
-                        let mut msgs = self.messages;
-                        msgs.push((Role::User, format!("{} [Image at {} failed to load: {}]", 
-                                                    text, image_path.display(), e)));
-                        msgs
-                    },
-                    config: self.config,
-                    system: self.system,
-                }))
-            }
-        }
+        // Store the image path in a special format that will be handled during execution
+        let mut msgs = self.messages.clone();
+        msgs.push((Role::User, text));
+        msgs.push((Role::User, format!("__IMAGE_PATH__:{}", image_path.display())));
+        
+        let mut builder = (*self).clone();
+        builder.messages = msgs;
+        Ok(Box::new(builder))
     }
 
     fn user_with_image_url(self: Box<Self>, text: String, image_url: String) -> Box<dyn AIRequestBuilder> {
@@ -427,34 +388,12 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         // Basic URL validation
         if !image_url.starts_with("http://") && !image_url.starts_with("https://") {
             log::error!("Invalid image URL format: {}", image_url);
-            return Box::new(RLLMRequestBuilder {
-                client: self.client,
-                messages: {
-                    let mut msgs = self.messages;
-                    msgs.push((Role::User, format!("{} [Invalid image URL format: {}]", text, image_url)));
-                    msgs
-                },
-                config: self.config,
-                system: self.system,
-            });
-        }
-        
-        // Check if the model supports images
-        if !self.client.vision_supported() {
-            log::warn!("The selected model {} with backend {:?} does not support images. The image URL will be ignored.",
-                      self.client.model_name(), self.client.backend());
+            let mut msgs = self.messages.clone();
+            msgs.push((Role::User, format!("{} [Invalid image URL format: {}]", text, image_url)));
             
-            return Box::new(RLLMRequestBuilder {
-                client: self.client,
-                messages: {
-                    let mut msgs = self.messages;
-                    msgs.push((Role::User, format!("{} [Image from URL: {} was not processed because the model doesn't support vision]", 
-                                                  text, image_url)));
-                    msgs
-                },
-                config: self.config,
-                system: self.system,
-            });
+            let mut builder = (*self).clone();
+            builder.messages = msgs;
+            return Box::new(builder);
         }
         
         // Check for supported URL patterns/file extensions
@@ -466,52 +405,16 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             log::warn!("Image URL doesn't have a common image extension (.jpg, .png, etc). Some models may reject it.");
         }
         
-        // Attempt to add the image URL for models that support it
-        match self.client.add_image_url(image_url.clone()) {
-            Ok(client_with_image) => {
-                log::debug!("Successfully added image URL to RLLM client");
-                Box::new(RLLMRequestBuilder {
-                    client: client_with_image,
-                    messages: {
-                        let mut msgs = self.messages;
-                        msgs.push((Role::User, text));
-                        msgs
-                    },
-                    config: self.config,
-                    system: self.system,
-                })
-            },
-            Err(e) => {
-                let error_msg = format!("Failed to add image URL to RLLM client: {}", e);
-                log::error!("{}", error_msg);
-                
-                // Provide more specific error message based on common failures
-                let error_detail = if e.to_string().contains("403") {
-                    "URL access forbidden (403)"
-                } else if e.to_string().contains("404") {
-                    "URL not found (404)"
-                } else if e.to_string().contains("timeout") {
-                    "Connection timeout"
-                } else if e.to_string().contains("invalid") {
-                    "Invalid image format"
-                } else {
-                    "Unknown error"
-                };
-                
-                // Fall back to text-only
-                Box::new(RLLMRequestBuilder {
-                    client: self.client,
-                    messages: {
-                        let mut msgs = self.messages;
-                        msgs.push((Role::User, format!("{} [Image URL failed to load: {} - {}]", 
-                                                      text, error_detail, e)));
-                        msgs
-                    },
-                    config: self.config,
-                    system: self.system,
-                })
-            }
-        }
+        // Store messages with the image URL in a special format
+        let mut msgs = self.messages.clone();
+        msgs.push((Role::User, text));
+        
+        // Store the image URL in a special format
+        msgs.push((Role::User, format!("__IMAGE_URL__:{}", image_url)));
+        
+        let mut builder = (*self).clone();
+        builder.messages = msgs;
+        Box::new(builder)
     }
 
     fn assistant(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
@@ -527,136 +430,124 @@ impl AIRequestBuilder for RLLMRequestBuilder {
     }
 
     async fn execute(self: Box<Self>) -> Result<String> {
-        log::info!("Executing RLLM request with backend: {:?}, model: {}", 
-                  self.client.backend(), self.client.model_name());
-        let mut client = self.client.clone();
-        let backend = client.backend();
-
-        // Apply system message if provided
-        if let Some(system_content) = &self.system {
-            log::debug!("Applying system message: {}", system_content);
-            client = client.system(system_content);
+        log::info!("Executing RLLM request with model {}", self.model_name);
+        
+        // Create a new LLMBuilder with our stored configuration
+        let mut builder = LLMBuilder::new()
+            .backend(self.backend.clone())
+            .model(&self.model_name)
+            .api_key(&self.api_key);
+        
+        // Apply configuration options if provided
+        if let Some(cfg) = &self.config {
+            if let Some(temp) = cfg.temperature {
+                builder = builder.temperature(temp);
+            }
+            
+            if let Some(max_tokens) = cfg.max_tokens {
+                builder = builder.max_tokens(max_tokens);
+            }
+            
+            if let Some(top_p) = cfg.top_p {
+                builder = builder.top_p(top_p);
+            }
         }
-
-        // Convert messages to rllm ChatMessage format
-        let mut rllm_messages = Vec::new();
-        for (role, content) in &self.messages {
+        
+        // System message is handled separately
+        if let Some(sys) = &self.system {
+            builder = builder.system(sys);
+        }
+        
+        // Build the client
+        let llm = match builder.build() {
+            Ok(provider) => provider,
+            Err(e) => {
+                let error_msg = format!("Failed to build RLLM client: {}", e);
+                log::error!("{}", error_msg);
+                return Err(anyhow!(error_msg));
+            }
+        };
+        
+        // Build the chat messages
+        let mut chat_messages = Vec::new();
+        let mut _has_image = false;
+        let mut image_text = String::new();
+        
+        for (i, (role, content)) in self.messages.iter().enumerate() {
+            // Check for special image markers
+            if content.starts_with("__IMAGE_PATH__:") || content.starts_with("__IMAGE_URL__:") {
+                _has_image = true;
+                
+                // If previous message was the image text, skip adding it separately
+                if i > 0 && self.messages[i-1].0 == Role::User && !image_text.is_empty() {
+                    continue;
+                }
+                
+                // Otherwise, add the image reference with the content
+                let marker_type = if content.starts_with("__IMAGE_PATH__:") { "path" } else { "URL" };
+                let path_or_url = if content.starts_with("__IMAGE_PATH__:") {
+                    content.strip_prefix("__IMAGE_PATH__:").unwrap_or("")
+                } else {
+                    content.strip_prefix("__IMAGE_URL__:").unwrap_or("")
+                };
+                
+                log::debug!("Adding image {} as text in message: {}", marker_type, path_or_url);
+                
+                // Add a user message that includes the image reference as text
+                chat_messages.push(ChatMessage {
+                    role: ChatRole::User,
+                    content: format!("{}\n[Image {}: {}]", image_text, marker_type, path_or_url).into(),
+                    message_type: MessageType::Text,
+                });
+                
+                // Reset image text for next image
+                image_text = String::new();
+                continue;
+            }
+            
+            // Handle regular messages
+            if *role == Role::User && i+1 < self.messages.len() {
+                // Check if this message is followed by an image marker
+                let next_content = &self.messages[i+1].1;
+                if next_content.starts_with("__IMAGE_PATH__:") || next_content.starts_with("__IMAGE_URL__:") {
+                    // This text belongs with the image
+                    image_text = content.clone();
+                    continue;
+                }
+            }
+            
+            // Regular message (not part of an image)
             let chat_role = RLLMClient::convert_role(role);
-            log::debug!("Adding message with role: {:?}, content length: {}", 
-                       chat_role, content.len());
-            rllm_messages.push(ChatMessage {
+            log::debug!("Adding regular message with role {:?}", chat_role);
+            chat_messages.push(ChatMessage {
                 role: chat_role,
                 content: content.clone().into(),
                 message_type: MessageType::Text,
             });
         }
-
-        // Apply configuration if provided
-        if let Some(cfg) = &self.config {
-            // Common parameters that apply to all backends
-            if let Some(temp) = cfg.temperature {
-                if temp < 0.0 || temp > 2.0 {
-                    log::warn!("Temperature {} is outside recommended range (0.0-2.0), but will attempt to apply", temp);
-                }
-                log::debug!("Setting temperature: {}", temp);
-                client = client.temperature(temp);
-            }
-            
-            if let Some(max_tokens) = cfg.max_tokens {
-                log::debug!("Setting max_tokens: {}", max_tokens);
-                client = client.max_tokens(max_tokens as usize);
-            }
-            
-            if let Some(top_p) = cfg.top_p {
-                if top_p < 0.0 || top_p > 1.0 {
-                    log::warn!("Top_p {} is outside valid range (0.0-1.0), but will attempt to apply", top_p);
-                }
-                log::debug!("Setting top_p: {}", top_p);
-                client = client.top_p(top_p);
-            }
-            
-            // Backend-specific parameters
-            match backend {
-                LLMBackend::OpenAI => {
-                    // OpenAI-specific parameters
-                    if let Some(freq_penalty) = cfg.frequency_penalty {
-                        if freq_penalty < -2.0 || freq_penalty > 2.0 {
-                            log::warn!("Frequency penalty {} is outside OpenAI's recommended range (-2.0 to 2.0)", freq_penalty);
-                        }
-                        log::debug!("Setting OpenAI frequency_penalty: {}", freq_penalty);
-                        client = client.frequency_penalty(freq_penalty);
-                    }
-                    
-                    if let Some(pres_penalty) = cfg.presence_penalty {
-                        if pres_penalty < -2.0 || pres_penalty > 2.0 {
-                            log::warn!("Presence penalty {} is outside OpenAI's recommended range (-2.0 to 2.0)", pres_penalty);
-                        }
-                        log::debug!("Setting OpenAI presence_penalty: {}", pres_penalty);
-                        client = client.presence_penalty(pres_penalty);
-                    }
-                },
-                LLMBackend::Anthropic => {
-                    // Anthropic-specific parameters
-                    if let Some(top_k) = cfg.top_k {
-                        log::debug!("Setting Anthropic top_k: {}", top_k);
-                        // Apply if the rllm crate supports this parameter
-                        if let Err(e) = client.set_param("top_k", top_k) {
-                            log::warn!("Failed to set top_k parameter for Anthropic: {}", e);
-                        }
-                    }
-                },
-                LLMBackend::Google => {
-                    // Google/Gemini-specific parameters
-                    if let Some(candidate_count) = cfg.n {
-                        log::debug!("Setting Google candidate_count: {}", candidate_count);
-                        if let Err(e) = client.set_param("candidate_count", candidate_count) {
-                            log::warn!("Failed to set candidate_count parameter for Google: {}", e);
-                        }
-                    }
-                },
-                _ => {
-                    // Other backends may have specific parameters in the future
-                    log::debug!("No backend-specific parameters for {:?}", backend);
-                }
-            }
-            
-            // Handle JSON mode if the model supports it
-            if let Some(json_mode) = cfg.json_mode {
-                if json_mode && self.client.json_supported() {
-                    log::debug!("Enabling JSON mode for supported model");
-                    client = client.json(true);
-                } else if json_mode {
-                    log::warn!("JSON mode requested but not supported by the model {}", 
-                              self.client.model_name());
-                }
-            } else if cfg.response_format.as_deref() == Some("json") && self.client.json_supported() {
-                // Also check response_format field which is used by some clients
-                log::debug!("Enabling JSON mode via response_format");
-                client = client.json(true);
-            }
-        }
         
-        // Execute the request and handle errors
-        log::debug!("Sending chat request to RLLM backend with {} messages", rllm_messages.len());
+        // Execute the chat request
+        log::debug!("Sending chat request with {} messages", chat_messages.len());
         let start_time = std::time::Instant::now();
         
-        match client.chat(&rllm_messages) {
-            Ok(result) => {
+        // Chat with the LLM
+        match llm.chat(&chat_messages).await {
+            Ok(response) => {
                 let elapsed = start_time.elapsed();
+                // Convert the response to a string
+                let response_str = response.to_string();
                 log::info!(
-                    "RLLM request successful in {:.2}s, received response of {} characters",
-                    elapsed.as_secs_f64(),
-                    result.len()
+                    "RLLM request completed in {:.2}s, received {} characters",
+                    elapsed.as_secs_f64(), 
+                    response_str.len()
                 );
-                Ok(result)
+                Ok(response_str)
             },
             Err(e) => {
                 let elapsed = start_time.elapsed();
-                let backend_name = format!("{:?}", backend);
                 let error_msg = format!(
-                    "RLLM chat execution failed after {:.2}s with backend {}: {}. Check API key validity, network connectivity, and model availability.",
+                    "RLLM chat request failed after {:.2}s: {}",
                     elapsed.as_secs_f64(),
-                    backend_name,
                     e
                 );
                 log::error!("{}", error_msg);
