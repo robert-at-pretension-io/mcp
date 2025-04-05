@@ -5,10 +5,13 @@ use rustyline::validate::Validator;
 use rustyline::Context;
 use std::borrow::Cow;
 
+use shared_protocol_objects::ToolInfo; // Import ToolInfo
+
 /// Helper for rustyline with command completion
 pub struct ReplHelper {
     pub commands: Vec<String>,
     pub server_names: Vec<String>,
+    pub current_tools: Vec<ToolInfo>, // Store full ToolInfo for potential descriptions later
     highlighter: MatchingBracketHighlighter,
 }
 
@@ -18,6 +21,7 @@ impl Clone for ReplHelper {
         Self {
             commands: self.commands.clone(),
             server_names: self.server_names.clone(),
+            current_tools: self.current_tools.clone(), // Clone tools too
             highlighter: MatchingBracketHighlighter::new(),
         }
     }
@@ -36,12 +40,18 @@ impl ReplHelper {
                 "quit".to_string(),
             ],
             server_names: Vec::new(),
+            current_tools: Vec::new(), // Initialize empty tools
             highlighter: MatchingBracketHighlighter::new(),
         }
     }
-    
+
     pub fn update_server_names(&mut self, names: Vec<String>) {
         self.server_names = names;
+    }
+
+    // Method to update the list of tools for the current server
+    pub fn update_current_tools(&mut self, tools: Vec<ToolInfo>) {
+        self.current_tools = tools;
     }
 }
 
@@ -67,22 +77,39 @@ impl Completer for ReplHelper {
                 .collect();
                 
             return Ok((start, matches));
-        } else if line_parts.len() == 2 && 
-                 (line_parts[0] == "use" || line_parts[0] == "tools" || 
-                  line_parts[0] == "call") {
-            // Complete server names for relevant commands
+        } else if line_parts.len() == 2 {
+            let command = line_parts[0];
             let word = line_parts[1];
             let start = line.rfind(word).unwrap_or(pos);
-            
-            let matches: Vec<Pair> = self.server_names.iter()
-                .filter(|name| name.starts_with(word))
-                .map(|name| Pair { display: name.clone(), replacement: name.clone() })
-                .collect();
-                
-            return Ok((start, matches));
+
+            if command == "use" || command == "tools" {
+                // Complete server names for 'use' and 'tools'
+                let matches: Vec<Pair> = self.server_names.iter()
+                    .filter(|name| name.starts_with(word))
+                    .map(|name| Pair { display: name.clone(), replacement: name.clone() })
+                    .collect();
+                return Ok((start, matches));
+            } else if command == "call" {
+                // Complete tool names for 'call' command using current_tools
+                let matches: Vec<Pair> = self.current_tools.iter()
+                    .filter(|tool| tool.name.starts_with(word))
+                    .map(|tool| Pair { display: tool.name.clone(), replacement: tool.name.clone() })
+                    .collect();
+                return Ok((start, matches));
+            }
+        } else if line_parts.len() == 3 && line_parts[0] == "call" {
+             // Complete server names after the tool name for 'call' command
+             let word = line_parts[2];
+             let start = line.rfind(word).unwrap_or(pos);
+
+             let matches: Vec<Pair> = self.server_names.iter()
+                 .filter(|name| name.starts_with(word))
+                 .map(|name| Pair { display: name.clone(), replacement: name.clone() })
+                 .collect();
+             return Ok((start, matches));
         }
-        
-        Ok((pos, Vec::new()))
+
+        Ok((pos, Vec::new())) // No completion otherwise
     }
 }
 

@@ -52,12 +52,7 @@ impl Repl {
         
         // Initialize the editor
         let mut editor = DefaultEditor::new()?;
-        
-        // Load history if it exists
-        if history_path.exists() {
-            let _ = editor.load_history(&history_path);
-        }
-        
+
         // Create helper and command processor with servers map
         let helper = ReplHelper::new();
         let command_processor = CommandProcessor::new(servers);
@@ -80,18 +75,29 @@ impl Repl {
     /// Run the REPL
     pub async fn run(&mut self) -> Result<()> {
         println!("\n{}", style("MCP Host Interactive Console").cyan().bold());
-        println!("Type {} for available commands, or {} to enter AI chat mode", 
-            style("help").yellow(), 
+        println!("Type {} for available commands, or {} to enter AI chat mode",
+            style("help").yellow(),
             style("chat <server>").green());
-        
+
+        // Load history after printing welcome message but before the loop
+        if self.history_path.exists() {
+            if let Err(e) = self.editor.load_history(&self.history_path) {
+                println!("{}: Failed to load history from {}: {}", style("Warning").yellow(), self.history_path.display(), e);
+            }
+        }
+
         loop {
+            // Dynamically set the prompt based on the current server
             let prompt = match self.command_processor.current_server_name() {
                 Some(server) => format!("{}> ", style(server).green()),
-                None => "mcp> ".to_string(),
+                None => format!("{}> ", style("mcp").dim()), // Dim prompt when no server selected
             };
-            
+
+            // Set the helper for the editor in each loop iteration to update completions
+            self.editor.set_helper(Some(self.helper.clone())); // Clone helper for editor
+
             let readline = self.editor.readline(&prompt);
-            
+
             match readline {
                 Ok(line) => {
                     let line = line.trim();
@@ -122,12 +128,30 @@ impl Repl {
                             }
                         }
                     }
-                    
-                    // Lock the servers to get the current server names
+
+                    // Update helper state (server names and current tools)
                     if let Some(host) = &self.host {
-                        let servers = host.servers.lock().await;
-                        let server_names: Vec<String> = servers.keys().cloned().collect();
+                        // Update server names for completion
+                        let server_names = {
+                            let servers_guard = host.servers.lock().await;
+                            servers_guard.keys().cloned().collect::<Vec<String>>()
+                        };
                         self.helper.update_server_names(server_names);
+
+                        // Update current tools list if a server is selected
+                        if let Some(current_server_name) = self.command_processor.current_server_name() {
+                            match host.list_server_tools(current_server_name).await {
+                                Ok(tools) => self.helper.update_current_tools(tools),
+                                Err(e) => {
+                                    // Don't print error here, just clear tools if listing fails
+                                    println!("{}: Failed to get tools for '{}': {}", style("Warning").yellow(), current_server_name, e);
+                                    self.helper.update_current_tools(Vec::new());
+                                }
+                            }
+                        } else {
+                            // No server selected, clear the tools list
+                            self.helper.update_current_tools(Vec::new());
+                        }
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
@@ -144,12 +168,14 @@ impl Repl {
                 }
             }
         }
-        
-        // Save history
-        let _ = self.editor.save_history(&self.history_path);
-        
+
+        // Save history before exiting
+        if let Err(e) = self.editor.save_history(&self.history_path) {
+            println!("{}: Failed to save history to {}: {}", style("Error").red(), self.history_path.display(), e);
+        }
+
         // Close the command processor (now a no-op)
-        self.command_processor.close().await?;
+        // self.command_processor.close().await?; // Close is likely handled by MCPHost now
         
         Ok(())
     }
