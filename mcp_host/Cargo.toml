@@ -43,5 +43,12 @@ tracing-appender = "0.2"
 thiserror = "2.0.12"
 once_cell = "1.21.3"
 
+# Add the rllm dependency conditionally via the feature flag
+rllm = { workspace = true, optional = true }
+
+[features]
+# Feature flag to enable RLLM integration
+use_rllm = ["dep:rllm"]
+
 [dev-dependencies]
 tokio-test = "0.4"
