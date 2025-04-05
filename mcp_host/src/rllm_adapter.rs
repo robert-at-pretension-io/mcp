@@ -1,6 +1,6 @@
-use anyhow::{Result, Context, anyhow};
+use anyhow::{Result, anyhow}; // Removed unused Context
 use async_trait::async_trait;
-use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, Content, ModelCapabilities};
+use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities}; // Removed unused Content
 use shared_protocol_objects::Role;
 use rllm::builder::{LLMBackend, LLMBuilder};
 use rllm::chat::{ChatMessage, ChatRole};
@@ -8,7 +8,7 @@ use std::path::Path;
 use log; // Import log crate
 
 pub struct RLLMClient {
-    llm: rllm::LLM,
+    llm: rllm::Llm, // Corrected type name from LLM to Llm
     model_name: String,
     backend: LLMBackend,
 }
@@ -34,11 +34,12 @@ impl RLLMClient {
         })
     }
 
-    fn convert_role(role: &Role) -> ChatRole {
+    // Convert Role to rllm's ChatRole, skipping System as it's handled separately
+    fn convert_role(role: &Role) -> Option<ChatRole> {
         match role {
-            Role::System => ChatRole::System,
-            Role::User => ChatRole::User,
-            Role::Assistant => ChatRole::Assistant,
+            Role::User => Some(ChatRole::User),
+            Role::Assistant => Some(ChatRole::Assistant),
+            Role::System => None, // System messages are handled by the .system() method
         }
     }
 }
@@ -113,7 +114,7 @@ impl AIClient for RLLMClient {
 
 #[derive(Debug)] // Add Debug derive
 struct RLLMRequestBuilder {
-    client: rllm::LLM,
+    client: rllm::Llm, // Corrected type name from LLM to Llm
     messages: Vec<(Role, String)>,
     config: Option<GenerationConfig>,
     system: Option<String>,
@@ -164,19 +165,32 @@ impl AIRequestBuilder for RLLMRequestBuilder {
 
     async fn execute(self: Box<Self>) -> Result<String> {
         log::info!("Executing RLLM request");
-        // Convert messages to rllm ChatMessage format
-        let mut rllm_messages = Vec::new();
-        
-        // Add all messages in the conversation
-        for (role, content) in &self.messages {
-            rllm_messages.push(ChatMessage {
-                role: RLLMClient::convert_role(role),
-                content: content.clone().into(), // Use .into() for String -> ChatContent conversion
-            });
+        let mut client = self.client.clone(); // Start with the base client
+
+        // Apply system message if provided (this modifies the client)
+        if let Some(system_content) = &self.system {
+            log::debug!("Applying system message to RLLM client");
+            client = client.system(system_content);
         }
-        
-        // Apply configuration if provided
-        let mut client = self.client.clone();
+
+        // Convert non-system messages to rllm ChatMessage format
+        let mut rllm_messages = Vec::new();
+        for (role, content) in &self.messages {
+            // Use the updated convert_role which returns Option<ChatRole>
+            if let Some(chat_role) = RLLMClient::convert_role(role) {
+                rllm_messages.push(ChatMessage {
+                    role: chat_role,
+                    content: content.clone().into(), // Use .into() for String -> ChatContent conversion
+                });
+            } else if matches!(role, Role::System) {
+                // System messages are handled above by client.system(), skip here
+                log::trace!("Skipping Role::System during ChatMessage conversion");
+            } else {
+                 log::warn!("Unhandled role type encountered: {:?}", role);
+            }
+        }
+
+        // Apply configuration if provided (this also modifies the client)
         if let Some(cfg) = &self.config {
             if let Some(temp) = cfg.temperature {
                 log::debug!("Setting temperature: {}", temp);
