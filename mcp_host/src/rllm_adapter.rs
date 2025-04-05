@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities};
+use serde_json::Value;
 use shared_protocol_objects::Role;
 use rllm::builder::{LLMBackend, LLMBuilder};
 use rllm::chat::{ChatMessage, ChatRole, MessageType};
@@ -127,6 +128,85 @@ impl std::fmt::Debug for RLLMClient {
          .field("backend", &self.backend)
          .field("api_key", &format!("{}****", &self.api_key.chars().take(4).collect::<String>()))
          .finish()
+    }
+}
+
+/// Create an RLLM client for the given provider
+pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<Box<dyn AIClient>> {
+    match provider {
+        "gemini" => {
+            log::info!("Using RLLM adapter for Gemini provider");
+            let api_key = config["api_key"].as_str()
+                .ok_or_else(|| anyhow!("Gemini API key not provided"))?;
+            let model = config["model"].as_str().unwrap_or("gemini-1.5-pro");
+            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Google)?;
+            Ok(Box::new(client))
+        }
+        "anthropic" => {
+            let api_key = config["api_key"].as_str()
+                .ok_or_else(|| anyhow!("Anthropic API key not provided"))?;
+            let model = config["model"].as_str().unwrap_or("claude-3-haiku-20240307"); // Use a default model known to rllm
+            
+            log::info!("Using RLLM adapter for Anthropic provider");
+            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Anthropic)?;
+            Ok(Box::new(client))
+        }
+        "openai" => {
+            let api_key = config["api_key"].as_str()
+                .ok_or_else(|| anyhow!("OpenAI API key not provided"))?;
+            let model = config["model"].as_str().unwrap_or("gpt-4o-mini"); // Keep existing default
+
+            log::info!("Using RLLM adapter for OpenAI provider");
+            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::OpenAI)?;
+            Ok(Box::new(client))
+        }
+        "ollama" => {
+            log::info!("Using RLLM adapter for Ollama provider");
+            // Ollama endpoint can be configured, default to localhost
+            let _endpoint = config["endpoint"].as_str().unwrap_or("http://localhost:11434");
+            let model = config["model"].as_str().unwrap_or("llama3"); // Default Ollama model
+
+            // Ollama doesn't typically require an API key, pass an empty string
+            let client = RLLMClient::new("".to_string(), model.to_string(), LLMBackend::Ollama)?;
+            Ok(Box::new(client))
+        }
+        "deepseek" => {
+            log::info!("Using RLLM adapter for DeepSeek provider");
+            let api_key = config["api_key"].as_str()
+                .ok_or_else(|| anyhow!("DeepSeek API key not provided"))?;
+            let model = config["model"].as_str().unwrap_or("deepseek-chat");
+            
+            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::DeepSeek)?;
+            Ok(Box::new(client))
+        }
+        "xai" => {
+            log::info!("Using RLLM adapter for XAI/Grok provider");
+            let api_key = config["api_key"].as_str()
+                .ok_or_else(|| anyhow!("XAI API key not provided"))?;
+            let model = config["model"].as_str().unwrap_or("grok-2-latest");
+            
+            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::XAI)?;
+            Ok(Box::new(client))
+        }
+        "phind" => {
+            log::info!("Using RLLM adapter for Phind provider");
+            let api_key = config["api_key"].as_str()
+                .ok_or_else(|| anyhow!("Phind API key not provided"))?;
+            let model = config["model"].as_str().unwrap_or("Phind-70B");
+            
+            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Phind)?;
+            Ok(Box::new(client))
+        }
+        "groq" => {
+            log::info!("Using RLLM adapter for Groq provider");
+            let api_key = config["api_key"].as_str()
+                .ok_or_else(|| anyhow!("Groq API key not provided"))?;
+            let model = config["model"].as_str().unwrap_or("llama3-8b-8192");
+            
+            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Groq)?;
+            Ok(Box::new(client))
+        }
+        _ => Err(anyhow!("Unknown or unsupported AI provider: {}", provider))
     }
 }
 
