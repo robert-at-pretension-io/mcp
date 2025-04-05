@@ -4,8 +4,8 @@ use serde_json::Value;
 use std::path::Path;
 use shared_protocol_objects::Role;
 use rllm::builder::LLMBackend;
-use mcp_host::rllm_adapter;
-// Removed problematic import - we'll use module-relative paths instead
+use crate::rllm_adapter;
+// Using crate-relative path for the adapter
 
 /// Content types that can be sent to AI models
 #[derive(Debug, Clone)]
@@ -92,7 +92,7 @@ pub struct AIClientFactory;
 impl AIClientFactory {
     pub fn create(provider: &str, config: Value) -> Result<Box<dyn AIClient>> {
         // Use the factory function from rllm_adapter
-        mcp_host::rllm_adapter::create_rllm_client_for_provider(provider, config)
+        rllm_adapter::create_rllm_client_for_provider(provider, config)
     }
 }
 
@@ -122,7 +122,7 @@ mod tests {
     async fn test_rllm_openai_client_creation_and_capabilities() -> Result<()> {
         setup_test_logging();
         // Test creating an RLLMClient for OpenAI
-        let client_result = mcp_host::rllm_adapter::RLLMClient::new(
+        let client_result = crate::rllm_adapter::RLLMClient::new(
             "test-openai-key".to_string(), // Fake key for structure testing
             "gpt-4o-mini".to_string(),
             LLMBackend::OpenAI
