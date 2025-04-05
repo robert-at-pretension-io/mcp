@@ -148,7 +148,8 @@ impl Highlighter for ReplHelper {
 
 impl Validator for ReplHelper {}
 
-// Implement the Helper trait manually
+// Simply implement the Helper trait with no associated types
+// This is a version-compatible implementation
 impl rustyline::Helper for ReplHelper {}
 
 #[cfg(test)]

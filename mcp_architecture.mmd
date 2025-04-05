@@ -1,0 +1,27 @@
+flowchart TD
+    Claude[Claude AI Assistant] <--> MCP-Host[MCP Host Server]
+    MCP-Host <--> MCP-Tools[MCP Tools Implementation]
+    MCP-Tools --> Web-Scraping[Web Scraping Tool]
+    MCP-Tools --> Brave-Search[Brave Search Tool]
+    MCP-Tools --> Bash-Tool[Bash Command Tool]
+    MCP-Tools --> Aider-Tool[AI Pair Programming Tool]
+    MCP-Tools --> LR-Tool[Long Running Task Tool]
+    MCP-Tools --> Mermaid[Mermaid Chart Generator]
+    MCP-Tools --> Other-Tools[Other Specialized Tools]
+    MCP-Host <--> Shared-Protocol[Shared Protocol Objects]
+    MCP-Tools <--> Shared-Protocol
+    subgraph "Client Environment"
+    Claude
+    end
+    subgraph "Server Environment"
+    MCP-Host
+    MCP-Tools
+    Shared-Protocol
+    Web-Scraping
+    Brave-Search
+    Bash-Tool
+    Aider-Tool
+    LR-Tool
+    Mermaid
+    Other-Tools
+    end

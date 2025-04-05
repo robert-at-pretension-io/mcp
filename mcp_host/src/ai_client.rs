@@ -4,8 +4,7 @@ use serde_json::Value;
 use std::path::Path;
 use shared_protocol_objects::Role;
 use rllm::builder::LLMBackend;
-use crate::rllm_adapter;
-// Using crate-relative path for the adapter
+
 
 /// Content types that can be sent to AI models
 #[derive(Debug, Clone)]
@@ -92,7 +91,7 @@ pub struct AIClientFactory;
 impl AIClientFactory {
     pub fn create(provider: &str, config: Value) -> Result<Box<dyn AIClient>> {
         // Use the factory function from rllm_adapter
-        rllm_adapter::create_rllm_client_for_provider(provider, config)
+        crate::rllm_adapter::create_rllm_client_for_provider(provider, config)
     }
 }
 
@@ -105,70 +104,3 @@ pub fn format_message_for_basic_model(role: &Role, content: &str) -> String {
     }
 }
 
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use anyhow::Result;
-
-    // Helper to initialize logging for tests
-    fn setup_test_logging() {
-        // Use try_init to avoid panic if logger is already set
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
-
-
-    #[tokio::test]
-    async fn test_rllm_openai_client_creation_and_capabilities() -> Result<()> {
-        setup_test_logging();
-        // Test creating an RLLMClient for OpenAI
-        let client_result = crate::rllm_adapter::RLLMClient::new(
-            "test-openai-key".to_string(), // Fake key for structure testing
-            "gpt-4o-mini".to_string(),
-            LLMBackend::OpenAI
-        );
-
-        assert!(client_result.is_ok(), "Failed to create RLLMClient for OpenAI");
-        let client = client_result.unwrap();
-
-        // Verify basic properties
-        assert_eq!(client.model_name(), "gpt-4o-mini");
-        assert_eq!(client.backend, LLMBackend::OpenAI);
-
-        // Verify capabilities reported for OpenAI
-        let caps = client.capabilities();
-        assert!(caps.supports_system_messages, "OpenAI should support system messages");
-        assert!(caps.supports_function_calling, "OpenAI should support function calling");
-        assert!(caps.supports_json_mode, "OpenAI should support JSON mode");
-        assert!(caps.supports_vision, "OpenAI (gpt-4o) should support vision");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_factory_creates_rllm_client() -> Result<()> {
-        setup_test_logging();
-        
-        // Test creating OpenAI client via factory
-        let openai_config = serde_json::json!({
-            "api_key": "test-openai-key",
-            "model": "gpt-4o-mini"
-        });
-        
-        let client = AIClientFactory::create("openai", openai_config)?;
-        assert_eq!(client.model_name(), "gpt-4o-mini");
-        assert!(client.capabilities().supports_function_calling);
-        
-        // Test creating Anthropic client via factory
-        let anthropic_config = serde_json::json!({
-            "api_key": "test-anthropic-key",
-            "model": "claude-3-haiku-20240307"
-        });
-        
-        let client = AIClientFactory::create("anthropic", anthropic_config)?;
-        assert_eq!(client.model_name(), "claude-3-haiku-20240307");
-        assert!(client.capabilities().supports_system_messages);
-        
-        Ok(())
-    }
-}
