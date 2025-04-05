@@ -11,7 +11,7 @@ pub struct ServerConfig {
     pub env: HashMap<String, String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone here
 pub struct AIProviderConfig {
     #[serde(default)]
     pub provider: String,
