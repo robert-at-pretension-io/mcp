@@ -148,24 +148,32 @@ impl CommandProcessor {
         };
 
         // Lock map, get server, call tool
+        // Lock map, get server
         let servers_map = self.servers.lock().await;
         let server = servers_map.get(&server_name)
             .ok_or_else(|| anyhow!("Internal error: Server '{}' vanished", server_name))?;
-        let result = server.client.call_tool(tool_name, args_value).await?;
+            
+        // Call tool with progress indicator
+        let progress_msg = format!("Calling tool '{}' on server '{}'...", tool_name, server_name);
+        let result = crate::repl::with_progress(
+            progress_msg,
+            server.client.call_tool(tool_name, args_value)
+        ).await?;
         
         // Format result
-        let mut output = if result.is_error.unwrap_or(false) {
+        let mut raw_output = if result.is_error.unwrap_or(false) {
             format!("Tool '{}' on server '{}' returned an error:\n", tool_name, server_name)
         } else {
             format!("Tool '{}' result from server '{}':\n", tool_name, server_name)
         };
         
         for content in result.content {
-            output.push_str(&content.text);
-            output.push('\n');
+            raw_output.push_str(&content.text);
+            raw_output.push('\n');
         }
         
-        Ok(output)
+        // Truncate the output before returning
+        Ok(crate::repl::truncate_lines(&raw_output, 150))
     }
     
     // Helper methods

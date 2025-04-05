@@ -107,12 +107,27 @@ pub async fn handle_assistant_response(
     let tool_calls = SmileyToolParser::parse_tool_calls(incoming_response);
     
     // If no smiley-delimited tool calls, check for standard JSON format
+    use console::style; // Add console style for formatting
+
     if tool_calls.is_empty() {
         if let Some((tool_name, Some(args))) = parse_json_response(incoming_response) {
             // Found a single JSON tool call
+            // Display the tool call before executing
+            println!(
+                "\n{}",
+                style(format!("Assistant wants to call tool: {}", tool_name)).yellow().bold()
+            );
+            println!(
+                "{}",
+                style(format!(
+                    "Arguments:\n{}",
+                    serde_json::to_string_pretty(&args).unwrap_or_else(|_| "Invalid JSON".to_string())
+                )).dim()
+            );
+
             return execute_tool_and_continue(
-                host, 
-                server_name, 
+                host,
+                server_name,
                 &tool_name, 
                 args, 
                 state, 
@@ -123,6 +138,19 @@ pub async fn handle_assistant_response(
     } else {
         // We have smiley-delimited tool calls - execute them all in sequence
         for tool_call in tool_calls {
+            // Display the tool call before executing
+            println!(
+                "\n{}",
+                style(format!("Assistant wants to call tool: {}", tool_call.name)).yellow().bold()
+            );
+            println!(
+                "{}",
+                style(format!(
+                    "Arguments:\n{}",
+                    serde_json::to_string_pretty(&tool_call.arguments).unwrap_or_else(|_| "Invalid JSON".to_string())
+                )).dim()
+            );
+
             // Execute each tool call
             let tool_result = execute_single_tool(
                 host,
@@ -172,9 +200,16 @@ async fn execute_single_tool(
         let _ = ws.send(Message::Text(start_msg.to_string())).await;
     }
     
-    // Call the tool through the MCP host
-    match host.call_tool(server_name, tool_name, args.clone()).await {
+    // Call the tool through the MCP host with progress indicator
+    let progress_msg = format!("Calling tool '{}' on server '{}'...", tool_name, server_name);
+    match crate::repl::with_progress(
+        progress_msg,
+        host.call_tool(server_name, tool_name, args.clone())
+    ).await {
         Ok(result_string) => {
+            // Truncate the result before further processing
+            let truncated_result = crate::repl::truncate_lines(&result_string, 150);
+
             if let Some(ref mut ws) = socket {
                 let end_msg = serde_json::json!({
                     "type": "tool_call_end",
@@ -184,11 +219,11 @@ async fn execute_single_tool(
             }
             
             // Use styled output for REPL display
-            use console::style;
-            println!("\n{} {}", style("Tool:").blue().bold(), style(tool_name).blue());
-            println!("{}\n", result_string.trim());
+            // Use console style already imported at the top of handle_assistant_response
+            println!("\n{} {}", style("Tool Result:").blue().bold(), style(tool_name).blue());
+            println!("{}\n", truncated_result.trim()); // Print truncated result
             
-            Ok(result_string)
+            Ok(truncated_result) // Return truncated result
         },
         Err(error) => {
             let error_msg = format!("Error: {}", error);
