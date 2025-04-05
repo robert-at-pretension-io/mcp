@@ -92,7 +92,13 @@ impl Tool for ScrapingBeeTool {
             
             match client.execute().await {
                 Ok(ScrapingBeeResponse::Text(body)) => {
-                    let markdown = extract_text_from_html(&body, Some(&url));
+                    let mut markdown = extract_text_from_html(&body, Some(&url));
+                    const MAX_CHARS: usize = 15000;
+                    if markdown.chars().count() > MAX_CHARS {
+                        markdown = markdown.chars().take(MAX_CHARS).collect::<String>();
+                        markdown.push_str("\n\n... (content truncated)");
+                        info!("Scraped content truncated to {} characters", MAX_CHARS);
+                    }
                     let tool_res = standard_tool_result(markdown, None);
                     Ok(standard_success_response(id, json!(tool_res)))
                 }
