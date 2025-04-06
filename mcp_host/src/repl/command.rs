@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use log::{debug, error, info, warn}; // Added log imports
 // Removed unused io imports
 
 use crate::host::server_manager::ManagedServer;
@@ -616,7 +617,7 @@ impl CommandProcessor {
             match self.host.set_active_model(&provider_name, model_name).await {
                 Ok(_) => Ok(format!(
                     "Model for provider '{}' set to: {}",
-                    style(&active_provider).cyan(),
+                    style(&provider_name).cyan(), // Use provider_name here
                     style(model_name).green()
                 )),
                 Err(e) => Err(anyhow!("Failed to set model: {}", e)),
