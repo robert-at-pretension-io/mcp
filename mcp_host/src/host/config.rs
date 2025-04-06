@@ -47,11 +47,12 @@ impl Default for TimeoutConfig {
             tool: default_tool_timeout(),
         }
     }
+} // End of impl Default for TimeoutConfig
 
-    impl Config {
-        // ... load method remains ...
+impl Config {
+    // ... load method remains ...
 
-        pub async fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+    pub async fn save(&self, path: impl AsRef<Path>) -> Result<()> {
             let path = path.as_ref();
             log::info!("Saving configuration to: {:?}", path);
             let json_string = serde_json::to_string_pretty(self)

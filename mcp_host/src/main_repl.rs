@@ -1,8 +1,8 @@
-use anyhow::{Result, anyhow}; // Add anyhow
+use anyhow::{Result}; // Removed anyhow function/macro import
 use tracing_subscriber;
 use tracing_appender;
 use std::time::Duration;
-use log::{info, error, warn}; // Add error, warn
+use log::{info, error}; // Removed warn
 use console::style;
 use tracing_appender::non_blocking::WorkerGuard; // Import the guard type
 use std::path::PathBuf; // Add PathBuf
@@ -80,7 +80,10 @@ pub async fn main() -> Result<()> {
 
     // Apply the initial configuration loaded during build to start servers
     info!("Applying initial configuration to start servers...");
-    let initial_config = host.config.lock().await.clone(); // Clone the loaded config
+    let initial_config = { // Scope the lock guard
+        let config_guard = host.config.lock().await;
+        (*config_guard).clone() // Clone the Config inside the guard
+    };
     if let Err(e) = host.apply_config(initial_config).await {
          error!("Failed to apply initial server configuration: {}", e);
          println!("{}", style(format!("Warning: Failed to start servers from initial config: {}", e)).yellow());

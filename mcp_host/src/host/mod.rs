@@ -18,11 +18,10 @@ use shared_protocol_objects::Implementation;
 // Removed duplicate HashMap
 // Removed unused Arc, Duration, Mutex
 // Removed duplicate Arc, Duration, Mutex below
-
+    
 use crate::ai_client::{AIClient, AIClientFactory};
-use crate::host::config::{AIProviderConfig, Config as HostConfig, ServerConfig}; // Renamed Config to HostConfig, added ServerConfig
+use crate::host::config::{AIProviderConfig, Config as HostConfig}; // Removed ServerConfig import
 use std::path::PathBuf; // Add PathBuf
-
 pub struct MCPHost {
     pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
     pub client_info: Implementation,
@@ -68,7 +67,7 @@ impl MCPHost {
     pub async fn apply_config(&self, new_config: HostConfig) -> Result<()> {
         info!("Applying new configuration...");
         let server_manager = self.server_manager();
-        let mut current_servers = self.servers.lock().await;
+        let current_servers = self.servers.lock().await; // Removed mut
             let mut servers_to_stop = current_servers.keys().cloned().collect::<std::collections::HashSet<_>>();
 
             // Start new/updated servers

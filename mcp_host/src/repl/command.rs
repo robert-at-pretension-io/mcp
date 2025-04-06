@@ -9,7 +9,7 @@ use std::io::{self, Write}; // Add io import
 
 use crate::host::server_manager::ManagedServer;
 use crate::host::MCPHost; // Import MCPHost
-use crate::host::config::{ServerConfig, AIProviderConfig}; // Add imports
+use crate::host::config::{ServerConfig}; // Removed AIProviderConfig
 
 /// Command processor for the REPL
 pub struct CommandProcessor {
