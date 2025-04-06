@@ -59,11 +59,11 @@ impl CommandProcessor {
             "providers" => self.cmd_providers().await,
             "model" => self.cmd_model(args).await, // Added model command
             // chat command is handled directly in Repl::run
-            "add_server" => self.cmd_add_server().await, // New command
-            "edit_server" => self.cmd_edit_server(args).await, // New command
+            "add_server" => self.cmd_add_server(editor).await, // Pass editor
+            "edit_server" => self.cmd_edit_server(args, editor).await, // Pass editor
             "remove_server" => self.cmd_remove_server(args).await, // New command
             "save_config" => self.cmd_save_config().await, // New command
-            "reload_config" => self.cmd_reload_config().await, // New command
+            "reload_config" => self.cmd_reload_config(editor).await, // Pass editor
             "show_config" => self.cmd_show_config(args).await, // New command
             _ => Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
         }
