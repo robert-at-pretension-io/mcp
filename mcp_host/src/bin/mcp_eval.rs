@@ -114,6 +114,12 @@ async fn main() -> Result<()> {
          // return Err(e.into());
     } else {
          info!("Applied initial server configuration.");
+         // Add log to check server count after applying config
+         let server_count = host.servers.lock().await.len();
+         info!("MCPHost has {} servers configured after applying initial config.", server_count);
+         if server_count == 0 {
+             error!("No tool servers were loaded from the config '{}'. Evaluation tasks requiring tools will fail.", host_config_path.display());
+         }
     }
 
 

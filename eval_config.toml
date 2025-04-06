@@ -1,8 +1,8 @@
 
 # Path to the main MCP Host configuration file.
 # This is needed so the evaluator can potentially start/use tool servers defined there.
-# Use tilde expansion for home directory.
-mcp_host_config = "~/.config/mcp/mcp_host_config.json"
+# Use a relative path for the debug config.
+mcp_host_config = "./debug_config.json"
 
 # Directory containing the evaluation task files (e.g., task_research_and_summarize.txt).
 tasks_dir = "eval_tasks"
