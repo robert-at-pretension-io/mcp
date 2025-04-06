@@ -4,8 +4,9 @@ pub mod conversation_service;
 pub mod repl;
 pub mod main_repl;
 pub mod conversation_state;
+pub mod conversation_logic; // Add this line
 pub mod host;
-pub mod tool_parser; // Updated module name
+pub mod tool_parser;
 pub mod rllm_adapter;
 pub mod openrouter;
 

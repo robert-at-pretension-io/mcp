@@ -346,6 +346,7 @@ impl Repl {
         log::debug!("Executing chat turn for server '{}'. User input: '{}'", server_name, user_input);
 
         // 1. Add user message to state
+        // 1. Add user message to state
         state.add_user_message(user_input);
         log::debug!("Added user message to state. Total messages: {}", state.messages.len());
 
@@ -361,61 +362,79 @@ impl Repl {
         // 3. Print model info (optional, kept for consistency)
         println!("{}", style(format!("Using AI model: {}", model_name)).dim());
 
-        // 4. Build request and call AI (using with_progress)
-        println!("{}", style("Analyzing your request...").dim()); // Dim analysis message
-        let decision_request: Result<String, anyhow::Error> = with_progress(
-            "Deciding next action".to_string(), // Progress message styled in with_progress
+        // 4. Build *initial* request and call AI (using with_progress for the first call)
+        println!("{}", style("Analyzing your request...").dim());
+        let initial_response_result: Result<String> = crate::repl::with_progress( // Use with_progress for the *first* call
+            "Getting initial response".to_string(),
             async {
                 let mut builder = client.raw_builder();
-                log::trace!("Building raw AI request for chat turn.");
-
-                // Add all messages to the builder for context
-                for (i, msg) in state.messages.iter().enumerate() {
-                    log::trace!("Adding message {} ({:?}) to request.", i, msg.role);
-                    match msg.role {
-                        Role::System => builder = builder.system(msg.content.clone()),
-                        Role::User => builder = builder.user(msg.content.clone()),
-                        Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                    }
+                log::trace!("Building raw AI request for initial chat turn.");
+                // Add messages *up to this point* (excluding potential future tool results)
+                for msg in state.messages.iter() {
+                     match msg.role {
+                         Role::System => builder = builder.system(msg.content.clone()),
+                         Role::User => builder = builder.user(msg.content.clone()),
+                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                     }
                 }
+                // Tool prompt is already included in state via ConversationState::new
 
-                // Use the new tool system prompt function
-                let tool_prompt = crate::conversation_service::generate_tool_system_prompt(&state.tools); // Use new function name
-                log::trace!("Adding tool system prompt.");
-                builder = builder.system(tool_prompt); // Use new prompt
-
-                log::debug!("Executing AI request...");
-                builder.execute().await.map_err(|e| { // Add specific error mapping
-                    log::error!("AI execution failed: {}", e);
-                    anyhow!("AI request failed: {}", e)
+                log::debug!("Executing initial AI request...");
+                builder.execute().await.map_err(|e| {
+                    log::error!("Initial AI execution failed: {}", e);
+                    anyhow!("Initial AI request failed: {}", e)
                 })
             }
         ).await;
 
-        // 5. Process AI response
-        match decision_request {
-            Ok(decision_string) => { // Bind to an owned String
-                log::debug!("Received AI decision string (length: {})", decision_string.len());
-                log::trace!("AI decision string: {}", decision_string);
-                // Process the AI's decision using the existing helper function
-                if let Err(e) = handle_assistant_response(
-                    &self.host, // Pass reference to host
-                    &decision_string, // Use the owned String
+        // 5. Process initial AI response using the new shared logic
+        match initial_response_result {
+            Ok(initial_response) => {
+                log::debug!("Received initial AI response (length: {})", initial_response.len());
+
+                // Configuration for the shared logic (interactive)
+                let config = crate::conversation_logic::ConversationConfig {
+                    interactive_output: true,
+                    max_tool_iterations: 5, // Or get from config
+                };
+
+                // Call the shared logic function
+                // It will handle printing, tool calls, and return the *final* response
+                match crate::conversation_logic::resolve_assistant_response(
+                    &self.host,
                     server_name,
-                    state, // Pass mutable state reference
-                    client, // Pass the Arc<dyn AIClient>
-                    None
-                ).await {
-                    log::error!("Error handling assistant response: {}", e);
-                    // Propagate the error to potentially exit chat mode
-                    return Err(anyhow!("Error processing AI response: {}", e));
+                    state, // Pass mutable state
+                    &initial_response, // Pass the first response
+                    client, // Pass the client Arc
+                    &config,
+                )
+                .await
+                {
+                    Ok(_final_response) => {
+                        // The final response was already printed by resolve_assistant_response
+                        // The state has been mutated in place.
+                        log::debug!("Chat turn resolved successfully by shared logic. Final state has {} messages.", state.messages.len());
+                        // Put the updated state back into the REPL's chat_state
+                        // We need to clone the state because the original `state` variable is borrowed mutably.
+                        // If `resolve_assistant_response` guarantees the state is valid even on error,
+                        // we could potentially avoid the clone, but cloning is safer here.
+                        self.chat_state = Some((server_name.to_string(), state.clone()));
+                    }
+                    Err(e) => {
+                        log::error!("Error resolving assistant response via shared logic: {}", e);
+                        println!("{}: {}", style("Chat Error").red().bold(), e);
+                        println!("{}", style("Exiting chat mode due to error.").yellow());
+                        // Don't put state back, effectively exiting chat mode
+                        // self.chat_state remains None as it was taken at the start of the outer block
+                    }
                 }
-                log::debug!("Successfully handled assistant response.");
             }
             Err(e) => {
-                log::error!("AI decision request failed: {}", e);
-                // Propagate error from AI call itself
-                return Err(e);
+                log::error!("Initial AI decision request failed: {}", e);
+                println!("{}: {}", style("Chat Error").red().bold(), e);
+                println!("{}", style("Exiting chat mode due to initial AI error.").yellow());
+                // Don't put state back
+                // self.chat_state remains None
             }
         }
         Ok(())
