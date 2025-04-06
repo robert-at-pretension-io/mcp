@@ -1,0 +1,8 @@
+Analyze the Python code located in the project file `src/utils/data_processor.py` (assume a tool exists to read this file, e.g., `read_file`).
+Identify potential areas for improvement regarding:
+1.  Code complexity (e.g., deeply nested loops, long functions).
+2.  Error handling practices.
+3.  Adherence to PEP 8 style guidelines.
+4.  Potential performance bottlenecks.
+
+Based on the analysis, use the `aider` tool to suggest specific refactoring changes for the `process_large_dataset` function within that file. Provide the suggested code changes within a diff format or as a complete rewritten function. Explain the reasoning behind the suggested changes.
