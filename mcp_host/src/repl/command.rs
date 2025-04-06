@@ -10,6 +10,7 @@ use std::io::{self, Write}; // Add io import
 use crate::host::server_manager::ManagedServer;
 use crate::host::MCPHost; // Import MCPHost
 use crate::host::config::{ServerConfig}; // Removed AIProviderConfig
+use rustyline::DefaultEditor; // Import Editor
 
 /// Command processor for the REPL
 pub struct CommandProcessor {
@@ -17,16 +18,18 @@ pub struct CommandProcessor {
     servers: Arc<Mutex<HashMap<String, ManagedServer>>>, // Keep servers for direct access if needed
     current_server: Option<String>,
     config_path: Option<PathBuf>,
+    editor: DefaultEditor, // Add editor for prompting
 }
 
 impl CommandProcessor {
-    // Modify constructor to take MCPHost
-    pub fn new(host: MCPHost) -> Self {
+    // Modify constructor to take MCPHost and Editor
+    pub fn new(host: MCPHost, editor: DefaultEditor) -> Self {
         Self {
             servers: Arc::clone(&host.servers), // Get servers from host
             host,
             current_server: None,
             config_path: None,
+            editor, // Store the editor
         }
     }
 
@@ -152,11 +155,13 @@ impl CommandProcessor {
 
     // --- Edit Server ---
     async fn cmd_edit_server(&mut self, args: &[String]) -> Result<String> {
+        const DELETE_KEYWORD: &str = "DELETE";
         if args.is_empty() {
             return Err(anyhow!("Usage: edit_server <server_name>"));
         }
         let name = &args[0];
         println!("--- Edit Server Configuration for '{}' ---", name);
+        println!("(Press Enter to keep current value, type '{}' to delete)", DELETE_KEYWORD);
 
         let mut config_guard = self.host.config.lock().await;
 
@@ -166,48 +171,99 @@ impl CommandProcessor {
             None => return Err(anyhow!("Server '{}' not found in configuration.", name)),
         };
 
-        // Edit Command
-        let prompt = format!("Command [{}]:", server_config.command);
-        let new_command = self.prompt_for_input(&prompt)?;
-        if !new_command.is_empty() {
+        // --- Edit Command ---
+        let command_prompt = format!("Command: ");
+        let new_command = self.prompt_with_initial(&command_prompt, &server_config.command)?;
+        if !new_command.is_empty() { // Only update if user provided non-empty input
             server_config.command = new_command;
+        } else {
+            println!("Keeping current command: {}", server_config.command); // Explicitly state keeping
         }
 
-        // Edit Arguments
-        println!("Current arguments: {:?}", server_config.args.as_deref().unwrap_or(&[]));
-        let change_args = self.prompt_for_input("Change arguments? (yes/no) [no]:")?;
-        if change_args.trim().to_lowercase() == "yes" {
-            let mut new_args = Vec::new();
-            println!("Enter new arguments (one per line, press Enter on empty line to finish):");
-            loop {
-                let arg = self.prompt_for_input(&format!("Argument {}:", new_args.len() + 1))?;
-                if arg.is_empty() { break; }
-                new_args.push(arg);
+
+        // --- Edit Arguments ---
+        println!("\n--- Editing Arguments ---");
+        let mut current_args = server_config.args.clone().unwrap_or_default();
+        let mut final_args = Vec::new();
+        for (i, arg) in current_args.iter().enumerate() {
+            let prompt = format!("Arg {}: ", i);
+            let new_arg = self.prompt_with_initial(&prompt, arg)?;
+            if new_arg.eq_ignore_ascii_case(DELETE_KEYWORD) {
+                println!("Deleting argument: {}", arg);
+            } else if new_arg.is_empty() {
+                 println!("Keeping argument: {}", arg);
+                 final_args.push(arg.clone()); // Keep original if input is empty
+            } else {
+                final_args.push(new_arg); // Use the edited value
             }
-            server_config.args = if new_args.is_empty() { None } else { Some(new_args) };
         }
+        // Add new arguments
+        println!("--- Add New Arguments (Press Enter on empty line to finish) ---");
+        loop {
+            let prompt = format!("New Arg {}: ", final_args.len());
+            let new_arg = self.prompt_for_input(&prompt)?;
+            if new_arg.is_empty() {
+                break;
+            }
+            final_args.push(new_arg);
+        }
+        server_config.args = if final_args.is_empty() { None } else { Some(final_args) };
 
-        // Edit Environment Variables
-        println!("Current environment variables: {:?}", server_config.env);
-        let change_env = self.prompt_for_input("Change environment variables? (yes/no) [no]:")?;
-        if change_env.trim().to_lowercase() == "yes" {
-            let mut new_env = HashMap::new();
-            println!("Enter new environment variables (KEY=VALUE format, press Enter on empty line to finish):");
-            loop {
-                let env_line = self.prompt_for_input("Env Var (e.g., KEY=value):")?;
-                if env_line.is_empty() { break; }
-                if let Some((key, value)) = env_line.split_once('=') {
-                    new_env.insert(key.trim().to_string(), value.trim().to_string());
+
+        // --- Edit Environment Variables ---
+        println!("\n--- Editing Environment Variables ---");
+        let mut current_env = server_config.env.clone();
+        let mut final_env = HashMap::new();
+        // Sort keys for consistent editing order
+        let mut sorted_keys: Vec<String> = current_env.keys().cloned().collect();
+        sorted_keys.sort();
+
+        for key in sorted_keys {
+            let value = current_env.get(&key).unwrap(); // Should always exist
+            let prompt = format!("Env '{}': ", key);
+            let new_value = self.prompt_with_initial(&prompt, value)?;
+            if new_value.eq_ignore_ascii_case(DELETE_KEYWORD) {
+                println!("Deleting env var: {}", key);
+            } else if new_value.is_empty() {
+                 println!("Keeping env var: {}={}", key, value);
+                 final_env.insert(key.clone(), value.clone()); // Keep original if input is empty
+            } else {
+                final_env.insert(key.clone(), new_value); // Use the edited value
+            }
+        }
+        // Add new environment variables
+        println!("--- Add New Environment Variables (KEY=VALUE format, press Enter to finish) ---");
+        loop {
+            let env_line = self.prompt_for_input("New Env Var (e.g., KEY=value):")?;
+            if env_line.is_empty() {
+                break;
+            }
+            if let Some((key, value)) = env_line.split_once('=') {
+                let key = key.trim();
+                let value = value.trim();
+                if !key.is_empty() {
+                    final_env.insert(key.to_string(), value.to_string());
                 } else {
-                    println!("{}", style("Invalid format. Use KEY=VALUE.").yellow());
+                     println!("{}", style("Invalid format: Key cannot be empty.").yellow());
                 }
+            } else {
+                println!("{}", style("Invalid format. Use KEY=VALUE.").yellow());
             }
-            server_config.env = new_env;
         }
+        server_config.env = final_env;
 
         // Config is updated in place because server_config is a mutable reference
+        // Drop the lock explicitly before saving
+        drop(config_guard);
 
-        Ok(format!("Server '{}' configuration updated in memory. Run 'save_config' to make it persistent.", name))
+        // Automatically save the configuration
+        match self.host.save_host_config().await {
+            Ok(_) => Ok(format!("Server '{}' configuration updated and saved successfully.", name)),
+            Err(e) => {
+                log::error!("Failed to automatically save config after editing server '{}': {}", name, e);
+                Ok(format!("Server '{}' configuration updated in memory, but failed to save automatically: {}. Run 'save_config' manually.", name, e))
+            }
+        }
     }
 
 

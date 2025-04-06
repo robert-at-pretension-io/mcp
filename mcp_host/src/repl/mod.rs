@@ -52,12 +52,13 @@ impl Repl {
         // Initialize the editor (remove mut)
         let editor = DefaultEditor::new()?;
 
-        // Create helper and command processor with the host
+        // Create helper and command processor with the host and editor
         let helper = ReplHelper::new();
-        let command_processor = CommandProcessor::new(host.clone()); // Pass host clone
+        // Clone editor before moving it into CommandProcessor
+        let command_processor = CommandProcessor::new(host.clone(), editor.clone());
 
         Ok(Self {
-            editor,
+            editor, // Keep the original editor for the Repl struct itself
             command_processor,
             helper,
             history_path,
