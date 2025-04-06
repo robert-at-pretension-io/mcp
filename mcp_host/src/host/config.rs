@@ -58,10 +58,10 @@ impl Default for TimeoutConfig {
 impl Default for AIProviderConfig {
     fn default() -> Self {
         Self {
-            provider: "deepseek".to_string(),
-            model: "deepseek-chat".to_string(),
+            // provider field removed
+            model: "deepseek-chat".to_string(), // Default model
         }
-        }
+        // Removed extra closing brace here
     }
 }
 
