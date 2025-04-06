@@ -334,7 +334,7 @@ pub fn generate_tool_system_prompt(tools: &[shared_protocol_objects::ToolInfo]) 
         
         tool_calls
     }
-}
+// Removed extraneous closing brace here
 
 /// Function to parse JSON response and extract tool calls
 pub fn parse_json_response(response: &str) -> Option<(String, Option<Value>)> {
