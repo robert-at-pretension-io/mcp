@@ -1,15 +1,17 @@
 use anyhow::{Result, Context, anyhow};
 use mcp_host::MCPHost;
+use anyhow::{Result, Context, anyhow};
+use mcp_host::MCPHost;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap; // Added HashMap import
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf}; // Removed unused Path import
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
-use log::{info, error, warn, debug}; // Use log crate
+use log::{info, error, debug}; // Removed unused warn import
 use shellexpand; // Added shellexpand
 
 #[derive(Deserialize, Debug, Clone)]
@@ -292,12 +294,14 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<S
     debug!("Received initial AI response for simulation (length: {})", initial_response.len());
 
     // 6. Resolve the rest of the turn using the shared logic (non-interactive)
-    let config = crate::conversation_logic::ConversationConfig {
+    // Use mcp_host::conversation_logic instead of crate::
+    let config = mcp_host::conversation_logic::ConversationConfig {
         interactive_output: false, // <<< Key difference: Non-interactive
         max_tool_iterations: 5,    // Use a reasonable limit
     };
 
-    let final_response = crate::conversation_logic::resolve_assistant_response(
+    // Use mcp_host::conversation_logic instead of crate::
+    let final_response = mcp_host::conversation_logic::resolve_assistant_response(
         host,
         &server_name,
         &mut state, // Pass mutable state
@@ -331,7 +335,7 @@ async fn grade_response(
 
     // Execute the grading request
     // Use a builder that requests JSON output if the model supports it
-    let mut builder = client.raw_builder().user(prompt);
+    let builder = client.raw_builder().user(prompt); // Removed unused `mut`
 
     // TODO: Add logic to request JSON mode if client.capabilities().supports_json_mode
     // This might involve specific parameters depending on the underlying LLM API.
