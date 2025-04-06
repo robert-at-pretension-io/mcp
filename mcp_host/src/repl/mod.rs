@@ -114,7 +114,7 @@ impl Repl {
 
 
             // Set the helper for completion and hinting
-            let _ = self.editor.set_helper(Some(self.helper.clone())); // Ensure helper is set
+            self.editor.set_helper(Some(self.helper.clone())); // Ensure helper is set
 
             log::debug!("Attempting to read line with prompt: '{}'", prompt); // Add log here
             let readline = self.editor.readline(&prompt);

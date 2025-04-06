@@ -6,7 +6,7 @@ use std::fmt::Write; // Import Write trait for building strings
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use log::{debug, error, info, warn}; // Added log imports
+use log::{error, info, warn}; // Removed unused debug import
 // Removed unused io imports
 
 use crate::host::server_manager::ManagedServer;
