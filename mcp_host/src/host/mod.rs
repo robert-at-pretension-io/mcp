@@ -340,39 +340,6 @@ impl MCPHost {
         Ok(state)
     }
 
-    /// Generate a system prompt with tool information
-    pub fn generate_system_prompt(&self, tools: &[serde_json::Value]) -> String {
-        let tools_section = serde_json::to_string_pretty(&serde_json::json!({ "tools": tools })).unwrap_or_else(|_| "".to_string());
-
-        format!(
-            "You are a helpful assistant with access to tools. Use tools only when necessary.\n\n\
-            CORE RESPONSIBILITIES:\n\
-            1. Create knowledge graph nodes when important new information is shared\n\
-            2. Use tools to gather additional context when needed\n\
-            3. Maintain natural conversation flow\n\n\
-            TOOL USAGE GUIDELINES:\n\
-            - Use tools only when they would provide valuable information\n\
-            - Create nodes for significant new information\n\
-            - Connect information when it helps the conversation\n\
-            - Suggest tool usage only when it would be genuinely helpful\n\n\
-            CONVERSATION STYLE:\n\
-            - Focus on natural conversation\n\
-            - Use tools subtly when needed\n\
-            - Avoid excessive tool usage\n\
-            - Only reference tool outputs when relevant\n\n\
-            {}\n\n\
-            TOOL CALLING FORMAT:\n\
-            When calling a tool, your ENTIRE response must be a JSON object with this format:\n\
-            {{\n\
-                \"tool\": \"tool_name\",\n\
-                \"arguments\": {{\n\
-                    ... tool parameters ...\n\
-                }}\n\
-            }}\n\n\
-            IMPORTANT: When calling a tool, your response must be ONLY valid JSON and nothing else.",
-            tools_section
-        )
-    }
 
     /// Get the currently active AI client
     pub async fn ai_client(&self) -> Option<Arc<dyn AIClient>> {
