@@ -136,13 +136,6 @@ impl Completer for ReplHelper {
                      .map(|name| Pair { display: name.clone(), replacement: name.clone() })
                      .collect();
                  return Ok((start, matches));
-            } else if command == "provider" {
-                 // Complete provider names for 'provider' command
-                 let matches: Vec<Pair> = self.available_providers.iter()
-                     .filter(|name| name.starts_with(word))
-                     .map(|name| Pair { display: name.clone(), replacement: name.clone() })
-                     .collect();
-                 return Ok((start, matches));
             } else if command == "model" { // Add completion for model command
                  let matches: Vec<Pair> = self.current_provider_models.iter()
                      .filter(|name| name.starts_with(word))
