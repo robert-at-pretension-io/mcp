@@ -12,6 +12,7 @@ pub struct ReplHelper {
     pub commands: Vec<String>,
     pub server_names: Vec<String>,
     pub current_tools: Vec<ToolInfo>, // Store full ToolInfo for potential descriptions later
+    pub available_providers: Vec<String>, // Added available providers
     highlighter: MatchingBracketHighlighter,
 }
 
@@ -21,7 +22,8 @@ impl Clone for ReplHelper {
         Self {
             commands: self.commands.clone(),
             server_names: self.server_names.clone(),
-            current_tools: self.current_tools.clone(), // Clone tools too
+            current_tools: self.current_tools.clone(),
+            available_providers: self.available_providers.clone(), // Clone providers
             highlighter: MatchingBracketHighlighter::new(),
         }
     }
@@ -36,11 +38,15 @@ impl ReplHelper {
                 "use".to_string(),
                 "tools".to_string(),
                 "call".to_string(),
+                "chat".to_string(), // Added chat
+                "provider".to_string(), // Added provider
+                "providers".to_string(), // Added providers
                 "exit".to_string(),
                 "quit".to_string(),
             ],
             server_names: Vec::new(),
-            current_tools: Vec::new(), // Initialize empty tools
+            current_tools: Vec::new(),
+            available_providers: Vec::new(), // Initialize empty providers
             highlighter: MatchingBracketHighlighter::new(),
         }
     }
@@ -53,6 +59,11 @@ impl ReplHelper {
     pub fn update_current_tools(&mut self, tools: Vec<ToolInfo>) {
         self.current_tools = tools;
     }
+
+    // Method to update the list of available AI providers
+    pub fn update_available_providers(&mut self, providers: Vec<String>) {
+        self.available_providers = providers;
+    }
 }
 
 impl Completer for ReplHelper {
@@ -60,30 +71,30 @@ impl Completer for ReplHelper {
 
     fn complete(&self, line: &str, pos: usize, _ctx: &Context<'_>) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let line_parts: Vec<&str> = line[..pos].split_whitespace().collect();
-        
+
         if line_parts.is_empty() {
             // Return empty list if at beginning of line
             return Ok((0, Vec::new()));
         }
-        
+
         if line_parts.len() == 1 {
             // Completing the first word (command)
             let word = line_parts[0];
             let start = line.find(word).unwrap_or(0);
-            
+
             let matches: Vec<Pair> = self.commands.iter()
                 .filter(|cmd| cmd.starts_with(word))
                 .map(|cmd| Pair { display: cmd.clone(), replacement: cmd.clone() })
                 .collect();
-                
+
             return Ok((start, matches));
         } else if line_parts.len() == 2 {
             let command = line_parts[0];
             let word = line_parts[1];
             let start = line.rfind(word).unwrap_or(pos);
 
-            if command == "use" || command == "tools" {
-                // Complete server names for 'use' and 'tools'
+            if command == "use" || command == "tools" || command == "chat" {
+                // Complete server names for 'use', 'tools', 'chat'
                 let matches: Vec<Pair> = self.server_names.iter()
                     .filter(|name| name.starts_with(word))
                     .map(|name| Pair { display: name.clone(), replacement: name.clone() })
@@ -96,6 +107,13 @@ impl Completer for ReplHelper {
                     .map(|tool| Pair { display: tool.name.clone(), replacement: tool.name.clone() })
                     .collect();
                 return Ok((start, matches));
+            } else if command == "provider" {
+                 // Complete provider names for 'provider' command
+                 let matches: Vec<Pair> = self.available_providers.iter()
+                     .filter(|name| name.starts_with(word))
+                     .map(|name| Pair { display: name.clone(), replacement: name.clone() })
+                     .collect();
+                 return Ok((start, matches));
             }
         } else if line_parts.len() == 3 && line_parts[0] == "call" {
              // Complete server names after the tool name for 'call' command
@@ -120,17 +138,19 @@ impl Hinter for ReplHelper {
         if line.is_empty() || pos < line.len() {
             return None;
         }
-        
+
         let line_parts: Vec<&str> = line.split_whitespace().collect();
-        
+
         if line_parts.is_empty() {
             return None;
         }
-        
+
         match line_parts[0] {
             "use" if line_parts.len() == 1 => Some(" [server]".to_string()),
             "tools" if line_parts.len() == 1 => Some(" [server]".to_string()),
             "call" if line_parts.len() == 1 => Some(" <tool> [server] [json]".to_string()),
+            "chat" if line_parts.len() == 1 => Some(" <server>".to_string()), // Added hint for chat
+            "provider" if line_parts.len() == 1 => Some(" [name]".to_string()), // Added hint for provider
             _ => None,
         }
     }

@@ -1,29 +1,33 @@
 use anyhow::{anyhow, Result};
+use console::style;
 use serde_json::Value;
-use std::path::PathBuf;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-// Removed old import: use shared_protocol_objects::client::ReplClient;
 use crate::host::server_manager::ManagedServer;
+use crate::host::MCPHost; // Import MCPHost
 
 /// Command processor for the REPL
 pub struct CommandProcessor {
-    servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
+    host: MCPHost, // Store the host instance
+    servers: Arc<Mutex<HashMap<String, ManagedServer>>>, // Keep servers for direct access if needed
     current_server: Option<String>,
     config_path: Option<PathBuf>,
 }
 
 impl CommandProcessor {
-    pub fn new(servers: Arc<Mutex<HashMap<String, ManagedServer>>>) -> Self {
+    // Modify constructor to take MCPHost
+    pub fn new(host: MCPHost) -> Self {
         Self {
-            servers,
+            servers: Arc::clone(&host.servers), // Get servers from host
+            host,
             current_server: None,
             config_path: None,
         }
     }
-    
+
     /// Process a command string
     pub async fn process(&mut self, command: &str) -> Result<String> {
         // Split the command into parts, respecting quotes
@@ -46,10 +50,13 @@ impl CommandProcessor {
             "use" => self.cmd_use(args).await,
             "tools" => self.cmd_tools(args).await,
             "call" => self.cmd_call(args).await,
+            "provider" => self.cmd_provider(args).await, // Added provider command
+            "providers" => self.cmd_providers().await, // Added providers command
+            // chat command is handled directly in Repl::run
             _ => Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
         }
     }
-    
+
     /// Get available commands
     pub fn cmd_help(&self) -> Result<String> {
         Ok(
@@ -57,13 +64,15 @@ impl CommandProcessor {
   help                - Show this help
   servers             - List connected servers
   use [server]        - Set the current server (or clear if no server specified)
-  tools [server]      - List tools for a server
+  tools [server]      - List tools for the current or specified server
   call <tool> [server] [json] - Call a tool with JSON arguments
   chat <server>       - Enter interactive chat mode with AI assistant and tools
+  provider [name]     - Show or set the active AI provider (e.g., openai, anthropic)
+  providers           - List available AI providers (those with API keys set)
   exit, quit          - Exit the program".to_string()
         )
     }
-    
+
     /// List available servers
     pub async fn cmd_servers(&self) -> Result<String> {
         let servers_map = self.servers.lock().await;
@@ -130,7 +139,7 @@ impl CommandProcessor {
 
         Ok(format!("Tools on {}:\n{}", server_name, tool_list))
     }
-    
+
     /// Call a tool
     pub async fn cmd_call(&self, args: &[String]) -> Result<String> {
         if args.is_empty() {
@@ -175,9 +184,48 @@ impl CommandProcessor {
         // Truncate the output before returning
         Ok(crate::repl::truncate_lines(&raw_output, 150))
     }
-    
+
+    /// Show or set the active AI provider
+    async fn cmd_provider(&self, args: &[String]) -> Result<String> {
+        if args.is_empty() {
+            // Show current provider
+            match self.host.get_active_provider_name().await {
+                Some(name) => Ok(format!("Current AI provider: {}", style(name).cyan())),
+                None => Ok("No AI provider is currently active.".to_string()),
+            }
+        } else {
+            // Set provider
+            let provider_name = &args[0];
+            match self.host.set_active_provider(provider_name).await {
+                Ok(_) => Ok(format!("AI provider set to: {}", style(provider_name).cyan())),
+                Err(e) => Err(anyhow!("Failed to set provider: {}", e)),
+            }
+        }
+    }
+
+    /// List available AI providers
+    async fn cmd_providers(&self) -> Result<String> {
+        let providers = self.host.list_available_providers().await;
+        if providers.is_empty() {
+            Ok("No AI providers available (check API key environment variables)".to_string())
+        } else {
+            let current_provider = self.host.get_active_provider_name().await;
+            let provider_list = providers.iter()
+                .map(|name| {
+                    if Some(name) == current_provider.as_ref() {
+                        format!("{} (current)", style(name).cyan())
+                    } else {
+                        name.clone()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            Ok(format!("Available AI providers:\n{}", provider_list))
+        }
+    }
+
     // Helper methods
-    
+
     /// Helper to get the server name to target
     fn get_target_server_name(&self, args: &[String]) -> Result<String> {
         if !args.is_empty() {

@@ -11,10 +11,21 @@ pub struct ServerConfig {
     pub env: HashMap<String, String>,
 }
 
+use std::collections::HashMap;
+use std::path::Path;
+use tokio::fs;
+use anyhow::Result;
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ServerConfig {
+    pub command: String,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone here
 pub struct AIProviderConfig {
-    #[serde(default)]
-    pub provider: String,
+    // Removed provider field, key in the map will be the provider name
     #[serde(default)]
     pub model: String,
 }
@@ -50,6 +61,7 @@ impl Default for AIProviderConfig {
             provider: "deepseek".to_string(),
             model: "deepseek-chat".to_string(),
         }
+        }
     }
 }
 
@@ -57,10 +69,13 @@ impl Default for AIProviderConfig {
 pub struct Config {
     #[serde(rename = "mcpServers")]
     pub servers: HashMap<String, ServerConfig>,
-    
+
     #[serde(default)]
-    pub ai_provider: AIProviderConfig,
-    
+    pub ai_providers: HashMap<String, AIProviderConfig>, // Changed from ai_provider
+
+    #[serde(default)]
+    pub default_ai_provider: Option<String>, // Added default provider setting
+
     #[serde(default)]
     pub timeouts: TimeoutConfig,
 }
@@ -136,9 +151,14 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
+        // Add a default provider config (e.g., deepseek) to the map
+        let mut default_providers = HashMap::new();
+        default_providers.insert("deepseek".to_string(), AIProviderConfig::default());
+
         Self {
             servers: HashMap::new(),
-            ai_provider: AIProviderConfig::default(),
+            ai_providers: default_providers, // Use the map with default
+            default_ai_provider: None, // No default provider specified by default
             timeouts: TimeoutConfig::default(),
         }
     }

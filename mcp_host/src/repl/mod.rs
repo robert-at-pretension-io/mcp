@@ -14,18 +14,16 @@ pub use helper::ReplHelper;
 // pub use connections::ServerConnections;
 
 // Import required types
-use crate::host::server_manager::ManagedServer;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::process::Command;
-
 use anyhow::{anyhow, Result};
 use console::style;
-use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::process::Command as TokioCommand; // Renamed to avoid conflict
+use tokio::sync::Mutex;
 use tokio::time::Duration;
+
 use crate::conversation_service::handle_assistant_response;
 use crate::host::MCPHost;
 use shared_protocol_objects::Role;
@@ -36,48 +34,44 @@ pub struct Repl {
     command_processor: CommandProcessor,
     helper: ReplHelper,
     history_path: PathBuf,
-    host: Option<MCPHost>,
+    host: MCPHost, // Store host directly, not Option
 }
 
 impl Repl {
-    /// Create a new REPL
-    pub fn new(servers: Arc<Mutex<HashMap<String, ManagedServer>>>) -> Result<Self> {
+    /// Create a new REPL, requires an initialized MCPHost
+    pub fn new(host: MCPHost) -> Result<Self> {
         // Set up config directory
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("mcp");
-            
+
         std::fs::create_dir_all(&config_dir)?;
         let history_path = config_dir.join("history.txt");
-        
+
         // Initialize the editor
         let mut editor = DefaultEditor::new()?;
 
-        // Create helper and command processor with servers map
+        // Create helper and command processor with the host
         let helper = ReplHelper::new();
-        let command_processor = CommandProcessor::new(servers);
-        
+        let command_processor = CommandProcessor::new(host.clone()); // Pass host clone
+
         Ok(Self {
             editor,
             command_processor,
             helper,
             history_path,
-            host: None,
+            host, // Store the host
         })
     }
-    
-    /// Set the MCPHost instance to enable enhanced features
-    pub fn with_host(mut self, host: MCPHost) -> Self {
-        self.host = Some(host);
-        self
-    }
-    
+
+    // with_host method removed as host is now required in new()
+
     /// Run the REPL
     pub async fn run(&mut self) -> Result<()> {
         println!("\n{}", style("MCP Host Interactive Console").cyan().bold());
         println!("Type {} for available commands, or {} to enter AI chat mode",
-            style("help").yellow(),
-            style("chat <server>").green());
+                 style("help").yellow(),
+                 style("chat <server>").green());
 
         // Load history after printing welcome message but before the loop
         if self.history_path.exists() {
@@ -87,11 +81,17 @@ impl Repl {
         }
 
         loop {
-            // Dynamically set the prompt based on the current server
-            let prompt = match self.command_processor.current_server_name() {
-                Some(server) => format!("{}> ", style(server).green()),
-                None => format!("{}> ", style("mcp").dim()), // Dim prompt when no server selected
+            // Dynamically set the prompt based on the current server and AI provider
+            let server_part = match self.command_processor.current_server_name() {
+                Some(server) => style(server).green().to_string(),
+                None => style("mcp").dim().to_string(),
             };
+            let provider_part = match self.host.get_active_provider_name().await {
+                 Some(provider) => format!("({})", style(provider).cyan()),
+                 None => "".to_string(), // No provider active
+            };
+            let prompt = format!("{}{} > ", server_part, provider_part);
+
 
             // Disabled helper temporarily due to compatibility issues with rustyline
             // let _ = self.editor.set_helper(Some(self.helper.clone()));
@@ -106,19 +106,20 @@ impl Repl {
                     }
                     
                     self.editor.add_history_entry(line)?;
-                    
-                    // Check for host commands that require the MCPHost
-                    if line.starts_with("chat ") && self.host.is_some() {
+
+                    // Check for chat command first
+                    if line.starts_with("chat ") {
                         if let Err(e) = self.handle_chat_command(&line[5..].trim()).await {
                             println!("{}: {}", style("Error").red().bold(), e);
                         }
                     } else {
+                        // Process other commands via CommandProcessor
                         match self.command_processor.process(line).await {
                             Ok(result) => {
                                 if result == "exit" {
                                     break;
                                 }
-                                
+
                                 if !result.is_empty() {
                                     println!("{}", result);
                                 }
@@ -129,30 +130,33 @@ impl Repl {
                         }
                     }
 
-                    // Update helper state (server names and current tools)
-                    if let Some(host) = &self.host {
-                        // Update server names for completion
-                        let server_names = {
-                            let servers_guard = host.servers.lock().await;
-                            servers_guard.keys().cloned().collect::<Vec<String>>()
-                        };
-                        self.helper.update_server_names(server_names);
+                    // Update helper state (server names, current tools, available providers)
+                    // Update server names for completion
+                    let server_names = {
+                        let servers_guard = self.host.servers.lock().await;
+                        servers_guard.keys().cloned().collect::<Vec<String>>()
+                    };
+                    self.helper.update_server_names(server_names);
 
-                        // Update current tools list if a server is selected
-                        if let Some(current_server_name) = self.command_processor.current_server_name() {
-                            match host.list_server_tools(current_server_name).await {
-                                Ok(tools) => self.helper.update_current_tools(tools),
-                                Err(e) => {
-                                    // Don't print error here, just clear tools if listing fails
-                                    println!("{}: Failed to get tools for '{}': {}", style("Warning").yellow(), current_server_name, e);
-                                    self.helper.update_current_tools(Vec::new());
-                                }
+                    // Update current tools list if a server is selected
+                    if let Some(current_server_name) = self.command_processor.current_server_name() {
+                        match self.host.list_server_tools(current_server_name).await {
+                            Ok(tools) => self.helper.update_current_tools(tools),
+                            Err(e) => {
+                                // Don't print error here, just clear tools if listing fails
+                                println!("{}: Failed to get tools for '{}': {}", style("Warning").yellow(), current_server_name, e);
+                                self.helper.update_current_tools(Vec::new());
                             }
-                        } else {
-                            // No server selected, clear the tools list
-                            self.helper.update_current_tools(Vec::new());
                         }
+                    } else {
+                        // No server selected, clear the tools list
+                        self.helper.update_current_tools(Vec::new());
                     }
+
+                    // Update available providers for completion
+                    let available_providers = self.host.list_available_providers().await;
+                    self.helper.update_available_providers(available_providers);
+
                 }
                 Err(ReadlineError::Interrupted) => {
                     println!("^C");
@@ -179,14 +183,13 @@ impl Repl {
         
         Ok(())
     }
-    
     /// Enhanced chat command that uses the MCPHost's AI capabilities
     async fn handle_chat_command(&self, server_name: &str) -> Result<()> {
-        let host = self.host.as_ref().ok_or_else(|| anyhow!("Host not initialized"))?;
-        
-        match host.enter_chat_mode(server_name).await {
+        // Use self.host directly
+        match self.host.enter_chat_mode(server_name).await {
             Ok(mut state) => {
-                println!("\n{}", style("Entering chat mode with tools. Type 'exit' or 'quit' to leave.").green());
+                let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
+                println!("\n{}", style(format!("Entering chat mode with server '{}' using provider '{}'. Type 'exit' or 'quit' to leave.", server_name, active_provider)).green());
                 
                 loop {
                     println!("\n{}", style("User:").blue().bold());
@@ -200,11 +203,11 @@ impl Repl {
                     }
                     
                     state.add_user_message(user_input);
-                    
-                    // Check if we have an AI client
-                    if let Some(client) = host.ai_client() {
+
+                    // Get the current AI client from the host
+                    if let Some(client) = self.host.ai_client().await {
                         println!("{}", style(format!("Using AI model: {}", client.model_name())).dim());
-                        
+
                         // First ask the LLM to decide whether to use a tool or respond directly
                         println!("{}", style("Analyzing your request...").dim());
                         let decision_request: Result<String, anyhow::Error> = with_progress(
@@ -234,11 +237,11 @@ impl Repl {
                             Ok(decision_str) => {
                                 // Process the AI's decision
                                 if let Err(e) = handle_assistant_response(
-                                    host, 
-                                    &decision_str, 
-                                    server_name, 
-                                    &mut state, 
-                                    client, 
+                                    &self.host, // Pass reference to host
+                                    &decision_str,
+                                    server_name,
+                                    &mut state,
+                                    client, // Pass the Arc<dyn AIClient>
                                     None
                                 ).await {
                                     println!("{}: {}", style("Error").red().bold(), e);
@@ -247,8 +250,8 @@ impl Repl {
                             Err(e) => println!("{}: {}", style("Error").red().bold(), e),
                         }
                     } else {
-                        println!("{}", style("Error: No AI client configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or another supported API key environment variable.").red());
-                        break;
+                        println!("{}", style("Error: No AI client is active. Use 'providers' to see available providers and 'provider <name>' to activate one.").red());
+                        break; // Exit chat mode if no client is active
                     }
                 }
                 
@@ -261,27 +264,21 @@ impl Repl {
     /// Load a configuration file
     pub async fn load_config(&mut self, config_path: &str) -> Result<()> {
         println!("{}", style(format!("Loading configuration from: {}", config_path)).yellow());
-        
-        // If we have a host, use that to load the config
-        if let Some(host) = &self.host {
-            host.load_config(config_path).await?;
-            println!("{}", style("Successfully loaded configuration using host").green());
-            return Ok(());
-        }
-        
-        // We should always have a host now, so this code path should not be reached
-        // For backward compatibility, we'll log a warning
-        println!("{}", style("Warning: No host available. REPL-based config loading is deprecated.").yellow());
-        
-        // Set config path
-        self.command_processor.set_config_path(PathBuf::from(config_path));
-        
+
+        // Use self.host directly to load the config
+        self.host.load_config(config_path).await?;
+        println!("{}", style("Successfully loaded configuration using host").green());
+
+        // Reload the command processor with the potentially updated host state?
+        // Or assume host updates its internal state which command_processor uses.
+        // For now, assume host state is updated and command_processor uses the clone.
+
         Ok(())
     }
-    
+
     /// This method is deprecated and will be removed
     #[deprecated(note = "Use MCPHost.start_server instead")]
-    pub async fn start_server(&mut self, _name: &str, _command: Command) -> Result<()> {
+    pub async fn start_server(&mut self, _name: &str, _command: TokioCommand) -> Result<()> {
         println!("{}", style("Warning: Direct server start is deprecated. Use an MCPHost instance instead.").yellow());
         Ok(())
     }
