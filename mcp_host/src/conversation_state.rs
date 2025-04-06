@@ -79,6 +79,48 @@ pub fn format_chat_message(role: &Role, content: &str) -> String {
     format!("{}: {}", role_style, format_markdown(content))
 }
 
+/// Formats the raw assistant response, highlighting tool call sections.
+pub fn format_assistant_response_with_tool_calls(raw_response: &str) -> String {
+    let mut formatted_output = String::new();
+    let mut current_pos = 0;
+    let start_delimiter = "<<<TOOL_CALL>>>";
+    let end_delimiter = "<<<END_TOOL_CALL>>>";
+
+    while let Some(start_index) = raw_response[current_pos..].find(start_delimiter) {
+        let absolute_start_index = current_pos + start_index;
+
+        // Append the text before the tool call (dimmed)
+        formatted_output.push_str(&format_markdown(&raw_response[current_pos..absolute_start_index]));
+
+        // Find the end delimiter after the start delimiter
+        if let Some(end_index) = raw_response[absolute_start_index..].find(end_delimiter) {
+            let absolute_end_index = absolute_start_index + end_index + end_delimiter.len();
+
+            // Append the highlighted tool call section
+            let tool_call_part = &raw_response[absolute_start_index..absolute_end_index];
+            // Style the tool call block - yellow and italic
+            formatted_output.push_str(&style(tool_call_part).yellow().italic().to_string());
+
+            // Update current position
+            current_pos = absolute_end_index;
+        } else {
+            // If no end delimiter found, append the rest of the string normally (shouldn't happen with valid LLM output)
+            formatted_output.push_str(&format_markdown(&raw_response[absolute_start_index..]));
+            current_pos = raw_response.len();
+            break;
+        }
+    }
+
+    // Append any remaining text after the last tool call (dimmed)
+    if current_pos < raw_response.len() {
+        formatted_output.push_str(&format_markdown(&raw_response[current_pos..]));
+    }
+
+    // Add the Assistant role prefix
+    format!("{}: {}", style("Assistant").cyan().bold(), formatted_output)
+}
+
+
 #[derive(Debug, Clone)]
 pub struct Message {
     pub role: Role,

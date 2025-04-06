@@ -48,20 +48,60 @@ pub async fn handle_assistant_response(
 ) -> Result<()> {
     // Use Box::pin for recursive async functions
     Box::pin(async {
-    // Record the incoming response
-    state.add_assistant_message(incoming_response);
+        // Record the incoming response (keep original)
+        state.add_assistant_message(incoming_response);
 
-    // Parse all tool calls using the new parser
-    let tool_calls = ToolParser::parse_tool_calls(incoming_response); // Use new parser
+        // --- NEW: Format and print the raw response with highlighting ---
+        // This happens *before* any tool execution logic.
+        let formatted_display = crate::conversation_state::format_assistant_response_with_tool_calls(incoming_response);
+        println!("\n{}", formatted_display);
+        // --- END NEW ---
 
-    if tool_calls.is_empty() {
-        // If no delimited tool calls, check for standard JSON format (this logic remains the same)
-        // Note: parse_json_response currently only checks the old format.
-        // This block might need adjustment if you want parse_json_response
-        // to also understand the new delimited format.
-        if let Some((tool_name, Some(args))) = parse_json_response(incoming_response) {
+        // Parse all tool calls using the new parser
+        let tool_calls = ToolParser::parse_tool_calls(incoming_response); // Use new parser
+
+        if !tool_calls.is_empty() {
+            // We have delimited tool calls - execute them all in sequence
+            for tool_call in tool_calls { // tool_call here is crate::tool_parser::ToolCall
+                // Display the tool call *intention* before executing (optional, but good UX)
+                // Note: The raw call was already printed above. This confirms the *parsed* intention.
+                println!(
+                    "\n{}",
+                     style(format!("Assistant wants to call tool: {}", style(&tool_call.name).yellow())).italic() // Style tool name yellow
+                );
+                println!(
+                    "{}",
+                    style(format!(
+                        "Arguments:\n{}",
+                        serde_json::to_string_pretty(&tool_call.arguments).unwrap_or_else(|_| "Invalid JSON".to_string())
+                    )).dim() // Dim arguments
+                );
+
+                // Execute each tool call
+                let tool_result = execute_single_tool(
+                    host,
+                    server_name,
+                    &tool_call.name,
+                    tool_call.arguments.clone(),
+                    state,
+                    &mut socket // Pass mutable socket option
+                ).await?;
+
+                // Add tool result to conversation state
+                let result_msg = format!("Tool '{}' returned: {}", tool_call.name, tool_result.trim());
+                // Add result to state, but don't print it here (execute_single_tool already prints)
+                state.add_assistant_message(&result_msg);
+            }
+
+            // After all tools have been called, get the next response from AI
+            // The recursive call will handle printing the *next* raw response.
+            return continue_conversation_after_tools(host, server_name, state, client, &mut socket).await;
+
+        }
+        // --- Check for old JSON format (optional, keep for compatibility?) ---
+        else if let Some((tool_name, Some(args))) = parse_json_response(incoming_response) {
             // Found a single JSON tool call (old format)
-            // Display the tool call before executing
+            // Display the tool call intention before executing
             println!(
                 "\n{}",
                 style(format!("Assistant wants to call tool: {}", style(&tool_name).yellow())).italic() // Style tool name yellow
@@ -74,6 +114,7 @@ pub async fn handle_assistant_response(
                 )).dim() // Dim arguments
             );
 
+            // The recursive call will handle printing the *next* raw response.
             return execute_tool_and_continue(
                 host,
                 server_name,
@@ -81,57 +122,21 @@ pub async fn handle_assistant_response(
                 args,
                 state,
                 client,
-                &mut socket
+                &mut socket // Pass mutable socket option
             ).await;
         }
-    } else {
-        // We have delimited tool calls - execute them all in sequence
-        for tool_call in tool_calls { // tool_call here is crate::tool_parser::ToolCall
-            // Display the tool call before executing
-            println!(
-                "\n{}",
-                 style(format!("Assistant wants to call tool: {}", style(&tool_call.name).yellow())).italic() // Style tool name yellow
-            );
-            println!(
-                "{}",
-                style(format!(
-                    "Arguments:\n{}",
-                    serde_json::to_string_pretty(&tool_call.arguments).unwrap_or_else(|_| "Invalid JSON".to_string())
-                )).dim() // Dim arguments
-            );
+        // --- No tool calls found ---
+        else {
+            // The raw response (potentially with markdown formatting) was already printed above.
+            // No further printing is needed here for the REPL.
 
-            // Execute each tool call
-            let tool_result = execute_single_tool(
-                host,
-                server_name,
-                &tool_call.name,
-                tool_call.arguments.clone(),
-                state,
-                &mut socket
-            ).await?;
+            // Send the final text to WebSocket client if connected
+            if let Some(ref mut ws) = socket {
+                let _ = ws.send(Message::Text(incoming_response.to_string())).await;
+            }
 
-            // Add tool result to conversation
-            let result_msg = format!("Tool '{}' returned: {}", tool_call.name, tool_result.trim());
-            state.add_assistant_message(&result_msg);
+            Ok(())
         }
-
-        // After all tools have been called, get the next response from AI
-        return continue_conversation_after_tools(host, server_name, state, client, &mut socket).await;
-    }
-
-    // If no tool calls were found, treat as normal response
-    println!(
-        "\n{}",
-        // Use the formatting function from conversation_state
-        crate::conversation_state::format_chat_message(&Role::Assistant, incoming_response)
-    );
-
-    // Send the final text to client
-    if let Some(ref mut ws) = socket {
-        let _ = ws.send(Message::Text(incoming_response.to_string())).await;
-    }
-
-    Ok(())
     }).await
 }
 
