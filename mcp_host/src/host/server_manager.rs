@@ -586,7 +586,9 @@ impl ServerManager {
             
             (process, client, capabilities)
         };
-        
+
+        log::info!("ManagedServer struct created for '{}'", name); // Log before creating struct
+
         let server = ManagedServer {
             name: name.to_string(),
             process,
