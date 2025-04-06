@@ -78,23 +78,24 @@ impl CommandProcessor {
         let mut help_text = String::new();
         writeln!(help_text, "{}", style("Available commands:").bold())?;
 
+        // Use more descriptive placeholders: <required>, [optional]
         let commands = [
-            ("help", "Show this help"),
-            ("servers", "List connected servers"),
-            ("use [server]", "Set the current server (or clear if no server specified)"),
-            ("tools [server]", "List tools for the current or specified server"),
-            ("call <tool> [server] [json]", "Call a tool with JSON arguments"),
-            ("chat <server>", "Enter interactive chat mode with AI assistant and tools"),
-            ("provider [name]", "Show or set the active AI provider"),
-            ("providers", "List available AI providers"),
-            ("model [name]", "Show or set the model for the active provider"),
-            ("add_server", "Interactively add a new server configuration"),
-            ("edit_server <name>", "Interactively edit an existing server configuration"),
-            ("remove_server <name>", "Remove a server configuration (requires save_config)"),
-            ("show_config [server]", "Show current configuration (all or specific server)"),
-            ("save_config", "Save current server configurations to the file"),
-            ("reload_config", "Reload configuration from file (discards unsaved changes)"),
-            ("exit, quit", "Exit the program"),
+            ("help", "Show this help message."),
+            ("servers", "List configured servers and show the active one."),
+            ("use [server_name]", "Set the default server for commands like 'tools' and 'call'. No argument clears selection."),
+            ("tools [server_name]", "List tools for the active server (or specified server)."),
+            ("call <tool_name> [server_name] [json_args]", "Call a tool. Uses active server and empty args '{}' if omitted."),
+            ("chat <server_name>", "Enter interactive chat mode with the specified server, using the active AI provider."),
+            ("provider [provider_name]", "Show or set the active AI provider (e.g., openai, anthropic, ollama)."),
+            ("providers", "List AI providers with configured API keys."),
+            ("model [model_name]", "Show or set the model for the active AI provider. Shows suggestions if no name given."),
+            ("add_server", "Interactively add a new server configuration (auto-saved)."),
+            ("edit_server <server_name>", "Interactively edit an existing server configuration (auto-saved)."),
+            ("remove_server <server_name>", "Remove a server configuration (use 'save_config' to persist)."),
+            ("show_config [server_name]", "Display the current configuration (all or a specific server)."),
+            ("save_config", "Save server configuration changes to the file."),
+            ("reload_config", "Reload server and provider model configs from files (discards unsaved changes)."),
+            ("exit, quit", "Exit the REPL."),
         ];
 
         for (cmd, desc) in commands {
@@ -312,10 +313,11 @@ impl CommandProcessor {
         };
 
         if removed {
-            Ok(format!("Server '{}' removed from configuration. Run '{}' to make it persistent.",
-                style(name).yellow(),
-                style("save_config").yellow()
-            ))
+             // Make save_config suggestion more prominent
+             Ok(format!("Server '{}' removed from configuration. Run {} to make it persistent.",
+                 style(name).yellow(),
+                 style("save_config").yellow().bold() // Added bold
+             ))
         } else {
             Err(anyhow!("Server '{}' not found in configuration.", name))
         }
@@ -571,7 +573,8 @@ impl CommandProcessor {
             // --- Show current model and suggestions ---
             let active_provider = match active_provider_opt {
                 Some(name) => name,
-                None => return Ok("No AI provider is currently active. Use 'provider <name>' first.".to_string()),
+                 // Suggest command if no provider is active
+                 None => return Ok(format!("No AI provider is currently active. Use {} first.", style("provider <name>").yellow())),
             };
             log::debug!("Showing model info for active provider: {}", active_provider);
 
@@ -652,7 +655,8 @@ impl CommandProcessor {
             // --- Set model (existing logic) ---
             let provider_name = match active_provider_opt {
                  Some(name) => name,
-                 None => return Err(anyhow!("No active AI provider. Use 'provider <name>' first.")),
+                 // Suggest command if no provider is active
+                 None => return Err(anyhow!("No active AI provider. Use {} first.", style("provider <name>").yellow())),
             };
             let model_name = &args[0];
             log::info!("Attempting to set model to '{}' for provider '{}'", model_name, provider_name);
@@ -677,7 +681,7 @@ impl CommandProcessor {
         } else {
             // Use current server if set
             self.current_server.clone()
-                .ok_or_else(|| anyhow!("No server specified and no current server selected. Use 'use <server>'."))
+                .ok_or_else(|| anyhow!("No server specified and no current server selected. Use {} first.", style("use <server_name>").yellow()))
         }
     }
 
@@ -691,7 +695,7 @@ impl CommandProcessor {
         } else {
             // Server not specified or arg[1] is JSON, use current
             let current = self.current_server.clone().ok_or_else(|| {
-                anyhow!("No server specified and no current server selected for tool call.")
+                 anyhow!("No server specified for tool call and no current server selected. Use {} first.", style("use <server_name>").yellow())
             })?;
             (current, 1) // JSON might be in arg[1]
         };

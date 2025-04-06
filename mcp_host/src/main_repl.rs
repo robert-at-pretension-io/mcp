@@ -12,11 +12,11 @@ pub async fn main() -> Result<()> {
     // Setup logging and keep the guard alive
     let _logging_guard = setup_logging();
 
-    // Print startup info
-    println!("MCP REPL starting...");
-    println!("Current directory: {:?}", std::env::current_dir().unwrap_or_default());
-    println!("Command line args: {:?}", std::env::args().collect::<Vec<_>>());
-    
+    // Print startup info - More structured
+    println!("\n{}", style("--- MCP Host REPL ---").cyan().bold());
+    // println!("Current directory: {:?}", std::env::current_dir().unwrap_or_default()); // Less verbose startup
+    // println!("Command line args: {:?}", std::env::args().collect::<Vec<_>>()); // Less verbose startup
+
     // Parse command line arguments
     let args: Vec<String> = std::env::args().collect();
     let mut config_path_opt: Option<&str> = None;
@@ -133,8 +133,10 @@ pub async fn main() -> Result<()> {
         }
     }
     println!("  Using a `.env` file in the project root is recommended for managing keys.");
-    println!("{}", style("----------------------------------------").dim());
     // --- End API Key Status ---
+
+    // Add a final startup line before applying config
+    println!("\n{}", style("Initializing servers and REPL...").dim());
 
 
     // Apply the initial configuration loaded during build to start servers
