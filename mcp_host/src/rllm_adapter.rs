@@ -390,12 +390,8 @@ impl AIClient for RLLMClient {
                 max_tokens: Some(8192), // Gemini has high limits
                 supports_json_mode: true,
             },
-            _ => {
-                // This is a catch-all case that shouldn't be reached, but is here for robustness
-                log::warn!("Capabilities not defined for RLLM backend: {:?} with model {}. Using default capabilities.", 
-                          self.backend, self.model_name);
-                ModelCapabilities::default()
-            }
+            // Removed unreachable _ pattern as all variants are covered
+            // LLMBackend::Other(_) => { ... } // If Other variant exists, handle it
         }
     }
 }

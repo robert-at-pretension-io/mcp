@@ -54,7 +54,9 @@ pub async fn main() -> Result<()> {
         .client_info("mcp-host-repl", "1.0.0");
 
     if let Some(ref cfg) = config {
-        host_builder = host_builder.ai_provider_config(cfg.ai_provider.clone());
+        // Use ai_provider_configs method and ai_providers field
+        host_builder = host_builder.ai_provider_configs(cfg.ai_providers.clone());
+        host_builder = host_builder.default_ai_provider(cfg.default_ai_provider.clone());
         // Apply timeouts from config if needed
         host_builder = host_builder.request_timeout(Duration::from_secs(cfg.timeouts.request));
     }
@@ -67,7 +69,8 @@ pub async fn main() -> Result<()> {
          // We only need the servers part now
         let server_config = crate::host::config::Config {
              servers: cfg.servers,
-             ai_provider: Default::default(), // Not needed here
+             ai_providers: Default::default(), // Use correct field name
+             default_ai_provider: None, // Add missing field
              timeouts: Default::default(), // Not needed here
         };
         if let Err(e) = host.configure(server_config).await {

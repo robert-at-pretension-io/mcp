@@ -11,15 +11,9 @@ pub struct ServerConfig {
     pub env: HashMap<String, String>,
 }
 
-use std::collections::HashMap;
-use std::path::Path;
-use tokio::fs;
-use anyhow::Result;
+// Removed duplicate imports and struct definition below
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ServerConfig {
-    pub command: String,
-    #[serde(default)]
+#[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone here
     pub env: HashMap<String, String>,
 }
 

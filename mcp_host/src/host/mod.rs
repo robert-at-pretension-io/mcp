@@ -9,14 +9,15 @@ use anyhow::Result;
 use tokio::sync::Mutex;
 use std::collections::HashMap;
 
+// Removed duplicate imports below
 use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn}; // Added debug, warn
 use server_manager::ManagedServer;
 use shared_protocol_objects::Implementation;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::Mutex;
+use std::collections::HashMap; // Keep this one
+use std::sync::Arc; // Keep this one
+use std::time::Duration; // Keep this one
+use tokio::sync::Mutex; // Keep this one
 
 use crate::ai_client::{AIClient, AIClientFactory};
 use crate::host::config::{AIProviderConfig, Config as HostConfig}; // Renamed Config to HostConfig
@@ -67,7 +68,8 @@ impl MCPHost {
 
     /// Run the REPL interface
     pub async fn run_repl(&self) -> Result<()> {
-        let mut repl = crate::repl::Repl::new(Arc::clone(&self.servers))?.with_host(self.clone());
+        // Pass self.clone() directly to Repl::new and remove with_host
+        let mut repl = crate::repl::Repl::new(self.clone())?;
         repl.run().await
     }
 
@@ -231,7 +233,7 @@ impl MCPHost {
             Ok(Some(new_client)) => {
                 let model_name = new_client.model_name(); // Get model name before moving
                 // Update the active client and name
-                *self.ai_client.lock().await = Some(Arc::new(new_client));
+                *self.ai_client.lock().await = Some(Arc::from(new_client)); // Use Arc::from
                 *self.active_provider_name.lock().await = Some(provider_name.to_string());
                 info!("Successfully switched active AI provider to '{}' (model: {})", provider_name, model_name);
                 Ok(())
@@ -392,7 +394,7 @@ impl MCPHostBuilder {
                     Ok(Some(client)) => {
                         info!("Using default provider from config: {}", default_name);
                         active_provider_name = Some(default_name.clone());
-                        initial_ai_client = Some(Arc::new(client));
+                        initial_ai_client = Some(Arc::from(client)); // Use Arc::from
                     }
                     Ok(None) => warn!("Default provider '{}' configured but API key missing or invalid.", default_name),
                     Err(e) => warn!("Failed to create client for default provider '{}': {}", default_name, e),
@@ -419,7 +421,7 @@ impl MCPHostBuilder {
                     Ok(Some(client)) => {
                         info!("Using first available provider found via environment variable: {}", provider_name);
                         active_provider_name = Some(provider_name.to_string());
-                        initial_ai_client = Some(Arc::new(client));
+                        initial_ai_client = Some(Arc::from(client)); // Use Arc::from
                         break; // Found one, stop checking
                     }
                     Ok(None) => { /* API key not found, continue checking */ }

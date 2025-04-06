@@ -16,12 +16,14 @@ pub use helper::ReplHelper;
 // Import required types
 use anyhow::{anyhow, Result};
 use console::style;
+use anyhow::{anyhow, Result};
+use console::style;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::path::PathBuf;
-use std::sync::Arc;
+// Removed unused import: use std::sync::Arc;
 use tokio::process::Command as TokioCommand; // Renamed to avoid conflict
-use tokio::sync::Mutex;
+// Removed unused import: use tokio::sync::Mutex;
 use tokio::time::Duration;
 
 use crate::conversation_service::handle_assistant_response;
@@ -48,8 +50,8 @@ impl Repl {
         std::fs::create_dir_all(&config_dir)?;
         let history_path = config_dir.join("history.txt");
 
-        // Initialize the editor
-        let mut editor = DefaultEditor::new()?;
+        // Initialize the editor (remove mut)
+        let editor = DefaultEditor::new()?;
 
         // Create helper and command processor with the host
         let helper = ReplHelper::new();
