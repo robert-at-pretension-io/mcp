@@ -57,6 +57,7 @@ impl CommandProcessor {
             "model" => self.cmd_model(args).await, // Added model command
             // chat command is handled directly in Repl::run
             "add_server" => self.cmd_add_server().await, // New command
+            "edit_server" => self.cmd_edit_server(args).await, // New command
             "remove_server" => self.cmd_remove_server(args).await, // New command
             "save_config" => self.cmd_save_config().await, // New command
             "reload_config" => self.cmd_reload_config().await, // New command
@@ -79,6 +80,7 @@ impl CommandProcessor {
   providers           - List available AI providers
   model [name]        - Show or set the model for the active provider
   add_server          - Interactively add a new server configuration
+  edit_server <name>  - Interactively edit an existing server configuration
   remove_server <name> - Remove a server configuration (requires save_config)
   show_config [server] - Show current configuration (all or specific server)
   save_config         - Save current server configurations to the file
@@ -139,6 +141,67 @@ impl CommandProcessor {
 
         Ok(format!("Server '{}' added to configuration. Run 'save_config' to make it persistent.", name))
     }
+
+    // --- Edit Server ---
+    async fn cmd_edit_server(&mut self, args: &[String]) -> Result<String> {
+        if args.is_empty() {
+            return Err(anyhow!("Usage: edit_server <server_name>"));
+        }
+        let name = &args[0];
+        println!("--- Edit Server Configuration for '{}' ---", name);
+
+        let mut config_guard = self.host.config.lock().await;
+
+        // Get mutable access to the server config
+        let server_config = match config_guard.servers.get_mut(name) {
+            Some(cfg) => cfg,
+            None => return Err(anyhow!("Server '{}' not found in configuration.", name)),
+        };
+
+        // Edit Command
+        let prompt = format!("Command [{}]:", server_config.command);
+        let new_command = self.prompt_for_input(&prompt)?;
+        if !new_command.is_empty() {
+            server_config.command = new_command;
+        }
+
+        // Edit Arguments
+        println!("Current arguments: {:?}", server_config.args.as_deref().unwrap_or(&[]));
+        let change_args = self.prompt_for_input("Change arguments? (yes/no) [no]:")?;
+        if change_args.trim().to_lowercase() == "yes" {
+            let mut new_args = Vec::new();
+            println!("Enter new arguments (one per line, press Enter on empty line to finish):");
+            loop {
+                let arg = self.prompt_for_input(&format!("Argument {}:", new_args.len() + 1))?;
+                if arg.is_empty() { break; }
+                new_args.push(arg);
+            }
+            server_config.args = if new_args.is_empty() { None } else { Some(new_args) };
+        }
+
+        // Edit Environment Variables
+        println!("Current environment variables: {:?}", server_config.env);
+        let change_env = self.prompt_for_input("Change environment variables? (yes/no) [no]:")?;
+        if change_env.trim().to_lowercase() == "yes" {
+            let mut new_env = HashMap::new();
+            println!("Enter new environment variables (KEY=VALUE format, press Enter on empty line to finish):");
+            loop {
+                let env_line = self.prompt_for_input("Env Var (e.g., KEY=value):")?;
+                if env_line.is_empty() { break; }
+                if let Some((key, value)) = env_line.split_once('=') {
+                    new_env.insert(key.trim().to_string(), value.trim().to_string());
+                } else {
+                    println!("{}", style("Invalid format. Use KEY=VALUE.").yellow());
+                }
+            }
+            server_config.env = new_env;
+        }
+
+        // Config is updated in place because server_config is a mutable reference
+
+        Ok(format!("Server '{}' configuration updated in memory. Run 'save_config' to make it persistent.", name))
+    }
+
 
     // --- Remove Server ---
     async fn cmd_remove_server(&mut self, args: &[String]) -> Result<String> {

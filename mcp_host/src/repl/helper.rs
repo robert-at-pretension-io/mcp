@@ -43,6 +43,7 @@ impl ReplHelper {
                 "providers".to_string(),
                 "model".to_string(),
                 "add_server".to_string(),
+                "edit_server".to_string(),
                 "remove_server".to_string(),
                 "save_config".to_string(),
                 "reload_config".to_string(),
