@@ -1,13 +1,4 @@
-use anyhow::Result;
-use axum::extract::ws::{Message, WebSocket};
-use console::style;
-use serde_json::Value;
-use std::sync::Arc;
-use crate::conversation_state::ConversationState;
-use crate::host::MCPHost;
-use crate::tool_parser::{ToolParser}; // Keep ToolParser import
-
-// Removed unused imports: WebSocket, AIClient, ConversationState, Value, Arc, Role, style
+// Removed unused imports: anyhow::Result, axum::extract::ws::{Message, WebSocket}, console::style, serde_json::Value, std::sync::Arc, crate::conversation_state::ConversationState, crate::host::MCPHost, crate::tool_parser::ToolParser
 
 // Removed local ToolCall struct definition (now handled internally by ToolParser)
 // Removed leftover SmileyToolParser struct definition and methods

@@ -1,8 +1,10 @@
 use crate::ai_client::AIClient;
 use crate::conversation_state::ConversationState;
+use crate::ai_client::AIClient;
+use crate::conversation_state::ConversationState;
 use crate::host::MCPHost;
 use crate::tool_parser::ToolParser;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result}; // Removed unused Context
 use console::style;
 use log::{debug, error, info, warn};
 use std::sync::Arc;

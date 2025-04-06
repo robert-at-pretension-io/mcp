@@ -25,7 +25,7 @@ use tokio::process::Command as TokioCommand; // Renamed to avoid conflict
 // Removed unused import: use tokio::sync::Mutex;
 use tokio::time::Duration;
 
-use crate::conversation_service::handle_assistant_response;
+// Removed unused import: use crate::conversation_service::handle_assistant_response;
 use crate::host::MCPHost;
 use shared_protocol_objects::Role;
 
