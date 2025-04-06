@@ -637,4 +637,3 @@ impl MCPHostBuilder {
             ai_client: Arc::new(Mutex::new(initial_ai_client)),
         })
     }
-}
