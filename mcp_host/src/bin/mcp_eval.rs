@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
     let host_config_path = PathBuf::from(shellexpand::tilde(&config.mcp_host_config).into_owned());
     info!("Setting up MCPHost with config: {:?}", host_config_path);
     let host = MCPHost::builder()
-        .config_path(host_config_path) // Use path from eval config
+        .config_path(host_config_path.clone()) // Clone the path here
         .client_info("mcp-eval-runner", "0.1.0")
         .build()
         .await
