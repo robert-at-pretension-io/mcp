@@ -7,23 +7,31 @@
 [openai]
 models = [
     "gpt-4o",
+    "o3-mini",
+    "o1",
     "gpt-4o-mini",
+    "gpt-4.5",
     "gpt-4-turbo",
-    "gpt-3.5-turbo"
+    "gpt-3.5-turbo",
 ]
 
 [anthropic]
 models = [
+    "claude-3-7-sonnet-20250219",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
     "claude-3-opus-20240229",
     "claude-3-sonnet-20240229",
-    "claude-3-haiku-20240307"
+    "claude-3-haiku-20240307",
 ]
 
-[google] # Or use 'gemini' key if preferred in code
+[google]
 models = [
-    "gemini-1.5-pro-latest",
-    "gemini-1.5-flash-latest",
-    "gemini-1.0-pro"
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-pro-002",
+    "gemini-1.5-flash-002",
 ]
 
 [ollama]
@@ -33,31 +41,34 @@ models = [
     "mistral",
     "codellama",
     "llava",
-    "gemma",
-    "phi3"
+    "gemma:7b",
+    "phi3",
+    "deepseek-coder",
+    "qwen2",
 ]
 
 [deepseek]
-models = [
-    "deepseek-chat",
-    "deepseek-coder"
-]
+models = ["deepseek-v3-0324", "deepseek-r1", "deepseek-chat", "deepseek-coder"]
 
 [groq]
 models = [
     "llama3-8b-8192",
     "llama3-70b-8192",
+    "llama-3.3-70b-versatile",
+    "llama-3.3-70b",
     "mixtral-8x7b-32768",
-    "gemma-7b-it"
+    "gemma-7b-it",
 ]
 
 [openrouter]
 models = [
     "openai/gpt-4o",
     "anthropic/claude-3-opus",
-    "google/gemini-flash-1.5",
+    "anthropic/claude-3-7-sonnet",
+    "google/gemini-2.5-pro",
+    "google/gemini-2.5-flash",
     "mistralai/mistral-large",
-    "meta-llama/llama-3-70b-instruct"
+    "meta-llama/llama-3-70b-instruct",
 ]
 
 # [xai]
