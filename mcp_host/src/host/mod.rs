@@ -103,6 +103,7 @@ impl MCPHost {
                     error!("Failed to stop server '{}': {}", name, e);
                 }
             }
+            info!("Finished processing server start/stop loop in apply_config."); // <-- Add log here
 
             // Update AI provider based on new config (if default changed or active one removed)
             let default_provider = new_config.default_ai_provider.clone();
@@ -136,14 +137,14 @@ impl MCPHost {
                      *self.active_provider_name.lock().await = None;
                  }
             }
-
+            info!("Finished AI provider update logic in apply_config."); // <-- Add log here
 
 
             *self.config.lock().await = new_config;
             info!("Configuration applied successfully.");
+            info!("Exiting apply_config."); // <-- Add log here
             Ok(())
         } // End of apply_config
-
     // Method to save the current in-memory config
     pub async fn save_host_config(&self) -> Result<()> {
         let config_guard = self.config.lock().await;
