@@ -139,7 +139,15 @@ impl CommandProcessor {
             config_guard.servers.insert(name.clone(), server_config);
         }
 
-        Ok(format!("Server '{}' added to configuration. Run 'save_config' to make it persistent.", name))
+        // Automatically save the configuration
+        match self.host.save_host_config().await {
+            Ok(_) => Ok(format!("Server '{}' added and configuration saved successfully.", name)),
+            Err(e) => {
+                // Log the error, but still report success for adding to memory
+                log::error!("Failed to automatically save config after adding server '{}': {}", name, e);
+                Ok(format!("Server '{}' added to configuration, but failed to save automatically: {}. Run 'save_config' manually.", name, e))
+            }
+        }
     }
 
     // --- Edit Server ---
