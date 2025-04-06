@@ -69,6 +69,8 @@ impl Repl {
 
     /// Run the REPL
     pub async fn run(&mut self) -> Result<()> {
+        log::info!("Repl::run started."); // Log at the very beginning of run()
+
         println!("\n{}", style("MCP Host Interactive Console").cyan().bold());
         println!("Type {} for available commands, or {} to enter AI chat mode",
                  style("help").yellow(),

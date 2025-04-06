@@ -176,8 +176,20 @@ impl MCPHost {
 
         /// Run the REPL interface
     pub async fn run_repl(&self) -> Result<()> {
+        info!("Entering MCPHost::run_repl..."); // Log entry
         // Pass self.clone() directly to Repl::new and remove with_host
-        let mut repl = crate::repl::Repl::new(self.clone())?;
+        info!("Attempting to create Repl instance..."); // Log before new()
+        let mut repl = match crate::repl::Repl::new(self.clone()) {
+            Ok(r) => {
+                info!("Repl instance created successfully."); // Log after new()
+                r
+            },
+            Err(e) => {
+                error!("Failed to create Repl instance: {}", e); // Log error during new()
+                return Err(e.into()); // Propagate error properly
+            }
+        };
+        info!("Calling repl.run()..."); // Log before run()
         repl.run().await
     }
 
