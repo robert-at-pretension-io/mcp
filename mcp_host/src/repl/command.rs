@@ -334,13 +334,26 @@ impl CommandProcessor {
 
 
     // Helper for interactive input
-    fn prompt_for_input(&self, prompt: &str) -> Result<String> {
-        print!("{} ", style(prompt).green());
-        io::stdout().flush()?; // Ensure prompt is displayed before reading
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        Ok(input.trim().to_string())
+    fn prompt_for_input(&mut self, prompt: &str) -> Result<String> {
+        let readline = self.editor.readline(&style(prompt).green().to_string());
+        match readline {
+            Ok(line) => Ok(line.trim().to_string()),
+            Err(e) => Err(anyhow!("Failed to read input: {}", e)),
+        }
     }
+
+    // Helper for interactive input with initial text for editing
+    fn prompt_with_initial(&mut self, prompt: &str, initial: &str) -> Result<String> {
+        let readline = self.editor.readline_with_initial(
+            &style(prompt).green().to_string(),
+            (initial, ""), // Provide initial text and empty cursor position hint
+        );
+        match readline {
+            Ok(line) => Ok(line.trim().to_string()),
+            Err(e) => Err(anyhow!("Failed to read input: {}", e)),
+        }
+    }
+
 
     /// List available servers
     pub async fn cmd_servers(&self) -> Result<String> {
