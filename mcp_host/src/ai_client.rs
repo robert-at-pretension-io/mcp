@@ -91,8 +91,13 @@ pub struct AIClientFactory;
 
 impl AIClientFactory {
     pub fn create(provider: &str, config: Value) -> Result<Box<dyn AIClient>> {
-        // Use the factory function from rllm_adapter
-        crate::rllm_adapter::create_rllm_client_for_provider(provider, config)
+        // Use custom implementation for OpenRouter
+        if provider.to_lowercase() == "openrouter" {
+            crate::openrouter::create_openrouter_client(config)
+        } else {
+            // Use the factory function from rllm_adapter for other providers
+            crate::rllm_adapter::create_rllm_client_for_provider(provider, config)
+        }
     }
 }
 

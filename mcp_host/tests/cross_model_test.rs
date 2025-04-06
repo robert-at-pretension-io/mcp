@@ -18,10 +18,6 @@ use mcp_host::{
     MCPHost,
     conversation_state::ConversationState,
     conversation_service,
-    anthropic::AnthropicClient,
-    openai::OpenAIClient,
-    gemini::GeminiClient,
-    deepseek::DeepSeekClient,
     ai_client::AIClient,
 };
 use std::env;

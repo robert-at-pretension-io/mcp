@@ -463,7 +463,7 @@ impl MCPHostBuilder {
 
         // 2. If no client yet, check environment variables in preferred order
         if initial_ai_client.is_none() {
-            let preferred_providers = ["anthropic", "openai", "deepseek", "gemini", "ollama", "xai", "phind", "groq"];
+            let preferred_providers = ["anthropic", "openai", "deepseek", "gemini", "ollama", "xai", "phind", "groq", "openrouter"];
             for provider_name in preferred_providers {
                 // Get config or use default if not explicitly configured
                 let config = ai_provider_configs

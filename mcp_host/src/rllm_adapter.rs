@@ -637,12 +637,18 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 // Extract the primary text content from the response
                 // Assuming the response object has a method or field like `text()` or `content()`
                 // Adjust based on the actual structure of rllm::chat::ChatResponse
-                let response_str = response.choices.get(0) // Get the first choice
-                    .and_then(|choice| choice.message.content.clone()) // Get the message content
+                let response_str = response.text() // Assuming this method exists
                     .unwrap_or_else(|| {
-                        log::warn!("Could not extract primary text from RLLM response, falling back to full string representation.");
-                        response.to_string() // Fallback to the full string representation if extraction fails
+                        log::warn!("Response text extraction failed, falling back to full response.");
+                        response.to_string() // Fallback to the full string representation
                     });
+                
+                // choices.get(0) // Get the first choice
+                //     .and_then(|choice| choice.message.content.clone()) // Get the message content
+                //     .unwrap_or_else(|| {
+                //         log::warn!("Could not extract primary text from RLLM response, falling back to full string representation.");
+                //         response.to_string() // Fallback to the full string representation if extraction fails
+                //     });
 
                 log::info!(
                     "RLLM request completed in {:.2}s, received {} characters",
