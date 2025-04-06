@@ -64,14 +64,11 @@ impl MCPHost {
         self.server_manager().load_config(config_path).await
     }
 
-    /// Configure the host with a loaded configuration
-    pub async fn configure(&self, config: HostConfig) -> Result<()> {
-        // Note: This only configures servers now. AI provider config is handled at build time.
-        // Renamed from configure to apply_config to avoid confusion with builder
-        async fn apply_config(&self, new_config: HostConfig) -> Result<()> {
-            info!("Applying new configuration...");
-            let server_manager = self.server_manager();
-            let mut current_servers = self.servers.lock().await;
+    /// Apply a new configuration, starting/stopping servers as needed.
+    pub async fn apply_config(&self, new_config: HostConfig) -> Result<()> {
+        info!("Applying new configuration...");
+        let server_manager = self.server_manager();
+        let mut current_servers = self.servers.lock().await;
             let mut servers_to_stop = current_servers.keys().cloned().collect::<std::collections::HashSet<_>>();
 
             // Start new/updated servers
@@ -145,13 +142,16 @@ impl MCPHost {
             // Update the host's internal config state
             *self.config.lock().await = new_config;
             info!("Configuration applied successfully.");
+            // Update the host's internal config state
+            *self.config.lock().await = new_config;
+            info!("Configuration applied successfully.");
             Ok(())
-        }
+        } // End of apply_config
 
-        // Method to save the current in-memory config
-        pub async fn save_host_config(&self) -> Result<()> {
-            let config_guard = self.config.lock().await;
-            let path_guard = self.config_path.lock().await;
+    // Method to save the current in-memory config
+    pub async fn save_host_config(&self) -> Result<()> {
+        let config_guard = self.config.lock().await;
+        let path_guard = self.config_path.lock().await;
 
             if let Some(path) = path_guard.as_ref() {
                 config_guard.save(path).await
@@ -174,11 +174,7 @@ impl MCPHost {
                 Err(anyhow!("No configuration file path set. Cannot reload."))
             }
         }
-
-        /// Configure the host with a loaded configuration (now just calls apply_config)
-        pub async fn configure(&self, config: HostConfig) -> Result<()> {
-            self.apply_config(config).await
-        }
+        // Removed duplicate configure method
 
         /// Run the REPL interface
     pub async fn run_repl(&self) -> Result<()> {
