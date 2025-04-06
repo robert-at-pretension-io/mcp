@@ -91,6 +91,7 @@ pub async fn main() -> Result<()> {
     } else {
          info!("Initial server configuration applied.");
     }
+    info!("Returned from apply_config in main_repl."); // <-- Add log here
 
     // Run the REPL interface
     host.run_repl().await
