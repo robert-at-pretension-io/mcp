@@ -583,14 +583,22 @@ impl CommandProcessor {
 
             let suggestions = { // Scope lock
                 log::debug!("Acquiring provider_models lock to get suggestions...");
-                let models_config_guard = self.host.provider_models.lock().await;
+                let models_config_guard = self.host.provider_models.lock().await; // Lock the models config
                 log::debug!("Provider_models lock acquired.");
-                let provider_key = active_provider.to_lowercase(); // Use lowercase for lookup
-                let models = models_config_guard.providers
-                    .get(&provider_key)
-                    .map(|list| list.models.clone())
-                    .unwrap_or_default();
-                log::debug!("Found {} suggestions for provider key '{}'", models.len(), provider_key);
+                let provider_key = active_provider.to_lowercase(); // Use lowercase key
+                 // --- Add detailed logging ---
+                 let available_keys: Vec<_> = models_config_guard.providers.keys().cloned().collect();
+                 log::debug!(
+                     "cmd_model Display: Looking for key '{}'. Available keys: {:?}",
+                     provider_key,
+                     available_keys
+                 );
+                 // --- End detailed logging ---
+                let models = models_config_guard.providers // Access inner HashMap
+                    .get(&provider_key) // Use lowercase key
+                    .map(|list| list.models.clone()) // Clone Vec<String>
+                    .unwrap_or_default(); // Return empty Vec if not found
+                log::debug!("Found {} suggestions for provider key '{}'", models.len(), provider_key); // Log count
                 models
             }; // Lock released here
             log::debug!("Provider_models lock released.");
