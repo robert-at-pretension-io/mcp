@@ -66,49 +66,72 @@ impl MCPHost {
     /// Apply a new configuration, starting/stopping servers as needed.
     pub async fn apply_config(&self, new_config: HostConfig) -> Result<()> {
         info!("Applying new configuration...");
+        debug!("Acquiring servers lock to determine changes...");
         let server_manager = self.server_manager();
-        let current_servers = self.servers.lock().await; // Removed mut
-            let mut servers_to_stop = current_servers.keys().cloned().collect::<std::collections::HashSet<_>>();
+        let mut servers_to_start = Vec::new();
+        let servers_to_stop: Vec<String>; // Keep String for consistency
 
-            // Start new/updated servers
+        { // Scope for the servers lock
+            let current_servers = self.servers.lock().await;
+            debug!("Servers lock acquired.");
+            let mut current_server_names = current_servers.keys().cloned().collect::<std::collections::HashSet<_>>();
+
+            // Determine servers to start
             for (name, server_config) in &new_config.servers {
-                info!("Processing server '{}' in apply_config loop...", name); // Log start of iteration
-                servers_to_stop.remove(name); // Keep this server
-
                 if !current_servers.contains_key(name) {
-                    info!("Starting new server from config: {}", name);
-                    // Simplified command creation - adapt as needed
+                    info!("Server '{}' marked for start.", name);
+                    // Prepare command details for starting later
                     let mut command = std::process::Command::new(&server_config.command);
-                    if let Some(args) = &server_config.args { // Assuming args field exists
+                    if let Some(args) = &server_config.args {
                         command.args(args);
                     }
-                    command.envs(server_config.env.clone()); // Clone env
-
-                    if let Err(e) = server_manager.start_server_with_command(name, command).await {
-                        error!("Failed to start server '{}': {}", name, e);
-                        // Decide if you want to continue or return error
-                    }
-                } else {
-                    // Server already running. Optionally check if config changed and restart?
-                    // For now, we leave running servers untouched if they still exist in config.
-                    debug!("Server '{}' already running, leaving untouched.", name);
+                    command.envs(server_config.env.clone());
+                    servers_to_start.push((name.clone(), command));
                 }
-                info!("Finished processing server '{}' in apply_config loop.", name); // Log end of iteration
+                // Remove from the set of current servers, leaving only those to be stopped
+                current_server_names.remove(name);
             }
 
-            // Stop servers that were running but are not in the new config
-            // Drop the lock before calling stop_server to avoid deadlock
-            drop(current_servers);
+            // Servers remaining in current_server_names need to be stopped
+            servers_to_stop = current_server_names.into_iter().collect();
+            debug!("Servers lock released.");
+        } // servers lock is released here
+
+        // Stop servers that are no longer in the config
+        if !servers_to_stop.is_empty() {
+            info!("Stopping servers removed from config: {:?}", servers_to_stop);
             for name in servers_to_stop {
-                info!("Stopping server removed from config: {}", name);
+                debug!("Attempting to stop server '{}'", name);
                 if let Err(e) = server_manager.stop_server(&name).await {
                     error!("Failed to stop server '{}': {}", name, e);
+                } else {
+                    info!("Successfully stopped server '{}'", name);
                 }
             }
-            info!("Finished processing server start/stop loop in apply_config."); // <-- Add log here
+        } else {
+            debug!("No servers need to be stopped.");
+        }
 
-            // Update AI provider based on new config (if default changed or active one removed)
-            let default_provider = new_config.default_ai_provider.clone();
+        // Start new servers
+        if !servers_to_start.is_empty() {
+            info!("Starting new servers: {:?}", servers_to_start.iter().map(|(n, _)| n).collect::<Vec<_>>());
+            for (name, command) in servers_to_start {
+                debug!("Attempting to start server '{}' with command: {:?}", name, command);
+                if let Err(e) = server_manager.start_server_with_command(&name, command).await {
+                    error!("Failed to start server '{}': {}", name, e);
+                    // Decide if you want to continue or return error
+                } else {
+                    info!("Successfully started server '{}'", name);
+                }
+            }
+        } else {
+            debug!("No new servers need to be started.");
+        }
+        info!("Finished processing server start/stop loop in apply_config.");
+
+        // Update AI provider based on new config (if default changed or active one removed)
+        debug!("Checking AI provider status after config change...");
+        let default_provider = new_config.default_ai_provider.clone();
             let current_active = self.get_active_provider_name().await;
 
             let mut needs_provider_update = false;

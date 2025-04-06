@@ -491,104 +491,97 @@ impl ServerManager {
     /// Start a server with the given name and command
     pub async fn start_server_with_command(&self, name: &str, command: Command) -> Result<()> {
         info!("Starting server '{}' with command: {:?}", name, command);
-        
-        // Prepare the command for the ProcessTransport
-        let mut tokio_command = tokio::process::Command::new(command.get_program());
-        tokio_command.args(command.get_args())
-                     .stdin(Stdio::piped())
-                     .stdout(Stdio::piped())
-                     .stderr(Stdio::piped());
+        debug!("Preparing tokio::process::Command for server '{}'", name);
+
+        // Prepare the command for spawning the process
+        let mut tokio_command_spawn = tokio::process::Command::new(command.get_program());
+        tokio_command_spawn.args(command.get_args())
+                           .stdin(Stdio::piped())
+                           .stdout(Stdio::piped())
+                           .stderr(Stdio::piped());
 
         // Copy environment variables from the std::process::Command
         for (key, val) in command.get_envs() {
             if let (Some(k), Some(v)) = (key.to_str(), val.map(|v| v.to_str()).flatten()) {
-                tokio_command.env(k, v);
+                tokio_command_spawn.env(k, v);
             }
         }
+        debug!("Tokio command prepared for spawning: {:?}", tokio_command_spawn);
 
-        info!("Creating MCP client with ProcessTransport");
+        // --- Spawn Process and Initialize Client BEFORE acquiring the lock ---
         #[cfg(not(test))]
         let (process, client, capabilities) = {
-            // In production, use the shared_protocol_objects library
-            // Spawn the process first to ensure we have it
-            let process = tokio_command.spawn()?;
-            
-            // Create a separate command for the transport
+            // Spawn the process first
+            debug!("Spawning process for server '{}'...", name);
+            let process = tokio_command_spawn.spawn()
+                .map_err(|e| anyhow!("Failed to spawn process for server '{}': {}", name, e))?;
+            info!("Process spawned successfully for server '{}', PID: {:?}", name, process.id());
+
+            // Create a separate command for the transport (needed by ProcessTransport::new)
             let mut transport_cmd = tokio::process::Command::new(command.get_program());
             transport_cmd.args(command.get_args())
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
-                
-            // Copy environment variables
-            for (key, val) in command.get_envs() {
+            for (key, val) in command.get_envs() { // Copy env vars again for transport command
                 if let (Some(k), Some(v)) = (key.to_str(), val.map(|v| v.to_str()).flatten()) {
                     transport_cmd.env(k, v);
                 }
             }
-            
-            // Create the transport specifically for initialization 
-            let transport = ProcessTransport::new(transport_cmd).await?;
-            
-            // Create a client with this transport
+            debug!("Creating transport for server '{}'...", name);
+            let transport = ProcessTransport::new(transport_cmd).await
+                 .map_err(|e| anyhow!("Failed to create transport for server '{}': {}", name, e))?;
+            info!("Transport created for server '{}'.", name);
+
+            // Create and initialize the client
+            debug!("Creating MCP client for server '{}'...", name);
             let inner_client = shared_protocol_objects::rpc::McpClientBuilder::new(transport)
                 .client_info(&self.client_info.name, &self.client_info.version)
                 .timeout(self.request_timeout)
                 .build();
-                
-            // Wrap it in our debug-friendly wrapper
             let mut client = production::McpClient::new(inner_client);
-            
-            // Initialize the client
-            let capabilities = ClientCapabilities {
-                experimental: None,
-                sampling: None,
-                roots: None,
-            };
+            info!("MCP client created, initializing server '{}'...", name);
 
-            log::info!("Initializing client {} with special ID handling", name);
-            // Add a timeout around the initialization step
-            let init_timeout = Duration::from_secs(15); // 15 second timeout for initialization
-            match tokio::time::timeout(init_timeout, client.initialize(capabilities)).await {
-                Ok(Ok(_)) => {
-                    log::info!("Client {} initialized successfully.", name);
+            let client_capabilities = ClientCapabilities { experimental: None, sampling: None, roots: None };
+            let init_timeout = Duration::from_secs(15);
+            match tokio::time::timeout(init_timeout, client.initialize(client_capabilities)).await {
+                Ok(Ok(server_caps)) => {
+                    info!("Client '{}' initialized successfully.", name);
+                    // Get capabilities after successful initialization
+                    let capabilities = Some(server_caps); // Store the returned capabilities
+                    (process, client, capabilities) // Return all three
                 }
                 Ok(Err(e)) => {
-                    error!("Client {} initialization failed: {}", name, e);
+                    error!("Client '{}' initialization failed: {}", name, e);
                     // Attempt to kill the process since initialization failed
-                    // We need mutable access to process here, which we don't have directly.
-                    // Let's return an error and let the caller handle cleanup if needed.
-                    return Err(anyhow!("Client {} initialization failed: {}", name, e));
+                    // process.start_kill().ok(); // Kill the spawned process
+                    return Err(anyhow!("Client '{}' initialization failed: {}", name, e));
                 }
                 Err(_) => {
-                    error!("Client {} initialization timed out after {} seconds.", name, init_timeout.as_secs());
-                     // Attempt to kill the process since initialization timed out
-                     // Again, return error and let caller handle cleanup.
-                    return Err(anyhow!("Client {} initialization timed out", name));
+                    error!("Client '{}' initialization timed out after {} seconds.", name, init_timeout.as_secs());
+                    // Attempt to kill the process since initialization timed out
+                    // process.start_kill().ok(); // Kill the spawned process
+                    return Err(anyhow!("Client '{}' initialization timed out", name));
                 }
             }
-
-            // Get the capabilities after successful initialization
-            let capabilities = client.capabilities().cloned();
-            
-            (process, client, capabilities)
         };
-        
+
         #[cfg(test)]
         let (process, client, capabilities) = {
-            // For tests, create a dummy client
+            // For tests, create a dummy client and process
+            debug!("Creating mock process and client for test server '{}'", name);
             let process = tokio::process::Command::new("echo")
                 .arg("test")
                 .spawn()?;
-                
             let client = McpClient { _transport: ProcessTransport };
             let capabilities = client.capabilities().cloned();
-            
+            info!("Mock process and client created for test server '{}'", name);
             (process, client, capabilities)
         };
+        // --- End of process spawning and client initialization ---
 
-        log::info!("ManagedServer struct created for '{}'", name); // Log before creating struct
-
+        // --- Acquire Lock and Insert Server ---
+        debug!("Creating ManagedServer struct for '{}'", name);
         let server = ManagedServer {
             name: name.to_string(),
             process,
@@ -596,30 +589,55 @@ impl ServerManager {
             capabilities,
         };
 
-        {
-            let mut servers = self.servers.lock().await;
-            servers.insert(name.to_string(), server);
-        }
+        debug!("Acquiring servers lock to insert server '{}'...", name);
+        { // Scope for the lock
+            let mut servers_guard = self.servers.lock().await;
+            debug!("Servers lock acquired for inserting '{}'.", name);
+            servers_guard.insert(name.to_string(), server);
+            debug!("Server '{}' inserted into map.", name);
+        } // Lock released here
+        debug!("Servers lock released after inserting '{}'.", name);
 
-        log::info!("Finished start_server_with_command for '{}'", name); // Log before returning
+        info!("Finished start_server_with_command for '{}'", name);
         Ok(())
     }
 
+
     /// Stop a server and clean up its resources
     pub async fn stop_server(&self, name: &str) -> Result<()> {
-        let mut servers = self.servers.lock().await;
-        if let Some(mut server) = servers.remove(name) {
+        debug!("Attempting to stop server '{}'...", name);
+        debug!("Acquiring servers lock to remove server '{}'...", name);
+        let server_to_stop = { // Scope for lock
+            let mut servers = self.servers.lock().await;
+            debug!("Servers lock acquired for removing '{}'.", name);
+            servers.remove(name) // Remove the server from the map
+        }; // Lock released here
+        debug!("Servers lock released after removing '{}'.", name);
+
+        if let Some(mut server) = server_to_stop {
+            info!("Found server '{}' in map, proceeding with shutdown.", name);
             // Close the client first to ensure clean shutdown
+            debug!("Closing client for server '{}'...", name);
             if let Err(e) = server.client.close().await {
-                error!("Error closing client: {}", e);
+                error!("Error closing client for server '{}': {}", name, e);
+                // Continue with process kill even if client close fails
+            } else {
+                debug!("Client for server '{}' closed successfully.", name);
             }
-            
+
             // Then kill the process if it's still running
+            debug!("Attempting to kill process for server '{}'...", name);
             if let Err(e) = server.process.start_kill() {
-                error!("Error killing process: {}", e);
+                error!("Error killing process for server '{}': {}", name, e);
+                // Return error if killing fails? Or just log? For now, just log.
+            } else {
+                info!("Process for server '{}' killed successfully.", name);
             }
+            Ok(()) // Return Ok even if there were errors during shutdown
+        } else {
+            warn!("Server '{}' not found in map, cannot stop.", name);
+            Ok(()) // Not an error if the server wasn't running
         }
-        Ok(())
     }
 }
 
