@@ -139,10 +139,7 @@ impl MCPHost {
             }
 
 
-            // Update the host's internal config state
-            *self.config.lock().await = new_config;
-            info!("Configuration applied successfully.");
-            // Update the host's internal config state
+
             *self.config.lock().await = new_config;
             info!("Configuration applied successfully.");
             Ok(())
@@ -159,6 +156,7 @@ impl MCPHost {
                 Err(anyhow!("No configuration file path set. Cannot save."))
             }
         }
+    
 
         // Method to reload config from disk
         pub async fn reload_host_config(&self) -> Result<()> {
@@ -499,7 +497,6 @@ impl MCPHost {
     }
 }
 
-use std::path::PathBuf; // Ensure PathBuf is imported
 
 /// Builder for MCPHost configuration
 pub struct MCPHostBuilder {
@@ -633,3 +630,4 @@ impl MCPHostBuilder {
             ai_client: Arc::new(Mutex::new(initial_ai_client)),
         })
     }
+}
