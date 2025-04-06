@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::conversation_state::ConversationState;
 use crate::ai_client::{ AIClient };
 use crate::host::MCPHost;
+use crate::tool_parser::{ToolParser, ToolCall}; // Updated import
 
 use shared_protocol_objects::Role;
 
