@@ -393,9 +393,10 @@ impl Repl {
                 log::debug!("Received initial AI response (length: {})", initial_response.len());
 
                 // Configuration for the shared logic (interactive)
+                // Use default config which now has max_tool_iterations = 3
                 let config = crate::conversation_logic::ConversationConfig {
                     interactive_output: true,
-                    max_tool_iterations: 5, // Or get from config
+                    ..Default::default() // Use default for max_tool_iterations
                 };
 
                 // Call the shared logic function

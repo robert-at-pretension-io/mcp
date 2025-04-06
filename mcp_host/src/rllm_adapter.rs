@@ -17,10 +17,10 @@ pub struct RLLMClient {
 }
 
 impl RLLMClient {
-    /// Create a new RLLMClient with the given API key, model name, and backend
-    pub fn new(api_key: String, model: String, backend: LLMBackend) -> Result<Self> {
-        log::info!("Creating RLLMClient for backend: {:?}, model: {}", backend, model);
-        
+    /// Create a new RLLMClient with the given API key, model name, and backend, optionally specifying a base URL.
+    pub fn new_with_base_url(api_key: String, model: String, backend: LLMBackend, base_url: Option<String>) -> Result<Self> {
+        log::info!("Creating RLLMClient for backend: {:?}, model: {}, base_url: {:?}", backend, model, base_url);
+
         // Validate parameters before building
         if model.is_empty() {
             return Err(anyhow!("Model name cannot be empty"));
@@ -41,6 +41,11 @@ impl RLLMClient {
         let mut builder = LLMBuilder::new()
             .backend(backend.clone())
             .model(&model);
+
+        // Add base URL if provided
+        if let Some(url) = &base_url {
+            builder = builder.base_url(url);
+        }
 
         // Only add API key if it's not empty (Ollama and some others don't need one)
         if !api_key.is_empty() {
@@ -143,7 +148,8 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty()) // Ensure model is not empty string
                 .unwrap_or("gemini-1.5-flash"); // Default Gemini model
-            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Google)?;
+            // Use new_with_base_url, passing None for base_url
+            let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::Google, None)?;
             Ok(Box::new(client))
         }
         "anthropic" => {
@@ -155,7 +161,13 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
                 .unwrap_or("claude-3-haiku-20240307"); // Default Anthropic model
 
             log::info!("Using RLLM adapter for Anthropic provider");
-            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Anthropic)?;
+            // Explicitly set the base URL for Anthropic
+            let client = RLLMClient::new_with_base_url(
+                api_key.to_string(),
+                model.to_string(),
+                LLMBackend::Anthropic,
+                Some("https://api.anthropic.com/v1".to_string()) // Standard Anthropic base URL
+            )?;
             Ok(Box::new(client))
         }
         "openai" => {
@@ -167,20 +179,24 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
                 .unwrap_or("gpt-4o-mini"); // Default OpenAI model
 
             log::info!("Using RLLM adapter for OpenAI provider");
-            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::OpenAI)?;
+            // Use new_with_base_url, passing None for base_url
+            let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::OpenAI, None)?;
             Ok(Box::new(client))
         }
         "ollama" => {
             log::info!("Using RLLM adapter for Ollama provider");
             // Ollama endpoint can be configured, default to localhost
-            let _endpoint = config["endpoint"].as_str().unwrap_or("http://localhost:11434");
+            let base_url = config["endpoint"].as_str()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string()); // Store as Option<String>
             // Use provider default if model is missing or empty
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
                 .unwrap_or("llama3"); // Default Ollama model
 
             // Ollama doesn't typically require an API key, pass an empty string
-            let client = RLLMClient::new("".to_string(), model.to_string(), LLMBackend::Ollama)?;
+            // Use new_with_base_url, passing the optional base_url
+            let client = RLLMClient::new_with_base_url("".to_string(), model.to_string(), LLMBackend::Ollama, base_url)?;
             Ok(Box::new(client))
         }
         "deepseek" => {
@@ -192,7 +208,8 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
                 .filter(|s| !s.is_empty())
                 .unwrap_or("deepseek-chat"); // Default DeepSeek model
 
-            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::DeepSeek)?;
+            // Use new_with_base_url, passing None for base_url
+            let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::DeepSeek, None)?;
             Ok(Box::new(client))
         }
         "xai" => {
@@ -204,7 +221,8 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
                 .filter(|s| !s.is_empty())
                 .unwrap_or("grok-1"); // Default XAI model
 
-            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::XAI)?;
+            // Use new_with_base_url, passing None for base_url
+            let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::XAI, None)?;
             Ok(Box::new(client))
         }
         "phind" => {
@@ -216,7 +234,8 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
                 .filter(|s| !s.is_empty())
                 .unwrap_or("Phind-70B"); // Default Phind model
 
-            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Phind)?;
+            // Use new_with_base_url, passing None for base_url
+            let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::Phind, None)?;
             Ok(Box::new(client))
         }
         "groq" => {
@@ -228,7 +247,8 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
                 .filter(|s| !s.is_empty())
                 .unwrap_or("llama3-8b-8192"); // Default Groq model
 
-            let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Groq)?;
+            // Use new_with_base_url, passing None for base_url
+            let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::Groq, None)?;
             Ok(Box::new(client))
         }
         _ => Err(anyhow!("Unknown or unsupported AI provider: {}", provider))
@@ -626,9 +646,14 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 message_type: MessageType::Text,
             });
         }
-        
+
         // Execute the chat request
-        log::debug!("Sending chat request with {} messages", chat_messages.len());
+        let message_count = chat_messages.len();
+        log::debug!("Sending chat request with {} messages", message_count);
+        // Add warning for large message counts
+        if message_count > 20 { // Threshold can be adjusted
+            log::warn!("Sending a large number of messages ({}) to RLLM backend {:?}. This might exceed token limits or increase costs.", message_count, self.backend);
+        }
         let start_time = std::time::Instant::now();
 
         // Chat with the LLM

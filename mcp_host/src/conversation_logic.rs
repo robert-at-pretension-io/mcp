@@ -10,12 +10,21 @@ use std::sync::Arc;
 use shared_protocol_objects::Role; // Add Role import
 
 /// Configuration for how the conversation logic should behave.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ConversationConfig {
     /// If true, print intermediate steps (tool calls, results) to stdout.
     pub interactive_output: bool,
     /// Maximum number of tool execution iterations before aborting.
     pub max_tool_iterations: u8,
+}
+
+impl Default for ConversationConfig {
+    fn default() -> Self {
+        Self {
+            interactive_output: false,
+            max_tool_iterations: 3, // Reduced from 5 to 3
+        }
+    }
 }
 
 /// Processes an assistant's response, handling tool calls recursively until a final text response is reached.

@@ -356,9 +356,10 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(
 
     // 6. Resolve the rest of the turn using the shared logic (non-interactive)
     // Use mcp_host::conversation_logic instead of crate::
+    // Use default config which now has max_tool_iterations = 3
     let config = mcp_host::conversation_logic::ConversationConfig {
         interactive_output: false, // <<< Key difference: Non-interactive
-        max_tool_iterations: 5,    // Use a reasonable limit
+        ..Default::default() // Use default for max_tool_iterations
     };
 
     // Use mcp_host::conversation_logic instead of crate::
