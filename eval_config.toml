@@ -15,7 +15,7 @@ grading_prompt_path = "prompts/eval_grading_prompt.txt"
 output_path = "eval_results/results.jsonl"
 
 # Maximum time (in seconds) allowed for a model to complete a single task.
-task_timeout_secs = 600 # 10 minutes
+task_timeout_secs = 180 # 10 minutes
 
 # Maximum time (in seconds) allowed for a model to grade a single response.
 grading_timeout_secs = 180 # 3 minutes
@@ -29,7 +29,11 @@ grading_timeout_secs = 180 # 3 minutes
 [[providers]]
 name = "openrouter"
 model = "openai/gpt-4o"
-# api_key = "sk-or-..." # Optional override
+
+
+[[providers]]
+name = "openrouter"
+model = "openai/o3-mini"
 
 [[providers]]
 name = "openrouter"
@@ -37,7 +41,11 @@ model = "anthropic/claude-3.5-sonnet"
 
 [[providers]]
 name = "openrouter"
-model = "google/gemini-2.5-pro" # Use 1.5-pro if 2.5 isn't available/stable
+model = "anthropic/claude-3.7-sonnet"
+
+[[providers]]
+name = "openrouter"
+model = "google/gemini-2.5-pro-exp-03-25"
 
 [[providers]]
 name = "openrouter"
@@ -54,14 +62,6 @@ model = "deepseek/deepseek-chat" # Or deepseek-v3-0324
 [[providers]]
 name = "groq"
 model = "llama3-70b-8192" # Direct Groq for speed
-
-[[providers]]
-name = "ollama"
-model = "llama3" # Local baseline (ensure 'ollama run llama3' works)
-
-[[providers]]
-name = "openrouter"
-model = "anthropic/claude-3-opus" # Include Opus for comparison
 
 [[providers]]
 name = "openrouter"
