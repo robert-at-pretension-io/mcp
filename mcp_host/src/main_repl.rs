@@ -35,7 +35,7 @@ pub async fn main() -> Result<()> {
                  println!("No config path specified, attempting to load default: {}", path_buf.display());
                  // Need to store the path string to pass its slice later
                  let path_str = path_buf.to_str().map(|s| s.to_string());
-                 if let Some(s) = path_str {
+                 if let Some(_s) = path_str { // Prefix with underscore
                      // This is tricky because we need a 'static reference or owned string
                      // For simplicity, let's just load it here if it exists
                      // Or better, pass the PathBuf to the builder

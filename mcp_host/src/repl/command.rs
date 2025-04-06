@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use std::io::{self, Write}; // Add io import
+// Removed unused io imports
 
 use crate::host::server_manager::ManagedServer;
 use crate::host::MCPHost; // Import MCPHost
@@ -18,23 +18,23 @@ pub struct CommandProcessor {
     servers: Arc<Mutex<HashMap<String, ManagedServer>>>, // Keep servers for direct access if needed
     current_server: Option<String>,
     config_path: Option<PathBuf>,
-    editor: DefaultEditor, // Add editor for prompting
+    // Removed editor field
 }
 
 impl CommandProcessor {
-    // Modify constructor to take MCPHost and Editor
-    pub fn new(host: MCPHost, editor: DefaultEditor) -> Self {
+    // Modify constructor to take MCPHost only
+    pub fn new(host: MCPHost) -> Self {
         Self {
             servers: Arc::clone(&host.servers), // Get servers from host
             host,
             current_server: None,
             config_path: None,
-            editor, // Store the editor
+            // Removed editor initialization
         }
     }
 
-    /// Process a command string
-    pub async fn process(&mut self, command: &str) -> Result<String> {
+    /// Process a command string, requires mutable access to the editor
+    pub async fn process(&mut self, command: &str, editor: &mut DefaultEditor) -> Result<String> {
         // Split the command into parts, respecting quotes
         let parts = match shellwords::split(command) {
             Ok(parts) => parts,
@@ -93,10 +93,10 @@ impl CommandProcessor {
     }
 
     // --- Interactive Add Server ---
-    async fn cmd_add_server(&mut self) -> Result<String> {
+    async fn cmd_add_server(&mut self, editor: &mut DefaultEditor) -> Result<String> { // Add editor param
         println!("--- Add New Server Configuration ---");
 
-        let name = self.prompt_for_input("Enter unique server name:")?;
+        let name = self.prompt_for_input("Enter unique server name:", editor)?; // Pass editor
         if name.is_empty() { return Ok("Cancelled.".to_string()); }
         // Check uniqueness
         {
@@ -107,13 +107,13 @@ impl CommandProcessor {
         }
 
 
-        let command = self.prompt_for_input("Enter command to run server:")?;
+        let command = self.prompt_for_input("Enter command to run server:", editor)?; // Pass editor
         if command.is_empty() { return Ok("Cancelled.".to_string()); }
 
         let mut args = Vec::new();
         println!("Enter command arguments (one per line, press Enter on empty line to finish):");
         loop {
-            let arg = self.prompt_for_input(&format!("Argument {}:", args.len() + 1))?;
+            let arg = self.prompt_for_input(&format!("Argument {}:", args.len() + 1), editor)?; // Pass editor
             if arg.is_empty() { break; }
             args.push(arg);
         }
@@ -121,7 +121,7 @@ impl CommandProcessor {
         let mut env = HashMap::new();
         println!("Enter environment variables (KEY=VALUE format, press Enter on empty line to finish):");
         loop {
-            let env_line = self.prompt_for_input("Env Var (e.g., KEY=value):")?;
+            let env_line = self.prompt_for_input("Env Var (e.g., KEY=value):", editor)?; // Pass editor
             if env_line.is_empty() { break; }
             if let Some((key, value)) = env_line.split_once('=') {
                 env.insert(key.trim().to_string(), value.trim().to_string());
@@ -154,7 +154,7 @@ impl CommandProcessor {
     }
 
     // --- Edit Server ---
-    async fn cmd_edit_server(&mut self, args: &[String]) -> Result<String> {
+    async fn cmd_edit_server(&mut self, args: &[String], editor: &mut DefaultEditor) -> Result<String> { // Add editor param
         const DELETE_KEYWORD: &str = "DELETE";
         if args.is_empty() {
             return Err(anyhow!("Usage: edit_server <server_name>"));
@@ -163,100 +163,109 @@ impl CommandProcessor {
         println!("--- Edit Server Configuration for '{}' ---", name);
         println!("(Press Enter to keep current value, type '{}' to delete)", DELETE_KEYWORD);
 
-        let mut config_guard = self.host.config.lock().await;
+        // --- Clone data and release lock BEFORE prompting ---
+        let (mut edited_command, mut edited_args, mut edited_env) = {
+            let config_guard = self.host.config.lock().await;
+            let server_config = match config_guard.servers.get(name) { // Use immutable get
+                Some(cfg) => cfg,
+                None => return Err(anyhow!("Server '{}' not found in configuration.", name)),
+            };
+            // Clone the data needed for editing
+            (
+                server_config.command.clone(),
+                server_config.args.clone().unwrap_or_default(),
+                server_config.env.clone()
+            )
+        }; // config_guard is dropped here
 
-        // Get mutable access to the server config
-        let server_config = match config_guard.servers.get_mut(name) {
-            Some(cfg) => cfg,
-            None => return Err(anyhow!("Server '{}' not found in configuration.", name)),
-        };
+        // --- Perform interactive editing using cloned data ---
 
-        // --- Edit Command ---
+        // Edit Command
         let command_prompt = format!("Command: ");
-        let new_command = self.prompt_with_initial(&command_prompt, &server_config.command)?;
-        if !new_command.is_empty() { // Only update if user provided non-empty input
-            server_config.command = new_command;
+        let input_command = self.prompt_with_initial(&command_prompt, &edited_command, editor)?; // Pass editor
+        if !input_command.is_empty() {
+            edited_command = input_command;
         } else {
-            println!("Keeping current command: {}", server_config.command); // Explicitly state keeping
+            println!("Keeping current command: {}", edited_command);
         }
 
-
-        // --- Edit Arguments ---
+        // Edit Arguments
         println!("\n--- Editing Arguments ---");
-        let mut current_args = server_config.args.clone().unwrap_or_default();
         let mut final_args = Vec::new();
-        for (i, arg) in current_args.iter().enumerate() {
+        for (i, arg) in edited_args.iter().enumerate() {
             let prompt = format!("Arg {}: ", i);
-            let new_arg = self.prompt_with_initial(&prompt, arg)?;
+            let new_arg = self.prompt_with_initial(&prompt, arg, editor)?; // Pass editor
             if new_arg.eq_ignore_ascii_case(DELETE_KEYWORD) {
                 println!("Deleting argument: {}", arg);
             } else if new_arg.is_empty() {
-                 println!("Keeping argument: {}", arg);
-                 final_args.push(arg.clone()); // Keep original if input is empty
+                println!("Keeping argument: {}", arg);
+                final_args.push(arg.clone());
             } else {
-                final_args.push(new_arg); // Use the edited value
+                final_args.push(new_arg);
             }
         }
         // Add new arguments
         println!("--- Add New Arguments (Press Enter on empty line to finish) ---");
         loop {
             let prompt = format!("New Arg {}: ", final_args.len());
-            let new_arg = self.prompt_for_input(&prompt)?;
-            if new_arg.is_empty() {
-                break;
-            }
+            let new_arg = self.prompt_for_input(&prompt, editor)?; // Pass editor
+            if new_arg.is_empty() { break; }
             final_args.push(new_arg);
         }
-        server_config.args = if final_args.is_empty() { None } else { Some(final_args) };
+        edited_args = final_args; // Update the edited_args vec
 
-
-        // --- Edit Environment Variables ---
+        // Edit Environment Variables
         println!("\n--- Editing Environment Variables ---");
-        let mut current_env = server_config.env.clone();
         let mut final_env = HashMap::new();
-        // Sort keys for consistent editing order
-        let mut sorted_keys: Vec<String> = current_env.keys().cloned().collect();
+        let mut sorted_keys: Vec<String> = edited_env.keys().cloned().collect();
         sorted_keys.sort();
 
         for key in sorted_keys {
-            let value = current_env.get(&key).unwrap(); // Should always exist
+            let value = edited_env.get(&key).unwrap();
             let prompt = format!("Env '{}': ", key);
-            let new_value = self.prompt_with_initial(&prompt, value)?;
+            let new_value = self.prompt_with_initial(&prompt, value, editor)?; // Pass editor
             if new_value.eq_ignore_ascii_case(DELETE_KEYWORD) {
                 println!("Deleting env var: {}", key);
             } else if new_value.is_empty() {
-                 println!("Keeping env var: {}={}", key, value);
-                 final_env.insert(key.clone(), value.clone()); // Keep original if input is empty
+                println!("Keeping env var: {}={}", key, value);
+                final_env.insert(key.clone(), value.clone());
             } else {
-                final_env.insert(key.clone(), new_value); // Use the edited value
+                final_env.insert(key.clone(), new_value);
             }
         }
         // Add new environment variables
         println!("--- Add New Environment Variables (KEY=VALUE format, press Enter to finish) ---");
         loop {
-            let env_line = self.prompt_for_input("New Env Var (e.g., KEY=value):")?;
-            if env_line.is_empty() {
-                break;
-            }
+            let env_line = self.prompt_for_input("New Env Var (e.g., KEY=value):", editor)?; // Pass editor
+            if env_line.is_empty() { break; }
             if let Some((key, value)) = env_line.split_once('=') {
                 let key = key.trim();
                 let value = value.trim();
                 if !key.is_empty() {
                     final_env.insert(key.to_string(), value.to_string());
                 } else {
-                     println!("{}", style("Invalid format: Key cannot be empty.").yellow());
+                    println!("{}", style("Invalid format: Key cannot be empty.").yellow());
                 }
             } else {
                 println!("{}", style("Invalid format. Use KEY=VALUE.").yellow());
             }
         }
-        server_config.env = final_env;
+        edited_env = final_env; // Update the edited_env map
 
-        // Config is updated in place because server_config is a mutable reference
-        // Drop the lock explicitly before saving
-        drop(config_guard);
+        // --- Re-acquire lock and update the actual config ---
+        {
+            let mut config_guard = self.host.config.lock().await;
+            if let Some(server_config) = config_guard.servers.get_mut(name) {
+                server_config.command = edited_command;
+                server_config.args = if edited_args.is_empty() { None } else { Some(edited_args) };
+                server_config.env = edited_env;
+            } else {
+                // Should not happen if we found it initially, but handle defensively
+                return Err(anyhow!("Server '{}' disappeared during editing.", name));
+            }
+        } // Lock released here
 
-        // Automatically save the configuration
+        // --- Automatically save the configuration ---
         match self.host.save_host_config().await {
             Ok(_) => Ok(format!("Server '{}' configuration updated and saved successfully.", name)),
             Err(e) => {
@@ -297,9 +306,9 @@ impl CommandProcessor {
     }
 
     // --- Reload Config ---
-    async fn cmd_reload_config(&self) -> Result<String> {
+    async fn cmd_reload_config(&mut self, editor: &mut DefaultEditor) -> Result<String> { // Add editor param
          println!("{}", style("Warning: This will discard any unsaved configuration changes.").yellow());
-         let confirm = self.prompt_for_input("Proceed? (yes/no):")?;
+         let confirm = self.prompt_for_input("Proceed? (yes/no):", editor)?; // Pass editor
          if confirm.trim().to_lowercase() != "yes" {
              return Ok("Reload cancelled.".to_string());
          }
@@ -333,18 +342,18 @@ impl CommandProcessor {
     }
 
 
-    // Helper for interactive input
-    fn prompt_for_input(&mut self, prompt: &str) -> Result<String> {
-        let readline = self.editor.readline(&style(prompt).green().to_string());
+    // Helper for interactive input - takes editor as argument
+    fn prompt_for_input(&self, prompt: &str, editor: &mut DefaultEditor) -> Result<String> {
+        let readline = editor.readline(&style(prompt).green().to_string());
         match readline {
             Ok(line) => Ok(line.trim().to_string()),
             Err(e) => Err(anyhow!("Failed to read input: {}", e)),
         }
     }
 
-    // Helper for interactive input with initial text for editing
-    fn prompt_with_initial(&mut self, prompt: &str, initial: &str) -> Result<String> {
-        let readline = self.editor.readline_with_initial(
+    // Helper for interactive input with initial text for editing - takes editor as argument
+    fn prompt_with_initial(&self, prompt: &str, initial: &str, editor: &mut DefaultEditor) -> Result<String> {
+        let readline = editor.readline_with_initial(
             &style(prompt).green().to_string(),
             (initial, ""), // Provide initial text and empty cursor position hint
         );

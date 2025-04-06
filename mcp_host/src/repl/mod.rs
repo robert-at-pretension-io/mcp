@@ -52,13 +52,12 @@ impl Repl {
         // Initialize the editor (remove mut)
         let editor = DefaultEditor::new()?;
 
-        // Create helper and command processor with the host and editor
+        // Create helper and command processor with the host
         let helper = ReplHelper::new();
-        // Clone editor before moving it into CommandProcessor
-        let command_processor = CommandProcessor::new(host.clone(), editor.clone());
+        let command_processor = CommandProcessor::new(host.clone()); // Pass host clone only
 
         Ok(Self {
-            editor, // Keep the original editor for the Repl struct itself
+            editor, // Repl owns the editor
             command_processor,
             helper,
             history_path,
@@ -134,8 +133,8 @@ impl Repl {
                             println!("{}: {}", style("Error").red().bold(), e);
                         }
                     } else {
-                        // Process other commands via CommandProcessor
-                        match self.command_processor.process(line).await {
+                        // Process other commands via CommandProcessor, passing the editor
+                        match self.command_processor.process(line, &mut self.editor).await { // Pass editor here
                             Ok(result) => {
                                 log::debug!("Command processed, result: '{}'", result);
                                 if result == "exit" {
