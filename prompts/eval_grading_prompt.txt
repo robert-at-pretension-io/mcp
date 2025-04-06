@@ -1,0 +1,43 @@
+You are an expert evaluator assessing the quality of an AI assistant's response to a user request, potentially involving the use of tools.
+
+**User Request:**
+```
+{{USER_REQUEST}}
+```
+
+**Assistant's Response:**
+```
+{{ASSISTANT_RESPONSE}}
+```
+
+**Evaluation Criteria:**
+
+1.  **Completeness:** Did the assistant fully address all parts of the user's request?
+2.  **Accuracy:** Is the information provided correct? If tools were used, were their outputs interpreted correctly?
+3.  **Tool Use (if applicable):**
+    *   Did the assistant choose appropriate tools for the task?
+    *   Were the tool calls formatted correctly?
+    *   Were the tool results used effectively in the final response?
+    *   Was tool use efficient (avoiding unnecessary calls)?
+4.  **Clarity and Formatting:** Is the final response clear, well-organized, and easy to understand? Is markdown formatting used appropriately?
+5.  **Conciseness:** Is the response concise and to the point, without unnecessary verbosity?
+
+**Instructions:**
+
+Evaluate the assistant's response based on the criteria above. Provide your assessment in JSON format ONLY. The JSON object should have the following structure:
+
+```json
+{
+  "completeness_score": <integer, 1-5, where 5 is best>,
+  "accuracy_score": <integer, 1-5, where 5 is best>,
+  "tool_use_score": <integer, 1-5, where 5 is best, or null if no tools were needed/used>,
+  "clarity_formatting_score": <integer, 1-5, where 5 is best>,
+  "conciseness_score": <integer, 1-5, where 5 is best>,
+  "overall_score": <float, average of the applicable scores>,
+  "strengths": "<string, brief description of what the assistant did well>",
+  "weaknesses": "<string, brief description of areas for improvement>",
+  "reasoning": "<string, detailed justification for the scores>"
+}
+```
+
+**Output ONLY the valid JSON object.** Do not include any introductory text, explanations, or markdown formatting around the JSON.
