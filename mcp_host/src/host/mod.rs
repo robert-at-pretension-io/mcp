@@ -93,6 +93,7 @@ impl MCPHost {
                     // For now, we leave running servers untouched if they still exist in config.
                     debug!("Server '{}' already running, leaving untouched.", name);
                 }
+                info!("Finished processing server '{}' in apply_config loop.", name); // Log end of iteration
             }
 
             // Stop servers that were running but are not in the new config
