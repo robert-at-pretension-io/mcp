@@ -1,6 +1,6 @@
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocket};
-use console::style; // Import the style function
+use console::style;
 use serde_json::Value;
 use std::sync::Arc;
 use crate::conversation_state::ConversationState;
@@ -106,33 +106,31 @@ pub async fn handle_assistant_response(
 
     // Parse all tool calls using the smiley parser
     let tool_calls = SmileyToolParser::parse_tool_calls(incoming_response);
-    
-    // If no smiley-delimited tool calls, check for standard JSON format
-    use console::style; // Add console style for formatting
 
     if tool_calls.is_empty() {
+        // If no smiley-delimited tool calls, check for standard JSON format
         if let Some((tool_name, Some(args))) = parse_json_response(incoming_response) {
             // Found a single JSON tool call
             // Display the tool call before executing
             println!(
                 "\n{}",
-                style(format!("Assistant wants to call tool: {}", tool_name)).yellow().bold()
+                style(format!("Assistant wants to call tool: {}", style(&tool_name).yellow())).italic() // Style tool name yellow
             );
             println!(
                 "{}",
                 style(format!(
                     "Arguments:\n{}",
                     serde_json::to_string_pretty(&args).unwrap_or_else(|_| "Invalid JSON".to_string())
-                )).dim()
+                )).dim() // Dim arguments
             );
 
             return execute_tool_and_continue(
                 host,
                 server_name,
-                &tool_name, 
-                args, 
-                state, 
-                client, 
+                &tool_name,
+                args,
+                state,
+                client,
                 &mut socket
             ).await;
         }
@@ -142,14 +140,14 @@ pub async fn handle_assistant_response(
             // Display the tool call before executing
             println!(
                 "\n{}",
-                style(format!("Assistant wants to call tool: {}", tool_call.name)).yellow().bold()
+                 style(format!("Assistant wants to call tool: {}", style(&tool_call.name).yellow())).italic() // Style tool name yellow
             );
             println!(
                 "{}",
                 style(format!(
                     "Arguments:\n{}",
                     serde_json::to_string_pretty(&tool_call.arguments).unwrap_or_else(|_| "Invalid JSON".to_string())
-                )).dim()
+                )).dim() // Dim arguments
             );
 
             // Execute each tool call
@@ -161,27 +159,28 @@ pub async fn handle_assistant_response(
                 state,
                 &mut socket
             ).await?;
-            
+
             // Add tool result to conversation
             let result_msg = format!("Tool '{}' returned: {}", tool_call.name, tool_result.trim());
             state.add_assistant_message(&result_msg);
         }
-        
+
         // After all tools have been called, get the next response from AI
         return continue_conversation_after_tools(host, server_name, state, client, &mut socket).await;
     }
-    
+
     // If no tool calls were found, treat as normal response
     println!(
         "\n{}",
+        // Use the formatting function from conversation_state
         crate::conversation_state::format_chat_message(&Role::Assistant, incoming_response)
     );
-    
+
     // Send the final text to client
     if let Some(ref mut ws) = socket {
         let _ = ws.send(Message::Text(incoming_response.to_string())).await;
     }
-    
+
     Ok(())
     }).await
 }
@@ -200,9 +199,10 @@ async fn execute_single_tool(
         let start_msg = serde_json::json!({ "type": "tool_call_start", "tool_name": tool_name });
         let _ = ws.send(Message::Text(start_msg.to_string())).await;
     }
-    
+
     // Call the tool through the MCP host with progress indicator
-    let progress_msg = format!("Calling tool '{}' on server '{}'...", tool_name, server_name);
+    // Style the progress message here
+    let progress_msg = format!("Calling tool '{}' on server '{}'...", style(tool_name).yellow(), style(server_name).green());
     match crate::repl::with_progress(
         progress_msg,
         host.call_tool(server_name, tool_name, args.clone())
@@ -218,20 +218,20 @@ async fn execute_single_tool(
                 });
                 let _ = ws.send(Message::Text(end_msg.to_string())).await;
             }
-            
-            // Use styled output for REPL display
-            // Use console style already imported at the top of handle_assistant_response
-            println!("\n{} {}", style("Tool Result:").blue().bold(), style(tool_name).blue());
-            println!("{}\n", truncated_result.trim()); // Print truncated result
-            
+
+            // Use the formatting function from conversation_state
+            println!("\n{}", crate::conversation_state::format_tool_response(tool_name, &truncated_result));
+
             Ok(truncated_result) // Return truncated result
         },
         Err(error) => {
             let error_msg = format!("Error: {}", error);
             log::error!("Tool '{}' error: {}", tool_name, error_msg);
-            
-            // Return error as result
-            Ok(format!("Error executing tool '{}': {}", tool_name, error_msg))
+
+            // Return error as result, styled
+            let formatted_error = format!("{} executing tool '{}': {}", style("Error").red(), style(tool_name).yellow(), error_msg);
+            println!("\n{}", formatted_error); // Print styled error
+            Ok(formatted_error) // Return the styled error string
         }
     }
 }

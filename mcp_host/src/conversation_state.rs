@@ -2,20 +2,25 @@ use shared_protocol_objects::{Role, ToolInfo};
 use console::style;
 use serde_json;
 
+/// Formats JSON nicely within a code block.
 pub fn format_json_output(json_str: &str) -> String {
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(json_str) {
-        format!("```json\n{}\n```", serde_json::to_string_pretty(&value).unwrap_or(json_str.to_string()))
+        // Dim the JSON content slightly
+        format!("```json\n{}\n```", style(serde_json::to_string_pretty(&value).unwrap_or_else(|_| json_str.to_string())).dim())
     } else {
-        json_str.to_string()
+        // If not valid JSON, just return dimmed
+        style(json_str).dim().to_string()
     }
 }
 
+/// Applies basic markdown styling with subtle colors.
 fn format_markdown(text: &str) -> String {
     let parts: Vec<&str> = text.split("```").collect();
     let mut formatted = String::new();
-    
+
     for (i, part) in parts.iter().enumerate() {
         if i % 2 == 0 {
+            // Process normal text lines
             let lines: Vec<&str> = part.lines().collect();
             for line in lines {
                 if line.starts_with("# ") {
@@ -23,29 +28,37 @@ fn format_markdown(text: &str) -> String {
                 } else if line.starts_with("## ") {
                     formatted.push_str(&format!("{}\n", style(line).blue().bold()));
                 } else if line.starts_with("> ") {
-                    formatted.push_str(&format!("{}\n", style(line).italic()));
+                    formatted.push_str(&format!("{}\n", style(line).italic().dim())); // Dim quotes
                 } else if line.starts_with("- ") || line.starts_with("* ") {
-                    formatted.push_str(&format!("  {} {}\n", style("•").cyan(), &line[2..]));
+                    formatted.push_str(&format!("  {} {}\n", style("•").cyan(), style(&line[2..]).dim())); // Dim list items
                 } else {
-                    formatted.push_str(&format!("{}\n", line));
+                    // Dim regular text lines
+                    formatted.push_str(&format!("{}\n", style(line).dim()));
                 }
             }
         } else {
+            // Process code blocks
             if part.trim().starts_with('{') || part.trim().starts_with('[') {
+                // Format JSON within the code block
                 formatted.push_str(&format_json_output(part));
             } else {
-                formatted.push_str(&format!("```{}\n```", part));
+                // Format other code blocks, dimmed
+                formatted.push_str(&format!("```{}\n```", style(part).dim()));
             }
         }
     }
-    formatted
+    // Trim trailing newline if added unnecessarily
+    formatted.trim_end().to_string()
 }
 
+/// Formats the output of a tool call.
 pub fn format_tool_response(tool_name: &str, response: &str) -> String {
     let mut output = String::new();
-    output.push_str(&format!("{}\n", style("Tool Response:").green().bold()));
+    // Style the label blue and bold, tool name yellow
+    output.push_str(&format!("{}\n", style("Tool Response:").blue().bold()));
     output.push_str(&format!("└─ {}\n", style(tool_name).yellow()));
-    
+
+    // Format the response content (JSON or markdown), which will be dimmed
     if response.trim().starts_with('{') || response.trim().starts_with('[') {
         output.push_str(&format_json_output(response));
     } else {
@@ -54,14 +67,16 @@ pub fn format_tool_response(tool_name: &str, response: &str) -> String {
     output
 }
 
+/// Formats a chat message with role styling and dimmed content.
 pub fn format_chat_message(role: &Role, content: &str) -> String {
     let role_style = match role {
         Role::System => style("System").blue().bold(),
         Role::User => style("User").magenta().bold(),
         Role::Assistant => style("Assistant").cyan().bold(),
     };
-    
-    format!("{}: {}\n", role_style, format_markdown(content))
+
+    // Apply markdown formatting (which includes dimming) to the content
+    format!("{}: {}", role_style, format_markdown(content))
 }
 
 #[derive(Debug, Clone)]

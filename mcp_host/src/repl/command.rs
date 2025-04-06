@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use console::style;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fmt::Write; // Import Write trait for building strings
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -72,33 +73,42 @@ impl CommandProcessor {
 
     /// Get available commands
     pub fn cmd_help(&self) -> Result<String> {
-        Ok(
-"Available commands:
-  help                - Show this help
-  servers             - List connected servers
-  use [server]        - Set the current server (or clear if no server specified)
-  tools [server]      - List tools for the current or specified server
-  call <tool> [server] [json] - Call a tool with JSON arguments
-  chat <server>       - Enter interactive chat mode with AI assistant and tools
-  provider [name]     - Show or set the active AI provider
-  providers           - List available AI providers
-  model [name]        - Show or set the model for the active provider
-  add_server          - Interactively add a new server configuration
-  edit_server <name>  - Interactively edit an existing server configuration
-  remove_server <name> - Remove a server configuration (requires save_config)
-  show_config [server] - Show current configuration (all or specific server)
-  save_config         - Save current server configurations to the file
-  reload_config       - Reload configuration from file (discards unsaved changes)
-  exit, quit          - Exit the program".to_string()
-        )
+        let mut help_text = String::new();
+        writeln!(help_text, "{}", style("Available commands:").bold())?;
+
+        let commands = [
+            ("help", "Show this help"),
+            ("servers", "List connected servers"),
+            ("use [server]", "Set the current server (or clear if no server specified)"),
+            ("tools [server]", "List tools for the current or specified server"),
+            ("call <tool> [server] [json]", "Call a tool with JSON arguments"),
+            ("chat <server>", "Enter interactive chat mode with AI assistant and tools"),
+            ("provider [name]", "Show or set the active AI provider"),
+            ("providers", "List available AI providers"),
+            ("model [name]", "Show or set the model for the active provider"),
+            ("add_server", "Interactively add a new server configuration"),
+            ("edit_server <name>", "Interactively edit an existing server configuration"),
+            ("remove_server <name>", "Remove a server configuration (requires save_config)"),
+            ("show_config [server]", "Show current configuration (all or specific server)"),
+            ("save_config", "Save current server configurations to the file"),
+            ("reload_config", "Reload configuration from file (discards unsaved changes)"),
+            ("exit, quit", "Exit the program"),
+        ];
+
+        for (cmd, desc) in commands {
+            // Style command name yellow, description normal
+            writeln!(help_text, "  {} - {}", style(cmd).yellow(), desc)?;
+        }
+
+        Ok(help_text)
     }
 
     // --- Interactive Add Server ---
     async fn cmd_add_server(&mut self, editor: &mut DefaultEditor) -> Result<String> { // Add editor param
-        println!("--- Add New Server Configuration ---");
+        println!("--- {} ---", style("Add New Server Configuration").cyan());
 
         let name = self.prompt_for_input("Enter unique server name:", editor)?; // Pass editor
-        if name.is_empty() { return Ok("Cancelled.".to_string()); }
+        if name.is_empty() { return Ok(style("Cancelled.").yellow().to_string()); }
         // Check uniqueness
         {
             let config_guard = self.host.config.lock().await;
@@ -109,10 +119,10 @@ impl CommandProcessor {
 
 
         let command = self.prompt_for_input("Enter command to run server:", editor)?; // Pass editor
-        if command.is_empty() { return Ok("Cancelled.".to_string()); }
+        if command.is_empty() { return Ok(style("Cancelled.").yellow().to_string()); }
 
         let mut args = Vec::new();
-        println!("Enter command arguments (one per line, press Enter on empty line to finish):");
+        println!("{}", style("Enter command arguments (one per line, press Enter on empty line to finish):").dim());
         loop {
             let arg = self.prompt_for_input(&format!("Argument {}:", args.len() + 1), editor)?; // Pass editor
             if arg.is_empty() { break; }
@@ -120,7 +130,7 @@ impl CommandProcessor {
         }
 
         let mut env = HashMap::new();
-        println!("Enter environment variables (KEY=VALUE format, press Enter on empty line to finish):");
+        println!("{}", style("Enter environment variables (KEY=VALUE format, press Enter on empty line to finish):").dim());
         loop {
             let env_line = self.prompt_for_input("Env Var (e.g., KEY=value):", editor)?; // Pass editor
             if env_line.is_empty() { break; }
@@ -145,11 +155,16 @@ impl CommandProcessor {
 
         // Automatically save the configuration
         match self.host.save_host_config().await {
-            Ok(_) => Ok(format!("Server '{}' added and configuration saved successfully.", name)),
+            Ok(_) => Ok(format!("Server '{}' added and configuration saved successfully.", style(&name).green())),
             Err(e) => {
                 // Log the error, but still report success for adding to memory
                 log::error!("Failed to automatically save config after adding server '{}': {}", name, e);
-                Ok(format!("Server '{}' added to configuration, but failed to save automatically: {}. Run 'save_config' manually.", name, e))
+                Ok(format!("Server '{}' added to configuration, but {} to save automatically: {}. Run '{}' manually.",
+                    style(&name).green(),
+                    style("failed").red(),
+                    e,
+                    style("save_config").yellow()
+                ))
             }
         }
     }
@@ -161,8 +176,8 @@ impl CommandProcessor {
             return Err(anyhow!("Usage: edit_server <server_name>"));
         }
         let name = &args[0];
-        println!("--- Edit Server Configuration for '{}' ---", name);
-        println!("(Press Enter to keep current value, type '{}' to delete)", DELETE_KEYWORD);
+        println!("--- {} '{}' ---", style("Edit Server Configuration for").cyan(), style(name).green());
+        println!("{}", style(format!("(Press Enter to keep current value, type '{}' to delete)", style(DELETE_KEYWORD).red())).dim());
 
         // --- Clone data and release lock BEFORE prompting ---
         let (mut edited_command, mut edited_args, mut edited_env) = {
@@ -187,26 +202,26 @@ impl CommandProcessor {
         if !input_command.is_empty() {
             edited_command = input_command;
         } else {
-            println!("Keeping current command: {}", edited_command);
+            println!("{}", style(format!("Keeping current command: {}", edited_command)).dim());
         }
 
         // Edit Arguments
-        println!("\n--- Editing Arguments ---");
+        println!("\n--- {} ---", style("Editing Arguments").cyan());
         let mut final_args = Vec::new();
         for (i, arg) in edited_args.iter().enumerate() {
             let prompt = format!("Arg {}: ", i);
             let new_arg = self.prompt_with_initial(&prompt, arg, editor)?; // Pass editor
             if new_arg.eq_ignore_ascii_case(DELETE_KEYWORD) {
-                println!("Deleting argument: {}", arg);
+                println!("{}", style(format!("Deleting argument: {}", arg)).yellow());
             } else if new_arg.is_empty() {
-                println!("Keeping argument: {}", arg);
+                println!("{}", style(format!("Keeping argument: {}", arg)).dim());
                 final_args.push(arg.clone());
             } else {
                 final_args.push(new_arg);
             }
         }
         // Add new arguments
-        println!("--- Add New Arguments (Press Enter on empty line to finish) ---");
+        println!("{}", style("--- Add New Arguments (Press Enter on empty line to finish) ---").dim());
         loop {
             let prompt = format!("New Arg {}: ", final_args.len());
             let new_arg = self.prompt_for_input(&prompt, editor)?; // Pass editor
@@ -216,7 +231,7 @@ impl CommandProcessor {
         edited_args = final_args; // Update the edited_args vec
 
         // Edit Environment Variables
-        println!("\n--- Editing Environment Variables ---");
+        println!("\n--- {} ---", style("Editing Environment Variables").cyan());
         let mut final_env = HashMap::new();
         let mut sorted_keys: Vec<String> = edited_env.keys().cloned().collect();
         sorted_keys.sort();
@@ -226,16 +241,16 @@ impl CommandProcessor {
             let prompt = format!("Env '{}': ", key);
             let new_value = self.prompt_with_initial(&prompt, value, editor)?; // Pass editor
             if new_value.eq_ignore_ascii_case(DELETE_KEYWORD) {
-                println!("Deleting env var: {}", key);
+                println!("{}", style(format!("Deleting env var: {}", key)).yellow());
             } else if new_value.is_empty() {
-                println!("Keeping env var: {}={}", key, value);
+                println!("{}", style(format!("Keeping env var: {}={}", key, value)).dim());
                 final_env.insert(key.clone(), value.clone());
             } else {
                 final_env.insert(key.clone(), new_value);
             }
         }
         // Add new environment variables
-        println!("--- Add New Environment Variables (KEY=VALUE format, press Enter to finish) ---");
+        println!("{}", style("--- Add New Environment Variables (KEY=VALUE format, press Enter to finish) ---").dim());
         loop {
             let env_line = self.prompt_for_input("New Env Var (e.g., KEY=value):", editor)?; // Pass editor
             if env_line.is_empty() { break; }
@@ -268,10 +283,15 @@ impl CommandProcessor {
 
         // --- Automatically save the configuration ---
         match self.host.save_host_config().await {
-            Ok(_) => Ok(format!("Server '{}' configuration updated and saved successfully.", name)),
+            Ok(_) => Ok(format!("Server '{}' configuration updated and saved successfully.", style(name).green())),
             Err(e) => {
                 log::error!("Failed to automatically save config after editing server '{}': {}", name, e);
-                Ok(format!("Server '{}' configuration updated in memory, but failed to save automatically: {}. Run 'save_config' manually.", name, e))
+                 Ok(format!("Server '{}' configuration updated in memory, but {} to save automatically: {}. Run '{}' manually.",
+                    style(name).green(),
+                    style("failed").red(),
+                    e,
+                    style("save_config").yellow()
+                ))
             }
         }
     }
@@ -290,7 +310,10 @@ impl CommandProcessor {
         };
 
         if removed {
-            Ok(format!("Server '{}' removed from configuration. Run 'save_config' to make it persistent.", name))
+            Ok(format!("Server '{}' removed from configuration. Run '{}' to make it persistent.",
+                style(name).yellow(),
+                style("save_config").yellow()
+            ))
         } else {
             Err(anyhow!("Server '{}' not found in configuration.", name))
         }
@@ -299,7 +322,7 @@ impl CommandProcessor {
     // --- Save Config ---
     async fn cmd_save_config(&self) -> Result<String> {
         match self.host.save_host_config().await {
-            Ok(_) => Ok("Configuration saved successfully.".to_string()),
+            Ok(_) => Ok(style("Configuration saved successfully.").green().to_string()),
             Err(e) => Err(anyhow!("Failed to save configuration: {}", e)),
         }
         // Potentially trigger reconfiguration here if needed immediately after save
@@ -311,7 +334,7 @@ impl CommandProcessor {
          println!("{}", style("Warning: This will discard any unsaved configuration changes.").yellow());
          let confirm = self.prompt_for_input("Proceed? (yes/no):", editor)?; // Pass editor
          if confirm.trim().to_lowercase() != "yes" {
-             return Ok("Reload cancelled.".to_string());
+             return Ok(style("Reload cancelled.").yellow().to_string());
          }
         log::info!("Proceeding with configuration reload.");
 
@@ -328,10 +351,13 @@ impl CommandProcessor {
         if let Err(e) = self.host.reload_provider_models().await {
              // Log warning but don't fail the whole reload if models file fails
              warn!("Failed to reload provider models configuration: {}", e);
-             Ok("Main configuration reloaded, but failed to reload provider models config.".to_string())
+             Ok(format!("{} Main configuration reloaded, but {} to reload provider models config.",
+                style("Warning:").yellow(),
+                style("failed").red()
+             ))
         } else {
              info!("Provider models configuration reloaded successfully.");
-             Ok("Configuration files reloaded successfully.".to_string())
+             Ok(style("Configuration files reloaded successfully.").green().to_string())
         }
     }
 
@@ -343,14 +369,15 @@ impl CommandProcessor {
             // Show all config
             let config_str = serde_json::to_string_pretty(&*config_guard)
                 .map_err(|e| anyhow!("Failed to serialize config: {}", e))?;
-            Ok(format!("Current Configuration:\n{}", config_str))
+            // Style the output slightly
+            Ok(format!("{}\n{}", style("Current Configuration:").bold(), style(config_str).dim()))
         } else {
             // Show specific server config
             let server_name = &args[0];
             if let Some(server_config) = config_guard.servers.get(server_name) {
                 let server_config_str = serde_json::to_string_pretty(server_config)
                     .map_err(|e| anyhow!("Failed to serialize server config: {}", e))?;
-                Ok(format!("Configuration for server '{}':\n{}", server_name, server_config_str))
+                Ok(format!("Configuration for server '{}':\n{}", style(server_name).green(), style(server_config_str).dim()))
             } else {
                 Err(anyhow!("Server '{}' not found in configuration.", server_name))
             }
@@ -360,7 +387,8 @@ impl CommandProcessor {
 
     // Helper for interactive input - takes editor as argument
     fn prompt_for_input(&self, prompt: &str, editor: &mut DefaultEditor) -> Result<String> {
-        let readline = editor.readline(&style(prompt).green().to_string());
+        // Use cyan for prompts
+        let readline = editor.readline(&style(prompt).cyan().to_string());
         match readline {
             Ok(line) => Ok(line.trim().to_string()),
             Err(e) => Err(anyhow!("Failed to read input: {}", e)),
@@ -369,8 +397,9 @@ impl CommandProcessor {
 
     // Helper for interactive input with initial text for editing - takes editor as argument
     fn prompt_with_initial(&self, prompt: &str, initial: &str, editor: &mut DefaultEditor) -> Result<String> {
+        // Use cyan for prompts
         let readline = editor.readline_with_initial(
-            &style(prompt).green().to_string(),
+            &style(prompt).cyan().to_string(),
             (initial, ""), // Provide initial text and empty cursor position hint
         );
         match readline {
@@ -387,40 +416,40 @@ impl CommandProcessor {
         if servers.is_empty() {
             return Ok("No servers available".to_string());
         }
-        
+
         let current = self.current_server.as_deref();
         let server_list = servers.iter()
             .map(|name| {
                 if Some(name.as_str()) == current {
-                    format!("{} (current)", name)
+                    format!("{} {}", style("✔").green(), style(name).bold()) // Highlight current
                 } else {
-                    name.clone()
+                    format!("  {}", name) // Indent non-current
                 }
             })
             .collect::<Vec<_>>()
             .join("\n");
-            
+
         Ok(format!("Available servers:\n{}", server_list))
     }
-    
+
     /// Set the current server
     pub async fn cmd_use(&mut self, args: &[String]) -> Result<String> {
         if args.is_empty() {
             self.current_server = None;
             return Ok("Cleared current server selection".to_string());
         }
-        
+
         let server_name = &args[0];
         // Check if server exists
         let servers_map = self.servers.lock().await;
         if servers_map.contains_key(server_name) {
             self.current_server = Some(server_name.clone());
-            Ok(format!("Now using server '{}'", server_name))
+            Ok(format!("Now using server '{}'", style(server_name).green())) // Style confirmation
         } else {
             Err(anyhow!("Server '{}' not found", server_name))
         }
     }
-    
+
     /// List tools for a server
     pub async fn cmd_tools(&self, args: &[String]) -> Result<String> {
         let server_name = self.get_target_server_name(args)?;
@@ -433,18 +462,19 @@ impl CommandProcessor {
         let tools = server.client.list_tools().await?;
 
         if tools.is_empty() {
-            return Ok(format!("No tools available on {}", server_name));
+            return Ok(format!("No tools available on {}", style(&server_name).green()));
         }
 
         let tool_list = tools.iter()
             .map(|tool| {
                 let desc = tool.description.as_deref().unwrap_or("No description");
-                format!("{} - {}", tool.name, desc)
+                // Style tool name yellow, description dimmed
+                format!("  {} - {}", style(&tool.name).yellow(), style(desc).dim())
             })
             .collect::<Vec<_>>()
             .join("\n");
 
-        Ok(format!("Tools on {}:\n{}", server_name, tool_list))
+        Ok(format!("Tools on {}:\n{}", style(&server_name).green(), tool_list))
     }
 
     /// Call a tool
@@ -452,9 +482,9 @@ impl CommandProcessor {
         if args.is_empty() {
             return Err(anyhow!("Usage: call <tool> [server] [json]"));
         }
-        
+
         let tool_name = &args[0];
-        
+
         // Determine server name and JSON args
         let (server_name, json_arg_opt) = self.parse_call_args(args)?;
         let args_value: Value = match json_arg_opt {
@@ -468,26 +498,26 @@ impl CommandProcessor {
         let servers_map = self.servers.lock().await;
         let server = servers_map.get(&server_name)
             .ok_or_else(|| anyhow!("Internal error: Server '{}' vanished", server_name))?;
-            
+
         // Call tool with progress indicator
-        let progress_msg = format!("Calling tool '{}' on server '{}'...", tool_name, server_name);
+        let progress_msg = format!("Calling tool '{}' on server '{}'...", style(tool_name).yellow(), style(&server_name).green());
         let result = crate::repl::with_progress(
             progress_msg,
             server.client.call_tool(tool_name, args_value)
         ).await?;
-        
+
         // Format result
         let mut raw_output = if result.is_error.unwrap_or(false) {
-            format!("Tool '{}' on server '{}' returned an error:\n", tool_name, server_name)
+            format!("{} Tool '{}' on server '{}' returned an error:\n", style("Error:").red(), style(tool_name).yellow(), style(&server_name).green())
         } else {
-            format!("Tool '{}' result from server '{}':\n", tool_name, server_name)
+            format!("{} Result from tool '{}' on server '{}':\n", style("Success:").green(), style(tool_name).yellow(), style(&server_name).green())
         };
-        
+
         for content in result.content {
             raw_output.push_str(&content.text);
             raw_output.push('\n');
         }
-        
+
         // Truncate the output before returning
         Ok(crate::repl::truncate_lines(&raw_output, 150))
     }
@@ -520,9 +550,9 @@ impl CommandProcessor {
             let provider_list = providers.iter()
                 .map(|name| {
                     if Some(name) == current_provider.as_ref() {
-                        format!("{} (current)", style(name).cyan())
+                        format!("{} {}", style("✔").green(), style(name).cyan().bold()) // Highlight current
                     } else {
-                        name.clone()
+                        format!("  {}", style(name).cyan()) // Indent non-current
                     }
                 })
                 .collect::<Vec<_>>()
@@ -577,17 +607,18 @@ impl CommandProcessor {
                     ));
 
                     if !suggestions.is_empty() {
-                        output.push_str("\nSuggested models (from config):\n");
+                        output.push_str(&format!("\n{}", style("Suggested models (from config):").dim()));
                         for suggestion in suggestions {
                             if &suggestion == current_model { // Compare suggestion with current_model ref
                                 // Highlight current model if it's in suggestions
-                                output.push_str(&format!("  - {} {}\n", style(suggestion).green(), style("(current)").dim()));
+                                output.push_str(&format!("\n  {} {}", style("✔").green(), style(suggestion).green()));
                             } else {
-                                output.push_str(&format!("  - {}\n", suggestion));
+                                output.push_str(&format!("\n  - {}", suggestion));
                             }
                         }
+                        output.push('\n'); // Add newline after list
                     } else {
-                        output.push_str(&format!("\nNo suggested models found in config for '{}'.\n", active_provider));
+                        output.push_str(&format!("\n{}", style(format!("No suggested models found in config for '{}'.", active_provider)).dim()));
                     }
                     output.push_str(&format!("\nUse '{}' to change model.", style(format!("model <name>")).yellow()));
 
@@ -596,10 +627,11 @@ impl CommandProcessor {
                     // Should ideally not happen if provider is active, but handle defensively
                     output.push_str("No model currently active for this provider.\n");
                      if !suggestions.is_empty() {
-                        output.push_str("\nSuggested models (from config):\n");
+                        output.push_str(&format!("\n{}", style("Suggested models (from config):").dim()));
                         for suggestion in suggestions {
-                             output.push_str(&format!("  - {}\n", suggestion));
+                             output.push_str(&format!("\n  - {}", suggestion));
                         }
+                        output.push('\n'); // Add newline after list
                      }
                      output.push_str(&format!("\nUse '{}' to set a model.", style(format!("model <name>")).yellow()));
                 }

@@ -16,7 +16,6 @@ pub use helper::ReplHelper;
 // Import required types
 use anyhow::{anyhow, Result};
 use console::style;
-// Removed duplicate imports below
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::path::PathBuf;
@@ -71,10 +70,13 @@ impl Repl {
     pub async fn run(&mut self) -> Result<()> {
         log::info!("Repl::run started."); // Log at the very beginning of run()
 
+        // Enhanced welcome message
         println!("\n{}", style("MCP Host Interactive Console").cyan().bold());
-        println!("Type {} for available commands, or {} to enter AI chat mode",
+        println!("Type {} for commands, {} to chat.",
                  style("help").yellow(),
                  style("chat <server>").green());
+        println!("{}", style("----------------------------------------").dim());
+
 
         // Load history after printing welcome message but before the loop
         if self.history_path.exists() {
@@ -87,7 +89,7 @@ impl Repl {
             // Dynamically set the prompt based on the current server and AI provider
             let server_part = match self.command_processor.current_server_name() {
                 Some(server) => style(server).green().to_string(),
-                None => style("mcp").dim().to_string(),
+                None => style("mcp").dim().to_string(), // Dim if no server selected
             };
             let provider_part = match self.host.get_active_provider_name().await {
                  Some(provider) => provider,
@@ -100,18 +102,19 @@ impl Repl {
                 None => "".to_string(),
             };
 
-            // Combine parts for the prompt
+            // Combine parts for the prompt - make AI info dimmer
             let ai_info_part = if provider_part != "none" {
-                 format!("({}{})", style(provider_part).cyan(), model_part)
+                 style(format!("({}{})", style(provider_part).cyan(), model_part)).dim().to_string()
             } else {
                  "".to_string() // No provider active, show nothing
             };
 
-            let prompt = format!("{}{}> ", server_part, ai_info_part);
+            // Use a slightly different prompt character
+            let prompt = format!("{} {}❯ ", server_part, ai_info_part);
 
 
             // Set the helper for completion and hinting
-            // let _ = self.editor.set_helper(Some(self.helper.clone()));
+            let _ = self.editor.set_helper(Some(self.helper.clone())); // Ensure helper is set
 
             log::debug!("Attempting to read line with prompt: '{}'", prompt); // Add log here
             let readline = self.editor.readline(&prompt);
@@ -142,12 +145,13 @@ impl Repl {
                                 }
 
                                 if !result.is_empty() {
+                                    // Print command results normally (styling handled by command)
                                     println!("{}", result);
                                 }
                             }
                             Err(e) => {
                                 log::error!("Command processing error: {}", e);
-                                println!("{}: {}", style("Error").red().bold(), e);
+                                println!("{}: {}", style("Error").red().bold(), e); // Keep errors red
                             }
                         }
                     }
@@ -200,17 +204,17 @@ impl Repl {
                 }
                 Err(ReadlineError::Interrupted) => {
                     log::debug!("Readline interrupted (Ctrl+C)");
-                    println!("^C");
+                    println!("{}", style("^C").yellow()); // Style ^C
                     continue;
                 }
                 Err(ReadlineError::Eof) => {
                     log::debug!("Readline EOF (Ctrl+D)");
-                    println!("^D");
+                    println!("{}", style("^D").yellow()); // Style ^D
                     break;
                 }
                 Err(err) => {
                     log::error!("Readline error: {}", err);
-                    println!("Error: {}", err);
+                    println!("{}: {}", style("Error").red().bold(), err); // Keep error red
                     break;
                 }
             }
@@ -218,12 +222,12 @@ impl Repl {
 
         // Save history before exiting
         if let Err(e) = self.editor.save_history(&self.history_path) {
-            println!("{}: Failed to save history to {}: {}", style("Error").red(), self.history_path.display(), e);
+            println!("{}: Failed to save history to {}: {}", style("Error").red().bold(), self.history_path.display(), e); // Keep error red
         }
 
         // Close the command processor (now a no-op)
         // self.command_processor.close().await?; // Close is likely handled by MCPHost now
-        
+
         Ok(())
     }
     /// Enhanced chat command that uses the MCPHost's AI capabilities
@@ -232,32 +236,45 @@ impl Repl {
         match self.host.enter_chat_mode(server_name).await {
             Ok(mut state) => {
                 let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
-                println!("\n{}", style(format!("Entering chat mode with server '{}' using provider '{}'. Type 'exit' or 'quit' to leave.", server_name, active_provider)).green());
-                
+                let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
+                // Use italic and dim for the entry message
+                println!(
+                    "\n{}",
+                    style(format!(
+                        "Entering chat mode with server '{}' using provider '{}' (model: {}).",
+                        style(server_name).green(),
+                        style(&active_provider).cyan(),
+                        style(&active_model).green()
+                    )).italic()
+                );
+                println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
+
                 loop {
-                    println!("\n{}", style("User:").blue().bold());
+                    // Use magenta for the user prompt label
+                    println!("\n{}", style("User:").magenta().bold());
                     let mut input = String::new();
                     std::io::stdin().read_line(&mut input)?;
                     let user_input = input.trim();
-                    
+
                     if user_input.eq_ignore_ascii_case("exit") || user_input.eq_ignore_ascii_case("quit") {
                         println!("{}", style("Exiting chat mode.").yellow());
                         break;
                     }
-                    
+
                     state.add_user_message(user_input);
 
                     // Get the current AI client from the host
                     if let Some(client) = self.host.ai_client().await {
+                        // Dim the model info
                         println!("{}", style(format!("Using AI model: {}", client.model_name())).dim());
 
                         // First ask the LLM to decide whether to use a tool or respond directly
-                        println!("{}", style("Analyzing your request...").dim());
+                        println!("{}", style("Analyzing your request...").dim()); // Dim analysis message
                         let decision_request: Result<String, anyhow::Error> = with_progress(
-                            "Deciding next action".to_string(), 
+                            "Deciding next action".to_string(), // Progress message styled in with_progress
                             async {
                                 let mut builder = client.raw_builder();
-                                
+
                                 // Add all messages to the builder for context
                                 for msg in &state.messages {
                                     match msg.role {
@@ -266,12 +283,12 @@ impl Repl {
                                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
                                     }
                                 }
-                                
+
                                 // Use the smiley-delimited format system prompt
                                 let smiley_prompt = crate::conversation_service::generate_smiley_tool_system_prompt(&state.tools);
-                                
+
                                 builder = builder.system(smiley_prompt);
-                                
+
                                 builder.execute().await
                             }
                         ).await;
@@ -297,13 +314,13 @@ impl Repl {
                         break; // Exit chat mode if no client is active
                     }
                 }
-                
+
                 Ok(())
             }
             Err(e) => Err(anyhow!("Error entering chat mode: {}", e)),
         }
     }
-    
+
     /// Load a configuration file
     pub async fn load_config(&mut self, config_path: &str) -> Result<()> {
         println!("{}", style(format!("Loading configuration from: {}", config_path)).yellow());
@@ -339,28 +356,28 @@ pub fn truncate_lines(text: &str, max_lines: usize) -> String { // Make this fun
 }
 
 /// Helper function for progress spinner
-pub async fn with_progress<F, T>(msg: String, future: F) -> T 
+pub async fn with_progress<F, T>(msg: String, future: F) -> T
 where
     F: std::future::Future<Output = T>,
 {
     use console::Term;
-    
+
     let term = Term::stderr();
     let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     let mut i = 0;
-    
+
     // Clone the message and term for the spawned task
-    let progress_msg = msg.clone();
+    let progress_msg = style(msg).dim().to_string(); // Style the progress message
     let progress_term = term.clone();
-    
+
     let handle = tokio::spawn(async move {
         loop {
             // Write the spinner and message, staying on same line
-            progress_term.write_str(&format!("\r{} {}", spinner[i], progress_msg))
+            progress_term.write_str(&format!("\r{} {}", style(spinner[i]).cyan(), progress_msg)) // Style spinner cyan
                 .unwrap_or_default();
             // Ensure the line is flushed
             progress_term.flush().unwrap_or_default();
-            
+
             i = (i + 1) % spinner.len();
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
