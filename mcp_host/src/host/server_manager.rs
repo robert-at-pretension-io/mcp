@@ -599,6 +599,7 @@ impl ServerManager {
             servers.insert(name.to_string(), server);
         }
 
+        log::info!("Finished start_server_with_command for '{}'", name); // Log before returning
         Ok(())
     }
 

@@ -72,6 +72,7 @@ impl MCPHost {
 
             // Start new/updated servers
             for (name, server_config) in &new_config.servers {
+                info!("Processing server '{}' in apply_config loop...", name); // Log start of iteration
                 servers_to_stop.remove(name); // Keep this server
 
                 if !current_servers.contains_key(name) {
