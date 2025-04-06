@@ -342,7 +342,15 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(
              }
          }
          debug!("Executing initial AI request for simulation...");
-         builder.execute().await.context("Initial AI execution failed during simulation")?
+         // Capture the specific error from the AI client
+         match builder.execute().await {
+             Ok(resp) => resp,
+             Err(e) => {
+                 // Log the detailed error before returning the context error
+                 error!("Detailed error during initial AI execution: {:?}", e);
+                 return Err(e).context("Initial AI execution failed during simulation");
+             }
+         }
     };
     debug!("Received initial AI response for simulation (length: {})", initial_response.len());
 
@@ -400,7 +408,15 @@ async fn grade_response(
     // }
 
     debug!("Executing grading request...");
-    let grade_response_str = builder.execute().await.context("Grading AI execution failed")?;
+    // Capture the specific error from the AI client
+    let grade_response_str = match builder.execute().await {
+        Ok(resp) => resp,
+        Err(e) => {
+            // Log the detailed error before returning the context error
+            error!("Detailed error during grading AI execution: {:?}", e);
+            return Err(e).context("Grading AI execution failed");
+        }
+    };
     debug!("Received grading response (length: {})", grade_response_str.len());
 
     // Attempt to parse the JSON from the response

@@ -158,6 +158,7 @@ pub async fn resolve_assistant_response(
             if config.interactive_output {
                  println!("{}", style("\nThinking after tool execution...").dim());
             }
+            // Capture the specific error from the AI client
             current_response = match builder.execute().await {
                 Ok(next_resp) => {
                     info!("Received next AI response after tool execution (length: {}).", next_resp.len());
@@ -166,7 +167,8 @@ pub async fn resolve_assistant_response(
                     next_resp // This becomes the response to process in the next loop
                 }
                 Err(e) => {
-                    error!("Error getting next AI response after tools: {}", e);
+                    // Log the detailed error before returning the context error
+                    error!("Detailed error getting next AI response after tools: {:?}", e);
                     // Decide how to handle this. Return error? Return last successful response?
                     // Let's propagate the error.
                     return Err(anyhow!("Failed to get AI response after tool execution: {}", e));

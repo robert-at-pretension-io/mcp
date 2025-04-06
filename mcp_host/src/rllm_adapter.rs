@@ -629,7 +629,7 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         // Execute the chat request
         log::debug!("Sending chat request with {} messages", chat_messages.len());
         let start_time = std::time::Instant::now();
-        
+
         // Chat with the LLM
         match llm.chat(&chat_messages).await {
             Ok(response) => {
@@ -659,12 +659,14 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             },
             Err(e) => {
                 let elapsed = start_time.elapsed();
+                // Log the detailed error from rllm crate
+                log::error!("Underlying RLLM chat error: {:?}", e);
                 let error_msg = format!(
                     "RLLM chat request failed after {:.2}s: {}",
                     elapsed.as_secs_f64(),
-                    e
+                    e // Keep the original error message for the final anyhow error
                 );
-                log::error!("{}", error_msg);
+                log::error!("{}", error_msg); // Log the formatted message too
                 Err(anyhow!(error_msg))
             }
         }

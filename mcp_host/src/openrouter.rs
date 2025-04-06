@@ -226,12 +226,18 @@ impl AIRequestBuilder for OpenRouterRequestBuilder {
         };
 
         // Apply configuration if provided
-        if let Some(config) = self.config {
+        if let Some(config) = &self.config { // Use reference to avoid moving
             request.temperature = config.temperature;
             request.max_tokens = config.max_tokens;
             request.top_p = config.top_p;
             request.frequency_penalty = config.frequency_penalty;
             request.presence_penalty = config.presence_penalty;
+        }
+
+        // Log the request body before sending (mask API key if it were included)
+        match serde_json::to_string(&request) {
+            Ok(body) => log::debug!("OpenRouter Request Body: {}", body),
+            Err(e) => log::warn!("Failed to serialize OpenRouter request for logging: {}", e),
         }
 
         // Send the request to OpenRouter API
