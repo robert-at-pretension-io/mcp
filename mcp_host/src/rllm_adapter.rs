@@ -634,11 +634,19 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         match llm.chat(&chat_messages).await {
             Ok(response) => {
                 let elapsed = start_time.elapsed();
-                // Convert the response to a string
-                let response_str = response.to_string();
+                // Extract the primary text content from the response
+                // Assuming the response object has a method or field like `text()` or `content()`
+                // Adjust based on the actual structure of rllm::chat::ChatResponse
+                let response_str = response.choices.get(0) // Get the first choice
+                    .and_then(|choice| choice.message.content.clone()) // Get the message content
+                    .unwrap_or_else(|| {
+                        log::warn!("Could not extract primary text from RLLM response, falling back to full string representation.");
+                        response.to_string() // Fallback to the full string representation if extraction fails
+                    });
+
                 log::info!(
                     "RLLM request completed in {:.2}s, received {} characters",
-                    elapsed.as_secs_f64(), 
+                    elapsed.as_secs_f64(),
                     response_str.len()
                 );
                 Ok(response_str)
