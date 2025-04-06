@@ -17,6 +17,13 @@ pub struct ReplHelper {
     highlighter: MatchingBracketHighlighter,
 }
 
+// Implement Default manually since MatchingBracketHighlighter doesn't implement Default
+impl Default for ReplHelper {
+    fn default() -> Self {
+        Self::new() // Use the existing new() method for default values
+    }
+}
+
 // Manual implementation of Clone since MatchingBracketHighlighter doesn't implement it
 impl Clone for ReplHelper {
     fn clone(&self) -> Self {

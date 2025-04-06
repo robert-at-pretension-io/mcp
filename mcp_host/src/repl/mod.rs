@@ -17,7 +17,7 @@ pub use helper::ReplHelper;
 use anyhow::{anyhow, Result};
 use console::style;
 use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
+use rustyline::Editor; // Changed from DefaultEditor
 use std::path::PathBuf;
 // Removed unused import: use std::sync::Arc;
 use tokio::process::Command as TokioCommand; // Renamed to avoid conflict
@@ -30,9 +30,9 @@ use shared_protocol_objects::Role;
 
 /// Main REPL implementation with enhanced CLI features
 pub struct Repl {
-    editor: DefaultEditor,
+    editor: Editor<ReplHelper>, // Use Editor with ReplHelper type
     command_processor: CommandProcessor,
-    helper: ReplHelper,
+    // helper field removed, it's now owned by the Editor
     history_path: PathBuf,
     host: MCPHost, // Store host directly, not Option
 }
@@ -48,17 +48,17 @@ impl Repl {
         std::fs::create_dir_all(&config_dir)?;
         let history_path = config_dir.join("history.txt");
 
-        // Initialize the editor (remove mut)
-        let editor = DefaultEditor::new()?;
+        // Initialize the editor with the ReplHelper type.
+        // ReplHelper::default() will be called internally.
+        let editor = Editor::<ReplHelper>::new()?;
 
-        // Create helper and command processor with the host
-        let helper = ReplHelper::new();
+        // Create command processor with the host
         let command_processor = CommandProcessor::new(host.clone()); // Pass host clone only
 
         Ok(Self {
-            editor, // Repl owns the editor
+            editor, // Repl owns the editor with its helper
             command_processor,
-            helper,
+            // helper field removed
             history_path,
             host, // Store the host
         })
@@ -112,10 +112,7 @@ impl Repl {
             // Use a slightly different prompt character
             let prompt = format!("{} {}❯ ", server_part, ai_info_part);
 
-
-            // Set the helper for completion and hinting
-            // Pass a clone of the helper to satisfy the 'static lifetime requirement.
-            // self.editor.set_helper(Some(self.helper.clone()));
+            // The helper is now part of the editor, no need to set it here.
 
             log::debug!("Attempting to read line with prompt: '{}'", prompt); // Add log here
             let readline = self.editor.readline(&prompt);
@@ -163,26 +160,31 @@ impl Repl {
                         let servers_guard = self.host.servers.lock().await;
                         servers_guard.keys().cloned().collect::<Vec<String>>()
                     };
-                    self.helper.update_server_names(server_names);
+                    // Access helper via editor
+                    if let Some(h) = self.editor.helper_mut() { h.update_server_names(server_names); }
+
 
                     // Update current tools list if a server is selected
                     if let Some(current_server_name) = self.command_processor.current_server_name() {
                         match self.host.list_server_tools(current_server_name).await {
-                            Ok(tools) => self.helper.update_current_tools(tools),
+                            Ok(tools) => {
+                                if let Some(h) = self.editor.helper_mut() { h.update_current_tools(tools); }
+                            },
                             Err(e) => {
                                 // Don't print error here, just clear tools if listing fails
                                 println!("{}: Failed to get tools for '{}': {}", style("Warning").yellow(), current_server_name, e);
-                                self.helper.update_current_tools(Vec::new());
+                                if let Some(h) = self.editor.helper_mut() { h.update_current_tools(Vec::new()); }
                             }
                         }
                     } else {
                         // No server selected, clear the tools list
-                        self.helper.update_current_tools(Vec::new());
+                        if let Some(h) = self.editor.helper_mut() { h.update_current_tools(Vec::new()); }
                     }
 
                     // Update available providers for completion
                     let available_providers = self.host.list_available_providers().await;
-                    self.helper.update_available_providers(available_providers);
+                    if let Some(h) = self.editor.helper_mut() { h.update_available_providers(available_providers); }
+
 
                     // Update available models for the current provider
                     if let Some(active_provider) = self.host.get_active_provider_name().await {
@@ -194,11 +196,11 @@ impl Repl {
                                 .unwrap_or_default()
                         };
                         log::debug!("Updating helper with {} suggested models for provider '{}'", models.len(), active_provider);
-                        self.helper.update_current_provider_models(models);
+                        if let Some(h) = self.editor.helper_mut() { h.update_current_provider_models(models); }
                     } else {
                         // No provider active, clear models
                         log::debug!("No active provider, clearing suggested models in helper.");
-                        self.helper.update_current_provider_models(Vec::new());
+                        if let Some(h) = self.editor.helper_mut() { h.update_current_provider_models(Vec::new()); }
                     }
                     // --- End helper state update ---
 

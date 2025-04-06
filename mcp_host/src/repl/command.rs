@@ -12,7 +12,8 @@ use log::{error, info, warn}; // Removed unused debug import
 use crate::host::server_manager::ManagedServer;
 use crate::host::MCPHost; // Import MCPHost
 use crate::host::config::{ServerConfig}; // Removed AIProviderConfig
-use rustyline::DefaultEditor; // Import Editor
+use rustyline::Editor; // Changed from DefaultEditor
+use crate::repl::helper::ReplHelper; // Import ReplHelper
 
 /// Command processor for the REPL
 pub struct CommandProcessor {
@@ -36,7 +37,7 @@ impl CommandProcessor {
     }
 
     /// Process a command string, requires mutable access to the editor
-    pub async fn process(&mut self, command: &str, editor: &mut DefaultEditor) -> Result<String> {
+    pub async fn process(&mut self, command: &str, editor: &mut Editor<ReplHelper>) -> Result<String> { // Updated editor type
         // Split the command into parts, respecting quotes
         let parts = match shellwords::split(command) {
             Ok(parts) => parts,
@@ -104,7 +105,7 @@ impl CommandProcessor {
     }
 
     // --- Interactive Add Server ---
-    async fn cmd_add_server(&mut self, editor: &mut DefaultEditor) -> Result<String> { // Add editor param
+    async fn cmd_add_server(&mut self, editor: &mut Editor<ReplHelper>) -> Result<String> { // Updated editor type
         println!("--- {} ---", style("Add New Server Configuration").cyan());
 
         let name = self.prompt_for_input("Enter unique server name:", editor)?; // Pass editor
@@ -170,7 +171,7 @@ impl CommandProcessor {
     }
 
     // --- Edit Server ---
-    async fn cmd_edit_server(&mut self, args: &[String], editor: &mut DefaultEditor) -> Result<String> { // Add editor param
+    async fn cmd_edit_server(&mut self, args: &[String], editor: &mut Editor<ReplHelper>) -> Result<String> { // Updated editor type
         const DELETE_KEYWORD: &str = "DELETE";
         if args.is_empty() {
             return Err(anyhow!("Usage: edit_server <server_name>"));
@@ -330,7 +331,7 @@ impl CommandProcessor {
     }
 
     // --- Reload Config ---
-    async fn cmd_reload_config(&mut self, editor: &mut DefaultEditor) -> Result<String> { // Add editor param
+    async fn cmd_reload_config(&mut self, editor: &mut Editor<ReplHelper>) -> Result<String> { // Updated editor type
          println!("{}", style("Warning: This will discard any unsaved configuration changes.").yellow());
          let confirm = self.prompt_for_input("Proceed? (yes/no):", editor)?; // Pass editor
          if confirm.trim().to_lowercase() != "yes" {
@@ -386,7 +387,7 @@ impl CommandProcessor {
 
 
     // Helper for interactive input - takes editor as argument
-    fn prompt_for_input(&self, prompt: &str, editor: &mut DefaultEditor) -> Result<String> {
+    fn prompt_for_input(&self, prompt: &str, editor: &mut Editor<ReplHelper>) -> Result<String> { // Updated editor type
         // Use cyan for prompts
         let readline = editor.readline(&style(prompt).cyan().to_string());
         match readline {
@@ -396,7 +397,7 @@ impl CommandProcessor {
     }
 
     // Helper for interactive input with initial text for editing - takes editor as argument
-    fn prompt_with_initial(&self, prompt: &str, initial: &str, editor: &mut DefaultEditor) -> Result<String> {
+    fn prompt_with_initial(&self, prompt: &str, initial: &str, editor: &mut Editor<ReplHelper>) -> Result<String> { // Updated editor type
         // Use cyan for prompts
         let readline = editor.readline_with_initial(
             &style(prompt).cyan().to_string(),
