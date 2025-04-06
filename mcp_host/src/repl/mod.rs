@@ -36,6 +36,7 @@ pub struct Repl {
     // helper field removed, it's now owned by the Editor
     history_path: PathBuf,
     host: MCPHost, // Store host directly, not Option
+    chat_state: Option<(String, crate::conversation_state::ConversationState)>, // (server_name, state)
 }
 
 impl Repl {
@@ -62,6 +63,7 @@ impl Repl {
             // helper field removed
             history_path,
             host, // Store the host
+            chat_state: None, // Initialize chat state
         })
     }
 
@@ -110,54 +112,158 @@ impl Repl {
                  "".to_string() // No provider active, show nothing
             };
 
-            // Use a slightly different prompt character
-            let prompt = format!("{} {}❯ ", server_part, ai_info_part);
+            // --- Prompt Generation ---
+            let prompt = if let Some((server_name, _)) = &self.chat_state {
+                // Chat mode prompt
+                log::debug!("Generating chat prompt for server: {}", server_name);
+                format!("{} {}❯ ", style("Chat").magenta(), style(server_name).green())
+            } else {
+                // Normal command mode prompt
+                log::debug!("Generating normal command prompt. Current server: {:?}, Provider: {}",
+                            self.command_processor.current_server_name(), provider_part);
+                format!("{} {}❯ ", server_part, ai_info_part)
+            };
 
             // The helper is now part of the editor, no need to set it here.
 
-            log::debug!("Attempting to read line with prompt: '{}'", prompt); // Add log here
-            let readline = self.editor.readline(&prompt);
+            // --- Read Line ---
+            log::debug!("Attempting to read line with prompt: '{}'", prompt);
+            let readline_result = self.editor.readline(&prompt);
 
-            match readline {
-                // Add logging for each branch
-                Ok(line) => {
-                    let line = line.trim();
-                    if line.is_empty() {
-                        continue;
-                    }
-
-                    self.editor.add_history_entry(line)?;
-                    log::debug!("Read line: '{}'", line);
-
-                    // Check for chat command first
-                    if line.starts_with("chat ") {
-                        if let Err(e) = self.handle_chat_command(&line[5..].trim()).await {
-                            println!("{}: {}", style("Error").red().bold(), e);
-                        }
+            // --- Handle Readline Result ---
+            let line = match readline_result {
+                Ok(l) => l, // Successfully read line
+                Err(ReadlineError::Interrupted) => {
+                    if self.chat_state.is_some() {
+                        log::debug!("Ctrl+C detected in chat mode, exiting chat.");
+                        println!("{}", style("Exiting chat mode (Ctrl+C).").yellow());
+                        self.chat_state = None; // Exit chat mode
                     } else {
-                        // Process other commands via CommandProcessor, passing the editor
-                        match self.command_processor.process(line, &mut self.editor).await { // Pass editor here
-                            Ok(result) => {
-                                log::debug!("Command processed, result: '{}'", result);
-                                if result == "exit" {
-                                    break;
-                                }
+                        log::debug!("Ctrl+C detected in normal mode.");
+                        println!("{}", style("^C").yellow()); // Style ^C
+                    }
+                    continue; // Continue to next REPL iteration
+                }
+                Err(ReadlineError::Eof) => {
+                    if self.chat_state.is_some() {
+                        log::debug!("Ctrl+D detected in chat mode, exiting chat.");
+                        println!("{}", style("Exiting chat mode (Ctrl+D).").yellow());
+                        self.chat_state = None; // Exit chat mode
+                        continue; // Continue to next REPL iteration (now outside chat)
+                    } else {
+                        log::debug!("Ctrl+D detected in normal mode, exiting REPL.");
+                        println!("{}", style("^D").yellow()); // Style ^D
+                        break; // Exit REPL
+                    }
+                }
+                Err(err) => {
+                    log::error!("Readline error: {}", err);
+                    println!("{}: {}", style("Error").red().bold(), err); // Keep error red
+                    break; // Exit REPL on other errors
+                }
+            };
 
-                                if !result.is_empty() {
-                                    // Print command results normally (styling handled by command)
-                                    println!("{}", result);
-                                }
+            // --- Process Input ---
+            let line = line.trim();
+            if line.is_empty() {
+                log::debug!("Empty line entered, continuing.");
+                continue; // Skip empty lines
+            }
+
+            // Add non-empty line to history (both commands and chat messages)
+            log::debug!("Adding line to history: '{}'", line);
+            if let Err(e) = self.editor.add_history_entry(line) {
+                 log::warn!("Failed to add line to history: {}", e);
+                 // Optional: Notify user?
+                 // println!("{}: Failed to add to history: {}", style("Warning").yellow(), e);
+            }
+
+            // --- Process based on State (Chat or Command) ---
+            if let Some((server_name, mut state)) = self.chat_state.take() { // Take ownership to modify state
+                // --- In Chat Mode ---
+                log::debug!("Processing input in chat mode for server '{}': '{}'", server_name, line);
+                if line.eq_ignore_ascii_case("exit") || line.eq_ignore_ascii_case("quit") {
+                    println!("{}", style("Exiting chat mode.").yellow());
+                    log::debug!("User requested exit from chat mode.");
+                    // self.chat_state remains None because we took it
+                } else {
+                    // Execute chat turn logic using the new helper function
+                    match self.execute_chat_turn(&server_name, &mut state, line).await {
+                        Ok(_) => {
+                            log::debug!("Chat turn executed successfully for server '{}'. Putting state back.", server_name);
+                            // Put the potentially modified state back
+                            self.chat_state = Some((server_name, state));
+                        }
+                        Err(e) => {
+                            log::error!("Error during chat turn for server '{}': {}", server_name, e);
+                            println!("{}: {}", style("Chat Error").red().bold(), e);
+                            println!("{}", style("Exiting chat mode due to error.").yellow());
+                            // self.chat_state remains None, exiting chat mode
+                        }
+                    }
+                }
+            } else {
+                // --- Not In Chat Mode (Normal Command Processing) ---
+                log::debug!("Processing input in command mode: '{}'", line);
+                if line.starts_with("chat ") {
+                    // --- Enter Chat Mode ---
+                    let target_server = line[5..].trim();
+                    log::info!("'chat' command detected for server: '{}'", target_server);
+                    if target_server.is_empty() {
+                         println!("{}: Please specify a server name. Usage: {}", style("Error").red(), style("chat <server_name>").yellow());
+                         log::warn!("'chat' command used without server name.");
+                    } else {
+                        log::debug!("Attempting to enter chat mode with server '{}'", target_server);
+                        match self.host.enter_chat_mode(target_server).await {
+                            Ok(initial_state) => {
+                                let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
+                                let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
+                                // Use italic and dim for the entry message
+                                println!(
+                                    "\n{}",
+                                    style(format!(
+                                        "Entering chat mode with server '{}' using provider '{}' (model: {}).",
+                                        style(target_server).green(),
+                                        style(&active_provider).cyan(),
+                                        style(&active_model).green()
+                                    )).italic()
+                                );
+                                println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
+                                log::info!("Successfully entered chat mode with server '{}'", target_server);
+                                self.chat_state = Some((target_server.to_string(), initial_state));
                             }
                             Err(e) => {
-                                log::error!("Command processing error: {}", e);
-                                println!("{}: {}", style("Error").red().bold(), e); // Keep errors red
+                                log::error!("Failed to enter chat mode for server '{}': {}", target_server, e);
+                                println!("{}: Error entering chat mode for '{}': {}", style("Error").red().bold(), target_server, e);
                             }
                         }
                     }
+                } else {
+                    // --- Process other commands ---
+                    log::debug!("Passing command to CommandProcessor: '{}'", line);
+                    match self.command_processor.process(line, &mut self.editor).await {
+                        Ok(result) => {
+                            log::debug!("CommandProcessor result: '{}'", result);
+                            if result == "exit" {
+                                log::info!("'exit' command received, breaking REPL loop.");
+                                break; // Exit REPL
+                            }
+                            if !result.is_empty() {
+                                println!("{}", result); // Print command output
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Command processing error: {}", e);
+                            println!("{}: {}", style("Error").red().bold(), e);
+                        }
+                    }
+                }
+            }
 
-                    // Update helper state (server names, current tools, available providers)
-                    // Update server names for completion
-                    let server_names = {
+            // --- Update Helper State (Runs regardless of mode) ---
+            log::debug!("Updating REPL helper state.");
+            // Update server names for completion
+            let server_names = {
                         let servers_guard = self.host.servers.lock().await;
                         servers_guard.keys().cloned().collect::<Vec<String>>()
                     };
@@ -235,96 +341,92 @@ impl Repl {
         Ok(())
     }
 
-    /// Enhanced chat command that uses the MCPHost's AI capabilities
-    async fn handle_chat_command(&self, server_name: &str) -> Result<()> {
-        // Use self.host directly
-        match self.host.enter_chat_mode(server_name).await {
-            Ok(mut state) => {
-                let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
-                let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
-                // Use italic and dim for the entry message
-                println!(
-                    "\n{}",
-                    style(format!(
-                        "Entering chat mode with server '{}' using provider '{}' (model: {}).",
-                        style(server_name).green(),
-                        style(&active_provider).cyan(),
-                        style(&active_model).green()
-                    )).italic()
-                );
-                println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
+    /// Executes one turn of the chat interaction.
+    /// Takes user input, calls the AI, and handles the response (including tool calls).
+    async fn execute_chat_turn(
+        &mut self, // Changed to &mut self in case helper needs updates later
+        server_name: &str,
+        state: &mut crate::conversation_state::ConversationState,
+        user_input: &str,
+    ) -> Result<()> {
+        log::debug!("Executing chat turn for server '{}'. User input: '{}'", server_name, user_input);
 
-                loop {
-                    // Use magenta for the user prompt label
-                    println!("\n{}", style("User:").magenta().bold());
-                    let mut input = String::new();
-                    std::io::stdin().read_line(&mut input)?;
-                    let user_input = input.trim();
+        // 1. Add user message to state
+        state.add_user_message(user_input);
+        log::debug!("Added user message to state. Total messages: {}", state.messages.len());
 
-                    if user_input.eq_ignore_ascii_case("exit") || user_input.eq_ignore_ascii_case("quit") {
-                        println!("{}", style("Exiting chat mode.").yellow());
-                        break;
-                    }
+        // 2. Get AI client
+        let client = self.host.ai_client().await
+            .ok_or_else(|| {
+                log::error!("No AI client active during chat turn.");
+                anyhow!("No AI client is active. Use 'providers' and 'provider <name>'.")
+            })?;
+        let model_name = client.model_name(); // Get model name for logging
+        log::debug!("Using AI client for model: {}", model_name);
 
-                    state.add_user_message(user_input);
+        // 3. Print model info (optional, kept for consistency)
+        println!("{}", style(format!("Using AI model: {}", model_name)).dim());
 
-                    // Get the current AI client from the host
-                    if let Some(client) = self.host.ai_client().await {
-                        // Dim the model info
-                        println!("{}", style(format!("Using AI model: {}", client.model_name())).dim());
+        // 4. Build request and call AI (using with_progress)
+        println!("{}", style("Analyzing your request...").dim()); // Dim analysis message
+        let decision_request: Result<String, anyhow::Error> = with_progress(
+            "Deciding next action".to_string(), // Progress message styled in with_progress
+            async {
+                let mut builder = client.raw_builder();
+                log::trace!("Building raw AI request for chat turn.");
 
-                        // First ask the LLM to decide whether to use a tool or respond directly
-                        println!("{}", style("Analyzing your request...").dim()); // Dim analysis message
-                        let decision_request: Result<String, anyhow::Error> = with_progress(
-                            "Deciding next action".to_string(), // Progress message styled in with_progress
-                            async {
-                                let mut builder = client.raw_builder();
-
-                                // Add all messages to the builder for context
-                                for msg in &state.messages {
-                                    match msg.role {
-                                        Role::System => builder = builder.system(msg.content.clone()),
-                                        Role::User => builder = builder.user(msg.content.clone()),
-                                        Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                                    }
-                                }
-
-                                // Use the smiley-delimited format system prompt
-                                let smiley_prompt = crate::conversation_service::generate_smiley_tool_system_prompt(&state.tools);
-
-                                builder = builder.system(smiley_prompt);
-
-                                builder.execute().await
-                            }
-                        ).await;
-
-                        match decision_request {
-                            Ok(decision_string) => { // Bind to an owned String
-                                // Process the AI's decision
-                                if let Err(e) = handle_assistant_response(
-                                    &self.host, // Pass reference to host
-                                    &decision_string, // Use the owned String
-                                    server_name,
-                                    &mut state,
-                                    client, // Pass the Arc<dyn AIClient>
-                                    None
-                                ).await {
-                                    println!("{}: {}", style("Error").red().bold(), e);
-                                }
-                            }
-                            Err(e) => println!("{}: {}", style("Error").red().bold(), e),
-                        }
-                    } else {
-                        println!("{}", style("Error: No AI client is active. Use 'providers' to see available providers and 'provider <name>' to activate one.").red());
-                        break; // Exit chat mode if no client is active
+                // Add all messages to the builder for context
+                for (i, msg) in state.messages.iter().enumerate() {
+                    log::trace!("Adding message {} ({:?}) to request.", i, msg.role);
+                    match msg.role {
+                        Role::System => builder = builder.system(msg.content.clone()),
+                        Role::User => builder = builder.user(msg.content.clone()),
+                        Role::Assistant => builder = builder.assistant(msg.content.clone()),
                     }
                 }
 
-                Ok(())
+                // Use the smiley-delimited format system prompt
+                let smiley_prompt = crate::conversation_service::generate_smiley_tool_system_prompt(&state.tools);
+                log::trace!("Adding smiley tool system prompt.");
+                builder = builder.system(smiley_prompt);
+
+                log::debug!("Executing AI request...");
+                builder.execute().await.map_err(|e| { // Add specific error mapping
+                    log::error!("AI execution failed: {}", e);
+                    anyhow!("AI request failed: {}", e)
+                })
             }
-            Err(e) => Err(anyhow!("Error entering chat mode: {}", e)),
+        ).await;
+
+        // 5. Process AI response
+        match decision_request {
+            Ok(decision_string) => { // Bind to an owned String
+                log::debug!("Received AI decision string (length: {})", decision_string.len());
+                log::trace!("AI decision string: {}", decision_string);
+                // Process the AI's decision using the existing helper function
+                if let Err(e) = handle_assistant_response(
+                    &self.host, // Pass reference to host
+                    &decision_string, // Use the owned String
+                    server_name,
+                    state, // Pass mutable state reference
+                    client, // Pass the Arc<dyn AIClient>
+                    None
+                ).await {
+                    log::error!("Error handling assistant response: {}", e);
+                    // Propagate the error to potentially exit chat mode
+                    return Err(anyhow!("Error processing AI response: {}", e));
+                }
+                log::debug!("Successfully handled assistant response.");
+            }
+            Err(e) => {
+                log::error!("AI decision request failed: {}", e);
+                // Propagate error from AI call itself
+                return Err(e);
+            }
         }
+        Ok(())
     }
+
 
     /// Load a configuration file
     pub async fn load_config(&mut self, config_path: &str) -> Result<()> {
