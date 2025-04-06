@@ -545,11 +545,30 @@ impl ServerManager {
                 sampling: None,
                 roots: None,
             };
-            
-            log::info!("Initializing client with special ID handling");
-            client.initialize(capabilities).await?;
-            
-            // Get the capabilities
+
+            log::info!("Initializing client {} with special ID handling", name);
+            // Add a timeout around the initialization step
+            let init_timeout = Duration::from_secs(15); // 15 second timeout for initialization
+            match tokio::time::timeout(init_timeout, client.initialize(capabilities)).await {
+                Ok(Ok(_)) => {
+                    log::info!("Client {} initialized successfully.", name);
+                }
+                Ok(Err(e)) => {
+                    error!("Client {} initialization failed: {}", name, e);
+                    // Attempt to kill the process since initialization failed
+                    // We need mutable access to process here, which we don't have directly.
+                    // Let's return an error and let the caller handle cleanup if needed.
+                    return Err(anyhow!("Client {} initialization failed: {}", name, e));
+                }
+                Err(_) => {
+                    error!("Client {} initialization timed out after {} seconds.", name, init_timeout.as_secs());
+                     // Attempt to kill the process since initialization timed out
+                     // Again, return error and let caller handle cleanup.
+                    return Err(anyhow!("Client {} initialization timed out", name));
+                }
+            }
+
+            // Get the capabilities after successful initialization
             let capabilities = client.capabilities().cloned();
             
             (process, client, capabilities)
