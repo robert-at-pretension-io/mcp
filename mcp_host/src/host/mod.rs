@@ -150,7 +150,8 @@ impl MCPHost {
         let path_guard = self.config_path.lock().await;
 
             if let Some(path) = path_guard.as_ref() {
-                config_guard.save(path).await
+                // Call save on the dereferenced Config object
+                (*config_guard).save(path).await
             } else {
                 Err(anyhow!("No configuration file path set. Cannot save."))
             }
