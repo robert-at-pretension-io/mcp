@@ -25,7 +25,7 @@ pub struct AIProviderConfig {
     pub model: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize,Clone)]
 pub struct TimeoutConfig {
     #[serde(default = "default_request_timeout")]
     pub request: u64,
