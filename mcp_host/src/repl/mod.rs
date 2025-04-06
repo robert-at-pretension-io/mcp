@@ -311,24 +311,9 @@ impl Repl {
                     }
                     // --- End helper state update ---
 
-                }
-                Err(ReadlineError::Interrupted) => {
-                    log::debug!("Readline interrupted (Ctrl+C)");
-                    println!("{}", style("^C").yellow()); // Style ^C
-                    continue;
-                }
-                Err(ReadlineError::Eof) => {
-                    log::debug!("Readline EOF (Ctrl+D)");
-                    println!("{}", style("^D").yellow()); // Style ^D
-                    break;
-                }
-                Err(err) => {
-                    log::error!("Readline error: {}", err);
-                    println!("{}: {}", style("Error").red().bold(), err); // Keep error red
-                    break;
-                }
-            }
-        }
+            } // End of main loop processing block
+
+        } // End of loop
 
         // Save history before exiting
         if let Err(e) = self.editor.save_history(&self.history_path) {
