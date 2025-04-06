@@ -179,6 +179,24 @@ impl Repl {
                     let available_providers = self.host.list_available_providers().await;
                     self.helper.update_available_providers(available_providers);
 
+                    // Update available models for the current provider
+                    if let Some(active_provider) = self.host.get_active_provider_name().await {
+                        let models = { // Scope lock
+                            let models_config_guard = self.host.provider_models.lock().await;
+                            models_config_guard.providers
+                                .get(&active_provider.to_lowercase())
+                                .map(|list| list.models.clone())
+                                .unwrap_or_default()
+                        };
+                        log::debug!("Updating helper with {} suggested models for provider '{}'", models.len(), active_provider);
+                        self.helper.update_current_provider_models(models);
+                    } else {
+                        // No provider active, clear models
+                        log::debug!("No active provider, clearing suggested models in helper.");
+                        self.helper.update_current_provider_models(Vec::new());
+                    }
+                    // --- End helper state update ---
+
                 }
                 Err(ReadlineError::Interrupted) => {
                     log::debug!("Readline interrupted (Ctrl+C)");

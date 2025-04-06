@@ -312,10 +312,25 @@ impl CommandProcessor {
          if confirm.trim().to_lowercase() != "yes" {
              return Ok("Reload cancelled.".to_string());
          }
+        log::info!("Proceeding with configuration reload.");
 
-        match self.host.reload_host_config().await {
-            Ok(_) => Ok("Configuration reloaded successfully.".to_string()),
-            Err(e) => Err(anyhow!("Failed to reload configuration: {}", e)),
+        // Reload main config first
+        log::debug!("Calling reload_host_config...");
+        if let Err(e) = self.host.reload_host_config().await {
+            error!("Failed to reload main configuration: {}", e);
+            return Err(anyhow!("Failed to reload main configuration: {}", e));
+        }
+        info!("Main configuration reloaded successfully.");
+
+        // Reload provider models config
+        log::debug!("Calling reload_provider_models...");
+        if let Err(e) = self.host.reload_provider_models().await {
+             // Log warning but don't fail the whole reload if models file fails
+             warn!("Failed to reload provider models configuration: {}", e);
+             Ok("Main configuration reloaded, but failed to reload provider models config.".to_string())
+        } else {
+             info!("Provider models configuration reloaded successfully.");
+             Ok("Configuration files reloaded successfully.".to_string())
         }
     }
 
@@ -517,28 +532,88 @@ impl CommandProcessor {
 
     /// Show or set the active AI model for the current provider
     async fn cmd_model(&self, args: &[String]) -> Result<String> {
-        let active_provider = match self.host.get_active_provider_name().await {
-            Some(name) => name,
-            None => return Err(anyhow!("No active AI provider. Use 'provider <name>' first.")),
-        };
+        let active_provider_opt = self.host.get_active_provider_name().await;
 
         if args.is_empty() {
-            // Show current model
-            match self.host.ai_client().await {
-                Some(client) => Ok(format!(
-                    "Current model for provider '{}': {}",
-                    style(&active_provider).cyan(),
-                    style(client.model_name()).green()
-                )),
-                None => Ok(format!(
-                    "No active model found for provider '{}'.",
-                    style(&active_provider).cyan()
-                )),
+            // --- Show current model and suggestions ---
+            let active_provider = match active_provider_opt {
+                Some(name) => name,
+                None => return Ok("No AI provider is currently active. Use 'provider <name>' first.".to_string()),
+            };
+            log::debug!("Showing model info for active provider: {}", active_provider);
+
+            let current_model_opt = match self.host.ai_client().await {
+                Some(client) => Some(client.model_name()),
+                None => None,
+            };
+            log::debug!("Current model: {:?}", current_model_opt);
+
+            let suggestions = { // Scope lock
+                log::debug!("Acquiring provider_models lock to get suggestions...");
+                let models_config_guard = self.host.provider_models.lock().await;
+                log::debug!("Provider_models lock acquired.");
+                let provider_key = active_provider.to_lowercase(); // Use lowercase for lookup
+                let models = models_config_guard.providers
+                    .get(&provider_key)
+                    .map(|list| list.models.clone())
+                    .unwrap_or_default();
+                log::debug!("Found {} suggestions for provider key '{}'", models.len(), provider_key);
+                models
+            }; // Lock released here
+            log::debug!("Provider_models lock released.");
+
+
+            let mut output = format!(
+                "Active provider: {}\n",
+                style(&active_provider).cyan()
+            );
+
+            match current_model_opt {
+                Some(ref current_model) => { // Use ref here
+                    output.push_str(&format!(
+                        "Current model:   {}\n",
+                        style(current_model).green()
+                    ));
+
+                    if !suggestions.is_empty() {
+                        output.push_str("\nSuggested models (from config):\n");
+                        for suggestion in suggestions {
+                            if &suggestion == current_model { // Compare suggestion with current_model ref
+                                // Highlight current model if it's in suggestions
+                                output.push_str(&format!("  - {} {}\n", style(suggestion).green(), style("(current)").dim()));
+                            } else {
+                                output.push_str(&format!("  - {}\n", suggestion));
+                            }
+                        }
+                    } else {
+                        output.push_str(&format!("\nNo suggested models found in config for '{}'.\n", active_provider));
+                    }
+                    output.push_str(&format!("\nUse '{}' to change model.", style(format!("model <name>")).yellow()));
+
+                }
+                None => {
+                    // Should ideally not happen if provider is active, but handle defensively
+                    output.push_str("No model currently active for this provider.\n");
+                     if !suggestions.is_empty() {
+                        output.push_str("\nSuggested models (from config):\n");
+                        for suggestion in suggestions {
+                             output.push_str(&format!("  - {}\n", suggestion));
+                        }
+                     }
+                     output.push_str(&format!("\nUse '{}' to set a model.", style(format!("model <name>")).yellow()));
+                }
             }
+            Ok(output)
+
         } else {
-            // Set model
+            // --- Set model (existing logic) ---
+            let provider_name = match active_provider_opt {
+                 Some(name) => name,
+                 None => return Err(anyhow!("No active AI provider. Use 'provider <name>' first.")),
+            };
             let model_name = &args[0];
-            match self.host.set_active_model(&active_provider, model_name).await {
+            log::info!("Attempting to set model to '{}' for provider '{}'", model_name, provider_name);
+            match self.host.set_active_model(&provider_name, model_name).await {
                 Ok(_) => Ok(format!(
                     "Model for provider '{}' set to: {}",
                     style(&active_provider).cyan(),

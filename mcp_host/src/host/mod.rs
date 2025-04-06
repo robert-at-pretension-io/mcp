@@ -20,8 +20,8 @@ use shared_protocol_objects::Implementation;
 // Removed duplicate Arc, Duration, Mutex below
     
 use crate::ai_client::{AIClient, AIClientFactory};
-use crate::host::config::{AIProviderConfig, Config as HostConfig}; // Removed ServerConfig import
-use std::path::PathBuf; // Add PathBuf
+use crate::host::config::{AIProviderConfig, Config as HostConfig, ProviderModelsConfig}; // Added ProviderModelsConfig
+use std::path::PathBuf;
 pub struct MCPHost {
     pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
     pub client_info: Implementation,
@@ -31,6 +31,8 @@ pub struct MCPHost {
     // Removed ai_provider_configs
     active_provider_name: Arc<Mutex<Option<String>>>, // Track the active provider name
     ai_client: Arc<Mutex<Option<Arc<dyn AIClient>>>>, // Active client instance, wrapped in Mutex
+    pub provider_models: Arc<Mutex<ProviderModelsConfig>>, // Added: Stores suggested models
+    provider_models_path: Arc<Mutex<PathBuf>>, // Added: Path to provider_models.toml
 }
 
 impl Clone for MCPHost {
@@ -43,6 +45,8 @@ impl Clone for MCPHost {
             config_path: Arc::clone(&self.config_path), // Clone Arc for path
             active_provider_name: Arc::clone(&self.active_provider_name),
             ai_client: Arc::clone(&self.ai_client),
+            provider_models: Arc::clone(&self.provider_models), // Added clone
+            provider_models_path: Arc::clone(&self.provider_models_path), // Added clone
         }
     }
 }
@@ -223,6 +227,21 @@ impl MCPHost {
             error!("No configuration file path set. Cannot reload.");
             Err(anyhow!("No configuration file path set. Cannot reload."))
         }
+    }
+
+    /// Reload the provider models configuration from disk.
+    pub async fn reload_provider_models(&self) -> Result<()> {
+        let path_to_load = { // Scope lock
+            self.provider_models_path.lock().await.clone()
+        };
+
+        info!("Reloading provider models configuration from {:?}", path_to_load);
+        let new_models_config = ProviderModelsConfig::load(&path_to_load).await;
+
+        // Update the stored config
+        *self.provider_models.lock().await = new_models_config;
+        info!("Provider models configuration reloaded successfully.");
+        Ok(())
     }
 
         /// Run the REPL interface
@@ -563,7 +582,8 @@ impl MCPHost {
 
 /// Builder for MCPHost configuration
 pub struct MCPHostBuilder {
-    config_path: Option<PathBuf>, // Add config path
+    config_path: Option<PathBuf>,
+    provider_models_path: Option<PathBuf>, // Added path for provider models config
     // Removed ai_provider_configs and default_ai_provider
     request_timeout: Option<Duration>,
     client_info: Option<Implementation>,
@@ -573,7 +593,8 @@ impl MCPHostBuilder {
     /// Create a new builder
     pub fn new() -> Self {
         Self {
-            config_path: None, // Initialize config_path
+            config_path: None,
+            provider_models_path: None, // Initialize new path
             request_timeout: None,
             client_info: None,
         }
@@ -582,6 +603,12 @@ impl MCPHostBuilder {
     /// Set the path to the configuration file
     pub fn config_path(mut self, path: PathBuf) -> Self {
         self.config_path = Some(path);
+        self
+    }
+
+    /// Set the path to the provider models configuration file (optional)
+    pub fn provider_models_path(mut self, path: PathBuf) -> Self {
+        self.provider_models_path = Some(path);
         self
     }
 
@@ -612,11 +639,12 @@ impl MCPHostBuilder {
             info!("Using default config path: {:?}", default);
             default
         });
+        info!("Using main config path: {:?}", config_path); // Log the determined main config path
 
         // Load initial config or create default
         let initial_config = match HostConfig::load(&config_path).await {
              Ok(cfg) => {
-                 info!("Loaded initial config from {:?}", config_path);
+                 info!("Loaded initial main config from {:?}", config_path);
                  cfg
              },
              Err(e) => {
@@ -624,6 +652,19 @@ impl MCPHostBuilder {
                  HostConfig::default()
              }
         };
+
+        // Determine provider models config path
+        let provider_models_path = self.provider_models_path.unwrap_or_else(|| {
+            config_path // Use the main config path determined above
+                .parent() // Get the directory (e.g., ~/.config/mcp)
+                .map(|p| p.join("provider_models.toml")) // Append the filename
+                .unwrap_or_else(|| PathBuf::from("provider_models.toml")) // Fallback
+        });
+        info!("Using provider models config path: {:?}", provider_models_path);
+
+        // Load provider models config
+        let provider_models_config = ProviderModelsConfig::load(&provider_models_path).await;
+
 
         // Determine initial AI provider based on loaded/default config
         let mut initial_ai_client: Option<Arc<dyn AIClient>> = None;
@@ -687,8 +728,10 @@ impl MCPHostBuilder {
             servers: Arc::new(Mutex::new(HashMap::new())), // Start with empty servers map
             client_info,
             request_timeout,
-            config: Arc::new(Mutex::new(initial_config)), // Store loaded/default config
-            config_path: Arc::new(Mutex::new(Some(config_path))), // Store the path
+            config: Arc::new(Mutex::new(initial_config)),
+            config_path: Arc::new(Mutex::new(Some(config_path))),
+            provider_models: Arc::new(Mutex::new(provider_models_config)), // Store loaded models
+            provider_models_path: Arc::new(Mutex::new(provider_models_path)), // Store models path
             active_provider_name: Arc::new(Mutex::new(active_provider_name)),
             ai_client: Arc::new(Mutex::new(initial_ai_client)),
         })

@@ -11,8 +11,9 @@ use shared_protocol_objects::ToolInfo; // Import ToolInfo
 pub struct ReplHelper {
     pub commands: Vec<String>,
     pub server_names: Vec<String>,
-    pub current_tools: Vec<ToolInfo>, // Store full ToolInfo for potential descriptions later
-    pub available_providers: Vec<String>, // Added available providers
+    pub current_tools: Vec<ToolInfo>,
+    pub available_providers: Vec<String>,
+    pub current_provider_models: Vec<String>, // Added: Suggested models for current provider
     highlighter: MatchingBracketHighlighter,
 }
 
@@ -23,7 +24,8 @@ impl Clone for ReplHelper {
             commands: self.commands.clone(),
             server_names: self.server_names.clone(),
             current_tools: self.current_tools.clone(),
-            available_providers: self.available_providers.clone(), // Clone providers
+            available_providers: self.available_providers.clone(),
+            current_provider_models: self.current_provider_models.clone(), // Clone models
             highlighter: MatchingBracketHighlighter::new(),
         }
     }
@@ -53,7 +55,8 @@ impl ReplHelper {
             ],
             server_names: Vec::new(),
             current_tools: Vec::new(),
-            available_providers: Vec::new(), // Initialize empty providers
+            available_providers: Vec::new(),
+            current_provider_models: Vec::new(), // Initialize empty models
             highlighter: MatchingBracketHighlighter::new(),
         }
     }
@@ -70,6 +73,11 @@ impl ReplHelper {
     // Method to update the list of available AI providers
     pub fn update_available_providers(&mut self, providers: Vec<String>) {
         self.available_providers = providers;
+    }
+
+    // Method to update the list of suggested models for the current provider
+    pub fn update_current_provider_models(&mut self, models: Vec<String>) {
+        self.current_provider_models = models;
     }
 }
 
@@ -117,6 +125,12 @@ impl Completer for ReplHelper {
             } else if command == "provider" {
                  // Complete provider names for 'provider' command
                  let matches: Vec<Pair> = self.available_providers.iter()
+                     .filter(|name| name.starts_with(word))
+                     .map(|name| Pair { display: name.clone(), replacement: name.clone() })
+                     .collect();
+                 return Ok((start, matches));
+            } else if command == "model" { // Add completion for model command
+                 let matches: Vec<Pair> = self.current_provider_models.iter()
                      .filter(|name| name.starts_with(word))
                      .map(|name| Pair { display: name.clone(), replacement: name.clone() })
                      .collect();

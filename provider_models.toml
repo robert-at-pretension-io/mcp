@@ -1,0 +1,73 @@
+# Suggested models for different providers.
+# This file is typically located in ~/.config/mcp/provider_models.toml
+#
+# The 'model' command will list these for the active provider when called without arguments.
+# You can still use 'model <custom_model_name>' even if it's not listed here.
+
+[openai]
+models = [
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4-turbo",
+    "gpt-3.5-turbo"
+]
+
+[anthropic]
+models = [
+    "claude-3-opus-20240229",
+    "claude-3-sonnet-20240229",
+    "claude-3-haiku-20240307"
+]
+
+[google] # Or use 'gemini' key if preferred in code
+models = [
+    "gemini-1.5-pro-latest",
+    "gemini-1.5-flash-latest",
+    "gemini-1.0-pro"
+]
+
+[ollama]
+models = [
+    "llama3",
+    "llama3:70b",
+    "mistral",
+    "codellama",
+    "llava",
+    "gemma",
+    "phi3"
+]
+
+[deepseek]
+models = [
+    "deepseek-chat",
+    "deepseek-coder"
+]
+
+[groq]
+models = [
+    "llama3-8b-8192",
+    "llama3-70b-8192",
+    "mixtral-8x7b-32768",
+    "gemma-7b-it"
+]
+
+[openrouter]
+models = [
+    "openai/gpt-4o",
+    "anthropic/claude-3-opus",
+    "google/gemini-flash-1.5",
+    "mistralai/mistral-large",
+    "meta-llama/llama-3-70b-instruct"
+]
+
+# [xai]
+# models = [
+#     "grok-1",
+#     # Add other XAI models
+# ]
+
+# [phind]
+# models = [
+#     "Phind-70B",
+#     # Add other Phind models
+# ]

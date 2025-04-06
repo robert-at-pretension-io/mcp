@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf}; // Added PathBuf
 use tokio::fs;
 use anyhow::Result;
 use crate::host::anyhow;
+use log::{debug, info, warn}; // Added log imports
 
 #[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone
 pub struct ServerConfig {
@@ -174,6 +175,51 @@ impl Default for Config {
             ai_providers: default_providers, // Use the map with default
             default_ai_provider: None, // No default provider specified by default
             timeouts: TimeoutConfig::default(),
+        }
+    }
+}
+
+// --- Provider Models Configuration ---
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct ProviderModelsConfig {
+    // The keys of this map are lowercase provider names (e.g., "openai", "anthropic")
+    #[serde(flatten)] // Use flatten because the TOML has top-level provider keys
+    pub providers: HashMap<String, ProviderModelList>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ProviderModelList {
+    pub models: Vec<String>,
+}
+
+impl ProviderModelsConfig {
+    /// Load the provider models configuration from a TOML file.
+    /// If the file doesn't exist or fails to parse, returns default (empty).
+    pub async fn load(path: impl AsRef<Path>) -> Self {
+        let path = path.as_ref();
+        debug!("Attempting to load provider models config from: {:?}", path);
+        match fs::read_to_string(path).await {
+            Ok(content) => {
+                match toml::from_str::<Self>(&content) {
+                    Ok(config) => {
+                        info!("Successfully loaded provider models config from {:?}", path);
+                        config
+                    },
+                    Err(e) => {
+                        warn!("Failed to parse provider models config file {:?}: {}. Using default.", path, e);
+                        Self::default()
+                    }
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                info!("Provider models config file not found at {:?}. Using default.", path);
+                Self::default()
+            },
+            Err(e) => {
+                warn!("Failed to read provider models config file {:?}: {}. Using default.", path, e);
+                Self::default()
+            }
         }
     }
 }

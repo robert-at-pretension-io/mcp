@@ -45,6 +45,7 @@ once_cell = "1.21.3"
 
 # RLLM is now a standard dependency
 rllm = { workspace = true }
+toml = "0.8" # Added for provider models config
 
 [dev-dependencies]
 tokio-test = "0.4"
