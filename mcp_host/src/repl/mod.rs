@@ -313,7 +313,6 @@ impl Repl {
 
             } // End of main loop processing block
 
-        } // End of loop
 
         // Save history before exiting
         if let Err(e) = self.editor.save_history(&self.history_path) {
