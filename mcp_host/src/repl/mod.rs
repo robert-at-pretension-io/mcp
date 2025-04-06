@@ -17,7 +17,7 @@ pub use helper::ReplHelper;
 use anyhow::{anyhow, Result};
 use console::style;
 use rustyline::error::ReadlineError;
-use rustyline::history::{DefaultHistory, History}; // Import History types
+use rustyline::history::DefaultHistory; // Import History types (Removed unused History trait)
 use rustyline::Editor;
 use std::path::PathBuf;
 // Removed unused import: use std::sync::Arc;
@@ -107,7 +107,8 @@ impl Repl {
 
             // Combine parts for the prompt - make AI info dimmer
             let ai_info_part = if provider_part != "none" {
-                 style(format!("({}{})", style(provider_part).cyan(), model_part)).dim().to_string()
+                 // Clone provider_part here to avoid moving it before the debug log below
+                 style(format!("({}{})", style(provider_part.clone()).cyan(), model_part)).dim().to_string()
             } else {
                  "".to_string() // No provider active, show nothing
             };
