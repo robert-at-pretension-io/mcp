@@ -490,7 +490,7 @@ impl MCPHost {
 
 
     /// Internal helper to get the API key environment variable name for a provider.
-    fn get_api_key_var(provider_name: &str) -> Option<&'static str> {
+    pub fn get_api_key_var(provider_name: &str) -> Option<&'static str> { // Make public
         match provider_name.to_lowercase().as_str() {
             "deepseek" => Some("DEEPSEEK_API_KEY"),
             "anthropic" => Some("ANTHROPIC_API_KEY"),
