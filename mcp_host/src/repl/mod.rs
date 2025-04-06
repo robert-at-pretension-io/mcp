@@ -17,7 +17,8 @@ pub use helper::ReplHelper;
 use anyhow::{anyhow, Result};
 use console::style;
 use rustyline::error::ReadlineError;
-use rustyline::Editor; // Changed from DefaultEditor
+use rustyline::history::{DefaultHistory, History}; // Import History types
+use rustyline::Editor;
 use std::path::PathBuf;
 // Removed unused import: use std::sync::Arc;
 use tokio::process::Command as TokioCommand; // Renamed to avoid conflict
@@ -30,7 +31,7 @@ use shared_protocol_objects::Role;
 
 /// Main REPL implementation with enhanced CLI features
 pub struct Repl {
-    editor: Editor<ReplHelper>, // Use Editor with ReplHelper type
+    editor: Editor<ReplHelper, DefaultHistory>, // Specify History type
     command_processor: CommandProcessor,
     // helper field removed, it's now owned by the Editor
     history_path: PathBuf,
@@ -48,9 +49,9 @@ impl Repl {
         std::fs::create_dir_all(&config_dir)?;
         let history_path = config_dir.join("history.txt");
 
-        // Initialize the editor with the ReplHelper type.
+        // Initialize the editor with the ReplHelper and DefaultHistory types.
         // ReplHelper::default() will be called internally.
-        let editor = Editor::<ReplHelper>::new()?;
+        let editor = Editor::<ReplHelper, DefaultHistory>::new()?;
 
         // Create command processor with the host
         let command_processor = CommandProcessor::new(host.clone()); // Pass host clone only
