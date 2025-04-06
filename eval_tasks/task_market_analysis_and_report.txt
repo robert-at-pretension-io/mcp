@@ -1,0 +1,6 @@
+Perform a market analysis for the electric vehicle (EV) sector.
+1. Use web search (e.g., `brave_search` or `google_search`) to find 3 recent news articles (within the last month) about major EV manufacturers (e.g., Tesla, BYD, Rivian).
+2. For each article found, use the `scrape_url` tool to extract the main text content.
+3. Analyze the sentiment of each article's content (positive, negative, neutral). You might need to infer this or use a hypothetical sentiment analysis tool if available.
+4. Summarize the key news points and overall market sentiment based on these articles.
+5. Generate a brief report in markdown format, including links to the original articles.

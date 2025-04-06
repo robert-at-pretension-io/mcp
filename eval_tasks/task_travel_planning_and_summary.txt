@@ -1,0 +1,8 @@
+Plan a 3-day trip from San Francisco (SFO) to London Heathrow (LHR) for next month.
+1. Use web search (`brave_search` or `google_search`) to find potential round-trip flight options. Look for departure dates around the 15th of next month. Note down 1-2 flight options with airlines and estimated prices.
+2. Use web search again to find 2-3 well-rated hotels near the city center of London (e.g., Covent Garden, Soho) for the corresponding dates. Note their names and estimated price per night.
+3. Choose one flight option and one hotel. Use `scrape_url` on the hotel's booking page (if a direct link is found during search) to check for specific amenities like free Wi-Fi or breakfast.
+4. Create a brief itinerary summary in markdown format, including:
+    - Chosen flight details (airline, estimated price).
+    - Chosen hotel details (name, estimated price per night, key amenities found).
+    - Mention the search tools used.
