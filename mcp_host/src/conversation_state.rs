@@ -100,11 +100,11 @@ impl ConversationState {
             tools: tools.clone(),
         };
 
-        // Generate a combined system prompt including the smiley tool format instructions
+        // Generate a combined system prompt including the tool format instructions
         let combined_prompt = format!(
-            "{}\n\n{}", 
+            "{}\n\n{}",
             system_prompt,
-            crate::conversation_service::generate_smiley_tool_system_prompt(&tools)
+            crate::conversation_service::generate_tool_system_prompt(&tools) // Use new function name
         );
 
         // Add the combined system prompt as the first system message

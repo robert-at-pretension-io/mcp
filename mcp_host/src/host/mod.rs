@@ -328,14 +328,10 @@ impl MCPHost {
 
         // Create the conversation state
         let mut state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list.clone());
-        
-        // Use the new smiley-delimited JSON format for tool calling
-        let smiley_instruction = crate::conversation_service::generate_smiley_tool_system_prompt(&tool_info_list);
 
-        log::debug!("smiley_instruction is {:?}", &smiley_instruction);
-
-        // Add the smiley instruction as a system message
-        state.add_system_message(&smiley_instruction);
+        // The ConversationState::new now incorporates the tool prompt generation,
+        // so we don't need to add it separately here.
+        // The generate_tool_system_prompt function is called within ConversationState::new.
 
         Ok(state)
     }

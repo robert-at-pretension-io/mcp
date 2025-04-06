@@ -5,7 +5,7 @@ pub mod repl;
 pub mod main_repl;
 pub mod conversation_state;
 pub mod host;
-pub mod smiley_tool_parser;
+pub mod tool_parser; // Updated module name
 pub mod rllm_adapter;
 pub mod openrouter;
 

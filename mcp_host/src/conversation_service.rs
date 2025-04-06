@@ -104,11 +104,11 @@ pub async fn handle_assistant_response(
     // Record the incoming response
     state.add_assistant_message(incoming_response);
 
-    // Parse all tool calls using the smiley parser
-    let tool_calls = SmileyToolParser::parse_tool_calls(incoming_response);
+    // Parse all tool calls using the new parser
+    let tool_calls = ToolParser::parse_tool_calls(incoming_response); // Use new parser
 
     if tool_calls.is_empty() {
-        // If no smiley-delimited tool calls, check for standard JSON format
+        // If no delimited tool calls, check for standard JSON format (this logic remains the same)
         if let Some((tool_name, Some(args))) = parse_json_response(incoming_response) {
             // Found a single JSON tool call
             // Display the tool call before executing
@@ -307,8 +307,8 @@ async fn continue_conversation_after_tools(
     }
 }
 
-/// Generate a system prompt instructing the AI about tool usage with smiley format
-pub fn generate_smiley_tool_system_prompt(tools: &[shared_protocol_objects::ToolInfo]) -> String {
+/// Generate a system prompt instructing the AI about tool usage with text delimiters
+pub fn generate_tool_system_prompt(tools: &[shared_protocol_objects::ToolInfo]) -> String { // Renamed function
     // Format tools information
     let tools_info = tools.iter()
         .map(|t| format!(
@@ -320,11 +320,11 @@ pub fn generate_smiley_tool_system_prompt(tools: &[shared_protocol_objects::Tool
         .collect::<Vec<String>>()
         .join("\n\n");
     
-    // Create the full system prompt with smiley delimiter instructions
+    // Create the full system prompt with the new text delimiter instructions
     format!(
         "You have access to the following tools:\n\n{}\n\n\
-        When you need to use a tool, you MUST format your request exactly as follows:\n\
-        😊😊😊😊😊😊😊😊😊😊😊😊😊😊\n\
+        When you need to use a tool, you MUST format your request exactly as follows, including the delimiters:\n\
+        <<<TOOL_CALL>>>\n\
         {{\n  \
           \"name\": \"tool_name\",\n  \
           \"arguments\": {{\n    \
@@ -332,14 +332,15 @@ pub fn generate_smiley_tool_system_prompt(tools: &[shared_protocol_objects::Tool
             \"arg2\": \"value2\"\n  \
           }}\n\
         }}\n\
-        😊😊😊😊😊😊😊😊😊😊😊😊😊😊\n\n\
+        <<<END_TOOL_CALL>>>\n\n\
         Important:\n\
-        - You must use EXACTLY 14 smileys (😊) before and after the JSON.\n\
-        - The JSON must be valid and match the expected format for the tool.\n\
-        - Only include one tool call per smiley-delimited block.\n\
-        - If you need to use multiple tools, return them one after another in separate blocks.\n\
-        - You can mix normal text with tool calls - just wrap the tool call JSON in the smiley delimiters.\n\
-        - Always respond directly to the user's request. If a tool is needed, call it. If not, just respond normally.",
+        - You MUST use the exact delimiters `<<<TOOL_CALL>>>` and `<<<END_TOOL_CALL>>>` on separate lines surrounding the JSON.\n\
+        - The JSON block MUST contain a `name` field (string) and an `arguments` field (object).\n\
+        - The JSON must be valid and the arguments must match the schema for the chosen tool.\n\
+        - Only include ONE tool call JSON block per `<<<TOOL_CALL>>>...<<<END_TOOL_CALL>>>` section.\n\
+        - If you need to use multiple tools, return them one after another, each in their own delimited section.\n\
+        - You can include explanatory text before or after the `<<<TOOL_CALL>>>...<<<END_TOOL_CALL>>>` block. Do NOT put text inside the delimiters other than the JSON.\n\
+        - If no tool is needed, just respond normally to the user without using the delimiters.",
         tools_info
     )
 }
