@@ -114,8 +114,10 @@ impl Repl {
 
 
             // Set the helper for completion and hinting
-            // Box the helper clone to satisfy the type expected by set_helper
-            self.editor.set_helper(Some(Box::new(self.helper.clone())));
+            // Pass a mutable reference to the helper
+            // Note: This might cause lifetime issues if not handled carefully by rustyline,
+            // but let's try it as it matches some patterns.
+            self.editor.set_helper(Some(&mut self.helper));
 
             log::debug!("Attempting to read line with prompt: '{}'", prompt); // Add log here
             let readline = self.editor.readline(&prompt);
