@@ -115,7 +115,7 @@ impl Repl {
 
             // Set the helper for completion and hinting
             // Pass a clone of the helper to satisfy the 'static lifetime requirement.
-            self.editor.set_helper(Some(self.helper.clone()));
+            // self.editor.set_helper(Some(self.helper.clone()));
 
             log::debug!("Attempting to read line with prompt: '{}'", prompt); // Add log here
             let readline = self.editor.readline(&prompt);
@@ -231,6 +231,7 @@ impl Repl {
 
         Ok(())
     }
+
     /// Enhanced chat command that uses the MCPHost's AI capabilities
     async fn handle_chat_command(&self, server_name: &str) -> Result<()> {
         // Use self.host directly
