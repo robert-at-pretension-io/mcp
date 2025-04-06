@@ -277,11 +277,11 @@ async fn continue_conversation_after_tools(
         }
     }
     
-    // Add a prompt to encourage the AI to either call more tools or provide a final response
+    // Add a more directive prompt after tool results
     builder = builder.system(
-        "Based on the tool results and conversation so far, you can either:\n\
-        1. Call additional tools if needed (using the smiley-delimited format), or\n\
-        2. Provide a final response to the user's request.".to_string()
+        "Analyze the tool results provided above. Based on those results and the user's original request, decide the next step:\n\
+        1. Call another tool if necessary (using the smiley-delimited format).\n\
+        2. Provide a final response to the user.".to_string()
     );
     
     // Get next response from the AI
