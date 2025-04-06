@@ -2,7 +2,9 @@
   "mcpServers": {
     "default": {
       "command": "./target/debug/mcp_tools",
-      "env": {}
+      "env": {
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}"
+      }
     }
   }
 }
