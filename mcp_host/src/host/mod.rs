@@ -14,10 +14,11 @@ use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn}; // Added debug, warn
 use server_manager::ManagedServer;
 use shared_protocol_objects::Implementation;
-use std::collections::HashMap; // Keep this one
-use std::sync::Arc; // Keep this one
-use std::time::Duration; // Keep this one
-use tokio::sync::Mutex; // Keep this one
+// Removed duplicate HashMap
+// Removed unused Arc, Duration, Mutex
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Mutex;
 
 use crate::ai_client::{AIClient, AIClientFactory};
 use crate::host::config::{AIProviderConfig, Config as HostConfig}; // Renamed Config to HostConfig

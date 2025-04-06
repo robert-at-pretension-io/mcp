@@ -16,8 +16,7 @@ pub use helper::ReplHelper;
 // Import required types
 use anyhow::{anyhow, Result};
 use console::style;
-use anyhow::{anyhow, Result};
-use console::style;
+// Removed duplicate imports below
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::path::PathBuf;
@@ -234,13 +233,13 @@ impl Repl {
                                 builder.execute().await
                             }
                         ).await;
-                        
+
                         match decision_request {
-                            Ok(decision_str) => {
+                            Ok(decision_string) => { // Bind to an owned String
                                 // Process the AI's decision
                                 if let Err(e) = handle_assistant_response(
                                     &self.host, // Pass reference to host
-                                    &decision_str,
+                                    &decision_string, // Use the owned String
                                     server_name,
                                     &mut state,
                                     client, // Pass the Arc<dyn AIClient>

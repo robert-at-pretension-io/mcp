@@ -15,8 +15,7 @@ pub struct ServerConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone here
 // Removed leftover struct field and closing brace below
-
-#[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone here
+// Removed duplicate derive below
 pub struct AIProviderConfig {
     // Removed provider field, key in the map will be the provider name
     #[serde(default)]

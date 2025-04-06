@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use anyhow::Result;
-use async_trait::async_trait;
+// Removed duplicate imports below
 use serde_json::Value;
 use std::path::Path;
 use shared_protocol_objects::Role;
@@ -34,7 +33,7 @@ pub struct GenerationConfig {
 }
 
 /// Builder for constructing AI requests
-#[async_trait]
+#[async_trait] // Ensure async_trait is applied to the trait definition
 pub trait AIRequestBuilder: Send {
     /// Add a system message
     fn system(self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder>;

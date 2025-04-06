@@ -408,7 +408,7 @@ struct RLLMRequestBuilder {
     system: Option<String>,
 }
 
-#[async_trait]
+#[async_trait] // Ensure async_trait is applied to the impl block
 impl AIRequestBuilder for RLLMRequestBuilder {
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         log::debug!("Setting system message for RLLM request");
