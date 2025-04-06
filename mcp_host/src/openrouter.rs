@@ -45,23 +45,30 @@ struct ChatMessage {
 // Response structure for the OpenRouter API
 #[derive(Deserialize, Debug)]
 struct ChatCompletionResponse {
-    id: String,
-    object: String,
-    created: u64,
-    model: String,
+    #[allow(dead_code)] // Or prefix with _ if preferred and adjust parsing if needed
+    _id: String,
+    #[allow(dead_code)]
+    _object: String,
+    #[allow(dead_code)]
+    _created: u64,
+    #[allow(dead_code)]
+    _model: String,
     choices: Vec<Choice>,
 }
 
 #[derive(Deserialize, Debug)]
 struct Choice {
-    index: u32,
+    #[allow(dead_code)]
+    _index: u32,
     message: ResponseMessage,
-    finish_reason: String,
+    #[allow(dead_code)]
+    _finish_reason: String,
 }
 
 #[derive(Deserialize, Debug)]
 struct ResponseMessage {
-    role: String,
+    #[allow(dead_code)]
+    _role: String,
     content: String,
 }
 
