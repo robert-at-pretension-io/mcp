@@ -506,7 +506,7 @@ impl MCPHost {
     }
 
     /// Internal helper to get the API key for a provider from the environment.
-    fn get_api_key_for_provider(provider_name: &str) -> Result<String> {
+    pub fn get_api_key_for_provider(provider_name: &str) -> Result<String> { // Make public
         if let Some(var_name) = Self::get_api_key_var(provider_name) {
             std::env::var(var_name)
                 .map_err(|e| anyhow!("API key environment variable '{}' not found: {}", var_name, e))
