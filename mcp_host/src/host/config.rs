@@ -62,7 +62,7 @@ impl Default for AIProviderConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone here
 pub struct Config {
     #[serde(rename = "mcpServers")]
     pub servers: HashMap<String, ServerConfig>,
