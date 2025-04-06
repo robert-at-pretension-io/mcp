@@ -165,40 +165,65 @@ impl MCPHost {
             info!("Finished AI provider update logic in apply_config."); // <-- Add log here
 
 
+            // Update the stored config
+            debug!("Acquiring config lock to update stored config...");
             *self.config.lock().await = new_config;
+            debug!("Config lock released.");
             info!("Configuration applied successfully.");
-            info!("Exiting apply_config."); // <-- Add log here
+            info!("Exiting apply_config.");
             Ok(())
         } // End of apply_config
+
     // Method to save the current in-memory config
     pub async fn save_host_config(&self) -> Result<()> {
-        let config_guard = self.config.lock().await;
-        let path_guard = self.config_path.lock().await;
+        debug!("Acquiring config and config_path locks for saving...");
+        let config_to_save: HostConfig;
+        let path_to_save: Option<PathBuf>;
 
-            if let Some(path) = path_guard.as_ref() {
-                // Call save on the dereferenced Config object
-                (*config_guard).save(path).await
-            } else {
-                Err(anyhow!("No configuration file path set. Cannot save."))
-            }
-        }
-    
-
-        // Method to reload config from disk
-        pub async fn reload_host_config(&self) -> Result<()> {
+        { // Scope for locks
+            let config_guard = self.config.lock().await;
             let path_guard = self.config_path.lock().await;
-            if let Some(path) = path_guard.as_ref() {
-                info!("Reloading configuration from {:?}", path);
-                let new_config = HostConfig::load(path).await?;
-                // Drop lock before calling apply_config which might need it
-                drop(path_guard);
-                self.apply_config(new_config).await?;
-                Ok(())
-            } else {
-                Err(anyhow!("No configuration file path set. Cannot reload."))
-            }
+            debug!("Config and config_path locks acquired.");
+            config_to_save = (*config_guard).clone();
+            path_to_save = (*path_guard).clone();
+            debug!("Config and path cloned for saving.");
+        } // Locks released here
+        debug!("Config and config_path locks released.");
+
+        if let Some(path) = path_to_save {
+            debug!("Calling config.save() for path: {:?}", path);
+            config_to_save.save(&path).await // Use cloned data
+        } else {
+            error!("No configuration file path set. Cannot save.");
+            Err(anyhow!("No configuration file path set. Cannot save."))
         }
-        // Removed duplicate configure method
+    }
+
+
+    // Method to reload config from disk
+    pub async fn reload_host_config(&self) -> Result<()> {
+        debug!("Acquiring config_path lock for reloading...");
+        let path_to_load: Option<PathBuf>;
+        { // Scope for lock
+            let path_guard = self.config_path.lock().await;
+            debug!("Config_path lock acquired.");
+            path_to_load = (*path_guard).clone();
+            debug!("Config path cloned for reloading.");
+        } // Lock released here
+        debug!("Config_path lock released.");
+
+        if let Some(path) = path_to_load {
+            info!("Reloading configuration from {:?}", path);
+            debug!("Calling HostConfig::load()...");
+            let new_config = HostConfig::load(&path).await?; // Use cloned path
+            debug!("Config loaded from disk, now calling apply_config...");
+            self.apply_config(new_config).await?; // apply_config handles its own locks
+            Ok(())
+        } else {
+            error!("No configuration file path set. Cannot reload.");
+            Err(anyhow!("No configuration file path set. Cannot reload."))
+        }
+    }
 
         /// Run the REPL interface
     pub async fn run_repl(&self) -> Result<()> {
