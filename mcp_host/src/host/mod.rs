@@ -223,9 +223,10 @@ impl MCPHost {
             .get(provider_name)
             .cloned() // Clone the config if found
             .unwrap_or_else(|| {
-                // If not in config, create a default config for this provider
-                warn!("Provider '{}' not found in config, using default model.", provider_name);
-                AIProviderConfig::default() // Assuming default() gives a reasonable default model
+                // If not in config, create a provider-specific default config
+                warn!("Provider '{}' not found in config, using provider default model.", provider_name);
+                let default_model = Self::get_default_model_for_provider(provider_name);
+                AIProviderConfig { model: default_model }
             });
 
         // Try to create the client for this provider
@@ -277,6 +278,20 @@ impl MCPHost {
             Ok("".to_string()) // Ollama doesn't need a key
         } else {
             Err(anyhow!("Unsupported provider or provider requires no API key: {}", provider_name))
+        }
+    }
+
+    /// Helper to get a default model name for a given provider.
+    fn get_default_model_for_provider(provider_name: &str) -> String {
+        match provider_name.to_lowercase().as_str() {
+            "anthropic" => "claude-3-haiku-20240307".to_string(),
+            "openai" => "gpt-4o-mini".to_string(),
+            "gemini" | "google" => "gemini-1.5-flash".to_string(), // Use flash as default
+            "ollama" => "llama3".to_string(),
+            "xai" | "grok" => "grok-1".to_string(), // Assuming a default, adjust if needed
+            "phind" => "Phind-70B".to_string(), // Assuming a default
+            "groq" => "llama3-8b-8192".to_string(),
+            "deepseek" | _ => "deepseek-chat".to_string(), // Default fallback
         }
     }
 

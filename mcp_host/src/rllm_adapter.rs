@@ -138,15 +138,21 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for Gemini provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Gemini API key not provided"))?;
-            let model = config["model"].as_str().unwrap_or("gemini-1.5-pro");
+            // Use provider default if model is missing or empty
+            let model = config["model"].as_str()
+                .filter(|s| !s.is_empty()) // Ensure model is not empty string
+                .unwrap_or("gemini-1.5-flash"); // Default Gemini model
             let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Google)?;
             Ok(Box::new(client))
         }
         "anthropic" => {
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Anthropic API key not provided"))?;
-            let model = config["model"].as_str().unwrap_or("claude-3-haiku-20240307"); // Use a default model known to rllm
-            
+            // Use provider default if model is missing or empty
+            let model = config["model"].as_str()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("claude-3-haiku-20240307"); // Default Anthropic model
+
             log::info!("Using RLLM adapter for Anthropic provider");
             let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Anthropic)?;
             Ok(Box::new(client))
@@ -154,7 +160,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
         "openai" => {
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("OpenAI API key not provided"))?;
-            let model = config["model"].as_str().unwrap_or("gpt-4o-mini"); // Keep existing default
+            // Use provider default if model is missing or empty
+            let model = config["model"].as_str()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("gpt-4o-mini"); // Default OpenAI model
 
             log::info!("Using RLLM adapter for OpenAI provider");
             let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::OpenAI)?;
@@ -164,7 +173,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for Ollama provider");
             // Ollama endpoint can be configured, default to localhost
             let _endpoint = config["endpoint"].as_str().unwrap_or("http://localhost:11434");
-            let model = config["model"].as_str().unwrap_or("llama3"); // Default Ollama model
+            // Use provider default if model is missing or empty
+            let model = config["model"].as_str()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("llama3"); // Default Ollama model
 
             // Ollama doesn't typically require an API key, pass an empty string
             let client = RLLMClient::new("".to_string(), model.to_string(), LLMBackend::Ollama)?;
@@ -174,8 +186,11 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for DeepSeek provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("DeepSeek API key not provided"))?;
-            let model = config["model"].as_str().unwrap_or("deepseek-chat");
-            
+            // Use provider default if model is missing or empty
+            let model = config["model"].as_str()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("deepseek-chat"); // Default DeepSeek model
+
             let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::DeepSeek)?;
             Ok(Box::new(client))
         }
@@ -183,8 +198,11 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for XAI/Grok provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("XAI API key not provided"))?;
-            let model = config["model"].as_str().unwrap_or("grok-2-latest");
-            
+            // Use provider default if model is missing or empty
+            let model = config["model"].as_str()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("grok-1"); // Default XAI model
+
             let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::XAI)?;
             Ok(Box::new(client))
         }
@@ -192,8 +210,11 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for Phind provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Phind API key not provided"))?;
-            let model = config["model"].as_str().unwrap_or("Phind-70B");
-            
+            // Use provider default if model is missing or empty
+            let model = config["model"].as_str()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("Phind-70B"); // Default Phind model
+
             let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Phind)?;
             Ok(Box::new(client))
         }
@@ -201,8 +222,11 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for Groq provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Groq API key not provided"))?;
-            let model = config["model"].as_str().unwrap_or("llama3-8b-8192");
-            
+            // Use provider default if model is missing or empty
+            let model = config["model"].as_str()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("llama3-8b-8192"); // Default Groq model
+
             let client = RLLMClient::new(api_key.to_string(), model.to_string(), LLMBackend::Groq)?;
             Ok(Box::new(client))
         }
