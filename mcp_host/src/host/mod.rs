@@ -254,6 +254,46 @@ impl MCPHost {
         }
     }
 
+    /// Set the active AI model for the currently active provider.
+    pub async fn set_active_model(&self, provider_name: &str, model_name: &str) -> Result<()> {
+        info!("Attempting to set model to '{}' for provider '{}'", model_name, provider_name);
+
+        // Ensure the provider we are setting the model for is actually the active one
+        let current_active = self.get_active_provider_name().await;
+        if current_active.as_deref() != Some(provider_name) {
+            return Err(anyhow!(
+                "Cannot set model for inactive provider '{}'. Current provider is {:?}.",
+                provider_name, current_active.unwrap_or_else(|| "None".to_string())
+            ));
+        }
+
+        // Create a temporary config with the new model name
+        let temp_config = AIProviderConfig {
+            model: model_name.to_string(),
+        };
+
+        // Try to create the client with the new model
+        match Self::create_ai_client_internal(provider_name, &temp_config).await {
+            Ok(Some(new_client)) => {
+                // Update the active client
+                *self.ai_client.lock().await = Some(Arc::from(new_client));
+                info!("Successfully switched model to '{}' for provider '{}'", model_name, provider_name);
+                Ok(())
+            }
+            Ok(None) => {
+                let error_msg = format!("Could not create client for model '{}' with provider '{}'. API key might be missing or model invalid.", model_name, provider_name);
+                error!("{}", error_msg);
+                Err(anyhow!(error_msg))
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to set model '{}' for provider '{}': {}", model_name, provider_name, e);
+                error!("{}", error_msg);
+                Err(anyhow!(error_msg))
+            }
+        }
+    }
+
+
     /// Internal helper to get the API key environment variable name for a provider.
     fn get_api_key_var(provider_name: &str) -> Option<&'static str> {
         match provider_name.to_lowercase().as_str() {

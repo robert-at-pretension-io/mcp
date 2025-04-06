@@ -50,8 +50,9 @@ impl CommandProcessor {
             "use" => self.cmd_use(args).await,
             "tools" => self.cmd_tools(args).await,
             "call" => self.cmd_call(args).await,
-            "provider" => self.cmd_provider(args).await, // Added provider command
-            "providers" => self.cmd_providers().await, // Added providers command
+            "provider" => self.cmd_provider(args).await,
+            "providers" => self.cmd_providers().await,
+            "model" => self.cmd_model(args).await, // Added model command
             // chat command is handled directly in Repl::run
             _ => Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
         }
@@ -69,6 +70,7 @@ impl CommandProcessor {
   chat <server>       - Enter interactive chat mode with AI assistant and tools
   provider [name]     - Show or set the active AI provider (e.g., openai, anthropic)
   providers           - List available AI providers (those with API keys set)
+  model [name]        - Show or set the model for the active provider (e.g., gpt-4o, claude-3-opus)
   exit, quit          - Exit the program".to_string()
         )
     }
@@ -221,6 +223,40 @@ impl CommandProcessor {
                 .collect::<Vec<_>>()
                 .join("\n");
             Ok(format!("Available AI providers:\n{}", provider_list))
+        }
+    }
+
+    /// Show or set the active AI model for the current provider
+    async fn cmd_model(&self, args: &[String]) -> Result<String> {
+        let active_provider = match self.host.get_active_provider_name().await {
+            Some(name) => name,
+            None => return Err(anyhow!("No active AI provider. Use 'provider <name>' first.")),
+        };
+
+        if args.is_empty() {
+            // Show current model
+            match self.host.ai_client().await {
+                Some(client) => Ok(format!(
+                    "Current model for provider '{}': {}",
+                    style(&active_provider).cyan(),
+                    style(client.model_name()).green()
+                )),
+                None => Ok(format!(
+                    "No active model found for provider '{}'.",
+                    style(&active_provider).cyan()
+                )),
+            }
+        } else {
+            // Set model
+            let model_name = &args[0];
+            match self.host.set_active_model(&active_provider, model_name).await {
+                Ok(_) => Ok(format!(
+                    "Model for provider '{}' set to: {}",
+                    style(&active_provider).cyan(),
+                    style(model_name).green()
+                )),
+                Err(e) => Err(anyhow!("Failed to set model: {}", e)),
+            }
         }
     }
 

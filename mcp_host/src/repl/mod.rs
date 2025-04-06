@@ -88,13 +88,27 @@ impl Repl {
                 None => style("mcp").dim().to_string(),
             };
             let provider_part = match self.host.get_active_provider_name().await {
-                 Some(provider) => format!("({})", style(provider).cyan()),
-                 None => "".to_string(), // No provider active
+                 Some(provider) => provider,
+                 None => "none".to_string(),
             };
-            let prompt = format!("{}{} > ", server_part, provider_part);
+
+            // Get the active model name if a client exists
+            let model_part = match self.host.ai_client().await {
+                Some(client) => format!(":{}", style(client.model_name()).green()),
+                None => "".to_string(),
+            };
+
+            // Combine parts for the prompt
+            let ai_info_part = if provider_part != "none" {
+                 format!("({}{})", style(provider_part).cyan(), model_part)
+            } else {
+                 "".to_string() // No provider active, show nothing
+            };
+
+            let prompt = format!("{}{}> ", server_part, ai_info_part);
 
 
-            // Disabled helper temporarily due to compatibility issues with rustyline
+            // Set the helper for completion and hinting
             // let _ = self.editor.set_helper(Some(self.helper.clone()));
 
             let readline = self.editor.readline(&prompt);

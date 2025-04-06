@@ -38,9 +38,10 @@ impl ReplHelper {
                 "use".to_string(),
                 "tools".to_string(),
                 "call".to_string(),
-                "chat".to_string(), // Added chat
-                "provider".to_string(), // Added provider
-                "providers".to_string(), // Added providers
+                "chat".to_string(),
+                "provider".to_string(),
+                "providers".to_string(),
+                "model".to_string(), // Added model command
                 "exit".to_string(),
                 "quit".to_string(),
             ],
@@ -149,8 +150,9 @@ impl Hinter for ReplHelper {
             "use" if line_parts.len() == 1 => Some(" [server]".to_string()),
             "tools" if line_parts.len() == 1 => Some(" [server]".to_string()),
             "call" if line_parts.len() == 1 => Some(" <tool> [server] [json]".to_string()),
-            "chat" if line_parts.len() == 1 => Some(" <server>".to_string()), // Added hint for chat
-            "provider" if line_parts.len() == 1 => Some(" [name]".to_string()), // Added hint for provider
+            "chat" if line_parts.len() == 1 => Some(" <server>".to_string()),
+            "provider" if line_parts.len() == 1 => Some(" [name]".to_string()),
+            "model" if line_parts.len() == 1 => Some(" [name]".to_string()), // Added hint for model
             _ => None,
         }
     }
