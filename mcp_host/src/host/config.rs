@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;
 use anyhow::Result;
+use crate::host::anyhow;
 
 #[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone
 pub struct ServerConfig {
@@ -49,28 +50,7 @@ impl Default for TimeoutConfig {
     }
 } // End of impl Default for TimeoutConfig
 
-impl Config {
-    // ... load method remains ...
 
-    pub async fn save(&self, path: impl AsRef<Path>) -> Result<()> {
-            let path = path.as_ref();
-            log::info!("Saving configuration to: {:?}", path);
-            let json_string = serde_json::to_string_pretty(self)
-                .map_err(|e| anyhow!("Failed to serialize config: {}", e))?;
-
-            // Ensure parent directory exists
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).await
-                    .map_err(|e| anyhow!("Failed to create config directory {:?}: {}", parent, e))?;
-            }
-
-            fs::write(path, json_string).await
-                .map_err(|e| anyhow!("Failed to write config file {:?}: {}", path, e))?;
-            log::info!("Configuration saved successfully.");
-            Ok(())
-        }
-    }
-}
 
 impl Default for AIProviderConfig {
     fn default() -> Self {
@@ -98,6 +78,23 @@ pub struct Config {
 }
 
 impl Config {
+    pub async fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path.as_ref();
+        log::info!("Saving configuration to: {:?}", path);
+        let json_string = serde_json::to_string_pretty(self)
+            .map_err(|e| anyhow!("Failed to serialize config: {}", e))?;
+
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).await
+                .map_err(|e| anyhow!("Failed to create config directory {:?}: {}", parent, e))?;
+        }
+
+        fs::write(path, json_string).await
+            .map_err(|e| anyhow!("Failed to write config file {:?}: {}", path, e))?;
+        log::info!("Configuration saved successfully.");
+        Ok(())
+    }
     pub async fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         
