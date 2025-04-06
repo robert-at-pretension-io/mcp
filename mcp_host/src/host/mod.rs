@@ -204,7 +204,7 @@ impl MCPHost {
             }
         }
         // Check standard environment variables for providers not explicitly configured
-        for provider in ["anthropic", "openai", "deepseek", "gemini", "ollama", "xai", "phind", "groq"] {
+        for provider in ["anthropic", "openai", "deepseek", "gemini", "ollama", "xai", "phind", "groq", "openrouter"] {
             if !available.contains(&provider.to_string()) && Self::get_api_key_for_provider(provider).is_ok() {
                  available.push(provider.to_string());
             }
@@ -304,6 +304,7 @@ impl MCPHost {
             "xai" | "grok" => Some("XAI_API_KEY"), // Allow "grok" as alias
             "phind" => Some("PHIND_API_KEY"),
             "groq" => Some("GROQ_API_KEY"),
+            "openrouter" => Some("OPENROUTER_API_KEY"),
             "ollama" => None, // Ollama doesn't use an API key
             _ => None,
         }
@@ -331,6 +332,7 @@ impl MCPHost {
             "xai" | "grok" => "grok-1".to_string(), // Assuming a default, adjust if needed
             "phind" => "Phind-70B".to_string(), // Assuming a default
             "groq" => "llama3-8b-8192".to_string(),
+            "openrouter" => "mistralai/mistral-7b-instruct".to_string(),
             "deepseek" | _ => "deepseek-chat".to_string(), // Default fallback
         }
     }
