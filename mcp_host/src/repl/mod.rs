@@ -114,10 +114,8 @@ impl Repl {
 
 
             // Set the helper for completion and hinting
-            // Pass a mutable reference to the helper
-            // Note: This might cause lifetime issues if not handled carefully by rustyline,
-            // but let's try it as it matches some patterns.
-            self.editor.set_helper(Some(&mut self.helper));
+            // Pass a clone of the helper to satisfy the 'static lifetime requirement.
+            self.editor.set_helper(Some(self.helper.clone()));
 
             log::debug!("Attempting to read line with prompt: '{}'", prompt); // Add log here
             let readline = self.editor.readline(&prompt);
