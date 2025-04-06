@@ -326,8 +326,8 @@ impl MCPHost {
             tools_str
         );
 
-        // Create the conversation state
-        let mut state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list.clone());
+        // Create the conversation state (no longer needs to be mutable here)
+        let state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list.clone());
 
         // The ConversationState::new now incorporates the tool prompt generation,
         // so we don't need to add it separately here.

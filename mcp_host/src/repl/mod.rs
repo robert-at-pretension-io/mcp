@@ -379,10 +379,10 @@ impl Repl {
                     }
                 }
 
-                // Use the smiley-delimited format system prompt
-                let smiley_prompt = crate::conversation_service::generate_smiley_tool_system_prompt(&state.tools);
-                log::trace!("Adding smiley tool system prompt.");
-                builder = builder.system(smiley_prompt);
+                // Use the new tool system prompt function
+                let tool_prompt = crate::conversation_service::generate_tool_system_prompt(&state.tools); // Use new function name
+                log::trace!("Adding tool system prompt.");
+                builder = builder.system(tool_prompt); // Use new prompt
 
                 log::debug!("Executing AI request...");
                 builder.execute().await.map_err(|e| { // Add specific error mapping
