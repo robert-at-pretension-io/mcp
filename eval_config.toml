@@ -26,43 +26,52 @@ grading_timeout_secs = 180 # 3 minutes
 # API keys are primarily expected via environment variables (e.g., OPENROUTER_API_KEY, GROQ_API_KEY)
 # or a .env file, as set up in main.rs/main_repl.rs.
 # You can optionally add `api_key = "..."` to override for a specific entry.
-[[providers]]
-name = "openrouter"
-model = "openai/gpt-4o"
 
-# Corrected typo
-[[providers]]
-name = "openrouter"
-model = "openai/gpt-4o-mini"
+# --- Direct Providers ---
 
 [[providers]]
-name = "openrouter"
-model = "anthropic/claude-3.5-sonnet"
-
-# Keep 3.7 for now, but be aware it might be experimental
-[[providers]]
-name = "openrouter"
-model = "anthropic/claude-3.7-sonnet"
-
-# Use standard Gemini Pro name
-[[providers]]
-name = "openrouter"
-model = "google/gemini-1.5-pro" # Or google/gemini-2.5-pro if preferred/available
+name = "openai" # Direct OpenAI
+model = "gpt-4o"
+# api_key = "sk-..." # Optional override
 
 [[providers]]
-name = "openrouter"
-model = "meta-llama/llama-3.1-70b-instruct"
+name = "openai" # Direct OpenAI
+model = "gpt-4o-mini"
 
 [[providers]]
-name = "openrouter"
+name = "anthropic" # Direct Anthropic
+model = "claude-3.5-sonnet"
+
+# Note: Direct Anthropic might not support 3.7 yet, using 3 Opus instead for comparison
+[[providers]]
+name = "anthropic" # Direct Anthropic
+model = "claude-3-opus-20240229" # Using Opus as 3.7 might not be available directly
+
+[[providers]]
+name = "google" # Direct Google (Gemini)
+model = "gemini-1.5-pro" # Or gemini-2.5-pro if preferred/available
+
+# Note: Llama 3.1 70B might not be directly available via a standard provider yet.
+# Keeping Groq for a Llama 3 variant.
+# [[providers]]
+# name = "meta" # Hypothetical direct Meta provider
+# model = "llama-3.1-70b-instruct"
+
+# Note: Mistral Large might not be directly available via a standard provider yet.
+# Using OpenRouter as a fallback for this one.
+[[providers]]
+name = "openrouter" # Fallback via OpenRouter
 model = "mistralai/mistral-large"
 
 [[providers]]
-name = "openrouter"
-model = "deepseek/deepseek-chat" # Or deepseek-v3-0324
+name = "deepseek" # Direct DeepSeek
+model = "deepseek-chat" # Or deepseek-v3-0324
 
 [[providers]]
-name = "groq"
-model = "llama3-70b-8192" # Direct Groq for speed
+name = "groq" # Direct Groq (already direct)
+model = "llama3-70b-8192"
 
-# Removed duplicate gpt-4o-mini entry
+# Add Ollama (already direct)
+[[providers]]
+name = "ollama"
+model = "llama3" # Local baseline (ensure 'ollama run llama3' works)
