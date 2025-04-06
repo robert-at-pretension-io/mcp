@@ -78,6 +78,65 @@ pub async fn main() -> Result<()> {
         }
     };
 
+    // --- Print API Key Status ---
+    println!("\n{}", style("AI Provider Key Status:").bold());
+    let known_providers = [
+        "openai", "anthropic", "deepseek", "gemini", "google",
+        "ollama", "xai", "grok", "phind", "groq", "openrouter"
+    ];
+    let mut found_keys = Vec::new();
+    let mut missing_keys = Vec::new();
+    let mut not_needed = Vec::new();
+
+    for provider in known_providers {
+        if let Some(key_var) = crate::host::MCPHost::get_api_key_var(provider) {
+            match crate::host::MCPHost::get_api_key_for_provider(provider) {
+                Ok(_) => found_keys.push(provider.to_string()),
+                Err(_) => missing_keys.push(format!("{} (Set {})", provider, key_var)),
+            }
+        } else if provider == "ollama" { // Explicitly handle providers not needing keys
+             not_needed.push(provider.to_string());
+        }
+        // Ignore providers where get_api_key_var returns None and it's not Ollama (shouldn't happen with current list)
+    }
+
+    found_keys.sort();
+    missing_keys.sort();
+    not_needed.sort();
+
+    for provider in found_keys {
+        println!("  {} {}", style("✔").green(), provider);
+    }
+    for provider_info in missing_keys {
+        println!("  {} {}", style("✖").red(), provider_info);
+    }
+     for provider in not_needed {
+        println!("  {} {} (No API key needed)", style("ℹ").blue(), provider);
+    }
+
+    // OS-specific instructions
+    let os = std::env::consts::OS;
+    println!("\n{}", style("Tip:").bold());
+    println!("  Set missing API keys as environment variables or in a `.env` file.");
+    match os {
+        "linux" | "macos" => {
+            println!("  Example (Linux/macOS): {}", style("export PROVIDER_API_KEY=\"your_key\"").yellow());
+            println!("  Or add to your shell profile (e.g., ~/.bashrc, ~/.zshrc).");
+        }
+        "windows" => {
+            println!("  Example (Windows CMD): {}", style("set PROVIDER_API_KEY=your_key").yellow());
+            println!("  Example (Windows PowerShell): {}", style("$env:PROVIDER_API_KEY=\"your_key\"").yellow());
+            println!("  Or set permanently via System Properties -> Environment Variables.");
+        }
+        _ => {
+            println!("  Consult your operating system's documentation for setting environment variables.");
+        }
+    }
+    println!("  Using a `.env` file in the project root is recommended for managing keys.");
+    println!("{}", style("----------------------------------------").dim());
+    // --- End API Key Status ---
+
+
     // Apply the initial configuration loaded during build to start servers
     info!("Applying initial configuration to start servers...");
     let initial_config = { // Scope the lock guard
