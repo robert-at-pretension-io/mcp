@@ -179,8 +179,8 @@ impl Hinter for ReplHelper {
             "tools" if line_parts.len() == 1 => Some(" [server_name]".to_string()),
             "call" if line_parts.len() == 1 => Some(" <tool_name> [server_name] [json_args]".to_string()),
             "chat" if line_parts.len() == 1 => Some(" <server_name>".to_string()),
-            "provider" if line_parts.len() == 1 => Some(" [provider_name]".to_string()),
-            "model" if line_parts.len() == 1 => Some(" [model_name]".to_string()),
+            "provider" if line_parts.len() == 1 => Some(" [provider_name]".to_string()), // Added hint
+            "model" if line_parts.len() == 1 => Some(" [model_name]".to_string()), // Added hint
             "edit_server" if line_parts.len() == 1 => Some(" <server_name>".to_string()),
             "remove_server" if line_parts.len() == 1 => Some(" <server_name>".to_string()),
             "show_config" if line_parts.len() == 1 => Some(" [server_name]".to_string()),
