@@ -162,7 +162,8 @@ async fn main() -> Result<()> {
             // Set the performer LLM
             if let Err(e) = set_provider_and_model(&host, performer_config).await {
                 error!("Failed to set performer {}: {}", performer_id, e);
-                task_results.insert(performer_id.clone(), ("".to_string(), Some(format!("Failed to set provider/model: {}", e)), 0.0));
+                // Insert the correct tuple structure: (response, history, error, duration)
+                task_results.insert(performer_id.clone(), ("".to_string(), None, Some(format!("Failed to set provider/model: {}", e)), 0.0));
                 continue;
             }
 
@@ -234,7 +235,7 @@ async fn main() -> Result<()> {
                 let start_time = Instant::now();
                 let grading_result = tokio::time::timeout(
                     Duration::from_secs(config.grading_timeout_secs),
-                    grade_response(&host, &user_request, response, &grading_prompt_template)
+                    grade_response(&host, &user_request, final_response, &grading_prompt_template) // Use final_response here
                 ).await;
                 let grading_duration = start_time.elapsed().as_secs_f64();
 
