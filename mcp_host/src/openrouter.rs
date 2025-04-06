@@ -260,13 +260,29 @@ impl AIRequestBuilder for OpenRouterRequestBuilder {
             return Err(anyhow!("OpenRouter API error ({}): {}", status, error_text));
         }
 
-        // Parse the response
-        let response_json: ChatCompletionResponse = response.json()
-            .await
-            .map_err(|e| anyhow!("Failed to parse OpenRouter API response: {}", e))?;
+        // Try to parse the response as JSON, but log raw text on failure
+        let response_text = response.text().await
+            .map_err(|e| anyhow!("Failed to read OpenRouter response body: {}", e))?;
 
-        // Extract the text from the first choice
-        if let Some(choice) = response_json.choices.first() {
+        match serde_json::from_str::<ChatCompletionResponse>(&response_text) {
+            Ok(response_json) => {
+                // Extract the text from the first choice
+                if let Some(choice) = response_json.choices.first() {
+                    Ok(choice.message.content.clone())
+                } else {
+                    Err(anyhow!("OpenRouter API returned empty response choices"))
+                }
+            }
+            Err(e) => {
+                // Log the raw response text that failed parsing
+                log::error!("Failed to parse OpenRouter JSON response. Raw response: {}", response_text);
+                Err(anyhow!("Failed to parse OpenRouter API response: {}. See logs for raw response.", e))
+            }
+        }
+    }
+}
+
+pub fn create_openrouter_client(config: Value) -> Result<Box<dyn AIClient>> {
             Ok(choice.message.content.clone())
         } else {
             Err(anyhow!("OpenRouter API returned empty response"))

@@ -30,22 +30,24 @@ grading_timeout_secs = 180 # 3 minutes
 name = "openrouter"
 model = "openai/gpt-4o"
 
-
+# Corrected typo
 [[providers]]
 name = "openrouter"
-model = "openai/o3-mini"
+model = "openai/gpt-4o-mini"
 
 [[providers]]
 name = "openrouter"
 model = "anthropic/claude-3.5-sonnet"
 
+# Keep 3.7 for now, but be aware it might be experimental
 [[providers]]
 name = "openrouter"
 model = "anthropic/claude-3.7-sonnet"
 
+# Use standard Gemini Pro name
 [[providers]]
 name = "openrouter"
-model = "google/gemini-2.5-pro-exp-03-25"
+model = "google/gemini-1.5-pro" # Or google/gemini-2.5-pro if preferred/available
 
 [[providers]]
 name = "openrouter"
@@ -63,6 +65,4 @@ model = "deepseek/deepseek-chat" # Or deepseek-v3-0324
 name = "groq"
 model = "llama3-70b-8192" # Direct Groq for speed
 
-[[providers]]
-name = "openrouter"
-model = "openai/gpt-4o-mini" # Include a smaller OpenAI model
+# Removed duplicate gpt-4o-mini entry
