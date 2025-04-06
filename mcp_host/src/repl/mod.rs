@@ -297,14 +297,23 @@ impl Repl {
                     // Update available models for the current provider
                     if let Some(active_provider) = self.host.get_active_provider_name().await {
                         let models = { // Scope lock
-                            let models_config_guard = self.host.provider_models.lock().await;
-                            models_config_guard.providers
-                                .get(&active_provider.to_lowercase())
-                                .map(|list| list.models.clone())
-                                .unwrap_or_default()
+                            let models_config_guard = self.host.provider_models.lock().await; // Lock the models config
+                            let provider_key = active_provider.to_lowercase();
+                            // --- Add detailed logging ---
+                            let available_keys: Vec<_> = models_config_guard.providers.keys().cloned().collect();
+                            log::debug!(
+                                "Helper Update: Looking for key '{}'. Available keys: {:?}",
+                                provider_key,
+                                available_keys
+                            );
+                            // --- End detailed logging ---
+                            models_config_guard.providers // Access the inner HashMap
+                                .get(&provider_key) // Use lowercase key
+                                .map(|list| list.models.clone()) // Clone the Vec<String> if found
+                                .unwrap_or_default() // Return empty Vec if not found
                         };
-                        log::debug!("Updating helper with {} suggested models for provider '{}'", models.len(), active_provider);
-                        if let Some(h) = self.editor.helper_mut() { h.update_current_provider_models(models); }
+                        log::debug!("Updating helper with {} suggested models for provider '{}'", models.len(), active_provider); // Log the count
+                        if let Some(h) = self.editor.helper_mut() { h.update_current_provider_models(models); } // Update the helper
                     } else {
                         // No provider active, clear models
                         log::debug!("No active provider, clearing suggested models in helper.");
