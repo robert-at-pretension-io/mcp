@@ -283,14 +283,6 @@ impl AIRequestBuilder for OpenRouterRequestBuilder {
 }
 
 pub fn create_openrouter_client(config: Value) -> Result<Box<dyn AIClient>> {
-            Ok(choice.message.content.clone())
-        } else {
-            Err(anyhow!("OpenRouter API returned empty response"))
-        }
-    }
-}
-
-pub fn create_openrouter_client(config: Value) -> Result<Box<dyn AIClient>> {
     let api_key = config["api_key"].as_str()
         .ok_or_else(|| anyhow!("OpenRouter API key not provided"))?;
     
