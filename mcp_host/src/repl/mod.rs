@@ -113,16 +113,19 @@ impl Repl {
             // Set the helper for completion and hinting
             // let _ = self.editor.set_helper(Some(self.helper.clone()));
 
+            log::debug!("Attempting to read line with prompt: '{}'", prompt); // Add log here
             let readline = self.editor.readline(&prompt);
 
             match readline {
+                // Add logging for each branch
                 Ok(line) => {
                     let line = line.trim();
                     if line.is_empty() {
                         continue;
                     }
-                    
+
                     self.editor.add_history_entry(line)?;
+                    log::debug!("Read line: '{}'", line);
 
                     // Check for chat command first
                     if line.starts_with("chat ") {
@@ -133,6 +136,7 @@ impl Repl {
                         // Process other commands via CommandProcessor
                         match self.command_processor.process(line).await {
                             Ok(result) => {
+                                log::debug!("Command processed, result: '{}'", result);
                                 if result == "exit" {
                                     break;
                                 }
@@ -142,6 +146,7 @@ impl Repl {
                                 }
                             }
                             Err(e) => {
+                                log::error!("Command processing error: {}", e);
                                 println!("{}: {}", style("Error").red().bold(), e);
                             }
                         }
@@ -176,14 +181,17 @@ impl Repl {
 
                 }
                 Err(ReadlineError::Interrupted) => {
+                    log::debug!("Readline interrupted (Ctrl+C)");
                     println!("^C");
                     continue;
                 }
                 Err(ReadlineError::Eof) => {
+                    log::debug!("Readline EOF (Ctrl+D)");
                     println!("^D");
                     break;
                 }
                 Err(err) => {
+                    log::error!("Readline error: {}", err);
                     println!("Error: {}", err);
                     break;
                 }
