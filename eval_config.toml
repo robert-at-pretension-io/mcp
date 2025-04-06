@@ -40,7 +40,7 @@ model = "gpt-4o-mini"
 
 [[providers]]
 name = "openai" # Direct OpenAI
-model = "gpt-o3-mini"
+model = "gpt-4o-mini" # Corrected model name
 
 [[providers]]
 name = "anthropic" # Direct Anthropic
@@ -48,7 +48,7 @@ model = "claude-3.5-sonnet"
 
 [[providers]]
 name = "anthropic" # Direct Anthropic
-model = "claude-3.7-sonnet" 
+model = "claude-3-opus-20240229" # Reverted to Opus for stability
 
 [[providers]]
 name = "google" # Direct Google (Gemini)

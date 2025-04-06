@@ -133,11 +133,12 @@ impl std::fmt::Debug for RLLMClient {
 
 /// Create an RLLM client for the given provider
 pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<Box<dyn AIClient>> {
-    match provider {
-        "gemini" => {
-            log::info!("Using RLLM adapter for Gemini provider");
+    // Match against lowercase provider name for consistency
+    match provider.to_lowercase().as_str() {
+        "google" | "gemini" => { // Accept both "google" and "gemini"
+            log::info!("Using RLLM adapter for Google Gemini provider");
             let api_key = config["api_key"].as_str()
-                .ok_or_else(|| anyhow!("Gemini API key not provided"))?;
+                .ok_or_else(|| anyhow!("Google Gemini API key not provided (GEMINI_API_KEY)"))?;
             // Use provider default if model is missing or empty
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty()) // Ensure model is not empty string

@@ -7,9 +7,9 @@
 [openai]
 models = [
     "gpt-4o",
-    "o3-mini",
+    # "o3-mini", # Removed incorrect name
     "o1",
-    "gpt-4o-mini",
+    "gpt-4o-mini", # Kept correct name
     "gpt-4.5",
     "gpt-4-turbo",
     "gpt-3.5-turbo",
@@ -17,7 +17,7 @@ models = [
 
 [anthropic]
 models = [
-    "claude-3-7-sonnet-20250219",
+    # "claude-3-7-sonnet-20250219", # Commented out potentially experimental model
     "claude-3-5-sonnet-20241022",
     "claude-3-5-haiku-20241022",
     "claude-3-opus-20240229",
