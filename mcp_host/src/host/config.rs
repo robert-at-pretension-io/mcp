@@ -14,8 +14,7 @@ pub struct ServerConfig {
 // Removed duplicate imports and struct definition below
 
 #[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone here
-    pub env: HashMap<String, String>,
-}
+// Removed leftover struct field and closing brace below
 
 #[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone here
 pub struct AIProviderConfig {
