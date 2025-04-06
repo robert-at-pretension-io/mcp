@@ -1,16 +1,17 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow}; // Add anyhow
 use tracing_subscriber;
 use tracing_appender;
 use std::time::Duration;
-use log::info;
+use log::{info, error, warn}; // Add error, warn
 use console::style;
 use tracing_appender::non_blocking::WorkerGuard; // Import the guard type
+use std::path::PathBuf; // Add PathBuf
 
 /// Main entry point for the MCP host REPL
 pub async fn main() -> Result<()> {
     // Setup logging and keep the guard alive
     let _logging_guard = setup_logging();
-    
+
     // Print startup info
     println!("MCP REPL starting...");
     println!("Current directory: {:?}", std::env::current_dir().unwrap_or_default());
@@ -25,57 +26,67 @@ pub async fn main() -> Result<()> {
         config_path_opt = Some(&args[2]);
         info!("Config path specified: {}", args[2]);
     } else {
-        println!("No config file specified. Use 'load_config <config_path>' to load a configuration.");
-        // Optionally, you could try loading a default path here or exit
+        // --- Suggestion: Add Default Path ---
+        let default_path_buf = dirs::config_dir()
+            .map(|p| p.join("mcp/mcp_host_config.json"));
+
+        if let Some(ref path_buf) = default_path_buf {
+             if path_buf.exists() {
+                 println!("No config path specified, attempting to load default: {}", path_buf.display());
+                 // Need to store the path string to pass its slice later
+                 let path_str = path_buf.to_str().map(|s| s.to_string());
+                 if let Some(s) = path_str {
+                     // This is tricky because we need a 'static reference or owned string
+                     // For simplicity, let's just load it here if it exists
+                     // Or better, pass the PathBuf to the builder
+                 } else {
+                      println!("Could not convert default path to string.");
+                 }
+             } else {
+                 println!("No config file specified and default not found ({}). Use 'load_config <path>' or create the default file.", path_buf.display());
+             }
+        } else {
+             println!("No config file specified and could not determine default config path.");
+        }
+        // --- End Suggestion ---
     }
 
-    // Load configuration if path is provided
-    let config = if let Some(config_path) = config_path_opt {
-        println!("{}", style(format!("Loading configuration from: {}", config_path)).yellow());
-        match crate::host::config::Config::load(config_path).await {
-            Ok(cfg) => {
-                println!("{}", style("Successfully loaded config!").green());
-                Some(cfg)
-            },
-            Err(e) => {
-                println!("{}", style(format!("Error loading config: {}", e)).red());
-                println!("Attempting to continue with default settings...");
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    // Initialize the MCPHost, passing AI provider config if available
-    info!("Initializing MCPHost...");
+    // Initialize the MCPHost builder
+    info!("Initializing MCPHost builder...");
     let mut host_builder = crate::host::MCPHost::builder()
-        .request_timeout(Duration::from_secs(120)) // Example timeout
+        .request_timeout(Duration::from_secs(120)) // Example timeout, can be overridden by config
         .client_info("mcp-host-repl", "1.0.0");
 
-    if let Some(ref cfg) = config {
-        // Use ai_provider_configs method and ai_providers field
-        host_builder = host_builder.ai_provider_configs(cfg.ai_providers.clone());
-        host_builder = host_builder.default_ai_provider(cfg.default_ai_provider.clone());
-        // Apply timeouts from config if needed
-        host_builder = host_builder.request_timeout(Duration::from_secs(cfg.timeouts.request));
+    // Pass config path to builder if specified or default exists
+    if let Some(path_str) = config_path_opt {
+        host_builder = host_builder.config_path(PathBuf::from(path_str));
+    } else if let Some(default_path_buf) = dirs::config_dir().map(|p| p.join("mcp/mcp_host_config.json")) {
+         if default_path_buf.exists() {
+             host_builder = host_builder.config_path(default_path_buf);
+         }
     }
 
-    let host = host_builder.build().await?;
-    info!("MCPHost initialized.");
-
-    // Configure the host with the loaded server configurations (if config was loaded)
-    if let Some(cfg) = config {
-         // We only need the servers part now
-        let server_config = crate::host::config::Config {
-             servers: cfg.servers,
-             ai_providers: Default::default(), // Use correct field name
-             default_ai_provider: None, // Add missing field
-             timeouts: Default::default(), // Not needed here
-        };
-        if let Err(e) = host.configure(server_config).await {
-             println!("{}", style(format!("Error applying server configurations: {}", e)).red());
+    // Build the host - this now loads the config internally
+    let host = match host_builder.build().await {
+        Ok(h) => {
+            info!("MCPHost built successfully.");
+            h
+        },
+        Err(e) => {
+            error!("Failed to build MCPHost: {}", e);
+            return Err(e.into()); // Propagate error
         }
+    };
+
+    // Apply the initial configuration loaded during build to start servers
+    info!("Applying initial configuration to start servers...");
+    let initial_config = host.config.lock().await.clone(); // Clone the loaded config
+    if let Err(e) = host.apply_config(initial_config).await {
+         error!("Failed to apply initial server configuration: {}", e);
+         println!("{}", style(format!("Warning: Failed to start servers from initial config: {}", e)).yellow());
+         // Decide how to handle this - maybe exit or continue without servers?
+    } else {
+         info!("Initial server configuration applied.");
     }
 
     // Run the REPL interface

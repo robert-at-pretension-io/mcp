@@ -5,9 +5,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use std::io::{self, Write}; // Add io import
 
 use crate::host::server_manager::ManagedServer;
 use crate::host::MCPHost; // Import MCPHost
+use crate::host::config::{ServerConfig, AIProviderConfig}; // Add imports
 
 /// Command processor for the REPL
 pub struct CommandProcessor {
@@ -54,6 +56,11 @@ impl CommandProcessor {
             "providers" => self.cmd_providers().await,
             "model" => self.cmd_model(args).await, // Added model command
             // chat command is handled directly in Repl::run
+            "add_server" => self.cmd_add_server().await, // New command
+            "remove_server" => self.cmd_remove_server(args).await, // New command
+            "save_config" => self.cmd_save_config().await, // New command
+            "reload_config" => self.cmd_reload_config().await, // New command
+            "show_config" => self.cmd_show_config(args).await, // New command
             _ => Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
         }
     }
@@ -68,11 +75,144 @@ impl CommandProcessor {
   tools [server]      - List tools for the current or specified server
   call <tool> [server] [json] - Call a tool with JSON arguments
   chat <server>       - Enter interactive chat mode with AI assistant and tools
-  provider [name]     - Show or set the active AI provider (e.g., openai, anthropic)
-  providers           - List available AI providers (those with API keys set)
-  model [name]        - Show or set the model for the active provider (e.g., gpt-4o, claude-3-opus)
+  provider [name]     - Show or set the active AI provider
+  providers           - List available AI providers
+  model [name]        - Show or set the model for the active provider
+  add_server          - Interactively add a new server configuration
+  remove_server <name> - Remove a server configuration (requires save_config)
+  show_config [server] - Show current configuration (all or specific server)
+  save_config         - Save current server configurations to the file
+  reload_config       - Reload configuration from file (discards unsaved changes)
   exit, quit          - Exit the program".to_string()
         )
+    }
+
+    // --- Interactive Add Server ---
+    async fn cmd_add_server(&mut self) -> Result<String> {
+        println!("--- Add New Server Configuration ---");
+
+        let name = self.prompt_for_input("Enter unique server name:")?;
+        if name.is_empty() { return Ok("Cancelled.".to_string()); }
+        // Check uniqueness
+        {
+            let config_guard = self.host.config.lock().await;
+            if config_guard.servers.contains_key(&name) {
+                return Err(anyhow!("Server name '{}' already exists.", name));
+            }
+        }
+
+
+        let command = self.prompt_for_input("Enter command to run server:")?;
+        if command.is_empty() { return Ok("Cancelled.".to_string()); }
+
+        let mut args = Vec::new();
+        println!("Enter command arguments (one per line, press Enter on empty line to finish):");
+        loop {
+            let arg = self.prompt_for_input(&format!("Argument {}:", args.len() + 1))?;
+            if arg.is_empty() { break; }
+            args.push(arg);
+        }
+
+        let mut env = HashMap::new();
+        println!("Enter environment variables (KEY=VALUE format, press Enter on empty line to finish):");
+        loop {
+            let env_line = self.prompt_for_input("Env Var (e.g., KEY=value):")?;
+            if env_line.is_empty() { break; }
+            if let Some((key, value)) = env_line.split_once('=') {
+                env.insert(key.trim().to_string(), value.trim().to_string());
+            } else {
+                println!("{}", style("Invalid format. Use KEY=VALUE.").yellow());
+            }
+        }
+
+        let server_config = ServerConfig {
+            command,
+            env,
+            args: if args.is_empty() { None } else { Some(args) }, // Store args
+        };
+
+        // Add to in-memory config
+        {
+            let mut config_guard = self.host.config.lock().await;
+            config_guard.servers.insert(name.clone(), server_config);
+        }
+
+        Ok(format!("Server '{}' added to configuration. Run 'save_config' to make it persistent.", name))
+    }
+
+    // --- Remove Server ---
+    async fn cmd_remove_server(&mut self, args: &[String]) -> Result<String> {
+        if args.is_empty() {
+            return Err(anyhow!("Usage: remove_server <server_name>"));
+        }
+        let name = &args[0];
+
+        let removed = {
+            let mut config_guard = self.host.config.lock().await;
+            config_guard.servers.remove(name).is_some()
+        };
+
+        if removed {
+            Ok(format!("Server '{}' removed from configuration. Run 'save_config' to make it persistent.", name))
+        } else {
+            Err(anyhow!("Server '{}' not found in configuration.", name))
+        }
+    }
+
+    // --- Save Config ---
+    async fn cmd_save_config(&self) -> Result<String> {
+        match self.host.save_host_config().await {
+            Ok(_) => Ok("Configuration saved successfully.".to_string()),
+            Err(e) => Err(anyhow!("Failed to save configuration: {}", e)),
+        }
+        // Potentially trigger reconfiguration here if needed immediately after save
+        // self.host.reload_host_config().await?; // Or a more direct reconfigure
+    }
+
+    // --- Reload Config ---
+    async fn cmd_reload_config(&self) -> Result<String> {
+         println!("{}", style("Warning: This will discard any unsaved configuration changes.").yellow());
+         let confirm = self.prompt_for_input("Proceed? (yes/no):")?;
+         if confirm.trim().to_lowercase() != "yes" {
+             return Ok("Reload cancelled.".to_string());
+         }
+
+        match self.host.reload_host_config().await {
+            Ok(_) => Ok("Configuration reloaded successfully.".to_string()),
+            Err(e) => Err(anyhow!("Failed to reload configuration: {}", e)),
+        }
+    }
+
+     // --- Show Config ---
+     async fn cmd_show_config(&self, args: &[String]) -> Result<String> {
+        let config_guard = self.host.config.lock().await;
+
+        if args.is_empty() {
+            // Show all config
+            let config_str = serde_json::to_string_pretty(&*config_guard)
+                .map_err(|e| anyhow!("Failed to serialize config: {}", e))?;
+            Ok(format!("Current Configuration:\n{}", config_str))
+        } else {
+            // Show specific server config
+            let server_name = &args[0];
+            if let Some(server_config) = config_guard.servers.get(server_name) {
+                let server_config_str = serde_json::to_string_pretty(server_config)
+                    .map_err(|e| anyhow!("Failed to serialize server config: {}", e))?;
+                Ok(format!("Configuration for server '{}':\n{}", server_name, server_config_str))
+            } else {
+                Err(anyhow!("Server '{}' not found in configuration.", server_name))
+            }
+        }
+    }
+
+
+    // Helper for interactive input
+    fn prompt_for_input(&self, prompt: &str) -> Result<String> {
+        print!("{} ", style(prompt).green());
+        io::stdout().flush()?; // Ensure prompt is displayed before reading
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        Ok(input.trim().to_string())
     }
 
     /// List available servers

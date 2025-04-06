@@ -4,11 +4,13 @@ use std::path::Path;
 use tokio::fs;
 use anyhow::Result;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)] // Add Clone
 pub struct ServerConfig {
     pub command: String,
     #[serde(default)]
     pub env: HashMap<String, String>,
+    #[serde(default)]
+    pub args: Option<Vec<String>>, // Add optional args field
 }
 
 // Removed duplicate imports and struct definition below
@@ -43,6 +45,28 @@ impl Default for TimeoutConfig {
         Self {
             request: default_request_timeout(),
             tool: default_tool_timeout(),
+        }
+    }
+
+    impl Config {
+        // ... load method remains ...
+
+        pub async fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+            let path = path.as_ref();
+            log::info!("Saving configuration to: {:?}", path);
+            let json_string = serde_json::to_string_pretty(self)
+                .map_err(|e| anyhow!("Failed to serialize config: {}", e))?;
+
+            // Ensure parent directory exists
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).await
+                    .map_err(|e| anyhow!("Failed to create config directory {:?}: {}", parent, e))?;
+            }
+
+            fs::write(path, json_string).await
+                .map_err(|e| anyhow!("Failed to write config file {:?}: {}", path, e))?;
+            log::info!("Configuration saved successfully.");
+            Ok(())
         }
     }
 }

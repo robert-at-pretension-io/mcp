@@ -41,7 +41,12 @@ impl ReplHelper {
                 "chat".to_string(),
                 "provider".to_string(),
                 "providers".to_string(),
-                "model".to_string(), // Added model command
+                "model".to_string(),
+                "add_server".to_string(),
+                "remove_server".to_string(),
+                "save_config".to_string(),
+                "reload_config".to_string(),
+                "show_config".to_string(),
                 "exit".to_string(),
                 "quit".to_string(),
             ],

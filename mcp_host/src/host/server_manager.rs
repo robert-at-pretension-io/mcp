@@ -346,20 +346,39 @@ impl ServerManager {
     }
     
     /// Configure this manager with the given configuration
+    /// Configure this manager with the given configuration
+    /// Note: This method is now primarily used during initial load.
+    /// Runtime changes should use MCPHost::apply_config.
     pub async fn configure(&self, config: Config) -> Result<()> {
-        info!("Found {} servers in config", config.servers.len());
+        info!("Configuring ServerManager: Found {} servers in config", config.servers.len());
         for (name, server_config) in config.servers {
-            // Start each configured server
+            info!("Preparing to start server '{}' with command: {}", name, server_config.command);
+
+            // Create a std::process::Command first to easily set env vars and args
             let mut command = Command::new(&server_config.command);
-            
+
             // Set environment variables if specified
-            for (key, value) in server_config.env {
-                command.env(key, value);
+            if !server_config.env.is_empty() {
+                debug!("Setting environment variables for {}: {:?}", name, server_config.env.keys());
+                command.envs(server_config.env); // Use .envs() for HashMap
             }
-            
-            self.start_server_with_command(&name, command).await?;
+
+            // Add arguments if specified in config
+            if let Some(args) = server_config.args {
+                 if !args.is_empty() {
+                     debug!("Adding arguments for {}: {:?}", name, args);
+                     command.args(args);
+                 }
+            }
+
+            // Start the server using the constructed std::process::Command
+            // The start_server_with_command method handles converting it to tokio::process::Command
+            match self.start_server_with_command(&name, command).await {
+                Ok(_) => info!("Successfully started server '{}'", name),
+                Err(e) => error!("Failed to start server '{}': {}", name, e), // Log error but continue
+            }
         }
-        
+
         Ok(())
     }
 
@@ -479,8 +498,8 @@ impl ServerManager {
                      .stdin(Stdio::piped())
                      .stdout(Stdio::piped())
                      .stderr(Stdio::piped());
-                     
-        // For any environment variables
+
+        // Copy environment variables from the std::process::Command
         for (key, val) in command.get_envs() {
             if let (Some(k), Some(v)) = (key.to_str(), val.map(|v| v.to_str()).flatten()) {
                 tokio_command.env(k, v);
@@ -488,7 +507,6 @@ impl ServerManager {
         }
 
         info!("Creating MCP client with ProcessTransport");
-        
         #[cfg(not(test))]
         let (process, client, capabilities) = {
             // In production, use the shared_protocol_objects library

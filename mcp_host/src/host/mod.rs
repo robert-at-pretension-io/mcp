@@ -20,13 +20,16 @@ use shared_protocol_objects::Implementation;
 // Removed duplicate Arc, Duration, Mutex below
 
 use crate::ai_client::{AIClient, AIClientFactory};
-use crate::host::config::{AIProviderConfig, Config as HostConfig}; // Renamed Config to HostConfig
+use crate::host::config::{AIProviderConfig, Config as HostConfig, ServerConfig}; // Renamed Config to HostConfig, added ServerConfig
+use std::path::PathBuf; // Add PathBuf
 
 pub struct MCPHost {
     pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
     pub client_info: Implementation,
     pub request_timeout: Duration,
-    ai_provider_configs: HashMap<String, AIProviderConfig>, // Store all provider configs
+    pub config: Arc<Mutex<HostConfig>>, // Store the whole config
+    pub config_path: Arc<Mutex<Option<PathBuf>>>, // Store the config path
+    // Removed ai_provider_configs
     active_provider_name: Arc<Mutex<Option<String>>>, // Track the active provider name
     ai_client: Arc<Mutex<Option<Arc<dyn AIClient>>>>, // Active client instance, wrapped in Mutex
 }
@@ -37,9 +40,10 @@ impl Clone for MCPHost {
             servers: Arc::clone(&self.servers),
             client_info: self.client_info.clone(),
             request_timeout: self.request_timeout,
-            ai_provider_configs: self.ai_provider_configs.clone(), // Clone the map
-            active_provider_name: Arc::clone(&self.active_provider_name), // Clone the Arc
-            ai_client: Arc::clone(&self.ai_client), // Clone the Arc around the Mutex
+            config: Arc::clone(&self.config), // Clone Arc for config
+            config_path: Arc::clone(&self.config_path), // Clone Arc for path
+            active_provider_name: Arc::clone(&self.active_provider_name),
+            ai_client: Arc::clone(&self.ai_client),
         }
     }
 }
@@ -63,10 +67,120 @@ impl MCPHost {
     /// Configure the host with a loaded configuration
     pub async fn configure(&self, config: HostConfig) -> Result<()> {
         // Note: This only configures servers now. AI provider config is handled at build time.
-        self.server_manager().configure(config).await
-    }
+        // Renamed from configure to apply_config to avoid confusion with builder
+        async fn apply_config(&self, new_config: HostConfig) -> Result<()> {
+            info!("Applying new configuration...");
+            let server_manager = self.server_manager();
+            let mut current_servers = self.servers.lock().await;
+            let mut servers_to_stop = current_servers.keys().cloned().collect::<std::collections::HashSet<_>>();
 
-    /// Run the REPL interface
+            // Start new/updated servers
+            for (name, server_config) in &new_config.servers {
+                servers_to_stop.remove(name); // Keep this server
+
+                if !current_servers.contains_key(name) {
+                    info!("Starting new server from config: {}", name);
+                    // Simplified command creation - adapt as needed
+                    let mut command = std::process::Command::new(&server_config.command);
+                    if let Some(args) = &server_config.args { // Assuming args field exists
+                        command.args(args);
+                    }
+                    command.envs(server_config.env.clone()); // Clone env
+
+                    if let Err(e) = server_manager.start_server_with_command(name, command).await {
+                        error!("Failed to start server '{}': {}", name, e);
+                        // Decide if you want to continue or return error
+                    }
+                } else {
+                    // Server already running. Optionally check if config changed and restart?
+                    // For now, we leave running servers untouched if they still exist in config.
+                    debug!("Server '{}' already running, leaving untouched.", name);
+                }
+            }
+
+            // Stop servers that were running but are not in the new config
+            // Drop the lock before calling stop_server to avoid deadlock
+            drop(current_servers);
+            for name in servers_to_stop {
+                info!("Stopping server removed from config: {}", name);
+                if let Err(e) = server_manager.stop_server(&name).await {
+                    error!("Failed to stop server '{}': {}", name, e);
+                }
+            }
+
+            // Update AI provider based on new config (if default changed or active one removed)
+            let default_provider = new_config.default_ai_provider.clone();
+            let current_active = self.get_active_provider_name().await;
+
+            let mut needs_provider_update = false;
+            if let Some(active_name) = current_active {
+                 if !new_config.ai_providers.contains_key(&active_name) {
+                     warn!("Active provider '{}' removed from config.", active_name);
+                     needs_provider_update = true;
+                 }
+            } else {
+                 // No provider active, try setting default if specified
+                 if default_provider.is_some() {
+                     needs_provider_update = true;
+                 }
+            }
+
+            if needs_provider_update {
+                 if let Some(dp_name) = default_provider {
+                     info!("Attempting to set default provider '{}' after config change.", dp_name);
+                     if let Err(e) = self.set_active_provider(&dp_name).await {
+                         warn!("Failed to set default provider after config change: {}", e);
+                         // Clear active provider if setting default failed
+                         *self.ai_client.lock().await = None;
+                         *self.active_provider_name.lock().await = None;
+                     }
+                 } else {
+                     info!("No default provider specified, clearing active provider.");
+                     *self.ai_client.lock().await = None;
+                     *self.active_provider_name.lock().await = None;
+                 }
+            }
+
+
+            // Update the host's internal config state
+            *self.config.lock().await = new_config;
+            info!("Configuration applied successfully.");
+            Ok(())
+        }
+
+        // Method to save the current in-memory config
+        pub async fn save_host_config(&self) -> Result<()> {
+            let config_guard = self.config.lock().await;
+            let path_guard = self.config_path.lock().await;
+
+            if let Some(path) = path_guard.as_ref() {
+                config_guard.save(path).await
+            } else {
+                Err(anyhow!("No configuration file path set. Cannot save."))
+            }
+        }
+
+        // Method to reload config from disk
+        pub async fn reload_host_config(&self) -> Result<()> {
+            let path_guard = self.config_path.lock().await;
+            if let Some(path) = path_guard.as_ref() {
+                info!("Reloading configuration from {:?}", path);
+                let new_config = HostConfig::load(path).await?;
+                // Drop lock before calling apply_config which might need it
+                drop(path_guard);
+                self.apply_config(new_config).await?;
+                Ok(())
+            } else {
+                Err(anyhow!("No configuration file path set. Cannot reload."))
+            }
+        }
+
+        /// Configure the host with a loaded configuration (now just calls apply_config)
+        pub async fn configure(&self, config: HostConfig) -> Result<()> {
+            self.apply_config(config).await
+        }
+
+        /// Run the REPL interface
     pub async fn run_repl(&self) -> Result<()> {
         // Pass self.clone() directly to Repl::new and remove with_host
         let mut repl = crate::repl::Repl::new(self.clone())?;
@@ -197,12 +311,14 @@ impl MCPHost {
     /// List providers that have configuration and a corresponding API key set in the environment.
     pub async fn list_available_providers(&self) -> Vec<String> {
         let mut available = Vec::new();
+        let config_guard = self.config.lock().await; // Lock config
         // Check configured providers first
-        for (name, _config) in &self.ai_provider_configs {
+        for (name, _config) in &config_guard.ai_providers { // Access via config
             if Self::get_api_key_for_provider(name).is_ok() {
                 available.push(name.clone());
             }
         }
+        drop(config_guard); // Release lock
         // Check standard environment variables for providers not explicitly configured
         for provider in ["anthropic", "openai", "deepseek", "gemini", "ollama", "xai", "phind", "groq", "openrouter"] {
             if !available.contains(&provider.to_string()) && Self::get_api_key_for_provider(provider).is_ok() {
@@ -218,19 +334,22 @@ impl MCPHost {
     pub async fn set_active_provider(&self, provider_name: &str) -> Result<()> {
         info!("Attempting to set active AI provider to: {}", provider_name);
 
-        // Find the config for the requested provider
-        let config = self.ai_provider_configs
-            .get(provider_name)
-            .cloned() // Clone the config if found
-            .unwrap_or_else(|| {
-                // If not in config, create a provider-specific default config
-                warn!("Provider '{}' not found in config, using provider default model.", provider_name);
-                let default_model = Self::get_default_model_for_provider(provider_name);
-                AIProviderConfig { model: default_model }
-            });
+        // Find the config for the requested provider from the host's config
+        let provider_config = { // Scope for lock guard
+            let config_guard = self.config.lock().await;
+            config_guard.ai_providers
+                .get(provider_name)
+                .cloned() // Clone the config if found
+                .unwrap_or_else(|| {
+                    // If not in config, create a provider-specific default config
+                    warn!("Provider '{}' not found in config, using provider default model.", provider_name);
+                    let default_model = Self::get_default_model_for_provider(provider_name);
+                    AIProviderConfig { model: default_model }
+                })
+        }; // Lock released here
 
         // Try to create the client for this provider
-        match Self::create_ai_client_internal(provider_name, &config).await {
+        match Self::create_ai_client_internal(provider_name, &provider_config).await {
             Ok(Some(new_client)) => {
                 let model_name = new_client.model_name(); // Get model name before moving
                 // Update the active client and name
@@ -384,11 +503,12 @@ impl MCPHost {
     }
 }
 
+use std::path::PathBuf; // Ensure PathBuf is imported
+
 /// Builder for MCPHost configuration
 pub struct MCPHostBuilder {
-    // ai_client field removed, will be determined dynamically
-    ai_provider_configs: Option<HashMap<String, AIProviderConfig>>, // Store map from config
-    default_ai_provider: Option<String>, // Store default provider name from config
+    config_path: Option<PathBuf>, // Add config path
+    // Removed ai_provider_configs and default_ai_provider
     request_timeout: Option<Duration>,
     client_info: Option<Implementation>,
 }
@@ -397,24 +517,19 @@ impl MCPHostBuilder {
     /// Create a new builder
     pub fn new() -> Self {
         Self {
-            ai_provider_configs: None,
-            default_ai_provider: None,
+            config_path: None, // Initialize config_path
             request_timeout: None,
             client_info: None,
         }
     }
 
-    /// Set the AI provider configurations from loaded config
-    pub fn ai_provider_configs(mut self, configs: HashMap<String, AIProviderConfig>) -> Self {
-        self.ai_provider_configs = Some(configs);
+    /// Set the path to the configuration file
+    pub fn config_path(mut self, path: PathBuf) -> Self {
+        self.config_path = Some(path);
         self
     }
 
-    /// Set the default AI provider name from loaded config
-    pub fn default_ai_provider(mut self, provider_name: Option<String>) -> Self {
-        self.default_ai_provider = provider_name;
-        self
-    }
+    // Removed ai_provider_configs and default_ai_provider methods
 
     /// Set the request timeout
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
@@ -433,58 +548,72 @@ impl MCPHostBuilder {
 
     /// Build the MCPHost
     pub async fn build(self) -> Result<MCPHost> {
-        let ai_provider_configs = self.ai_provider_configs.unwrap_or_else(|| {
-            warn!("No AI provider configurations provided, using default.");
-            let mut defaults = HashMap::new();
-            defaults.insert("deepseek".to_string(), AIProviderConfig::default());
-            defaults
+        // Determine config path (use default if not specified)
+        let config_path = self.config_path.unwrap_or_else(|| {
+            let default = dirs::config_dir()
+                .map(|p| p.join("mcp/mcp_host_config.json"))
+                .unwrap_or_else(|| PathBuf::from("mcp_host_config.json"));
+            info!("Using default config path: {:?}", default);
+            default
         });
 
+        // Load initial config or create default
+        let initial_config = match HostConfig::load(&config_path).await {
+             Ok(cfg) => {
+                 info!("Loaded initial config from {:?}", config_path);
+                 cfg
+             },
+             Err(e) => {
+                 warn!("Failed to load config from {:?}: {}. Using default.", config_path, e);
+                 HostConfig::default()
+             }
+        };
+
+        // Determine initial AI provider based on loaded/default config
         let mut initial_ai_client: Option<Arc<dyn AIClient>> = None;
         let mut active_provider_name: Option<String> = None;
+        let default_provider_name = initial_config.default_ai_provider.clone(); // Use loaded default
 
-        // Determine initial active provider
-        // 1. Check explicit default from config
-        if let Some(default_name) = self.default_ai_provider {
-            if let Some(config) = ai_provider_configs.get(&default_name) {
-                 match MCPHost::create_ai_client_internal(&default_name, config).await {
-                    Ok(Some(client)) => {
-                        info!("Using default provider from config: {}", default_name);
-                        active_provider_name = Some(default_name.clone());
-                        initial_ai_client = Some(Arc::from(client)); // Use Arc::from
-                    }
-                    Ok(None) => warn!("Default provider '{}' configured but API key missing or invalid.", default_name),
-                    Err(e) => warn!("Failed to create client for default provider '{}': {}", default_name, e),
+        // Try setting default provider first
+        if let Some(ref name) = default_provider_name {
+             if let Some(provider_config) = initial_config.ai_providers.get(name) {
+                 match MCPHost::create_ai_client_internal(name, provider_config).await {
+                     Ok(Some(client)) => {
+                         info!("Using default provider from config: {}", name);
+                         active_provider_name = Some(name.clone());
+                         initial_ai_client = Some(Arc::from(client));
+                     }
+                     Ok(None) => warn!("Default provider '{}' configured but API key missing or invalid.", name),
+                     Err(e) => warn!("Failed to create client for default provider '{}': {}", name, e),
                  }
-            } else {
-                 warn!("Default provider '{}' specified in config but no configuration found for it.", default_name);
-            }
+             } else {
+                 warn!("Default provider '{}' specified but not found in ai_providers config.", name);
+             }
         }
 
-        // 2. If no client yet, check environment variables in preferred order
+        // If default didn't work, try preferred list
         if initial_ai_client.is_none() {
-            let preferred_providers = ["anthropic", "openai", "deepseek", "gemini", "ollama", "xai", "phind", "groq", "openrouter"];
-            for provider_name in preferred_providers {
-                // Get config or use default if not explicitly configured
-                let config = ai_provider_configs
-                    .get(provider_name)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        debug!("Using default config for provider check: {}", provider_name);
-                        AIProviderConfig::default()
-                    });
+             let preferred_providers = ["anthropic", "openai", "deepseek", "gemini", "ollama", "xai", "phind", "groq", "openrouter"];
+             for provider_name in preferred_providers {
+                 let provider_config = initial_config.ai_providers
+                     .get(provider_name)
+                     .cloned()
+                     .unwrap_or_else(|| {
+                         debug!("Using default config for provider check: {}", provider_name);
+                         AIProviderConfig::default()
+                     });
 
-                match MCPHost::create_ai_client_internal(provider_name, &config).await {
-                    Ok(Some(client)) => {
-                        info!("Using first available provider found via environment variable: {}", provider_name);
-                        active_provider_name = Some(provider_name.to_string());
-                        initial_ai_client = Some(Arc::from(client)); // Use Arc::from
-                        break; // Found one, stop checking
-                    }
-                    Ok(None) => { /* API key not found, continue checking */ }
-                    Err(e) => warn!("Error checking provider '{}': {}", provider_name, e), // Log error but continue
-                }
-            }
+                 match MCPHost::create_ai_client_internal(provider_name, &provider_config).await {
+                     Ok(Some(client)) => {
+                         info!("Using first available provider found via environment variable: {}", provider_name);
+                         active_provider_name = Some(provider_name.to_string());
+                         initial_ai_client = Some(Arc::from(client));
+                         break;
+                     }
+                     Ok(None) => { /* API key not found, continue checking */ }
+                     Err(e) => warn!("Error checking provider '{}': {}", provider_name, e), // Log error but continue
+                 }
+             }
         }
 
         if initial_ai_client.is_none() {
@@ -499,10 +628,11 @@ impl MCPHostBuilder {
         });
 
         Ok(MCPHost {
-            servers: Arc::new(Mutex::new(HashMap::new())),
+            servers: Arc::new(Mutex::new(HashMap::new())), // Start with empty servers map
             client_info,
             request_timeout,
-            ai_provider_configs,
+            config: Arc::new(Mutex::new(initial_config)), // Store loaded/default config
+            config_path: Arc::new(Mutex::new(Some(config_path))), // Store the path
             active_provider_name: Arc::new(Mutex::new(active_provider_name)),
             ai_client: Arc::new(Mutex::new(initial_ai_client)),
         })
