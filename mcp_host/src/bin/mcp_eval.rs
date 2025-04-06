@@ -12,8 +12,31 @@ use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
-use log::{info, error, debug}; // Removed unused warn import
+use log::{info, error, debug};
 use shellexpand; // Added shellexpand
+use shared_protocol_objects::Role; // Import Role
+
+// Define a serializable version of the Message struct
+#[derive(Serialize, Debug, Clone)]
+struct SerializableMessage {
+    role: String, // Store role as string for simpler serialization
+    content: String,
+}
+
+impl From<&mcp_host::conversation_state::Message> for SerializableMessage {
+    fn from(msg: &mcp_host::conversation_state::Message) -> Self {
+        let role_str = match msg.role {
+            Role::System => "system",
+            Role::User => "user",
+            Role::Assistant => "assistant",
+        }.to_string();
+        Self {
+            role: role_str,
+            content: msg.content.clone(),
+        }
+    }
+}
+
 
 #[derive(Deserialize, Debug, Clone)]
 struct ProviderConfig {
@@ -38,7 +61,8 @@ struct EvalResult {
     task_file: String,
     performing_provider: String,
     performing_model: String,
-    response: String,
+    response: String, // Final response text
+    conversation_history: Vec<SerializableMessage>, // Full conversation history
     grading_provider: String,
     grading_model: String,
     grade: Option<Value>, // Store parsed JSON grade
@@ -127,7 +151,8 @@ async fn main() -> Result<()> {
             .await
             .with_context(|| format!("Failed to read task file: {:?}", task_path))?;
 
-        let mut task_results: HashMap<String, (String, Option<String>, f64)> = HashMap::new(); // Store (response, error, duration) keyed by provider_model
+        // Store (final_response, Option<history>, Option<error>, duration) keyed by provider_model
+        let mut task_results: HashMap<String, (String, Option<Vec<mcp_host::conversation_state::Message>>, Option<String>, f64)> = HashMap::new();
 
         // --- Execute Task with each Performer LLM ---
         for performer_config in &config.providers {
@@ -150,26 +175,35 @@ async fn main() -> Result<()> {
             let duration = start_time.elapsed().as_secs_f64();
 
             match execution_result {
-                Ok(Ok(response)) => {
+                Ok(Ok((final_response, history))) => {
                     info!("Performer {} finished task in {:.2}s", performer_id, duration);
-                    task_results.insert(performer_id.clone(), (response, None, duration));
+                    task_results.insert(performer_id.clone(), (final_response, Some(history), None, duration));
                 }
                 Ok(Err(e)) => {
                     error!("Performer {} failed task execution: {}", performer_id, e);
-                    task_results.insert(performer_id.clone(), ("".to_string(), Some(format!("Task execution error: {}", e)), duration));
+                    task_results.insert(performer_id.clone(), ("".to_string(), None, Some(format!("Task execution error: {}", e)), duration));
                 }
                 Err(_) => {
                     error!("Performer {} timed out after {}s", performer_id, config.task_timeout_secs);
-                    task_results.insert(performer_id.clone(), ("".to_string(), Some(format!("Task execution timed out after {}s", config.task_timeout_secs)), duration));
+                    task_results.insert(performer_id.clone(), ("".to_string(), None, Some(format!("Task execution timed out after {}s", config.task_timeout_secs)), duration));
                 }
             }
         }
 
         // --- Grade each Response with each Grader LLM ---
-        for (performer_id, (response, execution_error, execution_duration)) in &task_results {
+        // task_results now stores: (final_response, history, error, duration)
+        let mut final_eval_results: Vec<EvalResult> = Vec::new();
+
+        for (performer_id, (final_response, history_opt, execution_error, execution_duration)) in &task_results {
             let parts: Vec<&str> = performer_id.split('/').collect();
             let performing_provider = parts.get(0).cloned().unwrap_or("unknown");
             let performing_model = parts.get(1).cloned().unwrap_or("unknown");
+
+            // Convert history to serializable format, handle case where execution failed before history was generated
+            let serializable_history = history_opt
+                .as_ref()
+                .map(|hist| hist.iter().map(SerializableMessage::from).collect())
+                .unwrap_or_else(Vec::new);
 
             for grader_config in &config.providers {
                 let grader_id = format!("{}/{}", grader_config.name, grader_config.model);
@@ -182,7 +216,8 @@ async fn main() -> Result<()> {
                         task_file: task_file_name.clone(),
                         performing_provider: performing_provider.to_string(),
                         performing_model: performing_model.to_string(),
-                        response: response.clone(),
+                        response: final_response.clone(),
+                        conversation_history: serializable_history.clone(), // Add history
                         grading_provider: grader_config.name.clone(),
                         grading_model: grader_config.model.clone(),
                         grade: None,
@@ -218,12 +253,13 @@ async fn main() -> Result<()> {
                     }
                 };
 
-                // --- Store Result ---
+                // --- Prepare Result ---
                 let result = EvalResult {
                     task_file: task_file_name.clone(),
                     performing_provider: performing_provider.to_string(),
                     performing_model: performing_model.to_string(),
-                    response: response.clone(),
+                    response: final_response.clone(),
+                    conversation_history: serializable_history.clone(), // Add history
                     grading_provider: grader_config.name.clone(),
                     grading_model: grader_config.model.clone(),
                     grade,
@@ -232,10 +268,18 @@ async fn main() -> Result<()> {
                     execution_error: execution_error.clone(),
                     grading_error,
                 };
-                write_result(&output_file, &result).await?;
+                // Store result temporarily
+                final_eval_results.push(result);
             }
         }
-         info!("--- Finished Task: {} ---", task_file_name);
+
+        // --- Write all results for this task ---
+        info!("Writing {} evaluation results for task '{}'", final_eval_results.len(), task_file_name);
+        for result in final_eval_results {
+            write_result(&output_file, &result).await?;
+        }
+
+        info!("--- Finished Task: {} ---", task_file_name);
     }
 
     info!("Evaluation complete. Results saved to {:?}", output_path);
@@ -258,8 +302,9 @@ async fn set_provider_and_model(host: &MCPHost, config: &ProviderConfig) -> Resu
 }
 
 /// Simulates a single chat turn for task execution, allowing tool use.
+/// Returns the final response string AND the full conversation history.
 /// Uses the shared conversation_logic module.
-async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<String> {
+async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(String, Vec<mcp_host::conversation_state::Message>)> {
     info!("Simulating task execution for request: '{}'", user_request.lines().next().unwrap_or(""));
     // 1. Get active client
     let client = host.ai_client().await
@@ -313,8 +358,9 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<S
     .await
     .context("Failed to resolve assistant response during simulation")?;
 
-    info!("Task simulation finished via shared logic. Final response length: {}", final_response.len());
-    Ok(final_response) // Return the final string
+    info!("Task simulation finished via shared logic. Final response length: {}, History length: {}", final_response.len(), state.messages.len());
+    // Return the final string AND the conversation history messages
+    Ok((final_response, state.messages))
 }
 
 
