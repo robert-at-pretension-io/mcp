@@ -458,7 +458,8 @@ struct RLLMRequestBuilder {
 impl AIRequestBuilder for RLLMRequestBuilder {
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         log::debug!("Setting system message for RLLM request");
-        self.system = Some(content);
+        // Assign to the correct field 'system_prompt'
+        self.system_prompt = content;
         self
     }
 
@@ -574,12 +575,11 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 builder = builder.top_p(top_p);
             }
         }
-        
-        // System message is handled separately
-        if let Some(sys) = &self.system {
-            builder = builder.system(sys);
-        }
-        
+
+        // System message is now handled by injecting into the message list below
+        // if let Some(sys) = &self.system {
+        //     builder = builder.system(sys);
+        // }
         // Build the client
         let llm = match builder.build() {
             Ok(provider) => provider,
