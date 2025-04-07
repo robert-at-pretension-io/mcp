@@ -199,7 +199,7 @@ async fn main() -> Result<()> {
 
         // --- Grade each Response with each Grader LLM ---
         // task_results now stores: (final_response, history, error, duration)
-        let mut final_eval_results: Vec<EvalResult> = Vec::new();
+        // Removed temporary storage: let mut final_eval_results: Vec<EvalResult> = Vec::new();
 
         for (performer_id, (final_response, history_opt, execution_error, execution_duration)) in &task_results {
             let parts: Vec<&str> = performer_id.split('/').collect();
@@ -280,16 +280,11 @@ async fn main() -> Result<()> {
                     execution_error: execution_error.clone(),
                     grading_error,
                 };
-                // Store result temporarily
-                final_eval_results.push(result);
+                // Write the result immediately after grading attempt
+                write_result(&output_file, &result).await?;
             }
         }
-
-        // --- Write all results for this task ---
-        info!("Writing {} evaluation results for task '{}'", final_eval_results.len(), task_file_name);
-        for result in final_eval_results {
-            write_result(&output_file, &result).await?;
-        }
+        // Removed the final loop that wrote all results at once
 
         info!("--- Finished Task: {} ---", task_file_name);
     }
