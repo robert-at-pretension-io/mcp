@@ -206,10 +206,15 @@ async fn main() -> Result<()> {
             let performing_provider = parts.get(0).cloned().unwrap_or("unknown");
             let performing_model = parts.get(1).cloned().unwrap_or("unknown");
 
-            // Convert history to serializable format, handle case where execution failed before history was generated
+            // Convert history to serializable format, filtering out system messages
             let serializable_history = history_opt
                 .as_ref()
-                .map(|hist| hist.iter().map(SerializableMessage::from).collect())
+                .map(|hist| {
+                    hist.iter()
+                        .filter(|msg| msg.role != Role::System) // Filter out system messages
+                        .map(SerializableMessage::from)
+                        .collect()
+                })
                 .unwrap_or_else(Vec::new);
 
             for grader_config in &config.providers {
