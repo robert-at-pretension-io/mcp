@@ -60,12 +60,12 @@ pub trait AIRequestBuilder: Send {
 /// Core trait for AI model implementations
 #[async_trait]
 pub trait AIClient: Send + Sync {
-    /// Create a new request builder
-    fn builder(&self) -> Box<dyn AIRequestBuilder>;
-    
-    /// Create a raw request builder without schema validation
-    fn raw_builder(&self) -> Box<dyn AIRequestBuilder>;
-    
+    /// Create a new request builder, providing the system prompt context.
+    fn builder(&self, system_prompt: &str) -> Box<dyn AIRequestBuilder>; // Add system_prompt back
+
+    /// Create a raw request builder without schema validation, providing the system prompt context.
+    fn raw_builder(&self, system_prompt: &str) -> Box<dyn AIRequestBuilder>; // Add system_prompt back
+
     /// Get the model's name/identifier
     fn model_name(&self) -> String;
     

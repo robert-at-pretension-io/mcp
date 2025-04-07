@@ -116,18 +116,19 @@ impl OpenRouterClient {
 
 #[async_trait]
 impl AIClient for OpenRouterClient {
-    fn builder(&self) -> Box<dyn AIRequestBuilder> {
+    fn builder(&self, system_prompt: &str) -> Box<dyn AIRequestBuilder> { // Add system_prompt back
         Box::new(OpenRouterRequestBuilder {
             api_key: self.api_key.clone(),
             model_name: self.model_name.clone(),
             client: self.client.clone(),
+            system_prompt: system_prompt.to_string(), // Store system prompt
             messages: Vec::new(),
             config: None,
         })
     }
 
-    fn raw_builder(&self) -> Box<dyn AIRequestBuilder> {
-        self.builder()
+    fn raw_builder(&self, system_prompt: &str) -> Box<dyn AIRequestBuilder> { // Add system_prompt back
+        self.builder(system_prompt) // Pass system prompt
     }
 
     fn model_name(&self) -> String {

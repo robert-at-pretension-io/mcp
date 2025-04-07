@@ -1,12 +1,10 @@
 
-use crate::ai_client::AIClient;
+// Keep only one set of imports
+use crate::ai_client::{AIClient, AIRequestBuilder};
 use crate::conversation_state::ConversationState;
 use crate::host::MCPHost;
-use crate::ai_client::{AIClient, AIRequestBuilder}; // Added AIRequestBuilder
-use crate::conversation_state::ConversationState;
-use crate::host::MCPHost;
-use crate::tool_parser::{ToolCall, ToolParser}; // Added ToolCall
-use anyhow::{anyhow, Context, Result}; // Added Context
+use crate::tool_parser::{ToolCall, ToolParser};
+use anyhow::{anyhow, Context, Result};
 use console::style;
 use log::{debug, error, info, warn};
 use serde::Deserialize; // Added Deserialize
@@ -51,7 +49,7 @@ struct VerificationLLMResponse {
 }
 
 /// Generates verification criteria based on the user request.
-async fn generate_verification_criteria(host: &MCPHost, user_request: &str) -> Result<String> {
+pub async fn generate_verification_criteria(host: &MCPHost, user_request: &str) -> Result<String> { // Added pub
     debug!("Generating verification criteria for request: '{}'", user_request.lines().next().unwrap_or(""));
     let client = host.ai_client().await
         .ok_or_else(|| anyhow!("No AI client active for generating criteria"))?;
@@ -65,7 +63,7 @@ async fn generate_verification_criteria(host: &MCPHost, user_request: &str) -> R
     );
 
     // Use raw_builder as we don't need tool context here
-    let criteria = client.raw_builder("") // Empty system prompt
+    let criteria = client.raw_builder("") // Pass empty system prompt
         .user(prompt)
         .execute()
         .await
@@ -111,7 +109,7 @@ async fn verify_response(
     );
 
     // Use raw_builder as we don't need tool context here
-    let verification_result_str = client.raw_builder("") // Empty system prompt
+    let verification_result_str = client.raw_builder("") // Pass empty system prompt
         .user(prompt)
         .execute()
         .await
@@ -175,8 +173,7 @@ pub async fn resolve_assistant_response(
         "resolve_assistant_response called for server '{}'. Initial response length: {}. Criteria provided: {}",
         server_name,
         initial_assistant_response.len(),
-        !criteria.is_empty()
-        initial_assistant_response.len()
+        !criteria.is_empty() // Removed duplicate initial_assistant_response.len()
     );
     // Add the initial response to the state *before* processing it
     // Note: The caller (REPL or eval runner) should have already added the user message
@@ -192,10 +189,16 @@ pub async fn resolve_assistant_response(
         loop {
             if iterations >= config.max_tool_iterations {
                 warn!(
-                    "Reached max tool iterations ({}) for server '{}'. Returning last response.",
+                    "Reached max tool iterations ({}) for server '{}'. Returning last (unverified) response.",
                     config.max_tool_iterations, server_name
                 );
-                return Ok(current_response);
+                // Return an unverified outcome when max iterations are hit
+                return Ok(VerificationOutcome {
+                    final_response: current_response,
+                    criteria: Some(criteria.to_string()), // Include criteria if available
+                    verification_passed: None, // Indicate verification was skipped/aborted
+                    verification_feedback: Some("Max tool iterations reached".to_string()),
+                });
             }
             iterations += 1;
             debug!("Processing response iteration {} for server '{}'", iterations, server_name);
@@ -250,7 +253,7 @@ pub async fn resolve_assistant_response(
 
                                 // Call AI Again for Revision
                                 debug!("Calling AI again after verification failure.");
-                                let mut builder = client.raw_builder(&state.system_prompt); // Pass system prompt
+                                let mut builder = client.raw_builder(&state.system_prompt); // Pass correct system prompt
                                 for msg in &state.messages {
                                     match msg.role {
                                         Role::System => {} // Skip system messages here, handled by injection
@@ -357,7 +360,7 @@ pub async fn resolve_assistant_response(
             // --- Get Next AI Response After Tools ---
             debug!("All tools executed for iteration {}. Getting next AI response.", iterations);
             // Pass system prompt when creating builder
-            let mut builder = client.raw_builder(&state.system_prompt);
+            let mut builder = client.raw_builder(&state.system_prompt); // Pass correct system prompt
 
             // Add all messages *including the new tool results*
             for msg in &state.messages {

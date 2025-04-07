@@ -368,7 +368,7 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(
 
     // 5. Build and execute the *initial* AI request
     let initial_response = {
-         // Pass system prompt when creating builder (This part was adjusted in the previous successful refactor)
+         // Pass system prompt when creating builder
          let mut builder = client.raw_builder(&state.system_prompt);
          for msg in state.messages.iter() {
              match msg.role {
@@ -439,7 +439,8 @@ async fn grade_response(
 
     // Execute the grading request
     // Use a builder that requests JSON output if the model supports it
-    let builder = client.raw_builder().user(prompt); // Removed unused `mut`
+    // Pass an empty system prompt for grading, as the tool prompt isn't relevant here.
+    let builder = client.raw_builder("").user(prompt);
 
     // TODO: Add logic to request JSON mode if client.capabilities().supports_json_mode
     // This might involve specific parameters depending on the underlying LLM API.
