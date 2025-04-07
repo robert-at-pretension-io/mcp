@@ -353,12 +353,27 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(
     // 4. Add user request
     state.add_user_message(user_request);
 
+    // --- Generate Verification Criteria ---
+    let criteria = match crate::conversation_logic::generate_verification_criteria(host, user_request).await {
+        Ok(c) => {
+            log::debug!("Generated criteria for eval:\n{}", c);
+            c
+        }
+        Err(e) => {
+            log::warn!("Failed to generate verification criteria for eval: {}. Proceeding without verification.", e);
+            String::new() // Use empty criteria if generation fails
+        }
+    };
+    // --- End Criteria Generation ---
+
     // 5. Build and execute the *initial* AI request
     let initial_response = {
-         let mut builder = client.raw_builder();
+         // Pass system prompt when creating builder (This part was adjusted in the previous successful refactor)
+         let mut builder = client.raw_builder(&state.system_prompt);
          for msg in state.messages.iter() {
              match msg.role {
-                 shared_protocol_objects::Role::System => builder = builder.system(msg.content.clone()),
+                 // System messages are handled by injection now, skip adding them here
+                 shared_protocol_objects::Role::System => {} // Skip system message from state
                  shared_protocol_objects::Role::User => builder = builder.user(msg.content.clone()),
                  shared_protocol_objects::Role::Assistant => builder = builder.assistant(msg.content.clone()),
              }
