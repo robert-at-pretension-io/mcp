@@ -519,13 +519,7 @@ async fn execute_single_tool_internal(
     debug!("Executing tool '{}' on server '{}'", tool_name, server_name);
 
     // --- Logging Setup ---
-    let log = |msg: String| {
-        if let Some(sender) = &config.log_sender {
-            if let Err(e) = sender.send(msg) {
-                error!("Failed to send message to conversation logger from tool execution: {}", e);
-            }
-        }
-    };
+    // Removed unused 'log' closure definition
     // --- End Logging Setup ---
 
     // Prepare progress message (only used if interactive)

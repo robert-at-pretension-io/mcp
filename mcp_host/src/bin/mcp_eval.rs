@@ -135,7 +135,12 @@ async fn main() -> Result<()> {
     }
     let output_file = Arc::new(Mutex::new(
         fs::OpenOptions::new()
-        .with_context(|| format!("Failed to open output file: {:?}", output_path))?,
+            .create(true) // Ensure create, append, write are chained before open
+            .append(true)
+            .write(true)
+            .open(&output_path)
+            .await // Await the open operation
+            .with_context(|| format!("Failed to open output file: {:?}", output_path))?, // Apply context to the Result
     ));
 
     // --- Create Log Directory ---
@@ -344,7 +349,7 @@ async fn set_provider_and_model(host: &MCPHost, config: &ProviderConfig) -> Resu
 
 use mcp_host::conversation_logic::VerificationOutcome;
 use tokio::sync::mpsc; // Added for logger channel
-use tokio::io::AsyncWriteExt as _; // Import trait for write_all
+// Removed unused import: use tokio::io::AsyncWriteExt as _;
 
 /// Simulates a single chat turn for task execution, allowing tool use.
 /// Returns the final VerificationOutcome AND the full conversation history.
