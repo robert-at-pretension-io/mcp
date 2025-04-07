@@ -10,7 +10,7 @@
 
 
 /// Generate a system prompt instructing the AI about tool usage with text delimiters
-pub fn generate_tool_system_prompt(tools: &[shared_protocol_objects::ToolInfo]) -> String { // Renamed function
+pub fn generate_tool_system_prompt(tools: &[shared_protocol_objects::ToolInfo]) -> String {
     // Format tools information
     let tools_info = tools.iter()
         .map(|t| format!(
@@ -24,7 +24,18 @@ pub fn generate_tool_system_prompt(tools: &[shared_protocol_objects::ToolInfo]) 
 
     // Create the full system prompt with the new text delimiter instructions
     format!(
-        "You have access to the following tools:\n\n{}\n\n\
+        "You are a helpful assistant with access to tools. Use tools EXACTLY according to their descriptions and required format.\n\n\
+        **Core Instructions for Tool Use:**\n\n\
+        1.  **Address the Full Request:** Plan and execute all necessary steps sequentially using tools. If generating information *and* performing an action (like saving), **include the key information/summary in your response** along with action confirmation.\n\
+        2.  **Execution Model & Reacting to Results:**\n    \
+            *   **Dispatch:** All tools you call in a single response turn are dispatched *before* you receive results for *any* of them.\n    \
+            *   **Results:** You *will* receive the results for all dispatched tools in the *next* conversation turn.\n    \
+            *   **No Same-Turn Chaining:** Because of the dispatch timing, **you cannot use the result of one tool as input for another tool within the *same* response turn.** Plan sequential, dependent calls across multiple turns.\n    \
+            *   **Verification & Adaptation:** Carefully review tool results when you receive them. Verify success/failure, extract data, and **change your plan or response if the results require it.**\n\
+        3.  **Be Truthful & Cautious:** Only confirm actions (e.g., \"file saved\") if the tool result explicitly confirms success. Report errors. Be careful with tools that modify external systems.\n\
+        4.  **Use Correct Format:** Use the precise `<<<TOOL_CALL>>>...<<<END_TOOL_CALL>>>` format with valid JSON (`name`, `arguments`) for all tool calls.\n\n\
+        # Tool Descriptions...\n\
+        {}\n\n\
         When you need to use a tool, you MUST format your request exactly as follows, including the delimiters:\n\
         <<<TOOL_CALL>>>\n\
         {{\n  \
@@ -36,13 +47,9 @@ pub fn generate_tool_system_prompt(tools: &[shared_protocol_objects::ToolInfo]) 
         }}\n\
         <<<END_TOOL_CALL>>>\n\n\
         Important:\n\
-        - You MUST use the exact delimiters `<<<TOOL_CALL>>>` and `<<<END_TOOL_CALL>>>` on separate lines surrounding the JSON.\n\
-        - The JSON block MUST contain a `name` field (string) and an `arguments` field (object).\n\
-        - The JSON must be valid and the arguments must match the schema for the chosen tool.\n\
-        - Only include ONE tool call JSON block per `<<<TOOL_CALL>>>...<<<END_TOOL_CALL>>>` section.\n\
-        - If you need to use multiple tools, return them one after another, each in their own delimited section.\n\
-        - You can include explanatory text before or after the `<<<TOOL_CALL>>>...<<<END_TOOL_CALL>>>` block. Do NOT put text inside the delimiters other than the JSON.\n\
-        - If no tool is needed, just respond normally to the user without using the delimiters.",
-        tools_info
+        - Only include ONE tool call JSON block per delimiter section. Use multiple sections for multiple parallel calls in one turn.\n\
+        - You can include explanatory text before or after the tool call block.\n\
+        - If no tool is needed, just respond normally.",
+        tools_info // Insert the formatted tool descriptions here
     )
 }
