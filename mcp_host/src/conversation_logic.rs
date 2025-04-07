@@ -115,6 +115,8 @@ async fn verify_response(
         .await
         .context("Failed to call LLM for verification")?;
 
+    
+
     // Parse the JSON response
     let json_start = verification_result_str.find('{');
     let json_end = verification_result_str.rfind('}');
@@ -126,6 +128,9 @@ async fn verify_response(
              match serde_json::from_str::<VerificationLLMResponse>(json_str) {
                  Ok(parsed) => {
                      info!("Verification result: passes={}", parsed.passes);
+                        if let Some(ref feedback) = parsed.feedback {
+                            warn!("Verification feedback: {}", feedback);
+                        }
                      return Ok((parsed.passes, parsed.feedback));
                  },
                  Err(e) => {
