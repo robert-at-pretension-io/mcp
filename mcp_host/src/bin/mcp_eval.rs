@@ -51,6 +51,7 @@ struct EvalConfig {
     tasks_dir: String,
     grading_prompt_path: String,
     output_path: String,
+    log_dir: String, // Added: Directory for detailed conversation logs
     task_timeout_secs: u64,
     grading_timeout_secs: u64,
     providers: Vec<ProviderConfig>,
@@ -181,7 +182,14 @@ async fn main() -> Result<()> {
             let start_time = Instant::now();
             let execution_result = tokio::time::timeout(
                 Duration::from_secs(config.task_timeout_secs),
-                execute_task_simulation(&host, &user_request)
+                // Pass necessary info for logging to execute_task_simulation
+                execute_task_simulation(
+                    &host,
+                    &user_request,
+                    &task_file_name,
+                    &performer_id,
+                    &log_dir, // Pass log directory path
+                )
             ).await;
             let duration = start_time.elapsed().as_secs_f64();
 
@@ -330,13 +338,66 @@ async fn set_provider_and_model(host: &MCPHost, config: &ProviderConfig) -> Resu
     Ok(())
 }
 
-use mcp_host::conversation_logic::VerificationOutcome; // Corrected import path
+use mcp_host::conversation_logic::VerificationOutcome;
+use tokio::sync::mpsc; // Added for logger channel
+use tokio::io::AsyncWriteExt as _; // Import trait for write_all
 
 /// Simulates a single chat turn for task execution, allowing tool use.
 /// Returns the final VerificationOutcome AND the full conversation history.
 /// Uses the shared conversation_logic module.
-async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(VerificationOutcome, Vec<mcp_host::conversation_state::Message>)> {
+async fn execute_task_simulation(
+    host: &MCPHost,
+    user_request: &str,
+    task_file_name: &str, // Added for log file naming
+    performer_id: &str,   // Added for log file naming
+    log_dir: &PathBuf,    // Added for log file path
+) -> Result<(VerificationOutcome, Vec<mcp_host::conversation_state::Message>)> {
     info!("Simulating task execution for request: '{}'", user_request.lines().next().unwrap_or(""));
+
+    // --- Setup Conversation Log File ---
+    let log_file_name = format!(
+        "{}_{}.log",
+        task_file_name.replace(".txt", ""),
+        performer_id.replace('/', "-") // Sanitize provider/model separator
+    );
+    let log_file_path = log_dir.join(log_file_name);
+    let log_file = fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true) // Overwrite existing log for this task/performer combo
+        .open(&log_file_path)
+        .await
+        .with_context(|| format!("Failed to open conversation log file: {:?}", log_file_path))?;
+    let log_file_writer = Arc::new(Mutex::new(log_file));
+
+    // Create channel for logging
+    let (log_tx, mut log_rx) = mpsc::unbounded_channel::<String>();
+
+    // Spawn logging task
+    let writer_clone = Arc::clone(&log_file_writer);
+    let log_task_handle = tokio::spawn(async move {
+        while let Some(message) = log_rx.recv().await {
+            let mut file_guard = writer_clone.lock().await;
+            if let Err(e) = file_guard.write_all(message.as_bytes()).await {
+                error!("Failed to write to conversation log: {}", e);
+            }
+            if let Err(e) = file_guard.write_all(b"\n").await { // Add newline after each message
+                error!("Failed to write newline to conversation log: {}", e);
+            }
+            // Optional: Flush immediately? Might impact performance.
+            // if let Err(e) = file_guard.flush().await {
+            //     error!("Failed to flush conversation log: {}", e);
+            // }
+        }
+        // Final flush when channel closes
+        let mut file_guard = writer_clone.lock().await;
+        if let Err(e) = file_guard.flush().await {
+             error!("Failed to perform final flush on conversation log: {}", e);
+        }
+    });
+    // --- End Log Setup ---
+
+
     // 1. Get active client
     let client = host.ai_client().await
         .ok_or_else(|| anyhow!("No AI client active for task execution"))?;
@@ -410,31 +471,73 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(
 
     // 6. Resolve the rest of the turn using the shared logic (non-interactive)
     // Use mcp_host::conversation_logic instead of crate::
-    // Use default config which now has max_tool_iterations = 3
+    // Create config with the logger sender
     let config = mcp_host::conversation_logic::ConversationConfig {
-        interactive_output: false, // <<< Key difference: Non-interactive
-        ..Default::default() // Use default for max_tool_iterations
+        interactive_output: false,
+        log_sender: Some(log_tx.clone()), // Pass the sender clone
+        ..Default::default()
     };
 
+    // Log initial user request to the conversation log
+    if let Err(e) = log_tx.send(format!("--- User Request ---\n```\n{}\n```", user_request)) {
+         error!("Failed to send initial user request to logger: {}", e);
+    }
+    if !criteria_for_verification.is_empty() {
+         if let Err(e) = log_tx.send(format!("\n--- Generated Criteria ---\n```\n{}\n```", criteria_for_verification)) {
+             error!("Failed to send criteria to logger: {}", e);
+         }
+    }
+
+
     // Use mcp_host::conversation_logic instead of crate::
-    let outcome = mcp_host::conversation_logic::resolve_assistant_response(
+    let resolve_result = mcp_host::conversation_logic::resolve_assistant_response(
         host,
         &server_name,
         &mut state, // Pass mutable state
         &initial_response, // Pass the first response
         client, // Pass the client Arc
         &config,
-        &criteria_for_verification, // Pass the clean criteria string
+        &criteria_for_verification,
     )
-    .await
-    .context("Failed to resolve assistant response during simulation")?;
+    .await;
 
-    info!(
-        "Task simulation finished. Verification passed: {:?}. Final response length: {}, History length: {}",
-        outcome.verification_passed, outcome.final_response.len(), state.messages.len()
-    );
-    // Return the VerificationOutcome AND the conversation history messages
-    Ok((outcome, state.messages))
+    // --- Finalize Logging ---
+    // Drop the original sender to signal the logging task to finish
+    drop(log_tx);
+    // Wait for the logging task to complete writing
+    if let Err(e) = log_task_handle.await {
+        error!("Log writing task failed: {}", e);
+    } else {
+        info!("Conversation log written to {:?}", log_file_path);
+    }
+    // --- End Finalize Logging ---
+
+    // Process the result of resolve_assistant_response
+    match resolve_result {
+        Ok(outcome) => {
+            info!(
+                "Task simulation finished. Verification passed: {:?}. Final response length: {}, History length: {}",
+                outcome.verification_passed, outcome.final_response.len(), state.messages.len()
+            );
+            // Return the VerificationOutcome AND the conversation history messages
+            Ok((outcome, state.messages))
+        }
+        Err(e) => {
+            error!("Task simulation failed during resolution: {}", e);
+            // Even on error, return the current state history for context
+            // Create a dummy outcome indicating the error
+            let error_outcome = VerificationOutcome {
+                final_response: format!("Error during resolution: {}", e),
+                criteria: Some(criteria_for_verification),
+                verification_passed: None,
+                verification_feedback: Some(format!("Error: {}", e)),
+            };
+            // Return the error outcome and the state *as it was* when the error occurred
+            Ok((error_outcome, state.messages))
+            // Or propagate the error if history isn't needed on failure:
+            // Err(e).context("Failed to resolve assistant response during simulation")
+        }
+    }
 }
 
 
