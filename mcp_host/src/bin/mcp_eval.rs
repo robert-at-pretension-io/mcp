@@ -328,7 +328,7 @@ async fn set_provider_and_model(host: &MCPHost, config: &ProviderConfig) -> Resu
     Ok(())
 }
 
-use crate::conversation_logic::VerificationOutcome; // Import VerificationOutcome
+use mcp_host::conversation_logic::VerificationOutcome; // Corrected import path
 
 /// Simulates a single chat turn for task execution, allowing tool use.
 /// Returns the final VerificationOutcome AND the full conversation history.
