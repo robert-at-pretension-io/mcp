@@ -135,17 +135,21 @@ async fn main() -> Result<()> {
     }
     let output_file = Arc::new(Mutex::new(
         fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .write(true)
-            .open(&output_path)
-            .await
-            .with_context(|| format!("Failed to open output file: {:?}", output_path))?,
+        .with_context(|| format!("Failed to open output file: {:?}", output_path))?,
     ));
+
+    // --- Create Log Directory ---
+    let log_dir = PathBuf::from(shellexpand::tilde(&config.log_dir).into_owned());
+    fs::create_dir_all(&log_dir)
+        .await
+        .with_context(|| format!("Failed to create log directory: {:?}", log_dir))?;
+    info!("Conversation logs will be saved to: {:?}", log_dir);
+
 
     // --- Iterate Through Tasks ---
     let mut task_paths = Vec::new();
-    let mut read_dir = fs::read_dir(&config.tasks_dir).await?;
+    let tasks_dir_path = PathBuf::from(shellexpand::tilde(&config.tasks_dir).into_owned());
+    let mut read_dir = fs::read_dir(&tasks_dir_path).await?;
     while let Some(entry) = read_dir.next_entry().await? {
         let path = entry.path();
         if path.is_file() {
