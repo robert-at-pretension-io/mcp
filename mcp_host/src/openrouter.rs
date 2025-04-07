@@ -153,6 +153,7 @@ struct OpenRouterRequestBuilder {
     api_key: String,
     model_name: String,
     client: reqwest::Client,
+    system_prompt: String, // Added missing field
     messages: Vec<Message>,
     config: Option<GenerationConfig>,
 }

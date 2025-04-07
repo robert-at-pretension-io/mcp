@@ -451,7 +451,7 @@ struct RLLMRequestBuilder {
     // Store messages and configuration
     messages: Vec<(Role, String)>,
     config: Option<GenerationConfig>,
-    system: Option<String>,
+    system_prompt: String, // Renamed from 'system'
 }
 
 #[async_trait] // Ensure async_trait is applied to the impl block

@@ -28,6 +28,7 @@ use tokio::time::Duration;
 // Removed unused import: use crate::conversation_service::handle_assistant_response;
 use crate::host::MCPHost;
 use shared_protocol_objects::Role;
+use crate::conversation_logic::generate_verification_criteria; // Import the function
 
 /// Main REPL implementation with enhanced CLI features
 pub struct Repl {

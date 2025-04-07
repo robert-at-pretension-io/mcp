@@ -1,9 +1,9 @@
 
 // Keep only one set of imports
-use crate::ai_client::{AIClient, AIRequestBuilder};
+use crate::ai_client::AIClient; // Removed unused AIRequestBuilder
 use crate::conversation_state::ConversationState;
 use crate::host::MCPHost;
-use crate::tool_parser::{ToolCall, ToolParser};
+use crate::tool_parser::ToolParser; // Removed unused ToolCall
 use anyhow::{anyhow, Context, Result};
 use console::style;
 use log::{debug, error, info, warn};
