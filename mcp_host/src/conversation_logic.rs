@@ -2,12 +2,17 @@
 use crate::ai_client::AIClient;
 use crate::conversation_state::ConversationState;
 use crate::host::MCPHost;
-use crate::tool_parser::ToolParser;
-use anyhow::{anyhow, Result}; // Removed unused Context
+use crate::ai_client::{AIClient, AIRequestBuilder}; // Added AIRequestBuilder
+use crate::conversation_state::ConversationState;
+use crate::host::MCPHost;
+use crate::tool_parser::{ToolCall, ToolParser}; // Added ToolCall
+use anyhow::{anyhow, Context, Result}; // Added Context
 use console::style;
 use log::{debug, error, info, warn};
+use serde::Deserialize; // Added Deserialize
+use serde_json; // Added serde_json
 use std::sync::Arc;
-use shared_protocol_objects::Role; // Add Role import
+use shared_protocol_objects::Role;
 
 /// Configuration for how the conversation logic should behave.
 #[derive(Debug, Clone)]
@@ -27,6 +32,120 @@ impl Default for ConversationConfig {
     }
 }
 
+// --- Verification System ---
+
+/// Outcome of the conversation resolution, including verification status.
+#[derive(Debug)]
+pub struct VerificationOutcome {
+    pub final_response: String,
+    pub criteria: Option<String>,
+    pub verification_passed: Option<bool>,
+    pub verification_feedback: Option<String>,
+}
+
+/// Structure expected from the Verifier LLM.
+#[derive(Deserialize, Debug)]
+struct VerificationLLMResponse {
+    passes: bool,
+    feedback: Option<String>,
+}
+
+/// Generates verification criteria based on the user request.
+async fn generate_verification_criteria(host: &MCPHost, user_request: &str) -> Result<String> {
+    debug!("Generating verification criteria for request: '{}'", user_request.lines().next().unwrap_or(""));
+    let client = host.ai_client().await
+        .ok_or_else(|| anyhow!("No AI client active for generating criteria"))?;
+
+    let prompt = format!(
+        "Based on the following user request, list concise, verifiable criteria for a successful response. \
+        Focus on key actions, information requested, and constraints mentioned. \
+        Output ONLY the criteria list, one criterion per line, starting with '- '. Do not include any other text.\n\n\
+        User Request:\n```\n{}\n```\n\nCriteria:",
+        user_request
+    );
+
+    // Use raw_builder as we don't need tool context here
+    let criteria = client.raw_builder("") // Empty system prompt
+        .user(prompt)
+        .execute()
+        .await
+        .context("Failed to call LLM for criteria generation")?;
+
+    info!("Generated verification criteria (length: {})", criteria.len());
+    Ok(criteria)
+}
+
+/// Verifies the proposed final response against the criteria and conversation history.
+async fn verify_response(
+    host: &MCPHost,
+    state: &ConversationState, // Pass full state for history context
+    criteria: &str,
+    proposed_response: &str,
+) -> Result<(bool, Option<String>)> {
+    debug!("Verifying proposed response against criteria.");
+    let client = host.ai_client().await
+        .ok_or_else(|| anyhow!("No AI client active for verification"))?;
+
+    // Extract original user request (assuming it's the first user message after system prompts)
+    let original_request = state.messages.iter()
+        .find(|m| m.role == Role::User)
+        .map(|m| m.content.as_str())
+        .unwrap_or("Original request not found in history.");
+
+    // Prepare history summary (optional, could pass full history)
+    // For now, let's just use the proposed response and original request + criteria
+    // TODO: Consider passing more history if needed for context.
+
+    let prompt = format!(
+        "You are a strict evaluator. Verify if the 'Proposed Response' meets ALL the 'Success Criteria' based on the 'Original User Request'.\n\n\
+        Original User Request:\n```\n{}\n```\n\n\
+        Success Criteria:\n```\n{}\n```\n\n\
+        Proposed Response:\n```\n{}\n```\n\n\
+        Instructions:\n\
+        1. Carefully compare the 'Proposed Response' against each point in the 'Success Criteria'.\n\
+        2. Determine if the response *fully and accurately* satisfies *all* criteria.\n\
+        3. Output ONLY a valid JSON object with the following structure:\n\
+           `{{\"passes\": boolean, \"feedback\": \"string (provide concise feedback ONLY if passes is false, explaining which criteria failed and why)\"}}`\n\
+        4. Do NOT include any other text, explanations, or markdown formatting.",
+        original_request, criteria, proposed_response
+    );
+
+    // Use raw_builder as we don't need tool context here
+    let verification_result_str = client.raw_builder("") // Empty system prompt
+        .user(prompt)
+        .execute()
+        .await
+        .context("Failed to call LLM for verification")?;
+
+    // Parse the JSON response
+    let json_start = verification_result_str.find('{');
+    let json_end = verification_result_str.rfind('}');
+
+    if let (Some(start), Some(end)) = (json_start, json_end) {
+         if start < end {
+             let json_str = &verification_result_str[start..=end];
+             debug!("Extracted verification JSON string: {}", json_str);
+             match serde_json::from_str::<VerificationLLMResponse>(json_str) {
+                 Ok(parsed) => {
+                     info!("Verification result: passes={}", parsed.passes);
+                     return Ok((parsed.passes, parsed.feedback));
+                 },
+                 Err(e) => {
+                     error!("Failed to parse verification JSON response: {}", e);
+                     return Err(anyhow!("Failed to parse verification JSON response: {}. Raw: '{}'", e, verification_result_str));
+                 }
+             }
+         }
+    }
+
+    error!("Could not find valid JSON object in verification response.");
+    Err(anyhow!("Could not find valid JSON object in verification response: '{}'", verification_result_str))
+}
+
+
+// --- End Verification System ---
+
+
 /// Processes an assistant's response, handling tool calls recursively until a final text response is reached.
 ///
 /// This function takes the *initial* assistant response for a turn and drives the
@@ -41,8 +160,8 @@ impl Default for ConversationConfig {
 /// * `config` - Configuration controlling interactivity and limits.
 ///
 /// # Returns
-/// * `Ok(String)` - The final text response from the assistant after all tool calls are resolved.
-/// * `Err(anyhow::Error)` - If an error occurs during AI calls or tool execution.
+/// * `Ok(VerificationOutcome)` - Contains the final response and verification details.
+/// * `Err(anyhow::Error)` - If a non-recoverable error occurs.
 pub async fn resolve_assistant_response(
     host: &MCPHost,
     server_name: &str,
@@ -50,10 +169,13 @@ pub async fn resolve_assistant_response(
     initial_assistant_response: &str,
     client: Arc<dyn AIClient>,
     config: &ConversationConfig,
-) -> Result<String> {
+    criteria: &str, // Added criteria parameter
+) -> Result<VerificationOutcome> { // Changed return type
     debug!(
-        "resolve_assistant_response called for server '{}'. Initial response length: {}",
+        "resolve_assistant_response called for server '{}'. Initial response length: {}. Criteria provided: {}",
         server_name,
+        initial_assistant_response.len(),
+        !criteria.is_empty()
         initial_assistant_response.len()
     );
     // Add the initial response to the state *before* processing it
@@ -93,12 +215,101 @@ pub async fn resolve_assistant_response(
             let tool_calls = ToolParser::parse_tool_calls(&current_response);
 
             if tool_calls.is_empty() {
-                // --- No Tool Calls: Final Response ---
-                debug!("No tool calls found in iteration {}. Returning final response.", iterations);
-                return Ok(current_response);
+                // --- No Tool Calls: Attempt Verification ---
+                debug!("No tool calls found in iteration {}. Performing verification.", iterations);
+
+                if criteria.is_empty() {
+                    info!("No criteria provided, skipping verification.");
+                    return Ok(VerificationOutcome {
+                        final_response: current_response,
+                        criteria: None,
+                        verification_passed: None,
+                        verification_feedback: None,
+                    });
+                }
+
+                match verify_response(host, state, criteria, &current_response).await {
+                    Ok((passes, feedback_opt)) => {
+                        if passes {
+                            info!("Verification passed for server '{}'. Returning final response.", server_name);
+                            return Ok(VerificationOutcome {
+                                final_response: current_response,
+                                criteria: Some(criteria.to_string()),
+                                verification_passed: Some(true),
+                                verification_feedback: feedback_opt, // Include feedback even if passed
+                            });
+                        } else {
+                            // Verification failed, inject feedback and retry
+                            warn!("Verification failed for server '{}'. Injecting feedback and retrying.", server_name);
+                            if let Some(feedback) = feedback_opt.clone() { // Clone feedback for outcome
+                                let feedback_msg = format!("Verification Feedback: {}", feedback);
+                                state.add_system_message(&feedback_msg);
+                                state.add_system_message(
+                                    "Verification failed. Please analyze the feedback above and revise your previous response to meet the original request's criteria. Provide a new, complete response."
+                                );
+
+                                // Call AI Again for Revision
+                                debug!("Calling AI again after verification failure.");
+                                let mut builder = client.raw_builder(&state.system_prompt); // Pass system prompt
+                                for msg in &state.messages {
+                                    match msg.role {
+                                        Role::System => {} // Skip system messages here, handled by injection
+                                        Role::User => builder = builder.user(msg.content.clone()),
+                                        Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                                    }
+                                }
+
+                                if config.interactive_output {
+                                    println!("{}", style("\nVerification failed. Revising response...").yellow().italic());
+                                }
+
+                                match builder.execute().await {
+                                    Ok(revised_response) => {
+                                        info!("Received revised AI response after verification failure (length: {}).", revised_response.len());
+                                        state.add_assistant_message(&revised_response);
+                                        current_response = revised_response; // Update current response
+                                        // Loop continues to re-evaluate the revised response
+                                        continue; // Go to next loop iteration
+                                    }
+                                    Err(e) => {
+                                        error!("Error getting revised AI response after verification failure: {:?}", e);
+                                        warn!("Returning unverified response due to error during revision.");
+                                        return Ok(VerificationOutcome { // Return unverified outcome
+                                            final_response: current_response,
+                                            criteria: Some(criteria.to_string()),
+                                            verification_passed: Some(false), // Mark as failed
+                                            verification_feedback: feedback_opt,
+                                        });
+                                    }
+                                }
+                            } else {
+                                // Verification failed but no feedback provided
+                                warn!("Verification failed without feedback for server '{}'. Returning unverified response.", server_name);
+                                return Ok(VerificationOutcome { // Return unverified outcome
+                                    final_response: current_response,
+                                    criteria: Some(criteria.to_string()),
+                                    verification_passed: Some(false), // Mark as failed
+                                    verification_feedback: None,
+                                });
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // Verification call itself failed
+                        error!("Error during verification call for server '{}': {}", server_name, e);
+                        warn!("Returning unverified response due to verification error.");
+                        return Ok(VerificationOutcome { // Return unverified outcome
+                            final_response: current_response,
+                            criteria: Some(criteria.to_string()),
+                            verification_passed: None, // Indicate verification error
+                            verification_feedback: Some(format!("Verification Error: {}", e)),
+                        });
+                    }
+                }
+                // --- End Verification Logic ---
             }
 
-            // --- Tool Calls Found ---
+            // --- Tool Calls Found --- (Existing logic remains largely the same)
             info!(
                 "Found {} tool calls in iteration {}. Executing...",
                 tool_calls.len(),
@@ -145,12 +356,13 @@ pub async fn resolve_assistant_response(
 
             // --- Get Next AI Response After Tools ---
             debug!("All tools executed for iteration {}. Getting next AI response.", iterations);
-            let mut builder = client.raw_builder();
+            // Pass system prompt when creating builder
+            let mut builder = client.raw_builder(&state.system_prompt);
 
             // Add all messages *including the new tool results*
             for msg in &state.messages {
                  match msg.role {
-                     Role::System => builder = builder.system(msg.content.clone()),
+                     Role::System => {} // Skip system messages here, handled by injection
                      Role::User => builder = builder.user(msg.content.clone()),
                      Role::Assistant => builder = builder.assistant(msg.content.clone()),
                  }

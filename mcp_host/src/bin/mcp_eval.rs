@@ -70,6 +70,10 @@ struct EvalResult {
     grading_duration_secs: f64,
     execution_error: Option<String>,
     grading_error: Option<String>,
+    // Verification fields
+    verification_criteria: Option<String>,
+    verification_passed: Option<bool>,
+    verification_feedback: Option<String>,
 }
 
 #[tokio::main]
@@ -157,8 +161,8 @@ async fn main() -> Result<()> {
             .await
             .with_context(|| format!("Failed to read task file: {:?}", task_path))?;
 
-        // Store (final_response, Option<history>, Option<error>, duration) keyed by provider_model
-        let mut task_results: HashMap<String, (String, Option<Vec<mcp_host::conversation_state::Message>>, Option<String>, f64)> = HashMap::new();
+        // Store (Option<VerificationOutcome>, Option<history>, Option<error>, duration) keyed by provider_model
+        let mut task_results: HashMap<String, (Option<VerificationOutcome>, Option<Vec<mcp_host::conversation_state::Message>>, Option<String>, f64)> = HashMap::new();
 
         // --- Execute Task with each Performer LLM ---
         for performer_config in &config.providers {
@@ -181,14 +185,20 @@ async fn main() -> Result<()> {
             ).await;
             let duration = start_time.elapsed().as_secs_f64();
 
+            // Store VerificationOutcome along with other results
+            let mut outcome_opt: Option<VerificationOutcome> = None;
+
             match execution_result {
-                Ok(Ok((final_response, history))) => {
-                    info!("Performer {} finished task in {:.2}s", performer_id, duration);
-                    task_results.insert(performer_id.clone(), (final_response, Some(history), None, duration));
+                Ok(Ok((outcome, history))) => {
+                    info!("Performer {} finished task in {:.2}s. Verification passed: {:?}", performer_id, duration, outcome.verification_passed);
+                    // Store the outcome itself for later use in EvalResult
+                    outcome_opt = Some(outcome.clone()); // Clone outcome here
+                    task_results.insert(performer_id.clone(), (outcome.final_response, Some(history), None, duration));
                 }
                 Ok(Err(e)) => {
                     error!("Performer {} failed task execution: {}", performer_id, e);
                     task_results.insert(performer_id.clone(), ("".to_string(), None, Some(format!("Task execution error: {}", e)), duration));
+                    // outcome_opt remains None
                 }
                 Err(_) => {
                     error!("Performer {} timed out after {}s", performer_id, config.task_timeout_secs);
@@ -198,13 +208,15 @@ async fn main() -> Result<()> {
         }
 
         // --- Grade each Response with each Grader LLM ---
-        // task_results now stores: (final_response, history, error, duration)
-        // Removed temporary storage: let mut final_eval_results: Vec<EvalResult> = Vec::new();
+        // task_results now stores: (Option<VerificationOutcome>, Option<history>, Option<error>, duration)
 
-        for (performer_id, (final_response, history_opt, execution_error, execution_duration)) in &task_results {
+        for (performer_id, (outcome_opt, history_opt, execution_error, execution_duration)) in &task_results {
             let parts: Vec<&str> = performer_id.split('/').collect();
             let performing_provider = parts.get(0).cloned().unwrap_or("unknown");
             let performing_model = parts.get(1).cloned().unwrap_or("unknown");
+
+            // Extract final response from outcome if available, otherwise use empty string
+            let final_response = outcome_opt.as_ref().map_or("".to_string(), |o| o.final_response.clone());
 
             // Convert history to serializable format, filtering out system messages
             let serializable_history = history_opt
@@ -237,9 +249,13 @@ async fn main() -> Result<()> {
                         grading_duration_secs: 0.0,
                         execution_error: execution_error.clone(),
                         grading_error: Some(format!("Failed to set grader provider/model: {}", e)),
+                        // Add verification fields (default/empty on grader setup error)
+                        verification_criteria: None,
+                        verification_passed: None,
+                        verification_feedback: None,
                     };
                     write_result(&output_file, &result).await?;
-                    continue;
+                    continue; // Skip grading for this grader
                 }
 
                 // Grade the response
@@ -279,6 +295,10 @@ async fn main() -> Result<()> {
                     grading_duration_secs: grading_duration,
                     execution_error: execution_error.clone(),
                     grading_error,
+                    // Add verification fields from the outcome_opt retrieved from task_results
+                    verification_criteria: outcome_opt.as_ref().and_then(|o| o.criteria.clone()),
+                    verification_passed: outcome_opt.as_ref().and_then(|o| o.verification_passed),
+                    verification_feedback: outcome_opt.as_ref().and_then(|o| o.verification_feedback.clone()),
                 };
                 // Write the result immediately after grading attempt
                 write_result(&output_file, &result).await?;
@@ -308,10 +328,12 @@ async fn set_provider_and_model(host: &MCPHost, config: &ProviderConfig) -> Resu
     Ok(())
 }
 
+use crate::conversation_logic::VerificationOutcome; // Import VerificationOutcome
+
 /// Simulates a single chat turn for task execution, allowing tool use.
-/// Returns the final response string AND the full conversation history.
+/// Returns the final VerificationOutcome AND the full conversation history.
 /// Uses the shared conversation_logic module.
-async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(String, Vec<mcp_host::conversation_state::Message>)> {
+async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(VerificationOutcome, Vec<mcp_host::conversation_state::Message>)> {
     info!("Simulating task execution for request: '{}'", user_request.lines().next().unwrap_or(""));
     // 1. Get active client
     let client = host.ai_client().await
@@ -363,20 +385,24 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(
     };
 
     // Use mcp_host::conversation_logic instead of crate::
-    let final_response = mcp_host::conversation_logic::resolve_assistant_response(
+    let outcome = mcp_host::conversation_logic::resolve_assistant_response(
         host,
         &server_name,
         &mut state, // Pass mutable state
         &initial_response, // Pass the first response
         client, // Pass the client Arc
         &config,
+        &criteria, // Pass generated criteria
     )
     .await
     .context("Failed to resolve assistant response during simulation")?;
 
-    info!("Task simulation finished via shared logic. Final response length: {}, History length: {}", final_response.len(), state.messages.len());
-    // Return the final string AND the conversation history messages
-    Ok((final_response, state.messages))
+    info!(
+        "Task simulation finished. Verification passed: {:?}. Final response length: {}, History length: {}",
+        outcome.verification_passed, outcome.final_response.len(), state.messages.len()
+    );
+    // Return the VerificationOutcome AND the conversation history messages
+    Ok((outcome, state.messages))
 }
 
 

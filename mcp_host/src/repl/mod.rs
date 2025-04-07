@@ -350,6 +350,20 @@ impl Repl {
         state.add_user_message(user_input);
         log::debug!("Added user message to state. Total messages: {}", state.messages.len());
 
+        // --- Generate Verification Criteria ---
+        let criteria = match generate_verification_criteria(&self.host, user_input).await {
+            Ok(c) => {
+                log::debug!("Generated criteria:\n{}", c);
+                c
+            }
+            Err(e) => {
+                log::warn!("Failed to generate verification criteria: {}. Proceeding without verification.", e);
+                String::new() // Use empty criteria if generation fails
+            }
+        };
+        // --- End Criteria Generation ---
+
+
         // 2. Get AI client
         let client = self.host.ai_client().await
             .ok_or_else(|| {
@@ -399,8 +413,8 @@ impl Repl {
                     ..Default::default() // Use default for max_tool_iterations
                 };
 
-                // Call the shared logic function
-                // It will handle printing, tool calls, and return the *final* response
+                // Call the shared logic function, passing the criteria
+                // It will handle printing, tool calls, verification, and return the outcome
                 match crate::conversation_logic::resolve_assistant_response(
                     &self.host,
                     server_name,
@@ -408,21 +422,23 @@ impl Repl {
                     &initial_response, // Pass the first response
                     client, // Pass the client Arc
                     &config,
+                    &criteria, // Pass generated criteria
                 )
                 .await
                 {
-                    Ok(_final_response) => {
+                    Ok(outcome) => {
                         // The final response was already printed by resolve_assistant_response
                         // The state has been mutated in place.
-                        log::debug!("Chat turn resolved successfully by shared logic. Final state has {} messages.", state.messages.len());
+                        log::debug!(
+                            "Chat turn resolved successfully. Verification passed: {:?}. Final state has {} messages.",
+                            outcome.verification_passed, state.messages.len()
+                        );
                         // Put the updated state back into the REPL's chat_state
-                        // We need to clone the state because the original `state` variable is borrowed mutably.
-                        // If `resolve_assistant_response` guarantees the state is valid even on error,
-                        // we could potentially avoid the clone, but cloning is safer here.
                         self.chat_state = Some((server_name.to_string(), state.clone()));
                     }
                     Err(e) => {
-                        log::error!("Error resolving assistant response via shared logic: {}", e);
+                        // This error is from resolve_assistant_response itself (e.g., non-recoverable tool error)
+                        log::error!("Error resolving assistant response: {}", e);
                         println!("{}: {}", style("Chat Error").red().bold(), e);
                         println!("{}", style("Exiting chat mode due to error.").yellow());
                         // Don't put state back, effectively exiting chat mode
