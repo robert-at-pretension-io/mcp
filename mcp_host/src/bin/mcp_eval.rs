@@ -354,7 +354,7 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(
     state.add_user_message(user_request);
 
     // --- Generate Verification Criteria ---
-    let criteria = match crate::conversation_logic::generate_verification_criteria(host, user_request).await {
+    let criteria = match mcp_host::conversation_logic::generate_verification_criteria(host, user_request).await { // Corrected path
         Ok(c) => {
             log::debug!("Generated criteria for eval:\n{}", c);
             c

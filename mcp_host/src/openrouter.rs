@@ -211,15 +211,39 @@ impl AIRequestBuilder for OpenRouterRequestBuilder {
     async fn execute(self: Box<Self>) -> Result<String> {
         info!("Executing OpenRouter request for model: {}", self.model_name);
 
-        // Convert our messages to OpenRouter's format
-        let messages: Vec<ChatMessage> = self.messages.iter()
-            .map(OpenRouterClient::convert_message)
-            .collect();
+        // Prepare the final message list, injecting the system prompt
+        let mut final_api_messages = Vec::new();
+        let mut system_prompt_injected = false;
 
-        // Prepare the request
+        for message in &self.messages {
+            // Inject system prompt before the first user message
+            if message.role == shared_protocol_objects::Role::User && !system_prompt_injected {
+                 if !self.system_prompt.is_empty() {
+                     log::debug!("Injecting system prompt before first user message for OpenRouter");
+                     final_api_messages.push(ChatMessage {
+                         role: "system".to_string(), // OpenRouter uses "system" role
+                         content: self.system_prompt.clone(),
+                     });
+                 }
+                 system_prompt_injected = true;
+            }
+            // Convert and add the current message
+            final_api_messages.push(OpenRouterClient::convert_message(message));
+        }
+
+        // If system prompt wasn't injected (e.g., no user messages), add it at the beginning
+        if !system_prompt_injected && !self.system_prompt.is_empty() {
+             log::debug!("No user message found, injecting system prompt at the beginning for OpenRouter");
+             final_api_messages.insert(0, ChatMessage {
+                 role: "system".to_string(),
+                 content: self.system_prompt.clone(),
+             });
+        }
+
+        // Prepare the request using the final message list
         let mut request = ChatCompletionRequest {
             model: self.model_name.clone(),
-            messages,
+            messages: final_api_messages, // Use the processed list
             temperature: None,
             max_tokens: None,
             top_p: None,
