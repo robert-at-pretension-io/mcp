@@ -22,7 +22,7 @@ impl Default for ConversationConfig {
     fn default() -> Self {
         Self {
             interactive_output: false,
-            max_tool_iterations: 3, // Reduced from 5 to 3
+            max_tool_iterations: 20, // Reduced from 5 to 3
         }
     }
 }
