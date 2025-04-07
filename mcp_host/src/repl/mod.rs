@@ -344,26 +344,39 @@ impl Repl {
         state: &mut crate::conversation_state::ConversationState,
         user_input: &str,
     ) -> Result<()> {
-        log::debug!("Executing chat turn for server '{}'. User input: '{}'", server_name, user_input);
+        log::debug!("Executing chat turn for server '{}'. Original user input: '{}'", server_name, user_input);
 
-        // 1. Add user message to state
-        // 1. Add user message to state
-        state.add_user_message(user_input);
-        log::debug!("Added user message to state. Total messages: {}", state.messages.len());
+        // --- Generate Verification Criteria FIRST ---
+        let criteria_result = generate_verification_criteria(&self.host, user_input).await;
+        let mut final_user_input = user_input.to_string();
+        let criteria_for_verification: String; // Store clean criteria for verification step
 
-        // --- Generate Verification Criteria ---
-        let criteria = match generate_verification_criteria(&self.host, user_input).await {
-            Ok(c) => {
+        match criteria_result {
+            Ok(c) if !c.is_empty() => {
                 log::debug!("Generated criteria:\n{}", c);
-                c
+                criteria_for_verification = c.clone(); // Store for later verification
+                // Append criteria to the user input that the LLM will see
+                final_user_input.push_str(&format!(
+                    "\n\n---\n**Note:** Your response will be evaluated against the following criteria:\n{}\n---",
+                    c
+                ));
+                log::debug!("Appended criteria to user input for LLM.");
+            }
+            Ok(_) => {
+                // Criteria generation succeeded but was empty
+                log::debug!("Generated criteria were empty.");
+                criteria_for_verification = String::new();
             }
             Err(e) => {
                 log::warn!("Failed to generate verification criteria: {}. Proceeding without verification.", e);
-                String::new() // Use empty criteria if generation fails
+                criteria_for_verification = String::new(); // Use empty criteria if generation fails
             }
-        };
+        }
         // --- End Criteria Generation ---
 
+        // 1. Add potentially modified user message to state
+        state.add_user_message(&final_user_input); // Use the input with appended criteria
+        log::debug!("Added user message (potentially with criteria) to state. Total messages: {}", state.messages.len());
 
         // 2. Get AI client
         let client = self.host.ai_client().await
@@ -424,7 +437,7 @@ impl Repl {
                     &initial_response, // Pass the first response
                     client, // Pass the client Arc
                     &config,
-                    &criteria, // Pass generated criteria
+                    &criteria_for_verification, // Pass the clean criteria string
                 )
                 .await
                 {

@@ -352,21 +352,36 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(
     // 3. Create initial conversation state
     let mut state = host.enter_chat_mode(&server_name).await?;
 
-    // 4. Add user request
-    state.add_user_message(user_request);
+    // --- Generate Verification Criteria FIRST ---
+    let criteria_result = mcp_host::conversation_logic::generate_verification_criteria(host, user_request).await; // Corrected path
+    let mut final_user_input = user_request.to_string();
+    let criteria_for_verification: String; // Store clean criteria for verification step
 
-    // --- Generate Verification Criteria ---
-    let criteria = match mcp_host::conversation_logic::generate_verification_criteria(host, user_request).await { // Corrected path
-        Ok(c) => {
+    match criteria_result {
+        Ok(c) if !c.is_empty() => {
             log::debug!("Generated criteria for eval:\n{}", c);
-            c
+            criteria_for_verification = c.clone(); // Store for later verification
+            // Append criteria to the user input that the LLM will see
+            final_user_input.push_str(&format!(
+                "\n\n---\n**Note:** Your response will be evaluated against the following criteria:\n{}\n---",
+                c
+            ));
+            log::debug!("Appended criteria to user input for eval LLM.");
+        }
+        Ok(_) => {
+            // Criteria generation succeeded but was empty
+            log::debug!("Generated criteria were empty for eval.");
+            criteria_for_verification = String::new();
         }
         Err(e) => {
             log::warn!("Failed to generate verification criteria for eval: {}. Proceeding without verification.", e);
-            String::new() // Use empty criteria if generation fails
+            criteria_for_verification = String::new(); // Use empty criteria if generation fails
         }
-    };
+    }
     // --- End Criteria Generation ---
+
+    // 4. Add potentially modified user request to state
+    state.add_user_message(&final_user_input); // Use the input with appended criteria
 
     // 5. Build and execute the *initial* AI request
     let initial_response = {
@@ -409,7 +424,7 @@ async fn execute_task_simulation(host: &MCPHost, user_request: &str) -> Result<(
         &initial_response, // Pass the first response
         client, // Pass the client Arc
         &config,
-        &criteria, // Pass generated criteria
+        &criteria_for_verification, // Pass the clean criteria string
     )
     .await
     .context("Failed to resolve assistant response during simulation")?;
