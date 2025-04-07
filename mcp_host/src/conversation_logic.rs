@@ -279,25 +279,33 @@ pub async fn resolve_assistant_response(
                             // Verification failed, inject feedback and retry
                             warn!("Verification failed for server '{}'. Injecting feedback and retrying.", server_name);
                             if let Some(feedback) = feedback_opt.clone() { // Clone feedback for outcome
-                                let feedback_msg = format!("Verification Feedback: {}", feedback);
-                                state.add_system_message(&feedback_msg);
-                                state.add_system_message(
-                                    "Verification failed. Please analyze the feedback above and revise your previous response to meet the original request's criteria. Provide a new, complete response."
+                                // --- Inject feedback as a User message ---
+                                let user_feedback_prompt = format!(
+                                    "Correction Request:\n\
+                                    Your previous response failed verification.\n\
+                                    Feedback: {}\n\n\
+                                    Please analyze this feedback carefully and revise your plan and response to fully address the original request and meet all success criteria. \
+                                    You may need to use tools differently or provide more detailed information.",
+                                    feedback
                                 );
+                                state.add_user_message(&user_feedback_prompt); // Add as User message
+                                // --- End User message injection ---
 
                                 // Call AI Again for Revision
-                                debug!("Calling AI again after verification failure.");
+                                debug!("Calling AI again after verification failure (feedback as user message).");
+                                // Rebuild the message history for the AI call, including the new user feedback message
                                 let mut builder = client.raw_builder(&state.system_prompt); // Pass correct system prompt
                                 for msg in &state.messages {
                                     match msg.role {
-                                        Role::System => {} // Skip system messages here, handled by injection
+                                        // System messages are handled by the builder's system prompt injection logic now
+                                        Role::System => {}
                                         Role::User => builder = builder.user(msg.content.clone()),
                                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
                                     }
                                 }
 
                                 if config.interactive_output {
-                                    println!("{}", style("\nVerification failed. Revising response...").yellow().italic());
+                                    println!("{}", style("\nVerification failed. Revising response based on feedback...").yellow().italic());
                                 }
 
                                 match builder.execute().await {
