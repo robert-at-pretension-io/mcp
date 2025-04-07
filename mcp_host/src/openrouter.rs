@@ -251,14 +251,18 @@ impl AIRequestBuilder for OpenRouterRequestBuilder {
             presence_penalty: None,
         };
 
-        // Apply configuration if provided
-        if let Some(config) = &self.config { // Use reference to avoid moving
-            request.temperature = config.temperature;
-            request.max_tokens = config.max_tokens;
-            request.top_p = config.top_p;
-            request.frequency_penalty = config.frequency_penalty;
-            request.presence_penalty = config.presence_penalty;
-        }
+       // Apply configuration if provided, otherwise set default max_tokens
+       if let Some(config) = &self.config {
+           request.temperature = config.temperature;
+           // Use configured max_tokens if present, otherwise default to 50000
+           request.max_tokens = config.max_tokens.or(Some(50000));
+           request.top_p = config.top_p;
+           request.frequency_penalty = config.frequency_penalty;
+           request.presence_penalty = config.presence_penalty;
+       } else {
+           // If no config provided at all, set default max_tokens
+           request.max_tokens = Some(50000);
+       }
 
         // Log the request body before sending (mask API key if it were included)
         match serde_json::to_string(&request) {
