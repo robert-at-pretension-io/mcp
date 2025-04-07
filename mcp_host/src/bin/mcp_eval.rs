@@ -172,8 +172,8 @@ async fn main() -> Result<()> {
             // Set the performer LLM
             if let Err(e) = set_provider_and_model(&host, performer_config).await {
                 error!("Failed to set performer {}: {}", performer_id, e);
-                // Insert the correct tuple structure: (response, history, error, duration)
-                task_results.insert(performer_id.clone(), ("".to_string(), None, Some(format!("Failed to set provider/model: {}", e)), 0.0));
+                // Insert None for Outcome and History on setup error
+                task_results.insert(performer_id.clone(), (None, None, Some(format!("Failed to set provider/model: {}", e)), 0.0));
                 continue;
             }
 
@@ -185,24 +185,26 @@ async fn main() -> Result<()> {
             ).await;
             let duration = start_time.elapsed().as_secs_f64();
 
-            // Store VerificationOutcome along with other results
-            let mut outcome_opt: Option<VerificationOutcome> = None;
+            // Removed: let mut outcome_opt: Option<VerificationOutcome> = None; // Outcome is now stored directly in task_results
 
             match execution_result {
+                // Handle the new return type (VerificationOutcome, Vec<Message>)
                 Ok(Ok((outcome, history))) => {
                     info!("Performer {} finished task in {:.2}s. Verification passed: {:?}", performer_id, duration, outcome.verification_passed);
-                    // Store the outcome itself for later use in EvalResult
-                    outcome_opt = Some(outcome.clone()); // Clone outcome here
-                    task_results.insert(performer_id.clone(), (outcome.final_response, Some(history), None, duration));
+                    // Insert the tuple (Option<Outcome>, Option<History>, Option<Error>, Duration)
+                    task_results.insert(performer_id.clone(), (Some(outcome), Some(history), None, duration));
                 }
                 Ok(Err(e)) => {
                     error!("Performer {} failed task execution: {}", performer_id, e);
-                    task_results.insert(performer_id.clone(), ("".to_string(), None, Some(format!("Task execution error: {}", e)), duration));
-                    // outcome_opt remains None
+                    let error_msg = format!("Task execution error: {}", e);
+                    // Insert None for Outcome and History on error
+                    task_results.insert(performer_id.clone(), (None, None, Some(error_msg), duration));
                 }
                 Err(_) => {
                     error!("Performer {} timed out after {}s", performer_id, config.task_timeout_secs);
-                    task_results.insert(performer_id.clone(), ("".to_string(), None, Some(format!("Task execution timed out after {}s", config.task_timeout_secs)), duration));
+                    let timeout_msg = format!("Task execution timed out after {}s", config.task_timeout_secs);
+                    // Insert None for Outcome and History on timeout
+                    task_results.insert(performer_id.clone(), (None, None, Some(timeout_msg), duration));
                 }
             }
         }
@@ -262,7 +264,7 @@ async fn main() -> Result<()> {
                 let start_time = Instant::now();
                 let grading_result = tokio::time::timeout(
                     Duration::from_secs(config.grading_timeout_secs),
-                    grade_response(&host, &user_request, final_response, &grading_prompt_template) // Use final_response here
+                    grade_response(&host, &user_request, &final_response, &grading_prompt_template) // Pass reference &final_response
                 ).await;
                 let grading_duration = start_time.elapsed().as_secs_f64();
 

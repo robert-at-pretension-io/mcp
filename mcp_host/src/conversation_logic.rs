@@ -33,7 +33,7 @@ impl Default for ConversationConfig {
 // --- Verification System ---
 
 /// Outcome of the conversation resolution, including verification status.
-#[derive(Debug)]
+#[derive(Debug, Clone)] // Added Clone
 pub struct VerificationOutcome {
     pub final_response: String,
     pub criteria: Option<String>,
