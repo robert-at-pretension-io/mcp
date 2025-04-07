@@ -1,7 +1,0 @@
-Fetch the closing stock prices for Apple (AAPL) and Google (GOOGL) for the last 30 days using a financial data tool or web search (e.g., `brave_search` with specific query patterns).
-Compare their performance trends over this period.
-Generate a Mermaid line chart visualizing the closing prices of both stocks over the last 30 days. The chart should have:
-- A clear title.
-- Labeled axes (Date and Price).
-- Distinct lines for AAPL and GOOGL.
-Provide the Mermaid chart definition.

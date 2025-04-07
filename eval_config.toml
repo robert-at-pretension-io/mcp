@@ -30,29 +30,17 @@ grading_timeout_secs = 180 # 3 minutes
 # --- Direct Providers ---
 
 [[providers]]
-name = "openai" # Direct OpenAI
-model = "gpt-4o"
-# api_key = "sk-..." # Optional override
-
-[[providers]]
-name = "openai" # Direct OpenAI
-model = "gpt-4o-mini"
-
-[[providers]]
-name = "openai" # Direct OpenAI
-model = "gpt-4o-mini" # Corrected model name
-
-[[providers]]
 name = "anthropic" # Direct Anthropic
-model = "claude-3.5-sonnet-20241022" # Use specific ID
-
-[[providers]]
-name = "anthropic" # Direct Anthropic
-model = "claude-3-opus-20240229" # Keep Opus
+model = "claude-3-7-sonnet-20250219" # Use specific ID
 
 [[providers]]
 name = "google" # Direct Google (Gemini)
 model = "gemini-2.5-pro-exp-03-25" # Or gemini-2.5-pro if preferred/available
+
+# [[providers]]
+# name = "deepseek" # Direct DeepSeek
+# model = "deepseek-chat" # Or deepseek-v3-0324
+
 
 # Note: Llama 3.1 70B might not be directly available via a standard provider yet.
 # Keeping Groq for a Llama 3 variant.
@@ -66,10 +54,3 @@ model = "gemini-2.5-pro-exp-03-25" # Or gemini-2.5-pro if preferred/available
 # name = "openrouter" # Fallback via OpenRouter
 # model = "mistralai/mistral-large"
 
-[[providers]]
-name = "deepseek" # Direct DeepSeek
-model = "deepseek-chat" # Or deepseek-v3-0324
-
-[[providers]]
-name = "groq" # Direct Groq (already direct)
-model = "llama3-70b-8192"

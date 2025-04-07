@@ -1,7 +1,0 @@
-Research the recent advancements in quantum computing and their potential impact on cryptography.
-Specifically, find information on:
-1.  The current state of qubit stability and error correction. Use web search (e.g., brave_search or google_search).
-2.  Recent breakthroughs announced by major research institutions or companies in the last year. Scrape the official press release or blog post URL if found during the search.
-3.  Explain Shor's algorithm and its relevance to breaking RSA encryption. Use web search if needed.
-4.  Summarize the findings, highlighting the estimated timeline for quantum computers posing a significant threat to current cryptographic standards and potential post-quantum cryptography solutions being explored.
-Provide the summary in markdown format.

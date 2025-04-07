@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "simple": {
-      "command": "/home/elliot/Projects/mcp/target/debug/mcp_tools",
-      "env": {}
-    }
-  }
-}

@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use log::{debug, error, info}; // Removed unused trace, warn
+use log::{debug, error, info, warn}; // Removed unused trace, warn
 use serde_json::Value;
 use shared_protocol_objects::{
     ClientCapabilities, Implementation, ServerCapabilities, ToolInfo, CallToolResult
@@ -444,43 +444,6 @@ impl ServerManager {
         Ok(output)
     }
     
-    /// Create a client for a specific request type, using a dedicated transport
-    /// This helps avoid the mixed response issue by using a fresh process for each request type
-    #[cfg(not(test))]
-    async fn create_client_for_request(&self, command: &str, args: &[String], request_type: &str) -> Result<production::McpClient<production::ProcessTransport>> {
-        log::info!("Creating dedicated client for request type: {}", request_type);
-        
-        // Create a command with the given args
-        let mut cmd = tokio::process::Command::new(command);
-        cmd.args(args)
-           .stdin(Stdio::piped())
-           .stdout(Stdio::piped())
-           .stderr(Stdio::piped());
-           
-        // Create a specialized transport
-        let transport = production::ProcessTransport::new_for_request_type(cmd, request_type).await?;
-        
-        // Create and initialize the client
-        let inner_client = shared_protocol_objects::rpc::McpClientBuilder::new(transport)
-            .client_info(&self.client_info.name, &self.client_info.version)
-            .timeout(self.request_timeout)
-            .build();
-            
-        // Wrap in our debug-friendly wrapper
-        let mut client = production::McpClient::new(inner_client);
-        
-        // Initialize the client
-        let capabilities = ClientCapabilities {
-            experimental: None,
-            sampling: None,
-            roots: None,
-        };
-        
-        client.initialize(capabilities).await?;
-        
-        Ok(client)
-    }
-
     /// Start a server with the given name, command and arguments
     pub async fn start_server(&self, name: &str, command: &str, args: &[String]) -> Result<()> {
         let mut cmd = Command::new(command);

@@ -207,7 +207,7 @@ impl Transport for ProcessTransport {
         
         // Add a timeout to the read
         info!("Reading response with timeout");
-        match tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut response_line)).await {
+        match tokio::time::timeout(std::time::Duration::from_secs(300), reader.read_line(&mut response_line)).await {
             Ok(Ok(0)) => {
                 error!("Child process closed stdout before sending response");
                 return Err(anyhow!("Child process closed stdout before sending response"));

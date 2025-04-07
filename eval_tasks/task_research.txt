@@ -1,0 +1,1 @@
+Please find out as much about bpc-157 from the medical literature as possible. Come up with a report and save it in the /home/elliot/Documents directory under the "reports" folder. Make sure you don't put it on a file that already exists. Also create the directory if need be.

@@ -1,8 +1,0 @@
-# IMPORTANT: Replace '.' in the paths below with the actual path to a Python project on your system for the aider tool to work correctly.
-Analyze the usage of asynchronous functions (`async def`) within a Python project located at `.`.
-1. Use the `bash` tool with `grep` or `rg` (ripgrep) to find all Python files (`*.py`) within the specified directory (`.`) that contain the pattern `async def`. Count the number of occurrences per file.
-   Example command structure: `rg 'async def' . --count-matches --type py` or equivalent `grep`.
-2. Identify the top 3 files with the most `async def` functions based on the bash tool output.
-3. For the file with the *most* occurrences, use the `aider` tool (targetting the project at `.`) to analyze the complexity of its asynchronous functions. Ask `aider` to identify any potential issues like blocking calls within async functions or overly complex async logic.
-4. Generate a Mermaid bar chart showing the count of `async def` functions for the top 3 files identified in step 2.
-Provide the `aider` analysis summary and the Mermaid chart definition.
