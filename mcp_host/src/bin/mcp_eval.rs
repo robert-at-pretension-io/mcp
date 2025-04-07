@@ -464,13 +464,13 @@ async fn execute_task_simulation(
                  shared_protocol_objects::Role::User => builder = builder.user(msg.content.clone()),
                  shared_protocol_objects::Role::Assistant => builder = builder.assistant(msg.content.clone()),
              }
-         }
-         debug!("Executing initial AI request for simulation...");
-         // Capture the specific error from the AI client
-         match builder.execute().await {
-             Ok(resp) => resp,
-             Err(e) => {
-                 // Log the detailed error before returning the context error
+        }
+        debug!("Executing initial AI request for simulation...");
+        // Capture the specific error from the AI client
+        match builder.execute().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                // Log the detailed error before returning the context error
                  error!("Detailed error during initial AI execution: {:?}", e);
                  return Err(e).context("Initial AI execution failed during simulation");
              }

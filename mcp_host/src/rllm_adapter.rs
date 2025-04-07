@@ -565,16 +565,20 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         if let Some(cfg) = &self.config {
             if let Some(temp) = cfg.temperature {
                 builder = builder.temperature(temp);
-            }
-            
-            if let Some(max_tokens) = cfg.max_tokens {
-                builder = builder.max_tokens(max_tokens);
-            }
-            
-            if let Some(top_p) = cfg.top_p {
-                builder = builder.top_p(top_p);
-            }
-        }
+           // Use configured max_tokens if present, otherwise default to 50000
+           builder = builder.max_tokens(cfg.max_tokens.unwrap_or(50000));
+           } else {
+               // If no config provided at all, set default max_tokens
+               builder = builder.max_tokens(50000);
+           }
+
+           if let Some(top_p) = cfg.top_p {
+               builder = builder.top_p(top_p);
+           }
+       } else {
+            // If no config provided at all, set default max_tokens
+            builder = builder.max_tokens(50000);
+       }
 
         // System message is now handled by injecting into the message list below
         // if let Some(sys) = &self.system {
