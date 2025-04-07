@@ -261,22 +261,23 @@ impl AIClient for RLLMClient {
         self.model_name.clone()
     }
 
-    fn builder(&self) -> Box<dyn AIRequestBuilder> {
-        // Create a new request builder with the client configuration
+    fn builder(&self, system_prompt: &str) -> Box<dyn AIRequestBuilder> { // Add system_prompt back
+        // Create a new request builder with the client configuration and system prompt
         Box::new(RLLMRequestBuilder {
             api_key: self.api_key.clone(),
             model_name: self.model_name.clone(),
             backend: self.backend.clone(),
+            system_prompt: system_prompt.to_string(), // Store system prompt
             messages: Vec::new(),
-            config: None, 
-            system: None,
+            config: None,
+            // system field removed
         })
     }
 
-    fn raw_builder(&self) -> Box<dyn AIRequestBuilder> {
-        self.builder()
+    fn raw_builder(&self, system_prompt: &str) -> Box<dyn AIRequestBuilder> { // Add system_prompt back
+        self.builder(system_prompt) // Pass system prompt
     }
-    
+
     fn capabilities(&self) -> ModelCapabilities {
         log::debug!("Getting capabilities for RLLM backend: {:?} with model {}", self.backend, self.model_name);
         
