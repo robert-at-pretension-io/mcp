@@ -378,7 +378,7 @@ impl MCPHost {
             let config_guard = self.config.lock().await;
             config_guard.ai_providers
                 .get(provider_name)
-                .cloned(); // Clone the Option<&AIProviderConfig> into Option<AIProviderConfig>
+                .cloned() // Clone the Option<&AIProviderConfig> into Option<AIProviderConfig>
         }; // config lock released here
 
         // Get the default model using the new logic if config wasn't found
