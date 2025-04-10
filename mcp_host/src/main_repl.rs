@@ -10,7 +10,11 @@ use std::path::PathBuf; // Add PathBuf
 /// Main entry point for the MCP host REPL
 pub async fn main() -> Result<()> {
     // Setup logging and keep the guard alive
-    let _logging_guard = setup_logging();
+    let _logging_guard = setup_logging(); // Assign guard to ensure it lives
+
+    // --- Add this log line ---
+    log::debug!("Logging setup complete in main_repl::main.");
+    // --- End added log line ---
 
     // Print startup info - More structured
     println!("\n{}", style("--- MCP Host REPL ---").cyan().bold());
@@ -196,7 +200,8 @@ pub fn setup_logging() -> Option<WorkerGuard> {
 
         let subscriber = fmt() // Use fmt directly
             .with_env_filter(env_filter) // Apply the filter
-            .with_writer(non_blocking)
+            .with_writer(non_blocking) // Log to file
+            .with_writer(std::io::stderr) // ALSO log to stderr
             .with_thread_ids(true)
             .with_file(true)
             .with_line_number(true)
