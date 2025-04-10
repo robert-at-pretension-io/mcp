@@ -1,30 +1,27 @@
 use crate::aider::{aider_tool_info, handle_aider_tool_call, AiderParams};
-use crate::bash::{
-    bash_tool_info, handle_quick_bash, quick_bash_tool_info, BashExecutor, BashParams,
-    QuickBashParams,
-};
+use crate::bash::{bash_tool_info, BashExecutor, BashParams}; // Removed unused quick bash imports
 use crate::brave_search::{search_tool_info, BraveSearchClient};
-use crate::email_validator::{handle_neverbounce_tool_call, neverbounce_tool_info};
-use crate::git_integration::{git_tool_info, handle_git_tool_call};
-use crate::gmail_integration::{gmail_tool_info, handle_gmail_tool_call};
+// Removed unused email_validator imports
+// Removed unused git_integration imports
+// Removed unused gmail_integration imports
 use crate::long_running_task::{handle_long_running_tool_call, long_running_tool_info, LongRunningTaskManager};
 use crate::mermaid_chart::{handle_mermaid_chart_tool_call, mermaid_chart_tool_info, MermaidChartParams};
 use crate::planner::{PlannerTool as PlannerToolImpl}; // Renamed to avoid conflict
 use crate::process_html::extract_text_from_html;
-use crate::regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
+// Removed unused regex_replace imports
 use crate::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
-use crate::tool_trait::{ExecuteFuture, Tool, ensure_id, standard_error_response, standard_success_response, standard_tool_result};
+// Removed unused ensure_id, standard_error_response
+use crate::tool_trait::{ExecuteFuture, Tool, standard_success_response, standard_tool_result};
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
-use shared_protocol_objects::{
-    CallToolParams, CallToolResult, JsonRpcResponse, ToolResponseContent,
-    INTERNAL_ERROR, INVALID_PARAMS,
-};
+// Removed unused CallToolResult, ToolResponseContent, INTERNAL_ERROR, INVALID_PARAMS
+use shared_protocol_objects::{CallToolParams, JsonRpcResponse};
 use std::env;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
-use tracing::{debug, error, info, warn};
+// Removed unused debug, error
+use tracing::{info, warn};
 
 // ScrapingBee Tool Implementation
 #[derive(Debug)]

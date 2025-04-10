@@ -1,5 +1,5 @@
 // Removed html2md import as we'll extract text directly
-use tracing::warn;
+// Removed unused tracing::warn
 use url::Url;
 use scraper::{Html, Selector, ElementRef};
 use std::collections::HashSet;

@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Result};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 use shared_protocol_objects::{error_response, success_response, CallToolParams, CallToolResult, JsonRpcResponse, ToolResponseContent, INTERNAL_ERROR};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Read}; // Removed unused Write
 use std::path::Path;
 
 #[derive(Debug, Deserialize)]

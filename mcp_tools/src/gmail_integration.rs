@@ -1,11 +1,11 @@
 use serde::{ Deserialize, Serialize };
 use serde_json::{ json, Value };
 use std::path::PathBuf;
-use std::{ fs, io, time };
+use std::{ fs, time }; // Removed unused io
 use anyhow::{ anyhow, Result };
 use reqwest::Client;
 use base64::engine::general_purpose::URL_SAFE;
-use base64::Engine as _;
+use base64::Engine as _; // Import the Engine trait
 use tracing::{ debug, error };
 
 use shared_protocol_objects::{
@@ -15,7 +15,7 @@ use shared_protocol_objects::{
     ToolInfo,
     ToolResponseContent,
     success_response,
-    error_response,
+    // Removed unused error_response
 };
 
 /// Minimal struct for storing tokens.
@@ -709,7 +709,8 @@ pub async fn send_gmail_message(
 ) -> Result<()> {
     let client = Client::new();
     let email_content = format!("From: me\r\nTo: {}\r\nSubject: {}\r\n\r\n{}", to, subject, body);
-    let encoded_email = base64::encode(email_content.as_bytes());
+    // Use the Engine trait for encoding
+    let encoded_email = URL_SAFE.encode(email_content.as_bytes());
 
     let payload = serde_json::json!({
         "raw": encoded_email

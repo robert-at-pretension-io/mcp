@@ -1,25 +1,25 @@
 use futures::StreamExt;
-use std::future::Future;
-use std::pin::Pin;
-use mcp_tools::aider::{handle_aider_tool_call, AiderParams};
-use mcp_tools::bash::{handle_quick_bash, BashExecutor, BashParams, QuickBashParams};
-use mcp_tools::brave_search::BraveSearchClient;
-use mcp_tools::email_validator::handle_neverbounce_tool_call;
-use mcp_tools::git_integration::handle_git_tool_call;
-use mcp_tools::gmail_integration::handle_gmail_tool_call;
-use mcp_tools::long_running_task::{handle_long_running_tool_call, LongRunningTaskManager};
-use mcp_tools::process_html::extract_text_from_html;
-use mcp_tools::regex_replace::handle_regex_replace_tool_call;
-use mcp_tools::scraping_bee::{ScrapingBeeClient, ScrapingBeeResponse};
+// Removed unused Future, Pin
+// Removed unused AiderParams, handle_aider_tool_call
+// Removed unused BashExecutor, BashParams, QuickBashParams, handle_quick_bash
+// Removed unused BraveSearchClient
+// Removed unused handle_neverbounce_tool_call
+// Removed unused handle_git_tool_call
+// Removed unused handle_gmail_tool_call
+// Removed unused handle_long_running_tool_call
+// Removed unused extract_text_from_html
+// Removed unused handle_regex_replace_tool_call
+// Removed unused ScrapingBeeClient, ScrapingBeeResponse
+use mcp_tools::long_running_task::LongRunningTaskManager;
 use mcp_tools::tool_impls::{create_tools, LongRunningTaskTool};
 use mcp_tools::tool_trait::{Tool, standard_error_response};
 use serde_json::{json, Value};
 use shared_protocol_objects::{
-    create_notification, error_response, success_response, CallToolParams, CallToolResult, 
+    error_response, success_response, CallToolParams, // Removed unused CallToolResult
     ClientCapabilities, Implementation, InitializeResult, JsonRpcRequest, JsonRpcResponse, 
     ListResourcesResult, ListToolsResult, PromptsCapability, ReadResourceParams, ReadResourceResult, 
     ResourceContent, ResourceInfo, ResourcesCapability, ServerCapabilities, ToolInfo, 
-    ToolResponseContent, ToolsCapability, INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION, 
+    ToolsCapability, INTERNAL_ERROR, INVALID_PARAMS, LATEST_PROTOCOL_VERSION, // Removed unused ToolResponseContent, create_notification
     PARSE_ERROR, SUPPORTED_PROTOCOL_VERSIONS,
 };
 use std::collections::HashMap;

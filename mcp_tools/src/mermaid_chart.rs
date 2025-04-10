@@ -6,10 +6,12 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use tracing::{debug, error, info};
+// Removed unused debug, info
+use tracing::{error};
 use reqwest::Client;
 
-use crate::tool_trait::{ensure_id, standard_error_response, standard_success_response, standard_tool_result};
+// Removed unused ensure_id
+use crate::tool_trait::{standard_error_response, standard_success_response, standard_tool_result};
 
 /// Call the Gemini API to generate content
 async fn call_gemini_api(prompt: &str) -> Result<String> {
@@ -169,7 +171,8 @@ pub async fn handle_mermaid_chart_tool_call(
             continue;
         }
         
-        let filename = path.file_name()
+        // Prefix unused variable with underscore
+        let _filename = path.file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("unknown");
         

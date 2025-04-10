@@ -5,15 +5,15 @@ use std::env;
 use tracing::{debug, error, info};
 
 use rllm::builder::{LLMBackend, LLMBuilder};
-use rllm::chat::{ChatMessageBuilder};
-use rllm::error::LLMError;
+use rllm::chat::{ChatMessageBuilder, ChatRole, ChatResponse}; // Added ChatRole, ChatResponse
+// Removed rllm::error::LLMError import, will use llm::error::LLMError
 
 use shared_protocol_objects::{
-    CallToolParams, JsonRpcResponse, ToolInfo,
+    CallToolParams, JsonRpcResponse, ToolInfo, INTERNAL_ERROR, INVALID_PARAMS, // Import error codes from here
 };
 use crate::tool_trait::{
     ExecuteFuture, Tool, standard_error_response, standard_success_response, standard_tool_result,
-    INTERNAL_ERROR, INVALID_PARAMS,
+    // Removed INTERNAL_ERROR, INVALID_PARAMS from here
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -82,9 +82,11 @@ fn format_tool_list(tools: &[ToolInfo]) -> String {
 }
 
 /// Calls the Gemini API via RLLM to generate a plan.
-async fn generate_plan_with_gemini(prompt: &str) -> Result<String, LLMError> {
+// Return type changed to Result<Box<dyn ChatResponse>, llm::error::LLMError>
+async fn generate_plan_with_gemini(prompt: &str) -> Result<Box<dyn ChatResponse>, llm::error::LLMError> {
     let api_key = env::var("GEMINI_API_KEY")
-        .map_err(|e| LLMError::ConfigurationError(format!("GEMINI_API_KEY not set: {}", e)))?;
+        // Use llm::error::LLMError variant
+        .map_err(|e| llm::error::LLMError::ConfigurationError(format!("GEMINI_API_KEY not set: {}", e)))?;
 
     info!("Building Gemini LLM client using RLLM");
     let llm = LLMBuilder::new()
@@ -94,16 +96,17 @@ async fn generate_plan_with_gemini(prompt: &str) -> Result<String, LLMError> {
         .temperature(0.5) // Lower temperature for more deterministic planning
         .build()?;
 
-    // Construct messages for the chat API
-    // Using a system prompt to set the context and the user prompt for the specific request details
+    // Construct messages for the chat API using the new builder pattern
     let messages = vec![
-        ChatMessageBuilder::system(
-            "You are an expert planning assistant. Your goal is to create a robust, step-by-step plan \
-             to achieve a user's objective using a predefined set of tools. The plan should be clear, \
-             actionable, and account for potential issues. Specify when the AI should pause to reflect, \
-             wait for tool results, or handle errors. Output only the plan itself, without preamble or explanation."
-        ).build(),
-        ChatMessageBuilder::user(prompt).build(),
+        ChatMessageBuilder::new(ChatRole::System)
+            .content(
+                "You are an expert planning assistant. Your goal is to create a robust, step-by-step plan \
+                 to achieve a user's objective using a predefined set of tools. The plan should be clear, \
+                 actionable, and account for potential issues. Specify when the AI should pause to reflect, \
+                 wait for tool results, or handle errors. Output only the plan itself, without preamble or explanation."
+            )
+            .build(),
+        ChatMessageBuilder::new(ChatRole::User).content(prompt).build(),
     ];
 
     info!("Sending planning request to Gemini via RLLM");
@@ -135,22 +138,25 @@ async fn handle_planning_tool_call(
     );
 
     match generate_plan_with_gemini(&prompt).await {
-        Ok(plan) => {
+        // Handle the Box<dyn ChatResponse>
+        Ok(response_box) => {
+            let plan = response_box.content(); // Extract content string
             info!("Successfully generated plan from Gemini");
             debug!("Generated Plan:\n{}", plan);
             let tool_res = standard_tool_result(plan, None);
             Ok(standard_success_response(id, json!(tool_res)))
         }
+        // Use llm::error::LLMError variants
         Err(e) => {
             error!("Error generating plan using Gemini via RLLM: {}", e);
-            // Map RLLMError to a user-friendly message
+            // Map llm::error::LLMError to a user-friendly message
             let error_message = match e {
-                LLMError::ApiError(msg) => format!("Gemini API error: {}", msg),
-                LLMError::AuthenticationError(_) => "Gemini authentication failed. Check GEMINI_API_KEY.".to_string(),
-                LLMError::ConfigurationError(msg) => format!("Configuration error: {}", msg),
-                LLMError::NetworkError(msg) => format!("Network error contacting Gemini: {}", msg),
-                LLMError::RateLimitError(_) => "Gemini rate limit exceeded.".to_string(),
-                LLMError::InvalidResponseError(msg) => format!("Invalid response from Gemini: {}", msg),
+                llm::error::LLMError::ApiError(msg) => format!("Gemini API error: {}", msg),
+                llm::error::LLMError::AuthenticationError(_) => "Gemini authentication failed. Check GEMINI_API_KEY.".to_string(),
+                llm::error::LLMError::ConfigurationError(msg) => format!("Configuration error: {}", msg),
+                llm::error::LLMError::NetworkError(msg) => format!("Network error contacting Gemini: {}", msg),
+                llm::error::LLMError::RateLimitError(_) => "Gemini rate limit exceeded.".to_string(),
+                llm::error::LLMError::InvalidResponseError(msg) => format!("Invalid response from Gemini: {}", msg),
                 _ => format!("An unexpected error occurred: {}", e),
             };
             // Return an error response through the standard tool result mechanism

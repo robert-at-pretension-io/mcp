@@ -17,7 +17,7 @@ pub fn neverbounce_tool_info() -> ToolInfo {
     }
 }
 
-use std::collections::HashMap;
+// Removed unused HashMap import
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

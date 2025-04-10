@@ -113,8 +113,8 @@ impl LongRunningTaskManager {
             }
             let _ = manager_clone.save().await;
 
-            // Launch the process
-            let mut child = Command::new("bash")
+            // Launch the process (removed mut)
+            let child = Command::new("bash")
                 .arg("-c")
                 .arg(&state.command)
                 .stdout(Stdio::piped())
