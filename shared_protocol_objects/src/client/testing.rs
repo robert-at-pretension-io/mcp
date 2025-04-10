@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use crate::{CallToolResult, ListToolsResult, ToolInfo, ToolResponseContent}; // Added ListToolsResult
+use crate::{CallToolResult, ListToolsResult, ToolInfo, ToolResponseContent}; // Added CallToolResult, ListToolsResult, ToolInfo, ToolResponseContent
 use super::trait_def::ReplClient;
 
 /// Mock implementation of ReplClient for testing

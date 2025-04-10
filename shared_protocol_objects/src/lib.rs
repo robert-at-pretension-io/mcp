@@ -193,6 +193,9 @@ pub struct ReadResourceParams {
 pub struct ReadResourceResult {
     pub contents: Vec<ResourceContent>,
     // Removed _meta field, not standard in spec examples for read result
+} // <-- Added missing closing brace
+
+/// Result of the `resources/list` method.
 #[derive(Debug, Clone, Serialize, Deserialize)] // Added derive
 pub struct ListResourcesResult {
     pub resources: Vec<ResourceInfo>,

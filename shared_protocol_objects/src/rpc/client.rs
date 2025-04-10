@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result; // Removed anyhow import
 use futures::future::BoxFuture;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
@@ -11,12 +11,12 @@ use tracing::{debug, error, info, trace, warn}; // Added trace
 use uuid::Uuid;
 
 use crate::{
-    CallToolParams, CallToolResult, CancelledParams, ClientCapabilities, GetPromptParams,
-    GetPromptResult, Implementation, InitializeParams, InitializeResult, JsonRpcNotification,
-    JsonRpcRequest, LATEST_PROTOCOL_VERSION, ListPromptsResult, ListResourcesResult,
-    ListRootsResult, ListToolsResult, LogMessageParams, ProgressParams, ReadResourceParams,
-    ResourceContent, ResourceUpdateParams, SamplingParams, // Removed ReadResourceResult, ResourceInfo
-    SamplingResult, ServerCapabilities, // Removed ToolInfo, ToolResponseContent
+    CallToolParams, CallToolResult, CancelledParams, ClientCapabilities, GetPromptParams, // Added CallToolParams, CallToolResult, GetPromptParams
+    GetPromptResult, Implementation, InitializeParams, InitializeResult, JsonRpcNotification, // Added GetPromptResult
+    JsonRpcRequest, LATEST_PROTOCOL_VERSION, ListPromptsResult, ListResourcesResult, // Added ListPromptsResult, ListResourcesResult
+    ListRootsResult, ListToolsResult, LogMessageParams, ProgressParams, ReadResourceParams, // Added ListRootsResult, ListToolsResult
+    ResourceContent, ResourceUpdateParams, SamplingParams, // Added SamplingParams
+    SamplingResult, ServerCapabilities, // Added SamplingResult
     SUPPORTED_PROTOCOL_VERSIONS,
 };
 
