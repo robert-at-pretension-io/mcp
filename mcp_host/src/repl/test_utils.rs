@@ -9,8 +9,7 @@ use shared_protocol_objects::{
 };
 use shared_protocol_objects::rpc::{Transport, NotificationHandler};
 
-// Re-export the MockReplClient for testing
-pub use shared_protocol_objects::client::MockReplClient;
+// Removed unused MockReplClient import
 use serde_json::{json, Value};
 
 /// Mock transport for testing
@@ -49,6 +48,7 @@ impl MockTransport {
             name: name.to_string(),
             description: Some(description.to_string()),
             input_schema: schema,
+            annotations: None, // Added missing field
         });
     }
     
@@ -99,9 +99,9 @@ impl Transport for MockTransport {
                         name: "mock-server".to_string(),
                         version: "1.0.0".to_string(),
                     },
-                    _meta: None,
+                    instructions: None, // Use instructions field instead of _meta
                 };
-                
+
                 Ok(JsonRpcResponse {
                     jsonrpc: "2.0".to_string(),
                     id: request.id,
@@ -135,11 +135,9 @@ impl Transport for MockTransport {
                     let result = CallToolResult {
                         content: contents,
                         is_error: None,
-                        _meta: None,
-                        progress: None,
-                        total: None,
+                        // Removed _meta, progress, total
                     };
-                    
+
                     Ok(JsonRpcResponse {
                         jsonrpc: "2.0".to_string(),
                         id: request.id,

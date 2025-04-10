@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn}; // Removed unused trace, warn
 use serde_json::Value;
 use shared_protocol_objects::{
-    ClientCapabilities, Implementation, ServerCapabilities, ToolInfo, CallToolResult
+    Implementation, ServerCapabilities, ToolInfo, CallToolResult, ListToolsResult, InitializeResult // Removed ClientCapabilities, Added ListToolsResult, InitializeResult
 };
 // Removed unused async_trait
 use std::collections::HashMap;
@@ -56,6 +56,7 @@ pub mod testing {
                             "param1": {"type": "string"}
                         }
                     }),
+                    annotations: None, // Added missing field
                 }
             ])
         }
@@ -71,9 +72,7 @@ pub mod testing {
                     }
                 ],
                 is_error: None,
-                _meta: None,
-                progress: None,
-                total: None,
+                // Removed _meta, progress, total
             })
         }
         
@@ -111,20 +110,22 @@ pub mod production {
         
         pub async fn list_tools(&self) -> anyhow::Result<Vec<shared_protocol_objects::ToolInfo>> {
             log::info!("Using enhanced list_tools method with response validation");
-            self.inner.list_tools().await
+            // Update return type and extract tools from the result struct
+            let result = self.inner.list_tools().await?;
+            Ok(result.tools)
         }
-        
+
         pub async fn call_tool(&self, name: &str, args: serde_json::Value) -> anyhow::Result<shared_protocol_objects::CallToolResult> {
             // Special handling for the common error case
             if name == "tools/list" {
                 log::info!("Using specialized list_tools() method directly for tools/list call");
                 // Use the actual list_tools method which is more robust
-                let tools = self.inner.list_tools().await?;
-                
-                // Create a synthetic response
-                let tools_json = format!("Found {} tools: {}", tools.len(), 
-                    tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", "));
-                
+                let list_tools_result = self.inner.list_tools().await?; // Get the full result
+
+                // Create a synthetic response using the tools field from the result
+                let tools_json = format!("Found {} tools: {}", list_tools_result.tools.len(), // Access .tools field
+                    list_tools_result.tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", ")); // Access .tools field
+
                 return Ok(shared_protocol_objects::CallToolResult {
                     content: vec![
                         shared_protocol_objects::ToolResponseContent {
@@ -134,9 +135,7 @@ pub mod production {
                         }
                     ],
                     is_error: Some(false),
-                    _meta: None,
-                    progress: None,
-                    total: None,
+                    // Removed _meta, progress, total
                 });
             }
             
@@ -152,8 +151,9 @@ pub mod production {
         pub fn capabilities(&self) -> Option<&shared_protocol_objects::ServerCapabilities> {
             self.inner.capabilities()
         }
-        
-        pub async fn initialize(&mut self, capabilities: shared_protocol_objects::ClientCapabilities) -> anyhow::Result<shared_protocol_objects::ServerCapabilities> {
+
+        // Update return type to InitializeResult
+        pub async fn initialize(&mut self, capabilities: shared_protocol_objects::ClientCapabilities) -> anyhow::Result<shared_protocol_objects::InitializeResult> {
             self.inner.initialize(capabilities).await
         }
     }
@@ -392,10 +392,10 @@ impl ServerManager {
         
         // The client's list_tools method now has special handling for numeric IDs and
         // response validation to avoid the type mismatch issue
-        let tools = server.client.list_tools().await?;
-        info!("Received tools list from server: {} tools", tools.len());
-        
-        Ok(tools)
+        let list_tools_result = server.client.list_tools().await?; // Get the full result
+        info!("Received tools list from server: {} tools", list_tools_result.tools.len()); // Access .tools
+
+        Ok(list_tools_result.tools) // Return only the Vec<ToolInfo>
     }
 
     /// Call a tool on the specified server with the given arguments
@@ -412,12 +412,12 @@ impl ServerManager {
         // Special case for tools/list to create a dedicated client if needed
         if tool_name == "tools/list" {
             info!("Using enhanced list_tools for tools/list call");
-            let result = server.client.list_tools().await?;
-            
-            // Convert to a CallToolResult format
-            let tools_json = format!("Found {} tools: {}", result.len(), 
-                result.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", "));
-            
+            let list_tools_result = server.client.list_tools().await?; // Get the full result
+
+            // Convert to a CallToolResult format using the .tools field
+            let tools_json = format!("Found {} tools: {}", list_tools_result.tools.len(), // Access .tools
+                list_tools_result.tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", ")); // Access .tools
+
             let call_result = shared_protocol_objects::CallToolResult {
                 content: vec![
                     shared_protocol_objects::ToolResponseContent {
@@ -427,11 +427,8 @@ impl ServerManager {
                     }
                 ],
                 is_error: Some(false),
-                _meta: None,
-                progress: None,
-                total: None,
+                // Removed _meta, progress, total
             };
-            
             let output = format_tool_result(&call_result);
             return Ok(output);
         }
@@ -515,11 +512,12 @@ impl ServerManager {
                 roots: Default::default(), // Use default RootsCapability
             };
             let init_timeout = Duration::from_secs(15);
+            // Update to handle InitializeResult instead of just ServerCapabilities
             match tokio::time::timeout(init_timeout, client.initialize(client_capabilities)).await {
-                Ok(Ok(server_caps)) => {
+                Ok(Ok(init_result)) => { // init_result is InitializeResult
                     info!("Client '{}' initialized successfully.", name);
-                    // Get capabilities after successful initialization
-                    let capabilities = Some(server_caps); // Store the returned capabilities
+                    // Get capabilities from the InitializeResult
+                    let capabilities = Some(init_result.capabilities); // Store capabilities from the result
                     (process, client, capabilities) // Return all three
                 }
                 Ok(Err(e)) => {
