@@ -247,10 +247,17 @@ impl Transport for ProcessTransport {
 
         match tokio::time::timeout(timeout_duration, async {
             loop {
+                // --- Start Enhanced Logging ---
+                let newline_found = response_buffer.iter().position(|&b| b == b'\n');
+                trace!("Read loop iteration: Buffer size = {}, Newline found = {:?}", response_buffer.len(), newline_found.is_some());
+                // --- End Enhanced Logging ---
+
                 // Check if we found a newline in the current buffer
-                if let Some(newline_pos) = response_buffer.iter().position(|&b| b == b'\n') {
+                if let Some(newline_pos) = newline_found { // Use the variable checked above
+                    info!("Newline found at position {}", newline_pos); // Log position
                     // Found newline, extract the line
                     let line_bytes = response_buffer.split_to(newline_pos + 1); // Include newline
+                    trace!("Extracted line bytes ({} bytes): {:?}", line_bytes.len(), line_bytes); // Log extracted bytes
                     // Decode *only* the extracted line
                     match String::from_utf8(line_bytes.freeze().to_vec()) { // Use freeze().to_vec() for efficiency if needed
                         Ok(line) => {
@@ -265,15 +272,18 @@ impl Transport for ProcessTransport {
                 }
 
                 // No newline yet, read more data
+                trace!("No newline found, attempting to read more data...");
                 match reader.read_buf(&mut response_buffer).await {
                     Ok(0) => {
                         // EOF reached before finding a newline
+                        warn!("EOF reached before newline found. Buffer size: {}", response_buffer.len());
                         if response_buffer.is_empty() {
                             error!("Child process closed stdout without sending any response data.");
                             return Err(anyhow!("Child process closed stdout without sending response"));
                         } else {
                             // EOF, but we have partial data without a newline. Try to decode what we have.
                             warn!("Child process closed stdout with partial data and no trailing newline.");
+                            trace!("Partial data at EOF ({} bytes): {:?}", response_buffer.len(), response_buffer); // Log partial data
                             match String::from_utf8(response_buffer.to_vec()) {
                                 Ok(line) => {
                                     info!("Successfully decoded partial line at EOF ({} bytes)", line.len());
@@ -288,7 +298,8 @@ impl Transport for ProcessTransport {
                     }
                     Ok(n) => {
                         // Read n bytes successfully, loop will check for newline again
-                        trace!("Read {} bytes from stdout, accumulated {} bytes", n, response_buffer.len());
+                        // Use info level for read success to ensure visibility
+                        info!("Read {} bytes from stdout, accumulated {} bytes", n, response_buffer.len());
                         // Optional: Add a check for excessively large buffers to prevent OOM
                         if response_buffer.len() > 1_000_000 { // Example limit: 1MB
                              error!("Response buffer exceeded 1MB limit without newline. Aborting.");
