@@ -7,10 +7,8 @@ use crate::brave_search::{search_tool_info, BraveSearchClient};
 use crate::email_validator::{handle_neverbounce_tool_call, neverbounce_tool_info};
 use crate::git_integration::{git_tool_info, handle_git_tool_call};
 use crate::gmail_integration::{gmail_tool_info, handle_gmail_tool_call};
-use crate::google_search::{google_search_tool_info, GoogleSearchClient, GoogleSearchResult};
 use crate::long_running_task::{handle_long_running_tool_call, long_running_tool_info, LongRunningTaskManager};
 use crate::mermaid_chart::{handle_mermaid_chart_tool_call, mermaid_chart_tool_info, MermaidChartParams};
-use crate::oracle_tool::{handle_oracle_select_tool_call, oracle_select_tool_info};
 use crate::process_html::extract_text_from_html;
 use crate::regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
 use crate::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
@@ -241,63 +239,6 @@ impl Tool for BraveSearchTool {
     }
 }
 
-impl Tool for GoogleSearchTool {
-    fn name(&self) -> &str {
-        "google_search"
-    }
-    
-    fn info(&self) -> shared_protocol_objects::ToolInfo {
-        google_search_tool_info()
-    }
-    
-    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
-        let api_key = self.api_key.clone();
-        let cx = self.cx.clone();
-        
-        Box::pin(async move {
-            let query = params
-                .arguments
-                .get("query")
-                .and_then(Value::as_str)
-                .ok_or_else(|| anyhow!("Missing required argument: query"))?
-                .to_string();
-                
-            let num_results = params
-                .arguments
-                .get("num_results")
-                .and_then(Value::as_u64)
-                .map(|n| n as u32);
-                
-            let client = GoogleSearchClient::new(api_key, cx);
-            
-            match client.search(&query, num_results).await {
-                Ok(results) => {
-                    let formatted_results = if results.is_empty() {
-                        "No results found.".to_string()
-                    } else {
-                        let mut output = String::new();
-                        output.push_str("# Search Results\n\n");
-                        
-                        for (i, result) in results.iter().enumerate() {
-                            output.push_str(&format!("## {}. {}\n", i + 1, result.title));
-                            output.push_str(&format!("URL: {}\n\n", result.link));
-                            output.push_str(&format!("{}\n\n", result.snippet));
-                        }
-                        
-                        output
-                    };
-                    
-                    let tool_res = standard_tool_result(formatted_results, None);
-                    Ok(standard_success_response(id, json!(tool_res)))
-                }
-                Err(e) => {
-                    let tool_res = standard_tool_result(format!("Google search error: {}", e), Some(true));
-                    Ok(standard_success_response(id, json!(tool_res)))
-                }
-            }
-        })
-    }
-}
 
 // Aider Tool Implementation
 #[derive(Debug)]
