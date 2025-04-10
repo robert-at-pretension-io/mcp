@@ -8,6 +8,11 @@ pub mod client;
 #[cfg(feature = "examples")]
 pub mod examples;
 
+// Helper function to default Value fields to an empty object
+fn default_value_object() -> Value {
+    serde_json::json!({})
+}
+
 /// Core protocol version constants
 pub const LATEST_PROTOCOL_VERSION: &str = "2025-03-26";
 pub const SUPPORTED_PROTOCOL_VERSIONS: [&str; 3] = ["2025-03-26", "2024-11-05", "2024-10-07"];
@@ -85,15 +90,15 @@ pub struct Implementation {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientCapabilities {
-    #[serde(default)]
-    pub experimental: Option<Value>,
-    #[serde(default)]
-    pub sampling: Option<Value>,
-    #[serde(default)]
-    pub roots: Option<RootsCapability>,
+    #[serde(default = "default_value_object")] // Default to {} instead of null
+    pub experimental: Value,
+    #[serde(default = "default_value_object")] // Default to {} instead of null
+    pub sampling: Value,
+    #[serde(default)] // Default to RootsCapability::default()
+    pub roots: RootsCapability,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)] // Add Default derive
 pub struct RootsCapability {
     pub list_changed: bool,
 }
