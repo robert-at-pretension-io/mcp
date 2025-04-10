@@ -9,6 +9,7 @@ use crate::git_integration::{git_tool_info, handle_git_tool_call};
 use crate::gmail_integration::{gmail_tool_info, handle_gmail_tool_call};
 use crate::long_running_task::{handle_long_running_tool_call, long_running_tool_info, LongRunningTaskManager};
 use crate::mermaid_chart::{handle_mermaid_chart_tool_call, mermaid_chart_tool_info, MermaidChartParams};
+use crate::planner::{PlannerTool as PlannerToolImpl}; // Renamed to avoid conflict
 use crate::process_html::extract_text_from_html;
 use crate::regex_replace::{handle_regex_replace_tool_call, regex_replace_tool_info};
 use crate::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
@@ -363,7 +364,8 @@ pub async fn create_tools() -> Result<Vec<Box<dyn Tool>>> {
     tools.push(Box::new(BashTool));
     tools.push(Box::new(AiderTool));
     tools.push(Box::new(MermaidChartTool));
-    
+    tools.push(Box::new(PlannerToolImpl)); // Add the new planner tool
+
     // Note: LongRunningTaskTool is added separately in main.rs since it needs the manager
     
     Ok(tools)

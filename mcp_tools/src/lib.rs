@@ -11,3 +11,4 @@ pub mod aider;
 pub mod tool_trait;
 pub mod tool_impls;
 pub mod mermaid_chart;
+pub mod planner;
