@@ -104,126 +104,7 @@ impl ProcessTransport {
         Ok(transport)
     }
 
-    /// Start the background task for listening to incoming notifications
-    async fn start_notification_listener(&self) -> Result<()> {
-        let stdout = Arc::clone(&self.stdout);
-        let notification_handler = Arc::clone(&self.notification_handler);
-        
-        tokio::spawn(async move {
-            info!("Starting notification listener");
-            let reader_stdout = Arc::clone(&stdout);
-            
-            // Use BytesMut for better buffer handling
-            let mut response_buffer = bytes::BytesMut::with_capacity(8192);
-            
-            loop {
-                // Use tokio::select to handle backpressure and avoid tight polling loops
-                tokio::select! {
-                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(10)) => {
-                        // This branch exists just to provide a small pause between iterations
-                        // to avoid CPU spinning when no data is available
-                    }
-                    
-                    // Try to read from stdout but don't block request processing
-                    result = async {
-                        // Try to acquire the lock - non-blocking
-                        if let Ok(mut stdout_guard) = reader_stdout.try_lock() {
-                            trace!("Notification listener acquired stdout lock");
-                            // Only read if there's actual data available (prevent blocking)
-                            // Create a reader from the stdout guard
-                            let mut reader = BufReader::new(&mut *stdout_guard);
-                            
-                            // Try a small read to see if data is available
-                            // Use a shorter timeout to avoid blocking request processing
-                            match tokio::time::timeout(
-                                tokio::time::Duration::from_millis(5),
-                                reader.read_buf(&mut response_buffer)
-                            ).await {
-                                Ok(Ok(0)) => {
-                                    // EOF
-                                    info!("Child process closed stdout, stopping notification listener");
-                                    return Err("EOF");
-                                }
-                                Ok(Ok(n)) => {
-                                    trace!("Notification listener read {} bytes", n);
-                                    // Check if we have complete messages (ending with newlines)
-                                    while let Some(newline_pos) = response_buffer.iter().position(|&b| b == b'\n') {
-                                        // Extract a complete line
-                                        let line_bytes = response_buffer.split_to(newline_pos + 1);
-                                        if let Ok(line) = String::from_utf8(line_bytes.freeze().to_vec()) {
-                                            let line = line.trim().to_string();
-                                            
-                                            // Process the line if it's not empty
-                                            if !line.is_empty() {
-                                                trace!("Processing line: {}", line);
-                                                
-                                                // Check if this looks like a notification (has method, no id)
-                                                if line.contains("\"method\":") && !line.contains("\"id\":") {
-                                                    debug!("Found notification: {}", line);
-                                                    
-                                                    // Try to parse as notification
-                                                    if let Ok(notification) = serde_json::from_str::<JsonRpcNotification>(&line) {
-                                                        info!("Parsed notification for method: {}", notification.method);
-                                                        
-                                                        // Check if we have a handler and call it in a separate task
-                                                        let notif_clone = notification.clone();
-                                                        let handler_for_task = Arc::clone(&notification_handler);
-                                                        
-                                                        tokio::spawn(async move {
-                                                            if let Some(handler) = &*handler_for_task.lock().await {
-                                                                debug!("Calling notification handler for {}", notification.method);
-                                                                handler(notif_clone).await;
-                                                            } else {
-                                                                debug!("No notification handler registered");
-                                                            }
-                                                        });
-                                                    } else {
-                                                        warn!("Failed to parse notification: {}", line);
-                                                    }
-                                                } else {
-                                                    // This is likely a response to a request
-                                                    trace!("Line appears to be a response, skipping in notification listener");
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                Ok(Err(e)) => {
-                                    error!("Error reading from stdout in notification listener: {}", e);
-                                    return Err("Read error");
-                                }
-                                Err(_) => {
-                                    // Timeout (no data currently available)
-                                    trace!("No data available for notification listener");
-                                }
-                            }
-                            
-                            // Always drop the lock to allow request/response handlers to proceed
-                            drop(stdout_guard);
-                        }
-                        
-                        // Always return Ok to continue the loop
-                        Ok(())
-                    } => {
-                        match result {
-                            Err(_) => {
-                                // Exit the loop on errors (EOF or read error)
-                                break;
-                            }
-                            _ => { /* Continue loop */ }
-                        }
-                    }
-                }
-            }
-            
-            info!("Notification listener stopped");
-        });
-        
-        // Small delay to ensure the listener is started before proceeding
-        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-        
-        Ok(())
-    }
+    // Removed the unused start_notification_listener function
 }
 
 #[async_trait]
@@ -246,7 +127,7 @@ impl Transport for ProcessTransport {
         // Now read the response directly
         info!("Acquiring stdout lock for response");
         let mut stdout_guard = self.stdout.lock().await;
-        let mut reader = BufReader::new(&mut *stdout_guard);
+        // --- Removed BufReader ---
         // Use BytesMut buffer to accumulate response data
         let mut response_buffer = bytes::BytesMut::with_capacity(8192); // Start with 8KB, might grow
         let response_str: String; // To hold the final decoded string
@@ -285,9 +166,11 @@ impl Transport for ProcessTransport {
                     }
                 }
 
-                // No newline yet, read more data
-                trace!("No newline found, attempting to read more data...");
-                match reader.read_buf(&mut response_buffer).await {
+                // No newline yet, read more data directly from stdout_guard
+                trace!("No newline found, attempting to read more data directly from stdout...");
+                // Create a temporary buffer for the read() call
+                let mut temp_buf = [0u8; 4096]; // Read in chunks of 4KB
+                match stdout_guard.read(&mut temp_buf).await {
                     Ok(0) => {
                         // EOF reached before finding a newline
                         warn!("EOF reached before newline found. Buffer size: {}", response_buffer.len());
@@ -326,9 +209,10 @@ impl Transport for ProcessTransport {
                         }
                     }
                     Ok(n) => {
-                        // Read n bytes successfully, loop will check for newline again
+                        // Read n bytes successfully, append to response_buffer
+                        response_buffer.extend_from_slice(&temp_buf[..n]);
                         // Use info level for read success to ensure visibility
-                        info!("Read {} bytes from stdout, accumulated {} bytes", n, response_buffer.len());
+                        info!("Read {} bytes directly from stdout, accumulated {} bytes", n, response_buffer.len());
                         // Optional: Add a check for excessively large buffers to prevent OOM
                         if response_buffer.len() > 1_000_000 { // Example limit: 1MB
                              error!("Response buffer exceeded 1MB limit without newline. Aborting.");
