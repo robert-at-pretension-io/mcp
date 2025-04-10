@@ -5,13 +5,15 @@ use log;
 /// Extracts tool calls from AI responses using text delimiter pattern
 pub struct ToolParser; // Renamed struct
 
-impl ToolParser { // Renamed struct
-    /// Parse all tool calls from a response using the text delimiter pattern
-    pub fn parse_tool_calls(response: &str) -> Vec<ToolCall> {
+impl ToolParser {
+    /// Parse all tool calls from a response using the text delimiter pattern.
+    /// Returns a tuple: (Vec<ValidToolCalls>, Option<FirstInvalidAttemptContent>)
+    pub fn parse_tool_calls(response: &str) -> (Vec<ToolCall>, Option<String>) {
         // Define the start and end delimiters
         let start_delimiter = "<<<TOOL_CALL>>>";
         let end_delimiter = "<<<END_TOOL_CALL>>>";
         let mut tool_calls = Vec::new();
+        let mut first_invalid_content: Option<String> = None; // Track first invalid attempt
         let mut start_pos = 0;
 
         // Find all instances of delimited tool calls
@@ -48,10 +50,10 @@ impl ToolParser { // Renamed struct
                 break;
             }
         }
-        
-        tool_calls
+
+        (tool_calls, first_invalid_content) // Return tuple
     }
-    
+
     /// Validate that a JSON object has the required fields for a tool call
     fn validate_tool_call(json: &Value) -> Result<ToolCall> {
         // Get the name field
@@ -94,14 +96,15 @@ mod tests {
 }
 <<<END_TOOL_CALL>>>
 
-Let me know if you need anything else."#; // Updated test case
+Let me know if you need anything else."#;
 
-        let tool_calls = ToolParser::parse_tool_calls(response); // Use new struct name
+        let (tool_calls, invalid_content) = ToolParser::parse_tool_calls(response);
         assert_eq!(tool_calls.len(), 1);
+        assert!(invalid_content.is_none());
         assert_eq!(tool_calls[0].name, "search");
         assert_eq!(tool_calls[0].arguments["query"], "rust programming");
     }
-    
+
     #[test]
     fn test_parse_multiple_tool_calls() {
         let response = r#"I'll execute these tools for you.
@@ -125,19 +128,21 @@ Some text in between.
   }
 }
 <<<END_TOOL_CALL>>>
-"#; // Updated test case
+"#;
 
-        let tool_calls = ToolParser::parse_tool_calls(response); // Use new struct name
+        let (tool_calls, invalid_content) = ToolParser::parse_tool_calls(response);
         assert_eq!(tool_calls.len(), 2);
+        assert!(invalid_content.is_none());
         assert_eq!(tool_calls[0].name, "search");
         assert_eq!(tool_calls[1].name, "calculator");
     }
-    
+
     #[test]
     fn test_no_tool_calls() {
         let response = "I don't have any tool calls to make right now.";
-        let tool_calls = ToolParser::parse_tool_calls(response); // Use new struct name
+        let (tool_calls, invalid_content) = ToolParser::parse_tool_calls(response);
         assert_eq!(tool_calls.len(), 0);
+        assert!(invalid_content.is_none());
     }
 
     #[test]
@@ -152,12 +157,14 @@ Some text in between.
   invalid json here
 }
 <<<END_TOOL_CALL>>>
-"#; // Updated test case
+"#;
 
-        let tool_calls = ToolParser::parse_tool_calls(response); // Use new struct name
+        let (tool_calls, invalid_content) = ToolParser::parse_tool_calls(response);
         assert_eq!(tool_calls.len(), 0);
+        assert!(invalid_content.is_some());
+        assert!(invalid_content.unwrap().contains("invalid json here"));
     }
-    
+
     #[test]
     fn test_missing_fields() {
         let response = r#"
@@ -166,9 +173,34 @@ Some text in between.
   "name": "search"
 }
 <<<END_TOOL_CALL>>>
-"#; // Updated test case
+"#;
 
-        let tool_calls = ToolParser::parse_tool_calls(response); // Use new struct name
+        let (tool_calls, invalid_content) = ToolParser::parse_tool_calls(response);
         assert_eq!(tool_calls.len(), 0);
+        assert!(invalid_content.is_some());
+        assert!(invalid_content.unwrap().contains("\"name\": \"search\"")); // Contains the partial JSON
+    }
+
+    #[test]
+    fn test_mixed_valid_invalid() {
+        let response = r#"
+<<<TOOL_CALL>>>
+{ "name": "valid_tool", "arguments": {} }
+<<<END_TOOL_CALL>>>
+Some text.
+<<<TOOL_CALL>>>
+{ "invalid": "json" }
+<<<END_TOOL_CALL>>>
+More text.
+<<<TOOL_CALL>>>
+{ "name": "another_valid", "arguments": {"key": "value"} }
+<<<END_TOOL_CALL>>>
+"#;
+        let (tool_calls, invalid_content) = ToolParser::parse_tool_calls(response);
+        assert_eq!(tool_calls.len(), 2); // Should find both valid calls
+        assert_eq!(tool_calls[0].name, "valid_tool");
+        assert_eq!(tool_calls[1].name, "another_valid");
+        assert!(invalid_content.is_some()); // Should capture the first invalid attempt
+        assert!(invalid_content.unwrap().contains("\"invalid\": \"json\""));
     }
 }

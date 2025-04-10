@@ -277,11 +277,12 @@ pub async fn resolve_assistant_response(
             }
 
             // --- Parse for Tool Calls ---
-            let tool_calls = ToolParser::parse_tool_calls(&current_response);
+            // Now returns (valid_calls, first_invalid_attempt_content)
+            let (tool_calls, invalid_attempt_content) = ToolParser::parse_tool_calls(&current_response);
 
             if !tool_calls.is_empty() {
-                // --- Tool Calls Found: Execute them ---
-                log(format!("\n>>> Found {} tool calls. Executing...", tool_calls.len()));
+                // --- Valid Tool Calls Found: Execute them ---
+                log(format!("\n>>> Found {} VALID tool calls. Executing...", tool_calls.len()));
                 info!(
                     "Found {} tool calls in iteration {}. Executing...",
                     tool_calls.len(),
@@ -366,12 +367,63 @@ pub async fn resolve_assistant_response(
                     }
                 };
                 // Continue to the next loop iteration to process the new current_response
-                continue;
+                continue; // Loop back to process the new response from the AI
+
+            } else if let Some(invalid_content) = invalid_attempt_content {
+                // --- Invalid Tool Attempt Found ---
+                warn!("Detected invalid tool call attempt in iteration {}. Content: {}", iterations, invalid_content);
+                log("\n>>> Invalid Tool Call Attempt Detected. Providing Feedback...".to_string());
+
+                // Inject feedback message
+                let feedback_message = format!(
+                    "Correction Request:\n\
+                    You attempted to call a tool, but the format was incorrect. \
+                    Remember to use the exact format including delimiters and a valid JSON object with 'name' (string) and 'arguments' (object) fields.\n\n\
+                    Your invalid attempt contained:\n```\n{}\n```\n\nPlease correct the format and try the tool call again, or provide a text response if you no longer need the tool.",
+                    invalid_content.trim()
+                );
+                log(format!("Injecting User Message (Invalid Tool Format Feedback):\n```\n{}\n```", feedback_message));
+                state.add_user_message(&feedback_message);
+
+                // Call LLM again for correction
+                log("\n>>> Calling AI again for tool format correction...".to_string());
+                debug!("Calling AI again after invalid tool format detection.");
+                let mut builder = client.raw_builder(&state.system_prompt);
+                for msg in &state.messages {
+                    match msg.role {
+                        Role::System => {}
+                        Role::User => builder = builder.user(msg.content.clone()),
+                        Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                    }
+                }
+
+                if config.interactive_output {
+                     println!("{}", style("\nInvalid tool format detected. Asking AI to correct...").yellow().italic());
+                }
+
+                match builder.execute().await {
+                    Ok(revised_response) => {
+                        info!("Received revised AI response after invalid tool format (length: {}).", revised_response.len());
+                        log(format!("\n{}", crate::conversation_state::format_assistant_response_with_tool_calls(&revised_response)));
+                        state.add_assistant_message(&revised_response);
+                        current_response = revised_response;
+                        // Loop continues to re-evaluate the revised response
+                        continue; // Go to next loop iteration
+                    }
+                    Err(e) => {
+                        error!("Error getting revised AI response after invalid tool format: {:?}", e);
+                        let error_msg = format!("Failed to get AI response after invalid tool format feedback: {}", e);
+                        log(format!("\n--- Error Getting Correction: {} ---", error_msg));
+                        // Decide how to handle this - maybe return the *previous* response as unverified?
+                        // For now, let's return an error state.
+                        return Err(anyhow!(error_msg));
+                    }
+                }
 
             } else {
-                // --- No Tool Calls Found: Attempt Verification ---
-                log("\n>>> Assistant response has no tool calls. Proceeding to verification.".to_string());
-                debug!("No tool calls found in iteration {}. Performing verification.", iterations);
+                 // --- No Valid Tool Calls AND No Invalid Attempts Found: Attempt Verification ---
+                 log("\n>>> Assistant response has no tool calls or invalid attempts. Proceeding to verification.".to_string());
+                 debug!("No tool calls or invalid attempts found in iteration {}. Performing verification.", iterations);
 
                 if criteria.is_empty() {
                     info!("No criteria provided, skipping verification.");
