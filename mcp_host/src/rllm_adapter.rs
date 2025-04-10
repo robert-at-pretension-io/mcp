@@ -593,16 +593,35 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 return Err(anyhow!(error_msg));
             }
         };
-        
+
         // Build the chat messages
         let mut chat_messages = Vec::new();
-        let mut _has_image = false;
-        let mut image_text = String::new();
-        
+        let mut _has_image = false; // Keep track if images are involved
+        let mut image_text = String::new(); // Buffer for text associated with an image
+
+        // --- Inject System Prompt ---
+        // Add the system prompt as the first message if it's not empty
+        // Use ChatRole::System if the backend supports it (most do)
+        if !self.system_prompt.is_empty() {
+            log::debug!("Injecting system prompt for RLLM request: '{}'", self.system_prompt);
+            chat_messages.push(ChatMessage {
+                role: ChatRole::System, // Use the System role
+                content: self.system_prompt.clone().into(),
+                message_type: MessageType::Text,
+            });
+        }
+        // --- End System Prompt Injection ---
+
         for (i, (role, content)) in self.messages.iter().enumerate() {
+            // Skip any system messages added via .system() as we injected the main one above
+            if *role == Role::System {
+                log::trace!("Skipping message with Role::System from self.messages as system_prompt was already injected.");
+                continue;
+            }
+
             // Check for special image markers
             if content.starts_with("__IMAGE_PATH__:") || content.starts_with("__IMAGE_URL__:") {
-                _has_image = true;
+                _has_image = true; // Mark that an image is present
                 
                 // If previous message was the image text, skip adding it separately
                 if i > 0 && self.messages[i-1].0 == Role::User && !image_text.is_empty() {
@@ -652,9 +671,17 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             });
         }
 
+        // --- Log the final messages being sent ---
+        match serde_json::to_string_pretty(&chat_messages) {
+             Ok(json_str) => log::debug!("Final RLLM Chat Messages Payload:\n{}", json_str),
+             Err(e) => log::warn!("Failed to serialize chat messages for logging: {}", e),
+        }
+        // --- End Logging ---
+
+
         // Execute the chat request
         let message_count = chat_messages.len();
-        log::debug!("Sending chat request with {} messages", message_count);
+        log::debug!("Sending chat request with {} messages to RLLM backend", message_count);
         // Add warning for large message counts
         if message_count > 20 { // Threshold can be adjusted
             log::warn!("Sending a large number of messages ({}) to RLLM backend {:?}. This might exceed token limits or increase costs.", message_count, self.backend);
