@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
-use crate::{CallToolResult, ListToolsResult, ToolInfo}; // Added ListToolsResult
+use crate::{CallToolResult, ListToolsResult}; // Removed ToolInfo
 
 /// A trait representing a client connection to an MCP server
 /// 
