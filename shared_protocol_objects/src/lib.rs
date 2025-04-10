@@ -193,9 +193,7 @@ pub struct ReadResourceParams {
 pub struct ReadResourceResult {
     pub contents: Vec<ResourceContent>,
     // Removed _meta field, not standard in spec examples for read result
-}
-
-/// Result of the `resources/list` method.
+#[derive(Debug, Clone, Serialize, Deserialize)] // Added derive
 pub struct ListResourcesResult {
     pub resources: Vec<ResourceInfo>,
     #[serde(rename = "nextCursor", skip_serializing_if = "Option::is_none")]
@@ -409,13 +407,6 @@ pub fn error_response(id: Option<Value>, code: i64, message: &str) -> JsonRpcRes
             data: None,
         }),
     }
-}
-
-/// Creates an error JSON-RPC response.
-pub fn error_response(id: Option<Value>, code: i64, message: &str) -> JsonRpcResponse {
-    JsonRpcResponse {
-        jsonrpc: "2.0".to_string(),
-        id: id.unwrap_or(Value::Null),
         result: None,
         error: Some(JsonRpcError {
             code,

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
-use crate::{CallToolResult, ToolInfo};
+use crate::{CallToolResult, ListToolsResult}; // Removed ToolInfo
 use crate::rpc::{McpClient, Transport, ProcessTransport};
 use super::trait_def::ReplClient;
 

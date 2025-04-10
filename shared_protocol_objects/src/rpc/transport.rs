@@ -72,9 +72,11 @@ impl ProcessTransport {
 
         // Spawn stderr reader task
         tokio::spawn(async move {
-            let mut reader = BufReader::new(stderr_arc.lock().await); // Lock stderr Arc
+            let mut stderr_locked = stderr_arc.lock().await; // Lock stderr Arc outside BufReader
+            let mut reader = BufReader::new(&mut *stderr_locked); // Pass mutable reference to locked stderr
             let mut line = String::new();
             loop {
+                // Now read_line should work correctly on BufReader<&mut ChildStderr>
                 match reader.read_line(&mut line).await {
                     Ok(0) => {
                         // EOF

@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use crate::{CallToolResult, ToolInfo, ToolResponseContent};
+use crate::{CallToolResult, ListToolsResult, ToolInfo, ToolResponseContent}; // Added ListToolsResult
 use super::trait_def::ReplClient;
 
 /// Mock implementation of ReplClient for testing
@@ -41,6 +41,7 @@ impl MockReplClient {
             name: name.to_string(),
             description: Some(description.to_string()),
             input_schema: schema,
+            annotations: None, // Added missing field
         });
         self
     }
@@ -54,9 +55,7 @@ impl MockReplClient {
                 annotations: None,
             }],
             is_error: None,
-            _meta: None,
-            progress: None,
-            total: None,
+            // Removed _meta, progress, total
         });
         self
     }
@@ -70,9 +69,7 @@ impl MockReplClient {
                 annotations: None,
             }],
             is_error: Some(true),
-            _meta: None,
-            progress: None,
-            total: None,
+            // Removed _meta, progress, total
         });
         self
     }

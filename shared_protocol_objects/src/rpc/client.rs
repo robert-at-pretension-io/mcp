@@ -7,7 +7,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
 // Removed unused imports: AsyncBufReadExt, AsyncWriteExt, BufReader
 use tokio::process::Command;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn}; // Added trace
 use uuid::Uuid;
 
 use crate::{
@@ -15,8 +15,8 @@ use crate::{
     GetPromptResult, Implementation, InitializeParams, InitializeResult, JsonRpcNotification,
     JsonRpcRequest, LATEST_PROTOCOL_VERSION, ListPromptsResult, ListResourcesResult,
     ListRootsResult, ListToolsResult, LogMessageParams, ProgressParams, ReadResourceParams,
-    ReadResourceResult, ResourceContent, ResourceInfo, ResourceUpdateParams, SamplingParams,
-    SamplingResult, ServerCapabilities, ToolInfo, ToolResponseContent,
+    ResourceContent, ResourceUpdateParams, SamplingParams, // Removed ReadResourceResult, ResourceInfo
+    SamplingResult, ServerCapabilities, // Removed ToolInfo, ToolResponseContent
     SUPPORTED_PROTOCOL_VERSIONS,
 };
 
@@ -62,8 +62,17 @@ impl<T: Transport> McpClient<T> {
     ) -> Result<InitializeResult> {
         if self.initialized {
             warn!("Client already initialized");
-            if let Some(caps) = &self.server_capabilities {
-                return Ok(caps.clone());
+            // If already initialized, return the stored InitializeResult data
+            if let (Some(caps), Some(info)) = (&self.server_capabilities, &self.server_info) {
+                 return Ok(InitializeResult {
+                      protocol_version: self.protocol_version.clone(), // Use the client's known version
+                      capabilities: caps.clone(),
+                      server_info: info.clone(),
+                      instructions: None, // Instructions might not be stored, return None or fetch if needed
+                 });
+            } else {
+                 // Should not happen if initialized is true, but handle defensively
+                 return Err(McpError::Protocol("Client initialized but server info/caps missing".to_string()).into());
             }
         }
         
