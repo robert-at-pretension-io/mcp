@@ -254,103 +254,20 @@ impl Transport for ProcessTransport {
                 drop(stdout_guard);
                 
                 // Parse the response
+                // Parse the response
                 let response = serde_json::from_str::<JsonRpcResponse>(response_str)
                     .map_err(|e| anyhow!("Failed to parse response: {}, raw: {}", e, response_str))?;
-                
-                // Validate the response based on the request method
-                if let Some(method) = request.method.split('/').nth(1) {
-                    info!("Validating response for method type: {}", method);
-                    
-                    // Make sure tools/list response has a tools array
-                    if method == "list" && request.method == "tools/list" {
-                        if let Some(result) = &response.result {
-                            if !result.as_object().and_then(|o| o.get("tools")).is_some() {
-                                error!("Invalid tools/list response format - missing tools array");
-                                return Err(anyhow!("Invalid tools/list response - missing tools array"));
-                            }
-                        }
-                    }
-                    
-                    // Make sure tools/call response has a content array
-                    if method == "call" && request.method == "tools/call" {
-                        if let Some(result) = &response.result {
-                            if !result.as_object().and_then(|o| o.get("content")).is_some() {
-                                // Check if we're getting a tools/list response accidentally
-                                let got_tools_list = result.as_object()
-                                    .and_then(|o| o.get("tools"))
-                                    .and_then(|t| t.as_array())
-                                    .is_some();
-                                    
-                                if got_tools_list {
-                                    warn!("Got tools/list response for tools/call request - server is confusing response types!");
-                                    warn!("This server appears to always return tools/list responses after initialization");
-                                    warn!("For this server, please create a fresh process for each different request type");
-                                    // Generate a synthetic response instead of failing
-                                    let synthetic_result = serde_json::json!({
-                                        "content": [
-                                            {
-                                                "type": "text",
-                                                "text": "Synthetic response - server confused response types. Use separate processes for each request type."
-                                            }
-                                        ],
-                                        "is_error": false
-                                    });
-                                    
-                                    return Ok(JsonRpcResponse {
-                                        jsonrpc: "2.0".to_string(),
-                                        id: request.id.clone(),
-                                        result: Some(synthetic_result),
-                                        error: None,
-                                    });
-                                } else {
-                                    error!("Invalid tools/call response format - missing content array");
-                                    return Err(anyhow!("Invalid tools/call response - missing content array"));
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Check for ID mismatch - with special handling
+
+                // Basic ID check - log warning if mismatch, but proceed.
+                // Strict applications might want to return an error here.
                 if response.id != request.id {
-                    warn!("Response ID mismatch: expected {:?}, got {:?}. This is likely due to server resetting ID counter.", request.id, response.id);
-                    
-                    // For specific requests, we need to be more careful
-                    let req_method = &request.method;
-                    
-                    // If we're making a tools/call request, get the exact tool name for better logs
-                    let tool_name = if req_method == "tools/call" {
-                        if let Some(params) = &request.params {
-                            if let Some(obj) = params.as_object() {
-                                if let Some(name) = obj.get("name") {
-                                    if let Some(name_str) = name.as_str() {
-                                        Some(name_str.to_string())
-                                    } else { None }
-                                } else { None }
-                            } else { None }
-                        } else { None }
-                    } else { None };
-                    
-                    match tool_name {
-                        Some(name) => {
-                            info!("ID mismatch for tool call to {}, checking response format...", name);
-                            
-                            // Extra verification for tools/call - make sure the response has content field
-                            if let Some(result) = &response.result {
-                                if !result.as_object().and_then(|o| o.get("content")).is_some() {
-                                    error!("Response for tool '{}' lacks expected structure, possibly crossed with another response", name);
-                                    return Err(anyhow!("Response format mismatch - expected 'content' field"));
-                                }
-                            }
-                        },
-                        None => {
-                            info!("ID mismatch for {} request, continuing with response anyway", req_method);
-                        }
-                    }
-                    
-                    // Continue anyway, since we know this is the response to our request, but have done some validation
+                    warn!(
+                        "Response ID mismatch for method {}: expected {:?}, got {:?}. This might indicate server issues.",
+                        request.method, request.id, response.id
+                    );
+                    // Depending on strictness, you might return an error:
+                    // return Err(anyhow!("Response ID mismatch: expected {:?}, got {:?}", request.id, response.id));
                 }
-                
                 Ok(response)
             },
             Ok(Err(e)) => {

@@ -10,10 +10,12 @@ use super::trait_def::ReplClient;
 /// This mock client can be configured with predefined tools and responses,
 /// allowing test code to verify client-server interactions without requiring
 /// actual network communication.
+#[derive(Clone)] // Add Clone derive
 pub struct MockReplClient {
     name: String,
     tools: Vec<ToolInfo>,
     responses: HashMap<String, CallToolResult>,
+    list_tools_cursor: Option<String>, // Add cursor support for list_tools
 }
 
 impl MockReplClient {
@@ -23,8 +25,9 @@ impl MockReplClient {
             name: name.to_string(),
             tools: Vec::new(),
             responses: HashMap::new(),
+            list_tools_cursor: None,
         };
-        
+
         // Add default mock tool
         client.add_tool("test_tool", "A test tool", serde_json::json!({}));
         client.add_response("test_tool", "Test tool output");
@@ -80,11 +83,15 @@ impl ReplClient for MockReplClient {
     fn name(&self) -> &str {
         &self.name
     }
-    
-    async fn list_tools(&self) -> Result<Vec<ToolInfo>> {
-        Ok(self.tools.clone())
+
+    async fn list_tools(&self) -> Result<ListToolsResult> {
+        // Simulate pagination if a cursor is set
+        Ok(ListToolsResult {
+            tools: self.tools.clone(),
+            next_cursor: self.list_tools_cursor.clone(),
+        })
     }
-    
+
     async fn call_tool(&self, tool_name: &str, _args: Value) -> Result<CallToolResult> {
         self.responses.get(tool_name)
             .cloned()
@@ -100,15 +107,18 @@ impl ReplClient for MockReplClient {
 mod tests {
     use super::*;
     
+    use crate::ListToolsResult;
+
     #[tokio::test]
     async fn test_mock_client() {
         let mut client = MockReplClient::new("test-server");
-        
+
         // Test the default tool
-        let tools = client.list_tools().await.unwrap();
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name, "test_tool");
-        
+        let list_result = client.list_tools().await.unwrap();
+        assert_eq!(list_result.tools.len(), 1);
+        assert_eq!(list_result.tools[0].name, "test_tool");
+        assert!(list_result.next_cursor.is_none());
+
         // Add a custom tool
         client.add_tool("custom_tool", "A custom tool", serde_json::json!({
             "type": "object",
@@ -118,12 +128,12 @@ mod tests {
         }));
         
         client.add_response("custom_tool", "Custom tool output");
-        
-        // Test listing tools
-        let tools = client.list_tools().await.unwrap();
-        assert_eq!(tools.len(), 2);
-        assert_eq!(tools[1].name, "custom_tool");
-        
+
+        // Test listing tools again
+        let list_result = client.list_tools().await.unwrap();
+        assert_eq!(list_result.tools.len(), 2);
+        assert_eq!(list_result.tools[1].name, "custom_tool");
+
         // Test calling tools
         let result = client.call_tool("test_tool", Value::Null).await.unwrap();
         assert_eq!(result.content[0].text, "Test tool output");

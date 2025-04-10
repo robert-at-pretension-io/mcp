@@ -11,13 +11,16 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::{
-    CallToolParams, CallToolResult, ClientCapabilities, Implementation, InitializeParams,
-    InitializeResult, JsonRpcNotification, JsonRpcRequest, LATEST_PROTOCOL_VERSION, // Removed unused JsonRpcResponse
-    ProgressNotification, ReadResourceParams, ReadResourceResult, ResourceContent,
-    ResourceInfo, ServerCapabilities, ToolInfo, ToolResponseContent, SUPPORTED_PROTOCOL_VERSIONS,
+    CallToolParams, CallToolResult, CancelledParams, ClientCapabilities, GetPromptParams,
+    GetPromptResult, Implementation, InitializeParams, InitializeResult, JsonRpcNotification,
+    JsonRpcRequest, LATEST_PROTOCOL_VERSION, ListPromptsResult, ListResourcesResult,
+    ListRootsResult, ListToolsResult, LogMessageParams, ProgressParams, ReadResourceParams,
+    ReadResourceResult, ResourceContent, ResourceInfo, ResourceUpdateParams, SamplingParams,
+    SamplingResult, ServerCapabilities, ToolInfo, ToolResponseContent,
+    SUPPORTED_PROTOCOL_VERSIONS,
 };
 
-use super::{IdGenerator, McpError, Transport, ProcessTransport};
+use super::{IdGenerator, McpError, ProcessTransport, Transport};
 
 /// A client for interacting with MCP servers via JSON-RPC 2.0
 pub struct McpClient<T: Transport> {
@@ -48,12 +51,15 @@ impl<T: Transport> McpClient<T> {
             server_capabilities: None,
             request_timeout: timeout,
             initialized: false,
-            id_generator: Arc::new(IdGenerator::new(true)), // Use UUIDs by default
+            id_generator: Arc::new(IdGenerator::new(true)), // Use UUIDs by default for most requests
         }
     }
-    
+
     /// Initialize the connection with the server
-    pub async fn initialize(&mut self, capabilities: ClientCapabilities) -> Result<ServerCapabilities> {
+    pub async fn initialize(
+        &mut self,
+        capabilities: ClientCapabilities,
+    ) -> Result<InitializeResult> {
         if self.initialized {
             warn!("Client already initialized");
             if let Some(caps) = &self.server_capabilities {
@@ -86,14 +92,15 @@ impl<T: Transport> McpClient<T> {
                 return Err(e);
             }
         };
-        
-        info!("Initialized with server: {} v{}", 
-             response.server_info.name,
-             response.server_info.version);
-        
+
+        info!(
+            "Initialized with server: {} v{}",
+            response.server_info.name, response.server_info.version
+        );
+
         self.server_info = Some(response.server_info.clone());
         self.server_capabilities = Some(response.capabilities.clone());
-        
+
         // Before sending notification, make sure we've set the flag
         self.initialized = true;
         info!("Client marked as initialized");
@@ -105,134 +112,58 @@ impl<T: Transport> McpClient<T> {
             Err(e) => {
                 error!("Failed to send initialized notification: {}", e);
                 // Continue anyway, some implementations might not need this notification
-            }
-        }
-        
         info!("Client fully initialized");
-        Ok(response.capabilities)
+        Ok(response) // Return the full InitializeResult
     }
-    
+
     /// Make a generic JSON-RPC call, checking initialization first
     pub async fn call<P, R>(&self, method: &str, params: Option<P>) -> Result<R>
     where
-        P: Serialize,
+        P: Serialize + std::fmt::Debug, // Add Debug constraint for logging
         R: DeserializeOwned,
     {
-        // Special handling for key methods
-        if method == "tools/list" {
-            info!("Special handling for tools/list in call method");
-            
-            // Create a direct request with specific format
-            let request = JsonRpcRequest {
-                jsonrpc: "2.0".to_string(),
-                id: Value::Number(1.into()), // Always use explicit ID 1 for tools/list
-                method: "tools/list".to_string(),
-                params: None, // Always null params
-            };
-            
-            // Send the request - get exclusive access to transport
-            info!("Sending tools/list with specific format");
-            let response = self.transport.send_request(request).await?;
-            
-            if let Some(error) = response.error {
-                error!("Error in tools/list response: {}", error.message);
-                return Err(anyhow!("Error in tools/list response: {}", error.message));
-            }
-            
-            // Try to convert the response to the expected type
-            if let Some(result) = response.result {
-                info!("Got tools/list result, deserializing to requested type");
-                match serde_json::from_value::<R>(result) {
-                    Ok(value) => {
-                        info!("Successfully deserialized tools/list result");
-                        return Ok(value);
-                    },
-                    Err(e) => {
-                        error!("Failed to deserialize tools/list result: {}", e);
-                        return Err(e.into());
-                    }
-                }
-            } else {
-                error!("No result in tools/list response");
-                return Err(anyhow!("No result in tools/list response"));
-            }
-        }
-        else if method == "tools/call" {
-            info!("Using internal method directly for tools/call to avoid ID conflicts");
-            // For tools/call, use the internal method directly to avoid ID conflicts
-            return self.call_internal(method, params).await;
-        }
-        
-        // Normal path for other methods
+        // Normal path: ensure initialized and call internal
         self.ensure_initialized(method)?;
         self.call_internal(method, params).await
     }
-    
+
     /// Internal implementation of call without initialization check
+    /// This is the core method for sending requests and receiving responses.
     async fn call_internal<P, R>(&self, method: &str, params: Option<P>) -> Result<R>
     where
-        P: Serialize,
+        P: Serialize + std::fmt::Debug, // Add Debug constraint for logging
         R: DeserializeOwned,
     {
-        // Generate the appropriate ID based on the method
-        let id = match method {
-            "tools/list" => {
-                // For tools/list, always use ID 1
-                info!("Using fixed ID 1 for tools/list");
-                Value::Number(1.into())
-            },
-            "tools/call" => {
-                // For tools/call, use a predictable numeric ID
-                // Get the name of the tool being called
-                let tool_name = match &params {
-                    Some(p) => {
-                        // Try to extract tool name from params
-                        match serde_json::to_value(p) {
-                            Ok(val) => {
-                                if let Some(obj) = val.as_object() {
-                                    if let Some(name) = obj.get("name") {
-                                        if let Some(name_str) = name.as_str() {
-                                            Some(name_str.to_owned())
-                                        } else { None }
-                                    } else { None }
-                                } else { None }
-                            },
-                            Err(_) => None
-                        }
-                    },
-                    None => None
-                };
-                
-                // Use ID 2 for tools/call to avoid conflicting with tools/list
-                info!("Using fixed ID 2 for tools/call to {}", tool_name.unwrap_or_else(|| "unknown".to_string()));
-                Value::Number(2.into())
-            },
-            _ => {
-                // For all other methods, use the ID generator
-                info!("Using ID generator for {}", method);
-                self.id_generator.next_id()
-            }
+        // Always use the ID generator for requests other than initialize
+        let id = if method == "initialize" {
+            // Initialize should ideally have a predictable ID, e.g., 1, but let's use generator for now
+            // Or handle initialize ID generation specifically if needed.
+             info!("Using ID generator for initialize");
+             self.id_generator.next_id()
+        } else {
+             info!("Using ID generator for {}", method);
+             self.id_generator.next_id()
         };
-        
+
         info!("Preparing call to {} with id {:?}", method, id);
-        
+
         let params_value = match params {
             Some(p) => {
-                info!("Serializing params for {}", method);
+                // Log params only in debug builds or if trace level enabled
+                trace!("Serializing params for {}: {:?}", method, p);
                 match serde_json::to_value(p) {
                     Ok(value) => {
-                        info!("Params serialized successfully");
+                        trace!("Params serialized successfully");
                         Some(value)
-                    },
+                    }
                     Err(e) => {
-                        error!("Failed to serialize params: {}", e);
+                        error!("Failed to serialize params for {}: {}", method, e);
                         return Err(e.into());
                     }
                 }
-            },
+            }
             None => None,
         };
-        
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
             id: id.clone(),
@@ -285,27 +216,38 @@ impl<T: Transport> McpClient<T> {
     /// Send a notification (no response expected)
     pub async fn notify<P>(&self, method: &str, params: Option<P>) -> Result<()>
     where
-        P: Serialize,
+        P: Serialize + std::fmt::Debug, // Add Debug constraint for logging
     {
-        if method != "notifications/initialized" {
+        // Allow 'initialized' and 'cancelled' notifications before full initialization if needed
+        if method != "notifications/initialized" && method != "notifications/cancelled" {
             self.ensure_initialized(method)?;
         }
-        
+
         let params_value = match params {
-            Some(p) => serde_json::to_value(p)?,
+            Some(p) => {
+                trace!("Serializing notification params for {}: {:?}", method, p);
+                match serde_json::to_value(p) {
+                    Ok(value) => value,
+                    Err(e) => {
+                         error!("Failed to serialize notification params for {}: {}", method, e);
+                         return Err(e.into());
+                    }
+                }
+            }
             None => Value::Null,
         };
-        
         let notification = JsonRpcNotification {
             jsonrpc: "2.0".to_string(),
             method: method.to_string(),
-            params: params_value,
+            params: params_value.clone(), // Clone params_value here
         };
-        
+
+        info!("Sending notification: {}", method);
+        trace!("Notification params: {:?}", params_value); // Log params value
         self.transport.send_notification(notification).await
     }
-    
-    /// Check if client is initialized
+
+    /// Check if client is initialized before allowing most operations
     fn ensure_initialized(&self, method: &str) -> Result<()> {
         if !self.initialized && method != "initialize" {
             Err(McpError::NotInitialized.into())
@@ -327,215 +269,223 @@ impl<T: Transport> McpClient<T> {
         debug!("Closing MCP client");
         self.transport.close().await
     }
-    
-    /// List all available tools on the server
-    pub async fn list_tools(&self) -> Result<Vec<ToolInfo>> {
-        // Use a specially crafted request just like our direct test showed works
-        info!("Creating direct tools/list request with numeric ID 1");
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: Value::Number(1.into()), // Always use ID 1 for tools/list
-            method: "tools/list".to_string(),
-            params: None, // Use null params, not empty object
-        };
-        
-        info!("Sending tools/list request to transport: {:?}", request);
-        
-        // --- Add specific timeout for tools/list ---
-        let list_tools_timeout = Duration::from_secs(15); // Shorter timeout for list_tools
-        let response_result = tokio::time::timeout(
-            list_tools_timeout,
-            self.transport.send_request(request)
-        ).await;
 
-        let response = match response_result {
-            Ok(Ok(resp)) => {
-                info!("Got tools/list response within timeout: {:?}", resp);
-                resp // Successfully received response
-            }
-            Ok(Err(e)) => {
-                error!("Transport error during tools/list: {}", e);
-                return Err(e); // Propagate transport error
-            }
-            Err(_) => {
-                error!("Timed out waiting for tools/list response after {} seconds", list_tools_timeout.as_secs());
-                return Err(anyhow!("Timed out waiting for tools/list response")); // Return timeout error
-            }
-        };
-        // --- End specific timeout ---
-        
-        // Check for errors in the received response
-        if let Some(error) = response.error {
-            error!("RPC error in response: code={}, message={}", error.code, error.message);
-            return Err(anyhow!("RPC error {}: {}", error.code, error.message));
-        }
-        
-        // Parse the result field
-        if let Some(result) = response.result {
-            // Extract the tools array which should be in the form {"tools": [...]}
-            if let Some(tools_obj) = result.as_object() {
-                if let Some(tools_array) = tools_obj.get("tools") {
-                    info!("Found tools array in response");
-                    
-                    // Try to parse the tools array
-                    match serde_json::from_value::<Vec<ToolInfo>>(tools_array.clone()) {
-                        Ok(tools) => {
-                            info!("Successfully parsed {} tools", tools.len());
-                            return Ok(tools);
-                        }
-                        Err(e) => {
-                            error!("Failed to parse tools array: {}", e);
-                            return Err(e.into());
-                        }
-                    }
-                } else {
-                    error!("Response contains result object but no 'tools' field: {:?}", tools_obj);
-                    return Err(anyhow!("Unexpected response format: missing tools array"));
-                }
-            } else {
-                error!("Result is not an object: {:?}", result);
-                return Err(anyhow!("Unexpected response format: result is not an object"));
-            }
-        } else {
-            error!("No result in response");
-            return Err(anyhow!("No result in response"));
-        }
+    // --- Tool Methods ---
+
+    /// List all available tools on the server.
+    pub async fn list_tools(&self) -> Result<ListToolsResult> {
+        info!("Requesting tools list");
+        self.call("tools/list", None::<()>).await
     }
-    
-    
-    /// Call a tool with the given name and arguments
+
+    /// Call a tool with the given name and arguments.
     pub async fn call_tool(&self, name: &str, arguments: Value) -> Result<CallToolResult> {
-        // For tools/list, use the specialized method directly
-        if name == "tools/list" {
-            info!("Using specialized list_tools method for tools/list");
-            let tools = self.list_tools().await?;
-            
-            // Create a synthetic CallToolResult with the tool list
-            let tools_json = format!("Found {} tools: {}", tools.len(), 
-                tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", "));
-            
-            return Ok(CallToolResult {
-                content: vec![ToolResponseContent {
-                    type_: "text".to_string(),
-                    text: tools_json,
-                    annotations: None,
-                }],
-                is_error: Some(false),
-                _meta: None,
-                progress: None,
-                total: None,
-            });
-        }
-        
-        // Normal path for other tools
         info!("Calling tool {} via tools/call", name);
+        // Do not handle tools/list specially here. If the user wants to list tools,
+        // they should call list_tools(). Calling tools/list via call_tool is incorrect usage.
+        if name == "tools/list" {
+             warn!("Attempted to call 'tools/list' using call_tool method. Use list_tools() instead.");
+             return Err(McpError::Protocol("Use list_tools() method to list tools, not call_tool()".to_string()).into());
+        }
         let params = CallToolParams {
             name: name.to_string(),
-            arguments,
+            arguments: arguments.clone(), // Clone arguments for the params struct
         };
-        
-        // Call through internal method to avoid cross-interaction with other requests
-        self.call_internal("tools/call", Some(params)).await
+
+        trace!("Calling tool {} with args: {:?}", name, arguments);
+        self.call("tools/call", Some(params)).await
     }
-    
-    /// Call a tool with progress reporting
+
+    /// Call a tool with progress reporting.
     pub async fn call_tool_with_progress<F>(
         &self, 
         name: &str, 
         arguments: Value,
-        progress_handler: F
+        progress_handler: F,
     ) -> Result<CallToolResult>
     where
-        F: Fn(ProgressNotification) -> BoxFuture<'static, ()> + Send + Sync + 'static,
+        F: Fn(ProgressParams) -> BoxFuture<'static, ()> + Send + Sync + 'static,
     {
         let progress_token = Uuid::new_v4().to_string();
-        
-        // Create a clone of arguments or empty object
-        let mut args_obj = match arguments {
-            Value::Object(map) => map,
-            _ => serde_json::Map::new(),
-        };
-        
-        // Add _meta field with progress token
-        let meta = json!({
-            "progressToken": progress_token.clone(),
-        });
-        
-        args_obj.insert("_meta".to_string(), meta);
-        
+
+        // Add progress token to _meta field within arguments
+        let mut args_with_meta = arguments.clone();
+        if let Value::Object(map) = &mut args_with_meta {
+            let meta = json!({ "progressToken": progress_token });
+            map.insert("_meta".to_string(), meta);
+        } else if args_with_meta.is_null() {
+             // If args were null, create an object just for meta
+             args_with_meta = json!({ "_meta": { "progressToken": progress_token } });
+        } else {
+             warn!("Cannot add progressToken to non-object arguments for tool {}", name);
+             // Proceed without token, progress might not work
+        }
+
+
         // Set up notification handler for progress updates
-        // Use Arc to allow cloning the handler
         let progress_handler = Arc::new(progress_handler);
         let token_clone = progress_token.clone();
-        
+
+        // Subscribe to notifications *before* making the call
         self.subscribe_to_notifications(move |notification| {
             let handler = Arc::clone(&progress_handler);
-            let token = token_clone.clone();
-            
+            let expected_token = token_clone.clone();
+
             Box::pin(async move {
                 if notification.method == "notifications/progress" {
-                    if let Ok(progress) = serde_json::from_value::<ProgressNotification>(notification.params.clone()) {
-                        // The protocol doesn't actually have a progress_token field in ProgressNotification,
-                        // but assuming we could access the token via params
-                        if let Some(token_value) = notification.params.get("progressToken") {
-                            if let Some(notif_token) = token_value.as_str() {
-                                if notif_token == token {
-                                    handler(progress).await;
-                                }
+                    match serde_json::from_value::<ProgressParams>(notification.params) {
+                        Ok(progress_params) => {
+                            // Check if the token matches
+                            if progress_params.progress_token == expected_token {
+                                trace!("Received progress for token {}: {:?}", expected_token, progress_params);
+                                handler(progress_params).await;
+                            } else {
+                                trace!("Ignoring progress notification for different token: {}", progress_params.progress_token);
                             }
+                        }
+                        Err(e) => {
+                            warn!("Failed to parse progress notification params: {}", e);
                         }
                     }
                 }
+                // Handle other notifications if necessary
             })
-        }).await?;
-        
-        // Call the tool with progress token
+        })
+        .await?; // Ensure subscription is set up before proceeding
+
+        // Call the tool with the modified arguments containing the progress token
         let params = CallToolParams {
             name: name.to_string(),
-            arguments: Value::Object(args_obj),
+            arguments: args_with_meta,
         };
-        
+
+        info!("Calling tool {} with progress token {}", name, progress_token);
         self.call("tools/call", Some(params)).await
+        // Note: Consider unregistering the handler after the call completes or errors.
     }
-    
-    /// Cancel an in-flight tool call
-    pub async fn cancel_tool_call(&self, request_id: &str, reason: Option<&str>) -> Result<()> {
-        let params = json!({
-            "requestId": request_id,
-            "reason": reason.unwrap_or("User cancelled operation"),
-        });
-        
+
+    /// Send a cancellation notification for a request.
+    pub async fn cancel_request(&self, request_id: Value, reason: Option<&str>) -> Result<()> {
+        let params = CancelledParams {
+             request_id,
+             reason: reason.map(|s| s.to_string()),
+        };
+        info!("Sending cancellation for request ID: {:?}", params.request_id);
         self.notify("notifications/cancelled", Some(params)).await
     }
-    
-    /// List all available resources
-    pub async fn list_resources(&self) -> Result<Vec<ResourceInfo>> {
-        let result: Result<Value> = self.call("resources/list", None::<()>).await;
-        
-        match result {
-            Ok(value) => {
-                if let Some(resources) = value.get("resources") {
-                    if let Ok(res_list) = serde_json::from_value::<Vec<ResourceInfo>>(resources.clone()) {
-                        return Ok(res_list);
-                    }
-                }
-                Err(anyhow!("Invalid resources response format"))
-            }
-            Err(e) => Err(e),
-        }
+
+    // --- Resource Methods ---
+
+    /// List all available resources.
+    pub async fn list_resources(&self) -> Result<ListResourcesResult> {
+        info!("Requesting resource list");
+        self.call("resources/list", None::<()>).await
     }
-    
-    /// Read a resource by URI
+
+    /// Read a resource by URI.
     pub async fn read_resource(&self, uri: &str) -> Result<Vec<ResourceContent>> {
+        info!("Reading resource: {}", uri);
         let params = ReadResourceParams {
             uri: uri.to_string(),
         };
-        
-        let result: ReadResourceResult = self.call("resources/read", Some(params)).await?;
-        Ok(result.contents)
+        self.call("resources/read", Some(params)).await
     }
-    
-    /// Get the server capabilities
+
+    /// Subscribe to resource updates for a given URI pattern.
+    pub async fn subscribe_resources(&self, uri_pattern: &str) -> Result<()> {
+         info!("Subscribing to resource updates for pattern: {}", uri_pattern);
+         let params = json!({ "uri": uri_pattern });
+         // Assuming subscribe returns an empty object on success
+         let _result: Value = self.call("resources/subscribe", Some(params)).await?;
+         Ok(())
+    }
+
+    // --- Prompt Methods ---
+
+    /// List available prompt templates.
+    pub async fn list_prompts(&self) -> Result<ListPromptsResult> {
+        info!("Requesting prompt list");
+        self.call("prompts/list", None::<()>).await
+    }
+
+    /// Get a specific prompt template filled with arguments.
+    pub async fn get_prompt(&self, name: &str, arguments: Value) -> Result<GetPromptResult> {
+        info!("Getting prompt template: {}", name);
+        let params = GetPromptParams {
+            name: name.to_string(),
+            arguments,
+        };
+        self.call("prompts/get", Some(params)).await
+    }
+
+    // --- Server -> Client Methods (Handling Requests/Notifications) ---
+
+    // These methods would typically be called by the notification handler
+
+    /// Handle an incoming `sampling/createMessage` request from the server.
+    /// This requires the client to have LLM capabilities.
+    pub async fn handle_create_message_request(
+         &self,
+         _request_id: Value, // ID to use in the response
+         _params: SamplingParams
+    ) -> Result<SamplingResult> {
+         error!("handle_create_message_request not implemented");
+         Err(McpError::CapabilityNotSupported("sampling/createMessage".to_string()).into())
+         // Implementation would involve:
+         // 1. Getting user consent/confirmation.
+         // 2. Calling the local LLM with params.messages and sampling settings.
+         // 3. Formatting the LLM output into SamplingResult.
+         // 4. Sending the SamplingResult back using sendResponse (needs transport access or callback).
+    }
+
+    /// Handle an incoming `roots/list` request from the server.
+    /// This requires the client to expose local directories.
+    pub async fn handle_list_roots_request(
+         &self,
+         _request_id: Value, // ID to use in the response
+    ) -> Result<ListRootsResult> {
+         error!("handle_list_roots_request not implemented");
+         Err(McpError::CapabilityNotSupported("roots/list".to_string()).into())
+         // Implementation would involve:
+         // 1. Determining accessible root directories based on configuration/permissions.
+         // 2. Formatting them into ListRootsResult.
+         // 3. Sending the ListRootsResult back using sendResponse.
+    }
+
+    /// Handle an incoming `logging/setLevel` request from the server.
+    pub async fn handle_set_log_level_request(
+         &self,
+         _request_id: Value, // ID to use in the response
+         _params: Value, // Should deserialize into a SetLogLevelParams struct if defined
+    ) -> Result<()> {
+         warn!("handle_set_log_level_request not implemented");
+         // Implementation would involve adjusting the client's internal logging level.
+         // Send back an empty success response.
+         Ok(())
+    }
+
+    /// Handle an incoming `notifications/message` (log message) from the server.
+    pub async fn handle_log_message_notification(&self, params: LogMessageParams) {
+         // Log the message received from the server using the client's logger
+         match params.level.to_lowercase().as_str() {
+              "error" => error!("[Server Log] {}", params.data),
+              "warning" | "warn" => warn!("[Server Log] {}", params.data),
+              "info" => info!("[Server Log] {}", params.data),
+              "debug" | "trace" => debug!("[Server Log] {}", params.data), // Map trace to debug for simplicity
+              _ => info!("[Server Log] ({}) {}", params.level, params.data),
+         }
+    }
+
+    /// Handle an incoming `notifications/resources/updated` notification.
+    pub async fn handle_resource_update_notification(&self, params: ResourceUpdateParams) {
+         info!("Resource updated notification received for: {}", params.uri);
+         // Client application logic to potentially re-read the resource or update UI would go here.
+    }
+
+
+    // --- Getters ---
+
+    /// Get the server capabilities negotiated during initialization.
     pub fn capabilities(&self) -> Option<&ServerCapabilities> {
         self.server_capabilities.as_ref()
     }
@@ -636,12 +586,13 @@ impl<T: Transport> McpClientBuilder<T> {
         let capabilities = ClientCapabilities {
             experimental: json!({}), // Use default empty object
             sampling: json!({}),     // Use default empty object
-            roots: Default::default(), // Use default RootsCapability
+            // Use ClientCapabilities::default() if you derive Default for it
+            roots: Default::default(),
         };
-        
+
         // Initialize the connection
         client.initialize(capabilities).await?;
-        
+
         Ok(client)
     }
 }

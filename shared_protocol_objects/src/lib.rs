@@ -153,20 +153,25 @@ pub struct InitializeResult {
     #[serde(rename = "serverInfo")]
     pub server_info: Implementation,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub _meta: Option<Value>,
+    pub instructions: Option<String>, // Added instructions field as per spec example
 }
 
-/// Resource types
+// --- Resource System ---
+
+/// Information about a resource available on the server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceInfo {
     pub uri: String,
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "mimeType", skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>, // Added size field as per spec example
 }
 
+/// Represents the content of a resource.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceContent {
     pub uri: String,
@@ -174,29 +179,32 @@ pub struct ResourceContent {
     pub mime_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob: Option<String>,
+    // Removed blob field, not standard in spec examples for read result
 }
 
+/// Parameters for the `resources/read` method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadResourceParams {
     pub uri: String,
 }
 
+/// Result of the `resources/read` method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadResourceResult {
     pub contents: Vec<ResourceContent>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub _meta: Option<Value>,
+    // Removed _meta field, not standard in spec examples for read result
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Result of the `resources/list` method.
 pub struct ListResourcesResult {
     pub resources: Vec<ResourceInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub _meta: Option<Value>,
+    #[serde(rename = "nextCursor", skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>, // Added nextCursor for pagination as per spec
 }
 
+// --- Tool System ---
+
+/// Information about a tool available on the server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolInfo {
     pub name: String,
@@ -204,8 +212,11 @@ pub struct ToolInfo {
     pub description: Option<String>,
     #[serde(rename = "inputSchema")]
     pub input_schema: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<HashMap<String, Value>>, // Added annotations field as per spec example
 }
 
+/// Represents a tool definition (used internally or for simpler cases).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tool {
     pub name: String,
@@ -232,14 +243,10 @@ pub struct CallToolResult {
     pub content: Vec<ToolResponseContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_error: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub _meta: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub progress: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total: Option<u32>,
+    // Removed _meta, progress, total fields. Progress is handled via notifications.
 }
 
+/// Represents a piece of content returned by a tool call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResponseContent {
     #[serde(rename = "type")]
@@ -249,14 +256,139 @@ pub struct ToolResponseContent {
     pub annotations: Option<HashMap<String, Value>>,
 }
 
+/// Result of the `tools/list` method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListToolsResult {
     pub tools: Vec<ToolInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub _meta: Option<Value>,
+    #[serde(rename = "nextCursor", skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>, // Added nextCursor for pagination consistency
 }
 
-/// Helper functions
+// --- Prompts System ---
+
+/// Information about a prompt template available on the server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptInfo {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<PromptArgument>,
+}
+
+/// Describes an argument required by a prompt template.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptArgument {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+}
+
+/// Result of the `prompts/list` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListPromptsResult {
+    pub prompts: Vec<PromptInfo>,
+    #[serde(rename = "nextCursor", skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+/// Parameters for the `prompts/get` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetPromptParams {
+    pub name: String,
+    #[serde(default = "default_value_object")]
+    pub arguments: Value,
+}
+
+/// Represents a message within a prompt, typically for chat models.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptMessage {
+    pub role: Role,
+    pub content: MessageContent, // Re-use MessageContent for flexibility
+}
+
+/// Result of the `prompts/get` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetPromptResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub messages: Vec<PromptMessage>,
+}
+
+// --- Sampling System ---
+
+/// Preferences for model selection during sampling.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelHint {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelPreferences {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hints: Vec<ModelHint>,
+    #[serde(rename = "speedPriority", skip_serializing_if = "Option::is_none")]
+    pub speed_priority: Option<f32>,
+    #[serde(rename = "intelligencePriority", skip_serializing_if = "Option::is_none")]
+    pub intelligence_priority: Option<f32>,
+    #[serde(rename = "costPriority", skip_serializing_if = "Option::is_none")]
+    pub cost_priority: Option<f32>,
+}
+
+/// Parameters for the `sampling/createMessage` method (server -> client).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SamplingParams {
+    pub messages: Vec<PromptMessage>, // Re-use PromptMessage
+    #[serde(rename = "modelPreferences", skip_serializing_if = "Option::is_none")]
+    pub model_preferences: Option<ModelPreferences>,
+    #[serde(rename = "maxTokens", skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    // Add other sampling parameters like top_p, top_k etc. as needed
+}
+
+/// Represents different types of content within a message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum MessageContent {
+    #[serde(rename = "text")]
+    Text { text: String },
+    // Add other content types like image, audio, resource as needed, matching spec examples
+}
+
+/// Result of the `sampling/createMessage` method (client -> server).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SamplingResult {
+    pub role: Role, // Should typically be Role::Assistant
+    pub content: MessageContent,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(rename = "stopReason", skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>, // e.g., "endTurn", "maxTokens", "toolUse"
+}
+
+// --- Roots System ---
+
+/// Information about a root directory exposed by the client.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RootInfo {
+    pub uri: String,
+    pub name: String,
+}
+
+/// Result of the `roots/list` method (client -> server).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListRootsResult {
+    pub roots: Vec<RootInfo>,
+}
+
+
+// --- Helper Functions ---
+
+/// Creates a success JSON-RPC response.
 pub fn success_response(id: Option<Value>, result: Value) -> JsonRpcResponse {
     JsonRpcResponse {
         jsonrpc: "2.0".to_string(),
@@ -279,8 +411,21 @@ pub fn error_response(id: Option<Value>, code: i64, message: &str) -> JsonRpcRes
     }
 }
 
-/// Create a standard notification according to the JSON-RPC 2.0 specification.
-/// Unlike requests and responses, notifications don't have an ID.
+/// Creates an error JSON-RPC response.
+pub fn error_response(id: Option<Value>, code: i64, message: &str) -> JsonRpcResponse {
+    JsonRpcResponse {
+        jsonrpc: "2.0".to_string(),
+        id: id.unwrap_or(Value::Null),
+        result: None,
+        error: Some(JsonRpcError {
+            code,
+            message: message.to_string(),
+            data: None, // Add data field if needed
+        }),
+    }
+}
+
+/// Creates a JSON-RPC notification.
 pub fn create_notification(method: &str, params: Value) -> JsonRpcNotification {
     JsonRpcNotification {
         jsonrpc: "2.0".to_string(),
@@ -289,19 +434,46 @@ pub fn create_notification(method: &str, params: Value) -> JsonRpcNotification {
     }
 }
 
-/// Notification types
+// --- Notification Types ---
+
+/// Represents the parameters for a `notifications/progress` notification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProgressNotification {
+pub struct ProgressParams {
+    #[serde(rename = "progressToken")]
+    pub progress_token: String, // Added progressToken as per spec
     pub progress: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub total: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
 
+/// Represents the parameters for a `notifications/resources/updated` notification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResourceUpdateNotification {
+pub struct ResourceUpdateParams {
     pub uri: String,
 }
 
+/// Represents the parameters for a `notifications/cancelled` notification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CancelledParams {
+    #[serde(rename = "requestId")]
+    pub request_id: Value, // ID of the request being cancelled
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Represents the parameters for a `notifications/message` (logging) notification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogMessageParams {
+    pub level: String, // e.g., "error", "warning", "info", "debug"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logger: Option<String>,
+    pub data: String, // The log message content
+}
+
+
+/// Generic structure for any JSON-RPC notification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonRpcNotification {
     pub jsonrpc: String,
@@ -309,11 +481,6 @@ pub struct JsonRpcNotification {
     pub params: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum Notification {
-    #[serde(rename = "progress")]
-    Progress(ProgressNotification),
-    #[serde(rename = "resource_update")]
-    ResourceUpdate(ResourceUpdateNotification),
-}
+// Removed the Notification enum as it's less flexible than handling methods directly.
+// Consumers will typically match on `notification.method` and deserialize `notification.params`
+// into the specific parameter struct (e.g., ProgressParams, ResourceUpdateParams).

@@ -12,13 +12,14 @@ use crate::{CallToolResult, ToolInfo};
 pub trait ReplClient: Send + Sync {
     /// Get the server's name
     fn name(&self) -> &str;
-    
-    /// List available tools on the server
-    async fn list_tools(&self) -> Result<Vec<ToolInfo>>;
-    
-    /// Call a tool with the given arguments
+
+    /// List available tools on the server.
+    /// Returns a result containing the list and potentially a cursor for pagination.
+    async fn list_tools(&self) -> Result<ListToolsResult>;
+
+    /// Call a tool with the given arguments.
     async fn call_tool(&self, tool_name: &str, args: Value) -> Result<CallToolResult>;
-    
-    /// Close the connection to the server
+
+    /// Close the connection to the server.
     async fn close(self: Box<Self>) -> Result<()>;
 }
