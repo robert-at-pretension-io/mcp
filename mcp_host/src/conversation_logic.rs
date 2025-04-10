@@ -327,19 +327,29 @@ pub async fn resolve_assistant_response(
                 debug!("All tools executed for iteration {}. Getting next AI response.", iterations);
                 let mut builder = client.raw_builder(&state.system_prompt);
 
+                // Add messages from state to the builder
                 for msg in &state.messages {
                     match msg.role {
-                        Role::System => {}
+                        Role::System => {} // System prompt is handled by raw_builder
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
                     }
                 }
 
+                // Add a more directive prompt after tool results
+                // This prompt is added as a *system* message in this specific call context,
+                // instructing the AI on how to proceed *now* that it has tool results.
+                // Note: rllm might treat system messages differently depending on the backend.
+                // If issues persist, consider adding this as a user message instead.
                 builder = builder.system(
-                    "Analyze the tool results provided immediately above. Based on those results and the user's original request, decide the next step:\n\
-                    1. Call another tool if necessary (using the <<<TOOL_CALL>>>...<<<END_TOOL_CALL>>> format).\n\
-                    2. Provide a final response to the user.".to_string()
+                    "You have received results from the tool(s) you called previously (shown immediately above).\n\
+                    Analyze these results carefully.\n\
+                    Based *only* on these results and the original user request:\n\
+                    1. If the results provide the necessary information to fully answer the user's original request, formulate and provide the final answer now. Do NOT call any more tools unless absolutely necessary for clarification based *specifically* on the results received.\n\
+                    2. If the results are insufficient or indicate an error, decide if another *different* tool call is needed to achieve the original goal. If so, call the tool using the <<<TOOL_CALL>>>...<<<END_TOOL_CALL>>> format.\n\
+                    3. If you cannot proceed further, explain why.".to_string()
                 );
+
 
                 if config.interactive_output {
                     println!("{}", style("\nThinking after tool execution...").dim());
