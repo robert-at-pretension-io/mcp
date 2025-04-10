@@ -131,6 +131,7 @@ pub struct ResourcesCapability {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolsCapability {
+    #[serde(default)] // Add default attribute here
     pub list_changed: bool,
 }
 
