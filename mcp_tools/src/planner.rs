@@ -98,17 +98,15 @@ async fn generate_plan_with_gemini(prompt: &str) -> Result<Box<dyn ChatResponse>
         .temperature(0.5) // Lower temperature for more deterministic planning
         .build()?;
 
-    // Construct messages for the chat API using the new builder pattern
+    // Construct messages for the chat API using the builder's role methods
     let messages = vec![
-        ChatMessageBuilder::new(ChatRole::System) // Use PascalCase variant
-            .content(
-                "You are an expert planning assistant. Your goal is to create a robust, step-by-step plan \
-                 to achieve a user's objective using a predefined set of tools. The plan should be clear, \
+        ChatMessageBuilder::system( // Use the system() method
+            "You are an expert planning assistant. Your goal is to create a robust, step-by-step plan \
+             to achieve a user's objective using a predefined set of tools. The plan should be clear, \
                  actionable, and account for potential issues. Specify when the AI should pause to reflect, \
-                 wait for tool results, or handle errors. Output only the plan itself, without preamble or explanation."
-            )
-            .build(),
-        ChatMessageBuilder::new(ChatRole::User).content(prompt).build(), // Use PascalCase variant
+             wait for tool results, or handle errors. Output only the plan itself, without preamble or explanation."
+        ), // No .build() needed here for rllm's builder methods
+        ChatMessageBuilder::user(prompt), // Use the user() method
     ];
 
     info!("Sending planning request to Gemini via RLLM");
@@ -142,10 +140,16 @@ async fn handle_planning_tool_call(
     match generate_plan_with_gemini(&prompt).await {
         // Handle the Box<dyn ChatResponse>
         Ok(response_box) => {
-            let plan = response_box.text(); // Use text() method instead of content()
+            let plan_option = response_box.text(); // Use text() method instead of content(), returns Option<String>
             info!("Successfully generated plan from Gemini");
-            debug!("Generated Plan:\n{}", plan);
-            let tool_res = standard_tool_result(plan, None);
+            // Use debug formatting for Option<String>
+            debug!("Generated Plan:\n{:?}", plan_option);
+            // Handle the Option before passing to standard_tool_result
+            let plan_text = plan_option.unwrap_or_else(|| {
+                warn!("Gemini response text was None, returning empty plan.");
+                String::new()
+            });
+            let tool_res = standard_tool_result(plan_text, None);
             Ok(standard_success_response(id, json!(tool_res)))
         }
         // Use rllm::error::LLMError variants based on provided documentation
