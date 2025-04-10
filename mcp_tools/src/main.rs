@@ -8,7 +8,6 @@ use mcp_tools::email_validator::handle_neverbounce_tool_call;
 use mcp_tools::git_integration::handle_git_tool_call;
 use mcp_tools::gmail_integration::handle_gmail_tool_call;
 use mcp_tools::long_running_task::{handle_long_running_tool_call, LongRunningTaskManager};
-use mcp_tools::oracle_tool::handle_oracle_select_tool_call;
 use mcp_tools::process_html::extract_text_from_html;
 use mcp_tools::regex_replace::handle_regex_replace_tool_call;
 use mcp_tools::scraping_bee::{ScrapingBeeClient, ScrapingBeeResponse};
