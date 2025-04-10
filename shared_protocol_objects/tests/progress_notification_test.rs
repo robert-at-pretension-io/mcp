@@ -67,23 +67,23 @@ async fn test_progress_params_creation() { // Renamed test
 
     // Verify fields
     assert_eq!(params.progress_token, progress_token, "Token should match");
-    assert_eq!(progress.progress, 50, "Progress should be 50");
-    assert_eq!(progress.total, Some(100), "Total should be 100");
-    assert_eq!(progress.message, Some("Processing data...".to_string()), "Message should match");
-    
-    // Create a notification wrapping the progress
-    let notification = create_notification("progress", json!(progress));
-    
+    assert_eq!(params.progress, 50, "Progress should be 50"); // Use params variable
+    assert_eq!(params.total, Some(100), "Total should be 100"); // Use params variable
+    assert_eq!(params.message, Some("Processing data...".to_string()), "Message should match"); // Use params variable
+
+    // Create a notification wrapping the params
+    let notification = create_notification("notifications/progress", json!(params)); // Use standard method name and params variable
+
     // Verify notification structure
     assert_eq!(notification.jsonrpc, "2.0", "JSON-RPC version should be 2.0");
-    assert_eq!(notification.method, "progress", "Method should be progress");
-    
-    // Check params field
-    let params = notification.params;
-    assert!(params.is_object(), "Params should be an object");
-    assert_eq!(params.get("progress").unwrap(), 50, "Progress should be 50");
-    assert_eq!(params.get("total").unwrap(), 100, "Total should be 100");
-    assert_eq!(params.get("message").unwrap(), "Processing data...", "Message should match");
+    assert_eq!(notification.method, "notifications/progress", "Method should be notifications/progress");
+
+    // Check params field by deserializing back
+    let deserialized_params: ProgressParams = serde_json::from_value(notification.params).unwrap();
+    assert_eq!(deserialized_params.progress_token, progress_token);
+    assert_eq!(deserialized_params.progress, 50);
+    assert_eq!(deserialized_params.total, Some(100));
+    assert_eq!(deserialized_params.message.unwrap(), "Processing data...");
 }
 
 // Test sending progress notifications
