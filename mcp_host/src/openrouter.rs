@@ -68,6 +68,7 @@ struct Choice {
 #[derive(Deserialize, Debug)]
 struct ResponseMessage {
     #[allow(dead_code)]
+    #[serde(default)] // Make this field optional during deserialization
     _role: String,
     content: String,
 }
