@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use shared_protocol_objects::{CallToolParams, CallToolResult, JsonRpcResponse};
+// Removed unused CallToolParams, CallToolResult
+use shared_protocol_objects::{JsonRpcResponse};
 use std::env;
 use std::fs::File;
 use std::io::Read;

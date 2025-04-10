@@ -1,4 +1,5 @@
-use anyhow::{anyhow, Result};
+// Removed unused anyhow import
+use anyhow::{Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::env;
@@ -82,11 +83,11 @@ fn format_tool_list(tools: &[ToolInfo]) -> String {
 }
 
 /// Calls the Gemini API via RLLM to generate a plan.
-// Return type changed to Result<Box<dyn ChatResponse>, llm::error::LLMError>
-async fn generate_plan_with_gemini(prompt: &str) -> Result<Box<dyn ChatResponse>, llm::error::LLMError> {
+// Return type changed to Result<Box<dyn ChatResponse>, rllm::error::LLMError>
+async fn generate_plan_with_gemini(prompt: &str) -> Result<Box<dyn ChatResponse>, LLMError> {
     let api_key = env::var("GEMINI_API_KEY")
-        // Use llm::error::LLMError variant
-        .map_err(|e| llm::error::LLMError::ConfigurationError(format!("GEMINI_API_KEY not set: {}", e)))?;
+        // Use rllm::error::LLMError variant - Assuming AuthError is appropriate for missing key
+        .map_err(|e| LLMError::AuthError(format!("GEMINI_API_KEY not set: {}", e)))?;
 
     info!("Building Gemini LLM client using RLLM");
     let llm = LLMBuilder::new()
@@ -98,7 +99,7 @@ async fn generate_plan_with_gemini(prompt: &str) -> Result<Box<dyn ChatResponse>
 
     // Construct messages for the chat API using the new builder pattern
     let messages = vec![
-        ChatMessageBuilder::new(ChatRole::System)
+        ChatMessageBuilder::new(ChatRole::System) // Use PascalCase variant
             .content(
                 "You are an expert planning assistant. Your goal is to create a robust, step-by-step plan \
                  to achieve a user's objective using a predefined set of tools. The plan should be clear, \
@@ -106,7 +107,7 @@ async fn generate_plan_with_gemini(prompt: &str) -> Result<Box<dyn ChatResponse>
                  wait for tool results, or handle errors. Output only the plan itself, without preamble or explanation."
             )
             .build(),
-        ChatMessageBuilder::new(ChatRole::User).content(prompt).build(),
+        ChatMessageBuilder::new(ChatRole::User).content(prompt).build(), // Use PascalCase variant
     ];
 
     info!("Sending planning request to Gemini via RLLM");
@@ -140,24 +141,24 @@ async fn handle_planning_tool_call(
     match generate_plan_with_gemini(&prompt).await {
         // Handle the Box<dyn ChatResponse>
         Ok(response_box) => {
-            let plan = response_box.content(); // Extract content string
+            let plan = response_box.text(); // Use text() method instead of content()
             info!("Successfully generated plan from Gemini");
             debug!("Generated Plan:\n{}", plan);
             let tool_res = standard_tool_result(plan, None);
             Ok(standard_success_response(id, json!(tool_res)))
         }
-        // Use llm::error::LLMError variants
+        // Use rllm::error::LLMError variants based on provided documentation
         Err(e) => {
             error!("Error generating plan using Gemini via RLLM: {}", e);
-            // Map llm::error::LLMError to a user-friendly message
+            // Map rllm::error::LLMError to a user-friendly message
             let error_message = match e {
-                llm::error::LLMError::ApiError(msg) => format!("Gemini API error: {}", msg),
-                llm::error::LLMError::AuthenticationError(_) => "Gemini authentication failed. Check GEMINI_API_KEY.".to_string(),
-                llm::error::LLMError::ConfigurationError(msg) => format!("Configuration error: {}", msg),
-                llm::error::LLMError::NetworkError(msg) => format!("Network error contacting Gemini: {}", msg),
-                llm::error::LLMError::RateLimitError(_) => "Gemini rate limit exceeded.".to_string(),
-                llm::error::LLMError::InvalidResponseError(msg) => format!("Invalid response from Gemini: {}", msg),
-                _ => format!("An unexpected error occurred: {}", e),
+                LLMError::HttpError(msg) => format!("Network error contacting Gemini: {}", msg),
+                LLMError::AuthError(msg) => format!("Gemini authentication/authorization error: {}", msg),
+                LLMError::InvalidRequest(msg) => format!("Invalid request sent to Gemini: {}", msg),
+                LLMError::ProviderError(msg) => format!("Gemini provider error: {}", msg), // Includes rate limits, API errors etc.
+                LLMError::JsonError(msg) => format!("Error processing Gemini response: {}", msg),
+                // Add a catch-all for safety, though the enum definition seems exhaustive
+                // _ => format!("An unexpected error occurred: {}", e),
             };
             // Return an error response through the standard tool result mechanism
              let tool_res = standard_tool_result(error_message.clone(), Some(true));
