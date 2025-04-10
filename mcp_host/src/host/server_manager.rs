@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn}; // Removed unused trace, warn
 use serde_json::Value;
 use shared_protocol_objects::{
-    Implementation, ServerCapabilities, ToolInfo, CallToolResult, ClientCapabilities // Removed ListToolsResult, InitializeResult, Added ClientCapabilities
+    Implementation, ServerCapabilities, ToolInfo, CallToolResult, ClientCapabilities
 };
 // Removed unused async_trait
 use std::collections::HashMap;
