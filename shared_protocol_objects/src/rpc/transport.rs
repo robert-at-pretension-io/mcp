@@ -71,22 +71,34 @@ impl ProcessTransport {
         };
 
         // Spawn stderr reader task
+        // Spawn stderr reader task
         tokio::spawn(async move {
-            let mut stderr_locked = stderr_arc.lock().await; // Lock stderr Arc outside BufReader
-            let mut reader = BufReader::new(&mut *stderr_locked); // Pass mutable reference to locked stderr
-            let mut line = String::new();
+            let mut stderr_locked = stderr_arc.lock().await; // Lock stderr Arc
+            let mut reader = BufReader::new(&mut *stderr_locked); // Pass mutable reference
+            // Use a byte buffer instead of a String line buffer
+            let mut buffer = bytes::BytesMut::with_capacity(1024); 
+
             loop {
-                // Now read_line should work correctly on BufReader<&mut ChildStderr>
-                match reader.read_line(&mut line).await {
+                match reader.read_buf(&mut buffer).await {
                     Ok(0) => {
                         // EOF
                         info!("Server stderr stream closed.");
                         break;
                     }
+                    Ok(n) if n > 0 => {
+                        // Log the bytes read as a string (lossy conversion)
+                        // Split into lines for potentially cleaner logging, handle partial lines
+                        let output = String::from_utf8_lossy(&buffer[..n]);
+                        for line in output.lines() {
+                             warn!("[Server STDERR] {}", line.trim());
+                        }
+                        // Clear the buffer after processing
+                        buffer.clear(); 
+                    }
                     Ok(_) => {
-                        // Log the line with a prefix
-                        warn!("[Server STDERR] {}", line.trim_end());
-                        line.clear(); // Clear buffer for next line
+                        // n == 0, but not EOF? Should not happen with read_buf typically, but handle defensively.
+                        // Small sleep to avoid tight loop if something weird happens.
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                     }
                     Err(e) => {
                         error!("Error reading from server stderr: {}", e);
