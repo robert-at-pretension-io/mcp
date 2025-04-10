@@ -213,10 +213,13 @@ impl Transport for ProcessTransport {
                 return Err(anyhow!("Child process closed stdout before sending full response"));
             },
             Ok(Ok(bytes_read)) => {
-                info!("Read {} bytes from stdout", bytes_read);
+                // ---> ADDED LOGS <---
+                info!("read_line successful: Read {} bytes from stdout", bytes_read);
+                info!("Raw response line (before trim): {:?}", response_line);
+                // ---> END ADDED LOGS <---
                 let response_str = response_line.trim();
-                info!("Response: {}", response_str);
-                
+                info!("Trimmed response string: {}", response_str);
+
                 // Release the stdout lock
                 drop(stdout_guard);
                 
