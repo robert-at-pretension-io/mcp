@@ -603,9 +603,11 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         // Add the system prompt as the first message if it's not empty
         // Use ChatRole::System if the backend supports it (most do)
         if !self.system_prompt.is_empty() {
-            log::debug!("Injecting system prompt for RLLM request: '{}'", self.system_prompt);
+            // RLLM's ChatRole doesn't have System, map to User as a common fallback
+            log::warn!("Mapping System prompt to User role for RLLM backend as ChatRole::System is unavailable.");
+            log::debug!("Injecting system prompt (as User role) for RLLM request: '{}'", self.system_prompt);
             chat_messages.push(ChatMessage {
-                role: ChatRole::System, // Use the System role
+                role: ChatRole::User, // Map System to User for rllm
                 content: self.system_prompt.clone().into(),
                 message_type: MessageType::Text,
             });
@@ -671,10 +673,16 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             });
         }
 
-        // --- Log the final messages being sent ---
-        match serde_json::to_string_pretty(&chat_messages) {
-             Ok(json_str) => log::debug!("Final RLLM Chat Messages Payload:\n{}", json_str),
-             Err(e) => log::warn!("Failed to serialize chat messages for logging: {}", e),
+        // --- Log the final messages being sent (Manual Formatting) ---
+        log::debug!("Final RLLM Chat Messages Payload:");
+        for msg in &chat_messages {
+            // Safely access content, assuming it's Text for logging simplicity
+            let content_preview = match &msg.content {
+                 rllm::chat::ChatContent::Text(text) => text.lines().next().unwrap_or("").chars().take(100).collect::<String>(),
+                 // Add other ChatContent variants if needed for logging
+                 _ => "[Non-Text Content]".to_string(),
+            };
+            log::debug!("  - Role: {:?}, Content Preview: '{}...'", msg.role, content_preview);
         }
         // --- End Logging ---
 
