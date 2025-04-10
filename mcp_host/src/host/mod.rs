@@ -394,8 +394,8 @@ impl MCPHost {
             AIProviderConfig { model: default_model }
         });
 
-        // Try to create the client for this provider
-        match Self::create_ai_client_internal(provider_name, &provider_config).await {
+        // Try to create the client for this provider using the final config
+        match Self::create_ai_client_internal(provider_name, &final_provider_config).await {
             Ok(Some(new_client)) => {
                 let model_name = new_client.model_name(); // Get model name before moving
                 // Update the active client and name
