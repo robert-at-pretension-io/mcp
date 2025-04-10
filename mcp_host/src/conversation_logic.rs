@@ -119,11 +119,7 @@ async fn verify_response(
                     Role::User => crate::conversation_state::format_chat_message(&msg.role, &msg.content),
                     Role::Assistant => crate::conversation_state::format_assistant_response_with_tool_calls(&msg.content),
                     Role::System => String::new(), // Skip system messages in this sequence
-                }
-                // Use existing formatting to show tool calls clearly if they exist in the message content
-                // Note: This assumes tool results are also stored as Assistant messages.
-                // If tool results had a different role, adjust the filter/formatting.
-                crate::conversation_state::format_assistant_response_with_tool_calls(&msg.content)
+                } // The match expression is now the return value of the closure
             })
             .collect::<Vec<String>>()
             .join("\n\n---\n\n"), // Separate messages clearly
