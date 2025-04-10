@@ -676,12 +676,8 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         // --- Log the final messages being sent (Manual Formatting) ---
         log::debug!("Final RLLM Chat Messages Payload:");
         for msg in &chat_messages {
-            // Safely access content, assuming it's Text for logging simplicity
-            let content_preview = match &msg.content {
-                 rllm::chat::ChatContent::Text(text) => text.lines().next().unwrap_or("").chars().take(100).collect::<String>(),
-                 // Add other ChatContent variants if needed for logging
-                 _ => "[Non-Text Content]".to_string(),
-            };
+            // Access the content string directly and take a preview
+            let content_preview = msg.content.lines().next().unwrap_or("").chars().take(100).collect::<String>();
             log::debug!("  - Role: {:?}, Content Preview: '{}...'", msg.role, content_preview);
         }
         // --- End Logging ---
