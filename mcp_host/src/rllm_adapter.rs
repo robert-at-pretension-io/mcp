@@ -119,7 +119,11 @@ impl RLLMClient {
         match role {
             Role::User => ChatRole::User,
             Role::Assistant => ChatRole::Assistant,
-            Role::System => ChatRole::System, // Use the correct System role
+            Role::System => {
+                // System role doesn't exist in this version of rllm::ChatRole, use User role as fallback
+                log::warn!("Mapping Role::System to rllm::ChatRole::User as ChatRole::System is unavailable.");
+                ChatRole::User
+            }
         }
     }
 }
