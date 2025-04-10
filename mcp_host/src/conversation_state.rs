@@ -151,7 +151,7 @@ impl ConversationState {
 
         // Add the combined system prompt as the first system message
         state.add_system_message(&combined_prompt);
-        state.add_user_message(&combined_prompt);
+        // REMOVED: state.add_user_message(&combined_prompt); // Do not add duplicate user message
         state
     }
 

@@ -119,8 +119,7 @@ impl RLLMClient {
         match role {
             Role::User => ChatRole::User,
             Role::Assistant => ChatRole::Assistant,
-            // System role doesn't exist in this version, use User role as fallback
-            Role::System => ChatRole::User,
+            Role::System => ChatRole::System, // Use the correct System role
         }
     }
 }
@@ -599,28 +598,10 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         let mut _has_image = false; // Keep track if images are involved
         let mut image_text = String::new(); // Buffer for text associated with an image
 
-        // --- Inject System Prompt ---
-        // Add the system prompt as the first message if it's not empty
-        // Use ChatRole::System if the backend supports it (most do)
-        if !self.system_prompt.is_empty() {
-            // RLLM's ChatRole doesn't have System, map to User as a common fallback
-            log::warn!("Mapping System prompt to User role for RLLM backend as ChatRole::System is unavailable.");
-            log::debug!("Injecting system prompt (as User role) for RLLM request: '{}'", self.system_prompt);
-            chat_messages.push(ChatMessage {
-                role: ChatRole::User, // Map System to User for rllm
-                content: self.system_prompt.clone().into(),
-                message_type: MessageType::Text,
-            });
-        }
-        // --- End System Prompt Injection ---
+        // --- REMOVED Manual System Prompt Injection ---
+        // The system prompt should now be the first message in self.messages from ConversationState
 
         for (i, (role, content)) in self.messages.iter().enumerate() {
-            // Skip any system messages added via .system() as we injected the main one above
-            if *role == Role::System {
-                log::trace!("Skipping message with Role::System from self.messages as system_prompt was already injected.");
-                continue;
-            }
-
             // Check for special image markers
             if content.starts_with("__IMAGE_PATH__:") || content.starts_with("__IMAGE_URL__:") {
                 _has_image = true; // Mark that an image is present
@@ -653,23 +634,23 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             }
             
             // Handle regular messages
-            if *role == Role::User && i+1 < self.messages.len() {
+            if *role == Role::User && i + 1 < self.messages.len() {
                 // Check if this message is followed by an image marker
-                let next_content = &self.messages[i+1].1;
+                let next_content = &self.messages[i + 1].1;
                 if next_content.starts_with("__IMAGE_PATH__:") || next_content.starts_with("__IMAGE_URL__:") {
                     // This text belongs with the image
                     image_text = content.clone();
-                    continue;
+                    continue; // Skip adding this text message now, it will be added with the image
                 }
             }
-            
-            // Regular message (not part of an image)
+
+            // Regular message (including System messages from state)
             let chat_role = RLLMClient::convert_role(role);
-            log::debug!("Adding regular message with role {:?}", chat_role);
+            log::debug!("Adding message with role {:?}", chat_role);
             chat_messages.push(ChatMessage {
                 role: chat_role,
-                content: content.clone().into(),
-                message_type: MessageType::Text,
+                content: content.clone().into(), // Use into() for potential future content types
+                message_type: MessageType::Text, // Assuming Text for now
             });
         }
 
