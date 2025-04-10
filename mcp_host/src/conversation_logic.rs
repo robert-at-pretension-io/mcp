@@ -427,7 +427,10 @@ pub async fn resolve_assistant_response(
                                 }
 
                                 if config.interactive_output {
+                                    // Print the standard message
                                     println!("{}", style("\nVerification failed. Revising response based on feedback...").yellow().italic());
+                                    // Also print the specific feedback
+                                    println!("{}", style(format!("Verifier Feedback: {}", feedback)).yellow().dim());
                                 }
 
                                 match builder.execute().await {
