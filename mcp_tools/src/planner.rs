@@ -3,11 +3,11 @@ use anyhow::{Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::env;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn}; // Import warn macro
 
 use rllm::builder::{LLMBackend, LLMBuilder};
-use rllm::chat::{ChatMessageBuilder, ChatRole, ChatResponse}; // Added ChatRole, ChatResponse
-// Removed rllm::error::LLMError import, will use llm::error::LLMError
+// Removed unused ChatRole import
+use rllm::chat::{ChatMessageBuilder, ChatResponse, ChatRole}; // Import ChatRole for builder
 use rllm::error::LLMError; // Import rllm's error type
 
 use shared_protocol_objects::{
@@ -91,22 +91,24 @@ async fn generate_plan_with_gemini(prompt: &str) -> Result<Box<dyn ChatResponse>
         .map_err(|e| LLMError::AuthError(format!("GEMINI_API_KEY not set: {}", e)))?;
 
     info!("Building Gemini LLM client using RLLM");
+    // Define the system prompt text
+    let system_prompt = "You are an expert planning assistant. Your goal is to create a robust, step-by-step plan \
+                         to achieve a user's objective using a predefined set of tools. The plan should be clear, \
+                         actionable, and account for potential issues. Specify when the AI should pause to reflect, \
+                         wait for tool results, or handle errors. Output only the plan itself, without preamble or explanation.";
+
     let llm = LLMBuilder::new()
         .backend(LLMBackend::Google)
         .api_key(api_key)
         .model("gemini-1.5-pro-latest") // Using a capable model for planning
         .temperature(0.5) // Lower temperature for more deterministic planning
+        .system(system_prompt) // Set system prompt via builder
         .build()?;
 
-    // Construct messages for the chat API using the builder's role methods
+    // Construct messages for the chat API - only the user message now
     let messages = vec![
-        ChatMessageBuilder::system( // Use the system() method
-            "You are an expert planning assistant. Your goal is to create a robust, step-by-step plan \
-             to achieve a user's objective using a predefined set of tools. The plan should be clear, \
-                 actionable, and account for potential issues. Specify when the AI should pause to reflect, \
-             wait for tool results, or handle errors. Output only the plan itself, without preamble or explanation."
-        ), // No .build() needed here for rllm's builder methods
-        ChatMessageBuilder::user(prompt), // Use the user() method
+        // System message is handled by the builder's .system() method
+        ChatMessageBuilder::new(ChatRole::User).content(prompt).build(), // Use the builder pattern
     ];
 
     info!("Sending planning request to Gemini via RLLM");
