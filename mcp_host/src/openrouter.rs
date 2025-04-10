@@ -45,13 +45,17 @@ struct ChatMessage {
 // Response structure for the OpenRouter API
 #[derive(Deserialize, Debug)]
 struct ChatCompletionResponse {
-    #[allow(dead_code)] // Or prefix with _ if preferred and adjust parsing if needed
+    #[allow(dead_code)]
+    #[serde(default)] // Make optional
     _id: String,
     #[allow(dead_code)]
+    #[serde(default)] // Make optional
     _object: String,
     #[allow(dead_code)]
+    #[serde(default)] // Make optional
     _created: u64,
     #[allow(dead_code)]
+    #[serde(default)] // Make optional
     _model: String,
     choices: Vec<Choice>,
 }
