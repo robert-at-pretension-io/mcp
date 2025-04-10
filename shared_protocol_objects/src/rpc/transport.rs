@@ -327,27 +327,18 @@ impl Transport for ProcessTransport {
             .map_err(|e| anyhow!("Failed to parse response: {}, raw: {}", e, response_str))?;
 
         // Basic ID check - log warning if mismatch, but proceed.
-                // Strict applications might want to return an error here.
-                if response.id != request.id {
-                    warn!(
-                        "Response ID mismatch for method {}: expected {:?}, got {:?}. This might indicate server issues.",
-                        request.method, request.id, response.id
-                    );
-                    // Depending on strictness, you might return an error:
-                    // return Err(anyhow!("Response ID mismatch: expected {:?}, got {:?}", request.id, response.id));
-                }
-                Ok(response)
-            },
-            Ok(Err(e)) => {
-                error!("Error reading from stdout: {}", e);
-                Err(anyhow!("I/O error reading from stdout: {}", e)) // More specific error
-            },
-            Err(_) => { // This is the TimeoutExpired error
-                error!("read_line timed out after {} seconds", 300); // Log timeout duration
-                Err(anyhow!("Timed out waiting for response line from server")) // More specific error
-            }
+        // Strict applications might want to return an error here.
+        if response.id != request.id {
+            warn!(
+                "Response ID mismatch for method {}: expected {:?}, got {:?}. This might indicate server issues.",
+                request.method, request.id, response.id
+            );
+            // Depending on strictness, you might return an error:
+            // return Err(anyhow!("Response ID mismatch: expected {:?}, got {:?}", request.id, response.id));
         }
-    }
+        Ok(response)
+        // <<< The closing brace for the match was missing here >>>
+    } // <<< This closes the send_request function >>>
     
     async fn send_notification(&self, notification: JsonRpcNotification) -> Result<()> {
         let notification_str = serde_json::to_string(&notification)? + "\n";
