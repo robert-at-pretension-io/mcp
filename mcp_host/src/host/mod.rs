@@ -490,7 +490,7 @@ impl MCPHost {
             "xai" | "grok" => "grok-1".to_string(), // Assuming a default, adjust if needed
             "phind" => "Phind-70B".to_string(), // Assuming a default
             "groq" => "llama3-8b-8192".to_string(),
-            "openrouter" => "mistralai/mistral-7b-instruct".to_string(),
+            "openrouter" => "openrouter/optimus-alpha".to_string(),
             "deepseek" | _ => "deepseek-chat".to_string(), // Default fallback
         }
     }
