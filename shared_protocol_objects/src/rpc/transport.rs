@@ -3,9 +3,9 @@ use async_trait::async_trait;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::process::{Child, ChildStdin, ChildStderr, ChildStdout, Command}; // Added ChildStderr
 use std::process::Stdio;
-use tokio::sync::{Mutex}; // Removed unused mpsc
+use tokio::sync::{Mutex};
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
@@ -31,21 +31,23 @@ pub trait Transport: Send + Sync + 'static {
 
 /// Transport for communicating with a child process via stdin/stdout
 pub struct ProcessTransport {
-    #[allow(dead_code)] // Allow unused field for now
-    process: Child,
+    #[allow(dead_code)]
+    process: Arc<Mutex<Child>>, // Wrap Child in Arc<Mutex> for potential future use (e.g., kill)
     pub stdin: Arc<Mutex<ChildStdin>>,
     pub stdout: Arc<Mutex<ChildStdout>>,
+    pub stderr: Arc<Mutex<ChildStderr>>, // Added stderr field
     notification_handler: Arc<Mutex<Option<NotificationHandler>>>,
+    // Removed _stderr_reader_handle as we'll spawn directly
 }
 
 impl ProcessTransport {
     /// Create a new process transport
     pub async fn new(mut command: Command) -> Result<Self> {
-        // Set up process with piped stdin/stdout
+        // Set up process with piped stdin/stdout/stderr
         command.stdin(Stdio::piped())
                .stdout(Stdio::piped())
-               .stderr(Stdio::inherit()); // Let stderr go to the parent's stderr
-               
+               .stderr(Stdio::piped()); // Capture stderr
+
         debug!("Spawning process: {:?}", command);
         let mut child = command.spawn()?;
         
@@ -53,16 +55,44 @@ impl ProcessTransport {
             .ok_or_else(|| anyhow!("Failed to get stdin handle from child process"))?;
         let stdout = child.stdout.take()
             .ok_or_else(|| anyhow!("Failed to get stdout handle from child process"))?;
-        
-        let stdin = Arc::new(Mutex::new(stdin));
-        let stdout = Arc::new(Mutex::new(stdout));
-        
+        let stderr = child.stderr.take() // Take stderr
+            .ok_or_else(|| anyhow!("Failed to get stderr handle from child process"))?;
+
+        let stdin_arc = Arc::new(Mutex::new(stdin));
+        let stdout_arc = Arc::new(Mutex::new(stdout));
+        let stderr_arc = Arc::new(Mutex::new(stderr)); // Wrap stderr
+
         let transport = Self {
-            process: child,
-            stdin,
-            stdout,
+            process: Arc::new(Mutex::new(child)), // Wrap child process
+            stdin: stdin_arc,
+            stdout: stdout_arc,
+            stderr: stderr_arc.clone(), // Clone Arc for the struct field
             notification_handler: Arc::new(Mutex::new(None)),
         };
+
+        // Spawn stderr reader task
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stderr_arc.lock().await); // Lock stderr Arc
+            let mut line = String::new();
+            loop {
+                match reader.read_line(&mut line).await {
+                    Ok(0) => {
+                        // EOF
+                        info!("Server stderr stream closed.");
+                        break;
+                    }
+                    Ok(_) => {
+                        // Log the line with a prefix
+                        warn!("[Server STDERR] {}", line.trim_end());
+                        line.clear(); // Clear buffer for next line
+                    }
+                    Err(e) => {
+                        error!("Error reading from server stderr: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
         
         // We'll skip notification listener for now to simplify debugging
         // transport.start_notification_listener().await?;
