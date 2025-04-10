@@ -560,7 +560,7 @@ impl<T: Transport> McpClientBuilder<T> {
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
             protocol_version: LATEST_PROTOCOL_VERSION.to_string(),
-            timeout: Duration::from_secs(30),
+            timeout: Duration::from_secs(300),
             use_uuid: true,
         }
     }

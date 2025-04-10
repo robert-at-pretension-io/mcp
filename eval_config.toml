@@ -7,12 +7,14 @@ mcp_host_config = "./debug_config.json"
 # Directory containing the evaluation task files (e.g., task_research_and_summarize.txt).
 tasks_dir = "eval_tasks"
 
+log_dir = "eval_logs" # Directory for storing evaluation logs.
+
 # Path to the prompt template used for grading responses.
 # You need to create this file (see step 2 below).
 grading_prompt_path = "prompts/eval_grading_prompt.txt"
 
 # Path where the evaluation results (JSON Lines format) will be saved.
-output_path = "eval_results/results.jsonl"
+output_path = "eval_results/results.json"
 
 # Maximum time (in seconds) allowed for a model to complete a single task.
 task_timeout_secs = 180 # 10 minutes
