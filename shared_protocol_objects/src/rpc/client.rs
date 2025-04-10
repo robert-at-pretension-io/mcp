@@ -112,6 +112,8 @@ impl<T: Transport> McpClient<T> {
             Err(e) => {
                 error!("Failed to send initialized notification: {}", e);
                 // Continue anyway, some implementations might not need this notification
+            } // <-- Added missing closing brace
+        }
         info!("Client fully initialized");
         Ok(response) // Return the full InitializeResult
     }
