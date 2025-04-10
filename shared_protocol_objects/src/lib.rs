@@ -410,13 +410,6 @@ pub fn error_response(id: Option<Value>, code: i64, message: &str) -> JsonRpcRes
             data: None,
         }),
     }
-        result: None,
-        error: Some(JsonRpcError {
-            code,
-            message: message.to_string(),
-            data: None, // Add data field if needed
-        }),
-    }
 }
 
 /// Creates a JSON-RPC notification.
