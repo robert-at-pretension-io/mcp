@@ -13,17 +13,27 @@ fn extract_text_content(element: ElementRef, unwanted_tags: &HashSet<&str>, desi
         return;
     }
 
-    // If it's a desired tag or a text node container (like body/html), extract its direct text
+    // If it's a desired tag or a text node container (like body/html), process its direct text nodes
     if desired_tags.contains(name) || name == "body" || name == "html" {
         for text_node in element.text() {
             let trimmed = text_node.trim();
-            if !trimmed.is_empty() {
-                // Basic filtering for JSON-like content within text nodes
-                if !(trimmed.starts_with('{') && trimmed.ends_with('}')) && !(trimmed.starts_with('[') && trimmed.ends_with(']')) {
-                     // Add space separation, handle potential excessive whitespace later
-                    output.push_str(trimmed);
-                    output.push(' ');
-                }
+            // More robust filtering: skip empty, JSON-like, and common JS patterns
+            if !trimmed.is_empty() &&
+               !(trimmed.starts_with('{') && trimmed.ends_with('}')) &&
+               !(trimmed.starts_with('[') && trimmed.ends_with(']')) &&
+               !trimmed.contains("self.__next_f") && // Filter specific JS pattern from example
+               !trimmed.contains("function(") &&
+               !trimmed.contains("=>") &&
+               !trimmed.starts_with("var ") &&
+               !trimmed.starts_with("let ") &&
+               !trimmed.starts_with("const ") &&
+               !trimmed.starts_with("window.") &&
+               !trimmed.starts_with("document.") &&
+               trimmed.len() < 500 // Avoid excessively long text nodes which might be data blobs
+            {
+                // Add space separation, handle potential excessive whitespace later
+                output.push_str(trimmed);
+                output.push(' '); // Add a space after each valid text chunk
             }
         }
     }
@@ -61,9 +71,13 @@ fn clean_html(html: &str) -> String {
         extract_text_content(document.root_element(), &unwanted_tags, &desired_tags, &mut clean_content);
     }
 
-    // Post-process to clean up excessive whitespace
-    let cleaned = clean_content.split_whitespace().collect::<Vec<&str>>().join(" ");
-    cleaned
+    // Post-process to clean up excessive whitespace: trim and collapse multiple spaces
+    let cleaned = clean_content
+        .split_whitespace() // Splits by any whitespace and removes empty strings
+        .collect::<Vec<&str>>()
+        .join(" "); // Joins with single spaces
+
+    cleaned.trim().to_string() // Final trim for leading/trailing spaces
 }
 
 
