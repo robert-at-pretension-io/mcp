@@ -340,11 +340,31 @@ impl<T: Transport> McpClient<T> {
         };
         
         info!("Sending tools/list request to transport: {:?}", request);
-        // Send the request directly to the transport
-        let response = self.transport.send_request(request).await?;
-        info!("Got tools/list response: {:?}", response);
         
-        // Check for errors
+        // --- Add specific timeout for tools/list ---
+        let list_tools_timeout = Duration::from_secs(15); // Shorter timeout for list_tools
+        let response_result = tokio::time::timeout(
+            list_tools_timeout,
+            self.transport.send_request(request)
+        ).await;
+
+        let response = match response_result {
+            Ok(Ok(resp)) => {
+                info!("Got tools/list response within timeout: {:?}", resp);
+                resp // Successfully received response
+            }
+            Ok(Err(e)) => {
+                error!("Transport error during tools/list: {}", e);
+                return Err(e); // Propagate transport error
+            }
+            Err(_) => {
+                error!("Timed out waiting for tools/list response after {} seconds", list_tools_timeout.as_secs());
+                return Err(anyhow!("Timed out waiting for tools/list response")); // Return timeout error
+            }
+        };
+        // --- End specific timeout ---
+        
+        // Check for errors in the received response
         if let Some(error) = response.error {
             error!("RPC error in response: code={}, message={}", error.code, error.message);
             return Err(anyhow!("RPC error {}: {}", error.code, error.message));
