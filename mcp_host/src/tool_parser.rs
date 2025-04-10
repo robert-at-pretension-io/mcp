@@ -35,12 +35,18 @@ impl ToolParser {
                                 tool_calls.push(tool_call);
                             },
                             Err(e) => {
-                                log::debug!("Found JSON but invalid tool call format: {}", e);
+                                log::debug!("Found JSON but invalid tool call format: {}. Content: {}", e, json_content);
+                                if first_invalid_content.is_none() {
+                                    first_invalid_content = Some(json_content.to_string());
+                                }
                             }
                         }
                     },
                     Err(e) => {
-                        log::debug!("Found delimiters but content is not valid JSON: {}", e); // Updated log
+                        log::debug!("Found delimiters but content is not valid JSON: {}. Content: {}", e, json_content); // Updated log
+                        if first_invalid_content.is_none() {
+                            first_invalid_content = Some(json_content.to_string());
+                        }
                     }
                 }
 
