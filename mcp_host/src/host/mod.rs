@@ -378,12 +378,11 @@ impl MCPHost {
             let config_guard = self.config.lock().await;
             config_guard.ai_providers
                 .get(provider_name)
-                .cloned() // Clone the config if found
-                .cloned(); // Clone the Option<AIProviderConfig>
+                .cloned(); // Clone the Option<&AIProviderConfig> into Option<AIProviderConfig>
         }; // config lock released here
 
         // Get the default model using the new logic if config wasn't found
-        let final_provider_config = provider_config_opt.unwrap_or_else(|| {
+        let final_provider_config = provider_config.unwrap_or_else(|| { // Use provider_config here
             warn!("Provider '{}' not found in main config, determining default model...", provider_name);
             // Need to acquire provider_models lock here
             let default_model = { // Scope for provider_models lock
