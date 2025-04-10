@@ -684,7 +684,7 @@ impl MCPHostBuilder {
                      .get(provider_name); // Get reference
 
                  // Determine the config to use: from main config or default model from provider_models
-                 let config_to_use = provider_config_ref
+                 let config_to_use = provider_config // Use provider_config here
                      .cloned() // Clone if found in main config
                      .unwrap_or_else(|| {
                          // If not in main config, get default model from provider_models_config
