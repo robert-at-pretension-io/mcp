@@ -115,10 +115,15 @@ impl Repl {
             };
 
             // --- Prompt Generation ---
-            let prompt = if let Some((server_name, _)) = &self.chat_state {
+            let prompt = if let Some((server_context, _)) = &self.chat_state {
                 // Chat mode prompt
-                log::debug!("Generating chat prompt for server: {}", server_name);
-                format!("{} {}❯ ", style("Chat").magenta(), style(server_name).green())
+                let context_display = if server_context == "*all*" {
+                    style("(all servers)").dim().to_string()
+                } else {
+                    style(server_context).green().to_string()
+                };
+                log::debug!("Generating chat prompt for context: {}", server_context);
+                format!("{} {}❯ ", style("Chat").magenta(), context_display)
             } else {
                 // Normal command mode prompt
                 log::debug!("Generating normal command prompt. Current server: {:?}, Provider: {}",
@@ -181,23 +186,24 @@ impl Repl {
             }
 
             // --- Process based on State (Chat or Command) ---
-            if let Some((server_name, mut state)) = self.chat_state.take() { // Take ownership to modify state
+            if let Some((ref server_context, mut state)) = self.chat_state.take() { // Take ownership to modify state
                 // --- In Chat Mode ---
-                log::debug!("Processing input in chat mode for server '{}': '{}'", server_name, line);
+                log::debug!("Processing input in chat mode for context '{}': '{}'", server_context, line);
                 if line.eq_ignore_ascii_case("exit") || line.eq_ignore_ascii_case("quit") {
                     println!("{}", style("Exiting chat mode.").yellow());
                     log::debug!("User requested exit from chat mode.");
                     // self.chat_state remains None because we took it
                 } else {
                     // Execute chat turn logic using the new helper function
-                    match self.execute_chat_turn(&server_name, &mut state, line).await {
+                    // Pass the server_context (which might be "*all*")
+                    match self.execute_chat_turn(server_context, &mut state, line).await {
                         Ok(_) => {
-                            log::debug!("Chat turn executed successfully for server '{}'. Putting state back.", server_name);
+                            log::debug!("Chat turn executed successfully for context '{}'. Putting state back.", server_context);
                             // Put the potentially modified state back
-                            self.chat_state = Some((server_name, state));
+                            self.chat_state = Some((server_context.clone(), state)); // Clone server_context
                         }
                         Err(e) => {
-                            log::error!("Error during chat turn for server '{}': {}", server_name, e);
+                            log::error!("Error during chat turn for context '{}': {}", server_context, e);
                             println!("{}: {}", style("Chat Error").red().bold(), e);
                             println!("{}", style("Exiting chat mode due to error.").yellow());
                             // self.chat_state remains None, exiting chat mode
@@ -207,20 +213,19 @@ impl Repl {
             } else {
                 // --- Not In Chat Mode (Normal Command Processing) ---
                 log::debug!("Processing input in command mode: '{}'", line);
-                if line.starts_with("chat ") {
+                if line.starts_with("chat") {
                     // --- Enter Chat Mode ---
-                    let target_server = line[5..].trim();
-                    log::info!("'chat' command detected for server: '{}'", target_server);
-                    if target_server.is_empty() {
-                         println!("{}: Please specify a server name. Usage: {}", style("Error").red(), style("chat <server_name>").yellow());
-                         log::warn!("'chat' command used without server name.");
-                    } else {
-                        log::debug!("Attempting to enter chat mode with server '{}'", target_server);
+                    let parts: Vec<&str> = line.splitn(2, ' ').collect();
+                    let target_server_opt = parts.get(1).map(|s| s.trim()).filter(|s| !s.is_empty());
+
+                    if let Some(target_server) = target_server_opt {
+                        // --- Specific Server Chat ---
+                        log::info!("'chat' command detected for specific server: '{}'", target_server);
+                        log::debug!("Attempting to enter single-server chat mode with '{}'", target_server);
                         match self.host.enter_chat_mode(target_server).await {
                             Ok(initial_state) => {
                                 let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
                                 let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
-                                // Use italic and dim for the entry message
                                 println!(
                                     "\n{}",
                                     style(format!(
@@ -231,18 +236,42 @@ impl Repl {
                                     )).italic()
                                 );
                                 println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
-                                log::info!("Successfully entered chat mode with server '{}'", target_server);
+                                log::info!("Successfully entered single-server chat mode with '{}'", target_server);
                                 self.chat_state = Some((target_server.to_string(), initial_state));
                             }
                             Err(e) => {
-                                log::error!("Failed to enter chat mode for server '{}': {}", target_server, e);
+                                log::error!("Failed to enter single-server chat mode for '{}': {}", target_server, e);
                                 println!("{}: Error entering chat mode for '{}': {}", style("Error").red().bold(), target_server, e);
+                            }
+                        }
+                    } else {
+                        // --- Multi-Server Chat ---
+                        log::info!("'chat' command detected with no server specified. Entering multi-server mode.");
+                        match self.host.enter_multi_server_chat_mode().await {
+                            Ok(initial_state) => {
+                                let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
+                                let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
+                                println!(
+                                    "\n{}",
+                                    style(format!(
+                                        "Entering multi-server chat mode using provider '{}' (model: {}). Tools from all servers available.",
+                                        style(&active_provider).cyan(),
+                                        style(&active_model).green()
+                                    )).italic()
+                                );
+                                println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
+                                log::info!("Successfully entered multi-server chat mode.");
+                                self.chat_state = Some(("*all*".to_string(), initial_state)); // Use special marker
+                            }
+                            Err(e) => {
+                                log::error!("Failed to enter multi-server chat mode: {}", e);
+                                println!("{}: Error entering multi-server chat mode: {}", style("Error").red().bold(), e);
                             }
                         }
                     }
                 } else {
                     // --- Process other commands ---
-                    log::debug!("Passing command to CommandProcessor: '{}'", line);
+                    log::debug!("Passing non-chat command to CommandProcessor: '{}'", line);
                     match self.command_processor.process(line, &mut self.editor).await {
                         Ok(result) => {
                             log::debug!("CommandProcessor result: '{}'", result);

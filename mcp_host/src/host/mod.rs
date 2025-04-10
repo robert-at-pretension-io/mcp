@@ -298,10 +298,66 @@ impl MCPHost {
         self.server_manager().stop_server(name).await
     }
 
-    /// Enter chat mode with a server
+    /// List tools from all currently running servers, removing duplicates by name.
+    pub async fn list_all_tools(&self) -> Result<Vec<shared_protocol_objects::ToolInfo>> {
+        info!("Listing tools from all active servers...");
+        let mut all_tools = HashMap::new(); // Use HashMap to deduplicate by name
+        let server_names = { // Scope lock
+            let servers_guard = self.servers.lock().await;
+            servers_guard.keys().cloned().collect::<Vec<_>>()
+        }; // Lock released
+
+        for server_name in server_names {
+            match self.list_server_tools(&server_name).await {
+                Ok(tools) => {
+                    debug!("Found {} tools on server '{}'", tools.len(), server_name);
+                    for tool in tools {
+                        // Insert into HashMap, replacing duplicates (last one wins if names collide)
+                        all_tools.insert(tool.name.clone(), tool);
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to list tools for server '{}': {}. Skipping.", server_name, e);
+                }
+            }
+        }
+        let unique_tools: Vec<_> = all_tools.into_values().collect();
+        info!("Found {} unique tools across all servers.", unique_tools.len());
+        Ok(unique_tools)
+    }
+
+    /// Find the name of the server that provides a specific tool.
+    pub async fn get_server_for_tool(&self, tool_name: &str) -> Result<String> {
+        debug!("Searching for server providing tool: {}", tool_name);
+        let server_names = { // Scope lock
+            let servers_guard = self.servers.lock().await;
+            servers_guard.keys().cloned().collect::<Vec<_>>()
+        }; // Lock released
+
+        for server_name in server_names {
+            // In the future, we could check cached capabilities here first.
+            // For now, we call list_tools again.
+            match self.list_server_tools(&server_name).await {
+                Ok(tools) => {
+                    if tools.iter().any(|t| t.name == tool_name) {
+                        debug!("Found tool '{}' on server '{}'", tool_name, server_name);
+                        return Ok(server_name);
+                    }
+                }
+                Err(e) => {
+                    warn!("Could not list tools for server '{}' while searching for tool '{}': {}", server_name, tool_name, e);
+                }
+            }
+        }
+        error!("Tool '{}' not found on any active server.", tool_name);
+        Err(anyhow!("Tool '{}' not found on any active server", tool_name))
+    }
+
+
+    /// Enter chat mode with a specific server
     pub async fn enter_chat_mode(&self, server_name: &str) -> Result<crate::conversation_state::ConversationState> {
-        // This implementation remains largely the same as in host.rs
-        // Fetch tools from the server
+        info!("Entering single-server chat mode for '{}'", server_name);
+        // Fetch tools from the specific server
         let tool_info_list = self.list_server_tools(server_name).await?;
 
         // Convert our tool list to a JSON structure - we'll use this for debugging
@@ -339,6 +395,31 @@ impl MCPHost {
         // so we don't need to add it separately here.
         // The generate_tool_system_prompt function is called within ConversationState::new.
 
+        Ok(state)
+    }
+
+    /// Enter chat mode using tools from all available servers.
+    pub async fn enter_multi_server_chat_mode(&self) -> Result<crate::conversation_state::ConversationState> {
+        info!("Entering multi-server chat mode.");
+        // Fetch tools from all servers
+        let all_tools = self.list_all_tools().await?;
+
+        // Generate system prompt using combined tool list
+        let system_prompt = format!(
+            "You are a helpful assistant with access to tools from multiple servers. Use tools EXACTLY according to their descriptions.\n\
+            TOOLS:\n{}",
+            all_tools.iter().map(|tool| {
+                format!(
+                    "- {}: {}\n  input schema: {:?}",
+                    tool.name,
+                    tool.description.as_ref().unwrap_or(&"".to_string()),
+                    tool.input_schema
+                )
+            }).collect::<Vec<_>>().join("\n")
+        );
+
+        // Create the conversation state
+        let state = crate::conversation_state::ConversationState::new(system_prompt, all_tools);
         Ok(state)
     }
 
