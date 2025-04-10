@@ -127,9 +127,10 @@ impl Transport for ProcessTransport {
         // Now read the response directly
         info!("Acquiring stdout lock for response");
         let mut stdout_guard = self.stdout.lock().await;
-        // --- Removed BufReader ---
+        // --- Re-introduce BufReader with larger capacity ---
+        let mut reader = BufReader::with_capacity(16384, &mut *stdout_guard); // Use 16KB buffer
         // Use BytesMut buffer to accumulate response data
-        let mut response_buffer = bytes::BytesMut::with_capacity(8192); // Start with 8KB, might grow
+        let mut response_buffer = bytes::BytesMut::with_capacity(16384); // Start with 16KB, might grow
         let response_str: String; // To hold the final decoded string
 
         // Add a timeout to the read loop
@@ -166,17 +167,16 @@ impl Transport for ProcessTransport {
                     }
                 }
 
-                // No newline yet, read more data directly from stdout_guard
-                trace!("No newline found, attempting to read more data directly from stdout...");
-                // Create a temporary buffer for the read() call
-                let mut temp_buf = [0u8; 4096]; // Read in chunks of 4KB
-                match stdout_guard.read(&mut temp_buf).await {
+                // No newline yet, read more data using BufReader's read_buf
+                trace!("No newline found, attempting to read more data using BufReader...");
+                match reader.read_buf(&mut response_buffer).await {
                     Ok(0) => {
                         // EOF reached before finding a newline
                         warn!("EOF reached before newline found. Buffer size: {}", response_buffer.len());
-                        
-                        // If we have data in the buffer, try to use it even if no newline was found
-                        if !response_buffer.is_empty() {
+                        if response_buffer.is_empty() {
+                            error!("Child process closed stdout without sending any response data.");
+                            return Err(anyhow!("Child process closed stdout without sending response"));
+                        } else {
                             // EOF, but we have partial data without a newline. Try to decode what we have.
                             warn!("Child process closed stdout with partial data and no trailing newline.");
                             trace!("Partial data at EOF ({} bytes): {:?}", response_buffer.len(), response_buffer); // Log partial data
@@ -191,28 +191,11 @@ impl Transport for ProcessTransport {
                                 }
                             }
                         }
-                       
-                        // If the buffer is empty and we haven't exceeded max retries, try again
-                        if retry_count < max_retries {
-                            retry_count += 1;
-                            warn!("Empty buffer at EOF, retry {}/{}. Waiting 500ms before retry...", 
-                                  retry_count, max_retries);
-                            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                            
-                            // Try to reopen the stdout connection
-                            info!("Retry {}/{}: Continuing read loop after EOF", retry_count, max_retries);
-                            continue;
-                        } else {
-                            // Max retries exceeded
-                            error!("Max retries ({}) exceeded after EOF. Giving up.", max_retries);
-                            return Err(anyhow!("Max retries exceeded after EOF"));
-                        }
                     }
                     Ok(n) => {
-                        // Read n bytes successfully, append to response_buffer
-                        response_buffer.extend_from_slice(&temp_buf[..n]);
+                        // Read n bytes successfully, loop will check for newline again
                         // Use info level for read success to ensure visibility
-                        info!("Read {} bytes directly from stdout, accumulated {} bytes", n, response_buffer.len());
+                        info!("Read {} bytes using BufReader, accumulated {} bytes", n, response_buffer.len());
                         // Optional: Add a check for excessively large buffers to prevent OOM
                         if response_buffer.len() > 1_000_000 { // Example limit: 1MB
                              error!("Response buffer exceeded 1MB limit without newline. Aborting.");
