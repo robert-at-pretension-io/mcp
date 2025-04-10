@@ -59,6 +59,7 @@ struct ChatCompletionResponse {
 #[derive(Deserialize, Debug)]
 struct Choice {
     #[allow(dead_code)]
+    #[serde(default)] // Make this field optional during deserialization
     _index: u32,
     message: ResponseMessage,
     #[allow(dead_code)]
