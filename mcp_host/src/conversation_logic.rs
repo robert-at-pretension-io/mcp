@@ -108,12 +108,18 @@ async fn verify_response(
         .map(|idx| state.messages[idx].content.as_str())
         .unwrap_or("Original request not found in history.");
 
-    // Extract the sequence of assistant messages since the last user message
-    let assistant_sequence = match last_user_message_index {
-        Some(idx) => state.messages[idx + 1..] // Get slice of messages after the last user message
+    // Extract the sequence of messages (user and assistant) since the *original* user request
+    let relevant_history_sequence = match last_user_message_index {
+        Some(idx) => state.messages[idx..] // Get slice starting from the last user message
             .iter()
-            .filter(|m| m.role == Role::Assistant) // Ensure we only include assistant messages
+            // .filter(|m| m.role == Role::Assistant) // Keep user feedback messages too
             .map(|msg| {
+                // Format based on role
+                match msg.role {
+                    Role::User => crate::conversation_state::format_chat_message(&msg.role, &msg.content),
+                    Role::Assistant => crate::conversation_state::format_assistant_response_with_tool_calls(&msg.content),
+                    Role::System => String::new(), // Skip system messages in this sequence
+                }
                 // Use existing formatting to show tool calls clearly if they exist in the message content
                 // Note: This assumes tool results are also stored as Assistant messages.
                 // If tool results had a different role, adjust the filter/formatting.
@@ -124,33 +130,27 @@ async fn verify_response(
         None => proposed_response.to_string(), // Fallback to just the proposed response if no user message found
     };
 
-    // Ensure the final proposed response is included if the sequence is empty (edge case)
-    let final_assistant_actions_and_response = if assistant_sequence.is_empty() {
-        proposed_response.to_string()
+    // Ensure the final proposed response is included if it wasn't the last message in the sequence
+    let final_actions_and_response_for_verifier = if state.messages.last().map_or(true, |m| m.content != proposed_response) {
+         format!("{}\n\n---\n\n{}", relevant_history_sequence, crate::conversation_state::format_assistant_response_with_tool_calls(proposed_response))
     } else {
-        // Check if the very last message content matches the proposed_response. If not, append it.
-        // This handles cases where the loop might have exited before the final response was added to history (though unlikely with current logic).
-        if state.messages.last().map_or(true, |m| m.content != proposed_response) {
-             format!("{}\n\n---\n\n{}", assistant_sequence, crate::conversation_state::format_assistant_response_with_tool_calls(proposed_response))
-        } else {
-            assistant_sequence
-        }
+        relevant_history_sequence
     };
 
 
     let prompt = format!(
-        "You are a strict evaluator. Verify if the 'Assistant's Actions and Final Response' sequence below meets ALL the 'Success Criteria' based on the 'Original User Request'.\n\n\
+        "You are a strict evaluator. Verify if the 'Relevant Conversation Sequence' below meets ALL the 'Success Criteria' based on the 'Original User Request'.\n\n\
         Original User Request:\n```\n{}\n```\n\n\
         Success Criteria:\n```\n{}\n```\n\n\
-        Assistant's Actions and Final Response:\n```\n{}\n```\n\n\
+        Relevant Conversation Sequence (User messages, Assistant actions/responses, Tool results):\n```\n{}\n```\n\n\
         Instructions:\n\
-        1. Carefully review the *entire sequence* of the assistant's actions (including tool calls/results shown) and its final response.\n\
+        1. Carefully review the *entire sequence* including user feedback, assistant actions (tool calls/results shown), and the final response.\n\
         2. Compare this sequence against each point in the 'Success Criteria'.\n\
         3. Determine if the *outcome* of the assistant's actions and the final response *fully and accurately* satisfy *all* criteria.\n\
         4. Output ONLY a valid JSON object with the following structure:\n\
-           `{{\"passes\": boolean, \"feedback\": \"string (provide concise feedback ONLY if passes is false, explaining which criteria failed and why, referencing the assistant's actions if relevant)\"}}`\n\
+           `{{\"passes\": boolean, \"feedback\": \"string (provide concise feedback ONLY if passes is false, explaining which criteria failed and why, referencing the assistant's actions/responses if relevant)\"}}`\n\
         5. Do NOT include any other text, explanations, or markdown formatting.",
-        original_request, criteria, final_assistant_actions_and_response // Use the full sequence here
+        original_request, criteria, final_actions_and_response_for_verifier // Use the full sequence here
     );
 
     // Use raw_builder as we don't need tool context here
