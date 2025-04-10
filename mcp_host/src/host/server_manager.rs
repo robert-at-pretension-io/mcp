@@ -508,7 +508,12 @@ impl ServerManager {
             let mut client = production::McpClient::new(inner_client);
             info!("MCP client created, initializing server '{}'...", name);
 
-            let client_capabilities = ClientCapabilities { experimental: None, sampling: None, roots: None };
+            // Use correct default values for ClientCapabilities
+            let client_capabilities = ClientCapabilities {
+                experimental: serde_json::json!({}), // Use default empty object
+                sampling: serde_json::json!({}),     // Use default empty object
+                roots: Default::default(), // Use default RootsCapability
+            };
             let init_timeout = Duration::from_secs(15);
             match tokio::time::timeout(init_timeout, client.initialize(client_capabilities)).await {
                 Ok(Ok(server_caps)) => {
