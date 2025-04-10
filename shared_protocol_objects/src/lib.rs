@@ -98,8 +98,9 @@ pub struct ClientCapabilities {
     pub roots: RootsCapability,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)] // Add Default derive
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RootsCapability {
+    #[serde(default)] // Add default attribute here
     pub list_changed: bool,
 }
 
