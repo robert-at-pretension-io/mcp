@@ -321,7 +321,7 @@ pub fn create_openrouter_client(config: Value) -> Result<Box<dyn AIClient>> {
     
     let model = config["model"].as_str()
         .filter(|s| !s.is_empty())
-        .unwrap_or("mistralai/mistral-7b-instruct");  // Default model
+        .unwrap_or("openrouter/optimus-alpha");  // Default model
 
     let client = OpenRouterClient::new(api_key.to_string(), model.to_string())?;
     Ok(Box::new(client))
