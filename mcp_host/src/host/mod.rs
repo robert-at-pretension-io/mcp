@@ -379,13 +379,20 @@ impl MCPHost {
             config_guard.ai_providers
                 .get(provider_name)
                 .cloned() // Clone the config if found
-                .unwrap_or_else(|| {
-                    // If not in config, create a provider-specific default config
-                    warn!("Provider '{}' not found in config, using provider default model.", provider_name);
-                    let default_model = Self::get_default_model_for_provider(provider_name);
-                    AIProviderConfig { model: default_model }
-                })
-        }; // Lock released here
+                .cloned(); // Clone the Option<AIProviderConfig>
+        }; // config lock released here
+
+        // Get the default model using the new logic if config wasn't found
+        let final_provider_config = provider_config_opt.unwrap_or_else(|| {
+            warn!("Provider '{}' not found in main config, determining default model...", provider_name);
+            // Need to acquire provider_models lock here
+            let default_model = { // Scope for provider_models lock
+                let models_guard = futures::executor::block_on(self.provider_models.lock()); // Block briefly for sync access
+                Self::get_default_model_for_provider(provider_name, &models_guard)
+            };
+            debug!("Using determined default model '{}' for provider '{}'", default_model, provider_name);
+            AIProviderConfig { model: default_model }
+        });
 
         // Try to create the client for this provider
         match Self::create_ai_client_internal(provider_name, &provider_config).await {
@@ -481,19 +488,38 @@ impl MCPHost {
     }
 
     /// Helper to get a default model name for a given provider.
-    fn get_default_model_for_provider(provider_name: &str) -> String {
-        match provider_name.to_lowercase().as_str() {
+    /// Prioritizes the first model listed in provider_models config, then falls back to hardcoded defaults.
+    fn get_default_model_for_provider(
+        provider_name: &str,
+        provider_models_config: &ProviderModelsConfig, // Accept models config
+    ) -> String {
+        let provider_key = provider_name.to_lowercase();
+
+        // Try getting the first model from the config
+        if let Some(model_list) = provider_models_config.providers.get(&provider_key) {
+            if let Some(first_model) = model_list.models.first() {
+                if !first_model.is_empty() {
+                    log::debug!("Using default model '{}' from provider_models.toml for provider '{}'", first_model, provider_name);
+                    return first_model.clone();
+                }
+            }
+        }
+
+        // Fallback to hardcoded defaults if not found or empty in config
+        log::debug!("Default model for provider '{}' not found in provider_models.toml, using hardcoded fallback.", provider_name);
+        match provider_key.as_str() {
             "anthropic" => "claude-3-haiku-20240307".to_string(),
             "openai" => "gpt-4o-mini".to_string(),
-            "gemini" | "google" => "gemini-1.5-flash".to_string(), // Use flash as default
+            "gemini" | "google" => "gemini-1.5-flash".to_string(),
             "ollama" => "llama3".to_string(),
-            "xai" | "grok" => "grok-1".to_string(), // Assuming a default, adjust if needed
-            "phind" => "Phind-70B".to_string(), // Assuming a default
+            "xai" | "grok" => "grok-1".to_string(),
+            "phind" => "Phind-70B".to_string(),
             "groq" => "llama3-8b-8192".to_string(),
             "openrouter" => "openrouter/optimus-alpha".to_string(),
             "deepseek" | _ => "deepseek-chat".to_string(), // Default fallback
         }
     }
+
 
      /// Internal helper to create an AI client instance.
      /// Refactored from the original builder logic.
@@ -656,14 +682,20 @@ impl MCPHostBuilder {
              let preferred_providers = ["anthropic", "openai", "deepseek", "gemini", "ollama", "xai", "phind", "groq", "openrouter"];
              for provider_name in preferred_providers {
                  let provider_config = initial_config.ai_providers
-                     .get(provider_name)
-                     .cloned()
+                     .get(provider_name); // Get reference
+
+                 // Determine the config to use: from main config or default model from provider_models
+                 let config_to_use = provider_config_ref
+                     .cloned() // Clone if found in main config
                      .unwrap_or_else(|| {
-                         debug!("Using default config for provider check: {}", provider_name);
-                         AIProviderConfig::default()
+                         // If not in main config, get default model from provider_models_config
+                         let default_model = MCPHost::get_default_model_for_provider(provider_name, &provider_models_config);
+                         debug!("Using default model '{}' from provider_models for initial check of provider '{}'", default_model, provider_name);
+                         AIProviderConfig { model: default_model }
                      });
 
-                 match MCPHost::create_ai_client_internal(provider_name, &provider_config).await {
+                 // Try creating the client with the determined config
+                 match MCPHost::create_ai_client_internal(provider_name, &config_to_use).await {
                      Ok(Some(client)) => {
                          info!("Using first available provider found via environment variable: {}", provider_name);
                          active_provider_name = Some(provider_name.to_string());
