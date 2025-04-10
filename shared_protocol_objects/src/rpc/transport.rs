@@ -74,32 +74,21 @@ impl ProcessTransport {
         // Spawn stderr reader task
         // Spawn stderr reader task
         tokio::spawn(async move {
-            let mut stderr_locked = stderr_arc.lock().await; // Lock stderr Arc
-            let mut reader = BufReader::new(&mut *stderr_locked); // Pass mutable reference
-            // Use a byte buffer instead of a String line buffer
-            let mut buffer = bytes::BytesMut::with_capacity(1024); 
-
+            let mut stderr_locked = stderr_arc.lock().await; // Lock stderr Arc outside BufReader
+            let mut reader = BufReader::new(&mut *stderr_locked); // Pass mutable reference to locked stderr
+            let mut line = String::new();
             loop {
-                match reader.read_buf(&mut buffer).await {
+                // Reverted to read_line for stderr as it seems simpler and no issues were observed there.
+                match reader.read_line(&mut line).await {
                     Ok(0) => {
                         // EOF
                         info!("Server stderr stream closed.");
                         break;
                     }
-                    Ok(n) if n > 0 => {
-                        // Log the bytes read as a string (lossy conversion)
-                        // Split into lines for potentially cleaner logging, handle partial lines
-                        let output = String::from_utf8_lossy(&buffer[..n]);
-                        for line in output.lines() {
-                             warn!("[Server STDERR] {}", line.trim());
-                        }
-                        // Clear the buffer after processing
-                        buffer.clear(); 
-                    }
                     Ok(_) => {
-                        // n == 0, but not EOF? Should not happen with read_buf typically, but handle defensively.
-                        // Small sleep to avoid tight loop if something weird happens.
-                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                        // Log the line with a prefix
+                        warn!("[Server STDERR] {}", line.trim_end());
+                        line.clear(); // Clear buffer for next line
                     }
                     Err(e) => {
                         error!("Error reading from server stderr: {}", e);
@@ -248,32 +237,96 @@ impl Transport for ProcessTransport {
         info!("Acquiring stdout lock for response");
         let mut stdout_guard = self.stdout.lock().await;
         let mut reader = BufReader::new(&mut *stdout_guard);
-        let mut response_line = String::new();
-        
-        // Add a timeout to the read
-        info!("Starting read_line with {}s timeout...", 300); // Log timeout duration
-        match tokio::time::timeout(std::time::Duration::from_secs(300), reader.read_line(&mut response_line)).await {
-            Ok(Ok(0)) => {
-                error!("Child process closed stdout (read 0 bytes) before sending full response");
-                return Err(anyhow!("Child process closed stdout before sending full response"));
-            },
-            Ok(Ok(bytes_read)) => {
-                // ---> ADDED LOGS <---
-                info!("read_line successful: Read {} bytes from stdout", bytes_read);
-                info!("Raw response line (before trim): {:?}", response_line);
-                // ---> END ADDED LOGS <---
-                let response_str = response_line.trim();
+        // Use BytesMut buffer to accumulate response data
+        let mut response_buffer = bytes::BytesMut::with_capacity(8192); // Start with 8KB, might grow
+        let response_str: String; // To hold the final decoded string
+
+        // Add a timeout to the read loop
+        let timeout_duration = std::time::Duration::from_secs(300);
+        info!("Starting response read loop with {}s timeout...", timeout_duration.as_secs());
+
+        match tokio::time::timeout(timeout_duration, async {
+            loop {
+                // Check if we found a newline in the current buffer
+                if let Some(newline_pos) = response_buffer.iter().position(|&b| b == b'\n') {
+                    // Found newline, extract the line
+                    let line_bytes = response_buffer.split_to(newline_pos + 1); // Include newline
+                    // Decode *only* the extracted line
+                    match String::from_utf8(line_bytes.freeze().to_vec()) { // Use freeze().to_vec() for efficiency if needed
+                        Ok(line) => {
+                            info!("Successfully read and decoded line ({} bytes)", line.len());
+                            return Ok(line); // Return the complete line
+                        }
+                        Err(e) => {
+                            error!("UTF-8 decoding error after finding newline: {}", e);
+                            return Err(anyhow!("UTF-8 decoding error in response: {}", e));
+                        }
+                    }
+                }
+
+                // No newline yet, read more data
+                match reader.read_buf(&mut response_buffer).await {
+                    Ok(0) => {
+                        // EOF reached before finding a newline
+                        if response_buffer.is_empty() {
+                            error!("Child process closed stdout without sending any response data.");
+                            return Err(anyhow!("Child process closed stdout without sending response"));
+                        } else {
+                            // EOF, but we have partial data without a newline. Try to decode what we have.
+                            warn!("Child process closed stdout with partial data and no trailing newline.");
+                            match String::from_utf8(response_buffer.to_vec()) {
+                                Ok(line) => {
+                                    info!("Successfully decoded partial line at EOF ({} bytes)", line.len());
+                                    return Ok(line); // Return the partial line
+                                }
+                                Err(e) => {
+                                     error!("UTF-8 decoding error for partial data at EOF: {}", e);
+                                     return Err(anyhow!("UTF-8 decoding error in partial response at EOF: {}", e));
+                                }
+                            }
+                        }
+                    }
+                    Ok(n) => {
+                        // Read n bytes successfully, loop will check for newline again
+                        trace!("Read {} bytes from stdout, accumulated {} bytes", n, response_buffer.len());
+                        // Optional: Add a check for excessively large buffers to prevent OOM
+                        if response_buffer.len() > 1_000_000 { // Example limit: 1MB
+                             error!("Response buffer exceeded 1MB limit without newline. Aborting.");
+                             return Err(anyhow!("Response exceeded buffer limit without newline"));
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error reading from stdout: {}", e);
+                        return Err(anyhow!("I/O error reading from stdout: {}", e));
+                    }
+                }
+            }
+        }).await {
+            Ok(Ok(line)) => {
+                // Successfully read a line (complete or partial at EOF)
+                info!("Raw response line (before trim): {:?}", line);
+                response_str = line.trim().to_string(); // Trim whitespace/newline
                 info!("Trimmed response string: {}", response_str);
+            }
+            Ok(Err(e)) => {
+                // Inner future returned an error (I/O, decoding, buffer limit)
+                error!("Error during response read loop: {}", e);
+                return Err(e);
+            }
+            Err(_) => { // Outer timeout error
+                error!("Response read timed out after {} seconds", timeout_duration.as_secs());
+                return Err(anyhow!("Timed out waiting for response line from server"));
+            }
+        }
 
-                // Release the stdout lock
-                drop(stdout_guard);
-                
-                // Parse the response
-                // Parse the response
-                let response = serde_json::from_str::<JsonRpcResponse>(response_str)
-                    .map_err(|e| anyhow!("Failed to parse response: {}, raw: {}", e, response_str))?;
+        // Release the stdout lock
+        drop(stdout_guard);
 
-                // Basic ID check - log warning if mismatch, but proceed.
+        // Parse the response string
+        let response = serde_json::from_str::<JsonRpcResponse>(&response_str)
+            .map_err(|e| anyhow!("Failed to parse response: {}, raw: {}", e, response_str))?;
+
+        // Basic ID check - log warning if mismatch, but proceed.
                 // Strict applications might want to return an error here.
                 if response.id != request.id {
                     warn!(
