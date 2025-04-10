@@ -612,11 +612,11 @@ impl<T: Transport> McpClientBuilder<T> {
     pub async fn connect(self) -> Result<McpClient<T>> {
         let mut client = self.build();
         
-        // Set up minimal client capabilities
+        // Set up minimal client capabilities using defaults
         let capabilities = ClientCapabilities {
-            experimental: None,
-            sampling: None,
-            roots: None,
+            experimental: json!({}), // Use default empty object
+            sampling: json!({}),     // Use default empty object
+            roots: Default::default(), // Use default RootsCapability
         };
         
         // Initialize the connection
