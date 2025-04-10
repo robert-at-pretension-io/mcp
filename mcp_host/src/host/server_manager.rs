@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn}; // Removed unused trace, warn
 use serde_json::Value;
 use shared_protocol_objects::{
-    Implementation, ServerCapabilities, ToolInfo, CallToolResult, ListToolsResult, InitializeResult // Removed ClientCapabilities, Added ListToolsResult, InitializeResult
+    Implementation, ServerCapabilities, ToolInfo, CallToolResult, ClientCapabilities // Removed ListToolsResult, InitializeResult, Added ClientCapabilities
 };
 // Removed unused async_trait
 use std::collections::HashMap;
@@ -392,10 +392,10 @@ impl ServerManager {
         
         // The client's list_tools method now has special handling for numeric IDs and
         // response validation to avoid the type mismatch issue
-        let list_tools_result = server.client.list_tools().await?; // Get the full result
-        info!("Received tools list from server: {} tools", list_tools_result.tools.len()); // Access .tools
+        let list_tools_result = server.client.list_tools().await?; // This is now Vec<ToolInfo>
+        info!("Received tools list from server: {} tools", list_tools_result.len()); // Use .len() directly
 
-        Ok(list_tools_result.tools) // Return only the Vec<ToolInfo>
+        Ok(list_tools_result) // Return the Vec<ToolInfo> directly
     }
 
     /// Call a tool on the specified server with the given arguments
@@ -414,9 +414,9 @@ impl ServerManager {
             info!("Using enhanced list_tools for tools/list call");
             let list_tools_result = server.client.list_tools().await?; // Get the full result
 
-            // Convert to a CallToolResult format using the .tools field
-            let tools_json = format!("Found {} tools: {}", list_tools_result.tools.len(), // Access .tools
-                list_tools_result.tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", ")); // Access .tools
+            // Convert to a CallToolResult format using the vector directly
+            let tools_json = format!("Found {} tools: {}", list_tools_result.len(), // Use .len() directly
+                list_tools_result.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", ")); // Use .iter() directly
 
             let call_result = shared_protocol_objects::CallToolResult {
                 content: vec![
