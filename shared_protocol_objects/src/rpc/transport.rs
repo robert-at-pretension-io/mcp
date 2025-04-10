@@ -2,7 +2,8 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::future::BoxFuture;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+// Added AsyncReadExt for read_buf
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader}; 
 use tokio::process::{Child, ChildStdin, ChildStderr, ChildStdout, Command}; // Added ChildStderr
 use std::process::Stdio;
 use tokio::sync::{Mutex};
