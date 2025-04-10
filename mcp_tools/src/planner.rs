@@ -50,7 +50,7 @@ pub fn planner_tool_info() -> ToolInfo {
                 },
                 "available_tools": {
                     "type": "string",
-                    "description": "A formatted string listing all tools available to the AI, including name, description, and input schema."
+                    "description": "A formatted string listing all tools available to the AI, including only their name and description (excluding input schema)."
                 }
             },
             "required": ["user_request", "ai_interpretation", "available_tools"]
