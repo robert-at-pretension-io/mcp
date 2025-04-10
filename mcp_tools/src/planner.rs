@@ -110,7 +110,7 @@ async fn handle_planning_tool_call(
          Available Tools:\n{}\n\
          ------------------------------------\n\
          PLAN:",
-        params.user_request, params.ai_interpretation, formatted_tools
+        params.user_request, params.ai_interpretation, params.available_tools // Use the string directly
     );
 
     match generate_plan_with_gemini(&prompt).await {
