@@ -1,8 +1,8 @@
 use anyhow::{Result}; // Removed anyhow function/macro import
-use tracing_subscriber;
+use tracing_subscriber::{fmt, EnvFilter}; // Import EnvFilter
 use tracing_appender;
 use std::time::Duration;
-use log::{info, error}; // Removed warn
+use log::{info, error};
 use console::style;
 use tracing_appender::non_blocking::WorkerGuard; // Import the guard type
 use std::path::PathBuf; // Add PathBuf
@@ -188,10 +188,14 @@ pub fn setup_logging() -> Option<WorkerGuard> {
         .filename_suffix("log")
         .build(log_dir) {
         
-        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender); // Rename _guard to guard
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
         
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG) // Change level to DEBUG
+        // Use EnvFilter to respect RUST_LOG environment variable
+        let env_filter = EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new("info")); // Default to info if RUST_LOG is not set or invalid
+
+        let subscriber = fmt() // Use fmt directly
+            .with_env_filter(env_filter) // Apply the filter
             .with_writer(non_blocking)
             .with_thread_ids(true)
             .with_file(true)
