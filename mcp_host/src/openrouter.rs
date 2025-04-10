@@ -63,6 +63,7 @@ struct Choice {
     _index: u32,
     message: ResponseMessage,
     #[allow(dead_code)]
+    #[serde(default)] // Make this field optional during deserialization
     _finish_reason: String,
 }
 
