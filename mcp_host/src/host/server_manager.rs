@@ -453,6 +453,9 @@ impl ServerManager {
 
     /// Start a server with the given name and command
     pub async fn start_server_with_command(&self, name: &str, command: Command) -> Result<()> {
+        // ---> ADDED LOG <---
+        info!("Entered start_server_with_command for server: '{}'", name);
+        // ---> END ADDED LOG <---
         info!("Starting server '{}' with command: {:?}", name, command);
         debug!("Preparing tokio::process::Command for server '{}'", name);
 

@@ -69,6 +69,9 @@ impl MCPHost {
 
     /// Apply a new configuration, starting/stopping servers as needed.
     pub async fn apply_config(&self, new_config: HostConfig) -> Result<()> {
+        // ---> ADDED LOG <---
+        info!("Entered apply_config. Processing {} servers from new config.", new_config.servers.len());
+        // ---> END ADDED LOG <---
         info!("Applying new configuration...");
         debug!("Acquiring servers lock to determine changes...");
         let server_manager = self.server_manager();
@@ -120,6 +123,9 @@ impl MCPHost {
         if !servers_to_start.is_empty() {
             info!("Starting new servers: {:?}", servers_to_start.iter().map(|(n, _)| n).collect::<Vec<_>>());
             for (name, command) in servers_to_start {
+                // ---> ADDED LOG <---
+                info!("apply_config: Preparing to call start_server_with_command for '{}'", name);
+                // ---> END ADDED LOG <---
                 debug!("Attempting to start server '{}' with command: {:?}", name, command);
                 if let Err(e) = server_manager.start_server_with_command(&name, command).await {
                     error!("Failed to start server '{}': {}", name, e);
