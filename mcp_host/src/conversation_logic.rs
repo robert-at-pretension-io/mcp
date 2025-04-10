@@ -274,22 +274,96 @@ pub async fn resolve_assistant_response(
             log(format!("\n--- Iteration {} ---", iterations));
             debug!("Processing response iteration {} for server '{}'", iterations, server_name);
 
-
             // --- Print current response if interactive ---
-            // This prints the *current* response being processed in this iteration
             if config.interactive_output {
-                 // Use the dedicated formatting function that highlights tool calls
-                 let formatted_display = crate::conversation_state::format_assistant_response_with_tool_calls(&current_response);
-                 println!("\n{}", formatted_display); // Print formatted response
+                let formatted_display = crate::conversation_state::format_assistant_response_with_tool_calls(&current_response);
+                println!("\n{}", formatted_display);
             }
-            // --- End Interactive Print ---
-
 
             // --- Parse for Tool Calls ---
             let tool_calls = ToolParser::parse_tool_calls(&current_response);
 
-            if tool_calls.is_empty() {
-                // --- No Tool Calls: Attempt Verification ---
+            if !tool_calls.is_empty() {
+                // --- Tool Calls Found: Execute them ---
+                log(format!("\n>>> Found {} tool calls. Executing...", tool_calls.len()));
+                info!(
+                    "Found {} tool calls in iteration {}. Executing...",
+                    tool_calls.len(),
+                    iterations
+                );
+
+                for tool_call in tool_calls {
+                    // Log Tool Intention
+                    log(format!(
+                        "\n>>> Assistant wants to call tool: {}",
+                        style(&tool_call.name).yellow()
+                    ));
+                    log(format!(
+                        "Arguments:\n{}",
+                        crate::conversation_state::format_json_output(
+                            &serde_json::to_string_pretty(&tool_call.arguments).unwrap_or_else(|_| "Invalid JSON".to_string())
+                        )
+                    ));
+
+                    // Execute Tool
+                    let tool_result_str = execute_single_tool_internal(
+                        host,
+                        server_name,
+                        &tool_call.name,
+                        tool_call.arguments.clone(),
+                        config,
+                    )
+                    .await?;
+
+                    // Log and Add Tool Result to State
+                    log(crate::conversation_state::format_tool_response(&tool_call.name, &tool_result_str));
+                    let result_msg_for_state = format!("Tool '{}' returned: {}", tool_call.name, tool_result_str.trim());
+                    debug!("Adding tool result message to state: {}", result_msg_for_state.lines().next().unwrap_or(""));
+                    state.add_assistant_message(&result_msg_for_state);
+                }
+
+                // --- Get Next AI Response After Tools ---
+                log("\n>>> Calling AI again after tool execution...".to_string());
+                debug!("All tools executed for iteration {}. Getting next AI response.", iterations);
+                let mut builder = client.raw_builder(&state.system_prompt);
+
+                for msg in &state.messages {
+                    match msg.role {
+                        Role::System => {}
+                        Role::User => builder = builder.user(msg.content.clone()),
+                        Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                    }
+                }
+
+                builder = builder.system(
+                    "Analyze the tool results provided immediately above. Based on those results and the user's original request, decide the next step:\n\
+                    1. Call another tool if necessary (using the <<<TOOL_CALL>>>...<<<END_TOOL_CALL>>> format).\n\
+                    2. Provide a final response to the user.".to_string()
+                );
+
+                if config.interactive_output {
+                    println!("{}", style("\nThinking after tool execution...").dim());
+                }
+
+                current_response = match builder.execute().await {
+                    Ok(next_resp) => {
+                        info!("Received next AI response after tool execution (length: {}).", next_resp.len());
+                        log(format!("\n{}", crate::conversation_state::format_assistant_response_with_tool_calls(&next_resp)));
+                        state.add_assistant_message(&next_resp);
+                        next_resp
+                    }
+                    Err(e) => {
+                        error!("Detailed error getting next AI response after tools: {:?}", e);
+                        let error_msg = format!("Failed to get AI response after tool execution: {}", e);
+                        log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg));
+                        return Err(anyhow!(error_msg));
+                    }
+                };
+                // Continue to the next loop iteration to process the new current_response
+                continue;
+
+            } else {
+                // --- No Tool Calls Found: Attempt Verification ---
                 log("\n>>> Assistant response has no tool calls. Proceeding to verification.".to_string());
                 debug!("No tool calls found in iteration {}. Performing verification.", iterations);
 
@@ -303,7 +377,7 @@ pub async fn resolve_assistant_response(
                         verification_feedback: None,
                     };
                     log(format!("Final Response:\n```\n{}\n```", outcome.final_response));
-                    return Ok(outcome);
+                    return Ok(outcome); // Verification skipped, return current response
                 }
 
                 log("\n--- Attempting Verification ---".to_string());
@@ -324,13 +398,12 @@ pub async fn resolve_assistant_response(
                             };
                             log("\n--- Verification Passed ---".to_string());
                             log(format!("Final Response:\n```\n{}\n```", outcome.final_response));
-                            return Ok(outcome);
+                            return Ok(outcome); // Verification passed, return current response
                         } else {
                             // Verification failed, inject feedback and retry
                             warn!("Verification failed for server '{}'. Injecting feedback and retrying.", server_name);
                             log("\n--- Verification Failed: Injecting Feedback ---".to_string());
-                            if let Some(feedback) = feedback_opt.clone() { // Clone feedback for outcome
-                                // --- Inject feedback as a User message ---
+                            if let Some(feedback) = feedback_opt.clone() {
                                 let user_feedback_prompt = format!(
                                     "Correction Request:\n\
                                     Your previous response failed verification.\n\
@@ -340,17 +413,13 @@ pub async fn resolve_assistant_response(
                                     feedback
                                 );
                                 log(format!("Injecting User Message:\n```\n{}\n```", user_feedback_prompt));
-                                state.add_user_message(&user_feedback_prompt); // Add as User message
-                                // --- End User message injection ---
+                                state.add_user_message(&user_feedback_prompt);
 
-                                // Call AI Again for Revision
                                 log("\n>>> Calling AI again for revision...".to_string());
                                 debug!("Calling AI again after verification failure (feedback as user message).");
-                                // Rebuild the message history for the AI call, including the new user feedback message
-                                let mut builder = client.raw_builder(&state.system_prompt); // Pass correct system prompt
+                                let mut builder = client.raw_builder(&state.system_prompt);
                                 for msg in &state.messages {
                                     match msg.role {
-                                        // System messages are handled by the builder's system prompt injection logic now
                                         Role::System => {}
                                         Role::User => builder = builder.user(msg.content.clone()),
                                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
@@ -364,9 +433,9 @@ pub async fn resolve_assistant_response(
                                 match builder.execute().await {
                                     Ok(revised_response) => {
                                         info!("Received revised AI response after verification failure (length: {}).", revised_response.len());
-                                        log(format!("\n{}", crate::conversation_state::format_assistant_response_with_tool_calls(&revised_response))); // Log revised response
+                                        log(format!("\n{}", crate::conversation_state::format_assistant_response_with_tool_calls(&revised_response)));
                                         state.add_assistant_message(&revised_response);
-                                        current_response = revised_response; // Update current response
+                                        current_response = revised_response;
                                         // Loop continues to re-evaluate the revised response
                                         continue; // Go to next loop iteration
                                     }
@@ -376,12 +445,12 @@ pub async fn resolve_assistant_response(
                                         let outcome = VerificationOutcome {
                                             final_response: current_response, // Return the response *before* the failed revision attempt
                                             criteria: Some(criteria.to_string()),
-                                            verification_passed: Some(false), // Mark as failed
+                                            verification_passed: Some(false),
                                             verification_feedback: feedback_opt,
                                         };
                                         log(format!("\n--- Error During Revision Attempt: {} ---", e));
                                         log(format!("Returning previous (failed verification) response:\n```\n{}\n```", outcome.final_response));
-                                        return Ok(outcome);
+                                        return Ok(outcome); // Return the last known response before the error
                                     }
                                 }
                             } else {
@@ -390,12 +459,12 @@ pub async fn resolve_assistant_response(
                                 let outcome = VerificationOutcome {
                                     final_response: current_response,
                                     criteria: Some(criteria.to_string()),
-                                    verification_passed: Some(false), // Mark as failed
+                                    verification_passed: Some(false),
                                     verification_feedback: None,
                                 };
                                 log("\n--- Verification Failed (No Feedback Provided) ---".to_string());
                                 log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
-                                return Ok(outcome);
+                                return Ok(outcome); // Return the unverified response
                             }
                         }
                     }
@@ -406,103 +475,15 @@ pub async fn resolve_assistant_response(
                         let outcome = VerificationOutcome {
                             final_response: current_response,
                             criteria: Some(criteria.to_string()),
-                            verification_passed: None, // Indicate verification error
+                            verification_passed: None,
                             verification_feedback: Some(format!("Verification Error: {}", e)),
                         };
                         log(format!("\n--- Verification Call Error: {} ---", e));
                         log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
-                        return Ok(outcome);
+                        return Ok(outcome); // Return the unverified response
                     }
                 }
-                // --- End Verification Logic ---
-            }
-
-            // --- Tool Calls Found ---
-            log(format!("\n>>> Found {} tool calls. Executing...", tool_calls.len()));
-            info!(
-                "Found {} tool calls in iteration {}. Executing...",
-                tool_calls.len(),
-                iterations
-            );
-            // let mut all_tool_results = Vec::new(); // Not strictly needed if logging individually
-
-            for tool_call in tool_calls {
-                // --- Log Tool Intention ---
-                log(format!(
-                    "\n>>> Assistant wants to call tool: {}",
-                    style(&tool_call.name).yellow()
-                ));
-                log(format!(
-                    "Arguments:\n{}",
-                    crate::conversation_state::format_json_output(
-                        &serde_json::to_string_pretty(&tool_call.arguments).unwrap_or_else(|_| "Invalid JSON".to_string())
-                    )
-                ));
-                // --- End Log Tool Intention ---
-
-                // --- Execute Tool ---
-                let tool_result_str = execute_single_tool_internal(
-                    host,
-                    server_name,
-                    &tool_call.name,
-                    tool_call.arguments.clone(), // Clone args for execution
-                    config, // Pass config for logging within execute_single_tool_internal
-                )
-                .await?; // Propagate errors from tool execution
-
-                // --- Log and Add Tool Result to State ---
-                log(crate::conversation_state::format_tool_response(&tool_call.name, &tool_result_str)); // Log formatted result
-                let result_msg_for_state = format!("Tool '{}' returned: {}", tool_call.name, tool_result_str.trim());
-                debug!("Adding tool result message to state: {}", result_msg_for_state.lines().next().unwrap_or(""));
-                state.add_assistant_message(&result_msg_for_state);
-                // all_tool_results.push(result_msg_for_state); // Not needed if logging individually
-            }
-
-            // --- Get Next AI Response After Tools ---
-            log("\n>>> Calling AI again after tool execution...".to_string());
-            debug!("All tools executed for iteration {}. Getting next AI response.", iterations);
-            // Pass system prompt when creating builder
-            let mut builder = client.raw_builder(&state.system_prompt); // Pass correct system prompt
-
-            // Add all messages *including the new tool results* from the state
-            for msg in &state.messages {
-                 match msg.role {
-                     Role::System => {} // Skip system messages here, handled by injection
-                     Role::User => builder = builder.user(msg.content.clone()),
-                     Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                 }
-            }
-
-            // Add a directive prompt after tool results
-            builder = builder.system(
-                "Analyze the tool results provided immediately above. Based on those results and the user's original request, decide the next step:\n\
-                1. Call another tool if necessary (using the <<<TOOL_CALL>>>...<<<END_TOOL_CALL>>> format).\n\
-                2. Provide a final response to the user.".to_string()
-            );
-
-            // Execute AI call
-            if config.interactive_output {
-                 println!("{}", style("\nThinking after tool execution...").dim());
-            }
-            // Capture the specific error from the AI client
-            current_response = match builder.execute().await {
-                Ok(next_resp) => {
-                    info!("Received next AI response after tool execution (length: {}).", next_resp.len());
-                    log(format!("\n{}", crate::conversation_state::format_assistant_response_with_tool_calls(&next_resp))); // Log the next response
-                    // Add this *new* assistant response to the state for the *next* loop iteration or final return
-                    state.add_assistant_message(&next_resp);
-                    next_resp // This becomes the response to process in the next loop
-                }
-                Err(e) => {
-                    // Log the detailed error before returning the context error
-                    error!("Detailed error getting next AI response after tools: {:?}", e);
-                    let error_msg = format!("Failed to get AI response after tool execution: {}", e);
-                    log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg));
-                    // Propagate the error. The caller (execute_task_simulation) will handle logging this error state.
-                    return Err(anyhow!(error_msg));
-                }
-            };
-            // Loop continues with the new current_response
+            } // End of if/else for tool_calls.is_empty()
         } // End loop
     })
     .await
