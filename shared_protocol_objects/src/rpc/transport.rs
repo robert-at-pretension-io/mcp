@@ -206,11 +206,11 @@ impl Transport for ProcessTransport {
         let mut response_line = String::new();
         
         // Add a timeout to the read
-        info!("Reading response with timeout");
+        info!("Starting read_line with {}s timeout...", 300); // Log timeout duration
         match tokio::time::timeout(std::time::Duration::from_secs(300), reader.read_line(&mut response_line)).await {
             Ok(Ok(0)) => {
-                error!("Child process closed stdout before sending response");
-                return Err(anyhow!("Child process closed stdout before sending response"));
+                error!("Child process closed stdout (read 0 bytes) before sending full response");
+                return Err(anyhow!("Child process closed stdout before sending full response"));
             },
             Ok(Ok(bytes_read)) => {
                 info!("Read {} bytes from stdout", bytes_read);
@@ -322,11 +322,11 @@ impl Transport for ProcessTransport {
             },
             Ok(Err(e)) => {
                 error!("Error reading from stdout: {}", e);
-                Err(anyhow!("Error reading from stdout: {}", e))
+                Err(anyhow!("I/O error reading from stdout: {}", e)) // More specific error
             },
-            Err(_) => {
-                error!("Timed out waiting for response after 5 seconds");
-                Err(anyhow!("Timed out waiting for response"))
+            Err(_) => { // This is the TimeoutExpired error
+                error!("read_line timed out after {} seconds", 300); // Log timeout duration
+                Err(anyhow!("Timed out waiting for response line from server")) // More specific error
             }
         }
     }
