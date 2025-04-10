@@ -202,8 +202,8 @@ pub fn setup_logging() -> Option<WorkerGuard> {
 
         let subscriber = fmt() // Use fmt directly
             .with_env_filter(env_filter) // Apply the filter
-            .with_writer(non_blocking) // Log ONLY to file by default
-            // REMOVED: .with_writer(std::io::stderr) // Remove forced stderr logging
+            .with_writer(non_blocking) // Log to file
+            .with_writer(std::io::stderr) // ALSO log to stderr
             .with_thread_ids(true)
             .with_file(true)
             .with_line_number(true)
