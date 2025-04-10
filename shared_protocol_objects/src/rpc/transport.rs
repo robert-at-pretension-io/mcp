@@ -231,7 +231,9 @@ impl Transport for ProcessTransport {
         stdin_guard.write_all(request_str.as_bytes()).await?;
         info!("Flushing stdin");
         stdin_guard.flush().await?;
-        drop(stdin_guard);
+        // Explicitly close stdin after flushing
+        info!("Closing stdin");
+        drop(stdin_guard); 
         
         // Now read the response directly
         info!("Acquiring stdout lock for response");
