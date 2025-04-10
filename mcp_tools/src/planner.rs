@@ -8,9 +8,10 @@ use tracing::{debug, error, info};
 use rllm::builder::{LLMBackend, LLMBuilder};
 use rllm::chat::{ChatMessageBuilder, ChatRole, ChatResponse}; // Added ChatRole, ChatResponse
 // Removed rllm::error::LLMError import, will use llm::error::LLMError
+use rllm::error::LLMError; // Import rllm's error type
 
 use shared_protocol_objects::{
-    CallToolParams, JsonRpcResponse, ToolInfo, INTERNAL_ERROR, INVALID_PARAMS, // Import error codes from here
+    CallToolParams, JsonRpcResponse, ToolInfo, INVALID_PARAMS, // Import error codes from here, removed unused INTERNAL_ERROR
 };
 use crate::tool_trait::{
     ExecuteFuture, Tool, standard_error_response, standard_success_response, standard_tool_result,
