@@ -130,7 +130,7 @@ impl Transport for ProcessTransport {
         // --- Re-introduce BufReader with larger capacity ---
         let mut reader = BufReader::with_capacity(16384, &mut *stdout_guard); // Use 16KB buffer
         // Use BytesMut buffer to accumulate response data
-        let mut response_buffer = bytes::BytesMut::with_capacity(16384); // Start with 16KB, might grow
+        let _response_buffer = bytes::BytesMut::with_capacity(16384); // Prefix unused variable, remove mut
         let response_str: String; // To hold the final decoded string
 
         // Add a timeout to the read loop
