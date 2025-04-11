@@ -197,3 +197,4 @@ async fn get_first_available_tool(client: &shared_protocol_objects::rpc::McpClie
             None
         }
     }
+}
