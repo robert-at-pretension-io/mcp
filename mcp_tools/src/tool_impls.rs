@@ -2,12 +2,11 @@ use crate::aider::{aider_tool_info, handle_aider_tool_call, AiderParams};
 use crate::brave_search::{search_tool_info, BraveSearchClient};
 use crate::long_running_task::{handle_long_running_tool_call, long_running_tool_info, LongRunningTaskManager};
 use crate::mermaid_chart::{handle_mermaid_chart_tool_call, mermaid_chart_tool_info, MermaidChartParams};
-use crate::bash::BashTool;
-// Import ScrapingBeeTool from scraping_bee
-use crate::scraping_bee::ScrapingBeeTool;
+// Removed: use crate::bash::BashTool; // Handled by McpToolServer
+// Removed: use crate::scraping_bee::ScrapingBeeTool; // Handled by McpToolServer
 use crate::tool_trait::{ExecuteFuture, Tool, standard_success_response, standard_tool_result};
 // Import DynService from rmcp::service and RoleServer for the correct trait object type
-use rmcp::{service::DynService, RoleServer, ServiceExt};
+use rmcp::{service::DynService, RoleServer, ServiceExt}; // Keep for potential future SDK tool conversions here
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
@@ -17,7 +16,7 @@ use std::env;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 // Removed unused debug, error
-use tracing::{info, warn};
+use tracing::warn; // Removed unused info
 
 // Old ScrapingBee Tool Implementation - Removed in favor of SDK-based implementation
 // This was replaced by the SDK-based ScrapingBeeTool in scraping_bee.rs
@@ -262,8 +261,8 @@ pub async fn create_tools() -> Result<Vec<Box<dyn DynService<RoleServer>>>> {
         warn!("BraveSearch tool not available: missing API key");
     }
     
-    // Add BashTool using into_dyn() - Requires ServiceExt trait in scope
-    tools.push(Box::new(BashTool).into_dyn());
+    // Removed: BashTool is now handled by McpToolServer in main.rs
+    // tools.push(Box::new(BashTool).into_dyn());
 
     // Add other tools that don't require special initialization
     // TODO: Convert AiderTool, MermaidChartTool, PlannerTool to SDK and use into_dyn()
