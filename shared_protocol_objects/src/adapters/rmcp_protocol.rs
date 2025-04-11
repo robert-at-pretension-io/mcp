@@ -6,11 +6,16 @@ use crate::{
     INVALID_PARAMS, METHOD_NOT_FOUND, INTERNAL_ERROR, // Error codes
 };
 use rmcp::model::{
-    self as sdk, ClientJsonRpcMessage, ServerJsonRpcMessage, Notification, Id as SdkId, ErrorCode as SdkErrorCode,
-    Request as SdkRequest, Response as SdkResponse, Error as SdkError, // Added missing SDK types
+    self as sdk, ClientJsonRpcMessage, ServerJsonRpcMessage, Notification, RequestId as SdkId, ErrorCode as SdkErrorCode,
+    Request as SdkRequest, Response as SdkResponse, Error as SdkError, NumberOrString, ProgressParams as SdkProgressParams,
+    Initialize as SdkInitialize, ListTools as SdkListTools, CallTool as SdkCallTool, // Import specific request/result types
+    InitializeResult as SdkInitializeResult, ListToolsResult as SdkListToolsResult, CallToolResult as SdkCallToolResult,
+    Tool as SdkTool, ToolContent as SdkToolContent, ClientInfo as SdkClientInfo, ServerInfo as SdkServerInfo,
+    ClientCapabilities as SdkClientCapabilities, ServerCapabilities as SdkServerCapabilities,
 };
 use serde_json::{Value, json};
 use anyhow::{anyhow, Result}; // Use anyhow for conversion errors
+use std::sync::Arc; // For SDK ID String variant
 
 /// Adapter that handles conversion between our protocol objects and SDK objects.
 /// Note: This implementation assumes specific structures and might need adjustments
@@ -28,26 +33,27 @@ impl RmcpProtocolAdapter {
             "initialize" => {
                 let our_params: InitializeParams = serde_json::from_value(params)
                     .map_err(|e| anyhow!("Failed to parse InitializeParams: {}", e))?;
-                Ok(ClientJsonRpcMessage::Initialize(sdk::Initialize {
+                Ok(ClientJsonRpcMessage::Initialize(SdkInitialize { // Use SDK type directly
                     id: sdk_id,
                     protocol_version: our_params.protocol_version, // Assuming direct mapping
                     capabilities: convert_capabilities_to_sdk(&our_params.capabilities)?,
                     client_info: convert_client_info_to_sdk(&our_params.client_info),
+                    // Map other fields like process_id, root_uri if they exist in our_params and SdkInitialize
                 }))
             },
             "tools/list" => {
-                // Our ListToolsParams might have a cursor, SDK might not, or vice-versa. Adjust as needed.
-                let our_params: Option<ListToolsParams> = serde_json::from_value(params).ok(); // Optional params
-                Ok(ClientJsonRpcMessage::ListTools(sdk::ListTools {
+                // Guide example shows parameterless ListTools request
+                let our_params: Option<ListToolsParams> = serde_json::from_value(params).ok(); // Still parse ours if needed
+                Ok(ClientJsonRpcMessage::ListTools(SdkListTools { // Use SDK type directly
                     id: sdk_id,
-                    cursor: our_params.and_then(|p| p.cursor), // Pass cursor if present
+                    cursor: our_params.and_then(|p| p.cursor), // Pass cursor if present in ours and SDK supports it
                     // Add other fields if the SDK ListTools request has them
                 }))
             },
             "tools/call" => {
                  let our_params: CallToolParams = serde_json::from_value(params)
                     .map_err(|e| anyhow!("Failed to parse CallToolParams: {}", e))?;
-                 Ok(ClientJsonRpcMessage::CallTool(sdk::CallTool {
+                 Ok(ClientJsonRpcMessage::CallTool(SdkCallTool { // Use SDK type directly
                      id: sdk_id,
                      name: our_params.name,
                      arguments: our_params.arguments, // Assuming direct mapping of Value
@@ -72,8 +78,8 @@ impl RmcpProtocolAdapter {
     /// Returns Result to handle potential conversion errors.
     pub fn from_sdk_response(response: ServerJsonRpcMessage) -> Result<JsonRpcResponse> {
         match response {
-            ServerJsonRpcMessage::InitializeResult(res) => {
-                let our_id = convert_id_from_sdk(&res.id)?;
+            ServerJsonRpcMessage::InitializeResult(res) => { // res is SdkInitializeResult
+                let our_id = convert_id_from_sdk(&res.id); // Use updated converter
                 let our_result = InitializeResult {
                     protocol_version: res.protocol_version, // Assuming direct mapping
                     capabilities: convert_capabilities_from_sdk(&res.capabilities)?,
@@ -87,8 +93,8 @@ impl RmcpProtocolAdapter {
                     error: None,
                 })
             },
-            ServerJsonRpcMessage::ListToolsResult(res) => {
-                let our_id = convert_id_from_sdk(&res.id)?;
+            ServerJsonRpcMessage::ListToolsResult(res) => { // res is SdkListToolsResult
+                let our_id = convert_id_from_sdk(&res.id); // Use updated converter
                 let our_result = ListToolsResult {
                     tools: res.tools.into_iter()
                         .map(convert_tool_info_from_sdk) // Use helper function
@@ -102,8 +108,8 @@ impl RmcpProtocolAdapter {
                     error: None,
                 })
             },
-             ServerJsonRpcMessage::CallToolResult(res) => {
-                let our_id = convert_id_from_sdk(&res.id)?;
+             ServerJsonRpcMessage::CallToolResult(res) => { // res is SdkCallToolResult
+                let our_id = convert_id_from_sdk(&res.id); // Use updated converter
                 let our_result = CallToolResult {
                     content: res.content.into_iter()
                         .map(convert_tool_response_content_from_sdk) // Use helper function
@@ -116,9 +122,9 @@ impl RmcpProtocolAdapter {
                     error: None,
                 })
             },
-            ServerJsonRpcMessage::Response(res) => {
+            ServerJsonRpcMessage::Response(res) => { // res is SdkResponse
                  // Generic response handling
-                 let our_id = convert_id_from_sdk(&res.id)?;
+                 let our_id = convert_id_from_sdk(&res.id); // Use updated converter
                  Ok(JsonRpcResponse {
                      jsonrpc: "2.0".to_string(),
                      id: our_id,
@@ -126,9 +132,9 @@ impl RmcpProtocolAdapter {
                      error: None,
                  })
             },
-            ServerJsonRpcMessage::Error(err_res) => {
-                 let our_id = convert_id_from_sdk(&err_res.id)?;
-                 let our_error = convert_error_from_sdk(&err_res.error);
+            ServerJsonRpcMessage::Error(err_res) => { // err_res is SdkErrorResponse
+                 let our_id = convert_id_from_sdk(&err_res.id); // Use updated converter
+                 let our_error = convert_error_from_sdk(&err_res.error); // Use updated converter
                  Ok(JsonRpcResponse {
                      jsonrpc: "2.0".to_string(),
                      id: our_id,
@@ -137,71 +143,78 @@ impl RmcpProtocolAdapter {
                  })
             },
             // Handle other potential SDK response types if necessary
-            _ => Err(anyhow!("Unsupported SDK response type received: {:?}", response)),
+             _ => Err(anyhow!("Unsupported SDK ServerJsonRpcMessage variant received: {:?}", response)),
         }
     }
 
-    /// Convert SDK Notification to our JsonRpcNotification.
+    /// Convert SDK Notification to our JsonRpcNotification. (Based on Section 2.4)
     /// Returns Result for potential conversion errors.
-    pub fn from_sdk_notification(notification: Notification) -> JsonRpcNotification {
+    pub fn from_sdk_notification(notification: sdk::Notification) -> Result<JsonRpcNotification> {
         // This requires knowing the specific notification types in the SDK
         match notification {
-            Notification::Progress(params) => {
-                // Assuming SDK Progress params map directly or require conversion
+            sdk::Notification::Progress(params) => { // params is SdkProgressParams
+                // Map SDK ProgressParams fields to our ProgressParams fields
                 let our_params = ProgressParams {
-                    token: params.token, // Assuming field names match
-                    value: params.value, // Assuming field names match
+                    // Adjust field names based on actual struct definitions
+                    token: params.token, // Assuming 'token' exists in SdkProgressParams
+                    value: params.value, // Assuming 'value' exists in SdkProgressParams
                 };
-                JsonRpcNotification {
+                Ok(JsonRpcNotification {
                     jsonrpc: "2.0".to_string(),
                     method: "$/progress".to_string(), // Standard LSP progress notification method
-                    params: Some(serde_json::to_value(our_params).unwrap_or(Value::Null)),
-                }
+                    params: Some(serde_json::to_value(our_params)?), // Use ? for serialization result
+                })
             },
-            // Handle other notification types like textDocument/publishDiagnostics if applicable
-            Notification::Generic { method, params } => {
-                 JsonRpcNotification {
+            // Handle other specific notification types defined in sdk::Notification enum...
+            // e.g., sdk::Notification::LogMessage(params) => { ... }
+            // e.g., sdk::Notification::ShowMessage(params) => { ... }
+
+            // Handle generic notifications if the SDK uses them
+            sdk::Notification::Generic { method, params } => {
+                 Ok(JsonRpcNotification {
                     jsonrpc: "2.0".to_string(),
-                    method,
-                    params: Some(params),
-                }
+                    method, // Pass method name through
+                    params: Some(params), // Pass params Value through
+                })
             }
-            // _ => {
-            //     // Log or handle unknown notifications
-            //     tracing::warn!("Received unknown SDK notification type: {:?}", notification);
-            //     // Create a generic notification or ignore, depending on requirements
-            //     JsonRpcNotification {
-            //         jsonrpc: "2.0".to_string(),
-            //         method: "unknown/notification".to_string(),
-            //         params: None,
-            //     }
-            // }
+             // Catch-all for unhandled specific notification variants from the SDK
+             _ => Err(anyhow!("Unsupported SDK Notification variant received: {:?}", notification)),
         }
     }
 
-    /// Convert our JsonRpcNotification to SDK ClientJsonRpcMessage (Notification variant).
+    /// Convert our JsonRpcNotification to SDK ClientJsonRpcMessage (Notification variant). (Based on Section 2.4)
     /// Returns Result for potential conversion errors.
     pub fn to_sdk_notification(notification: &JsonRpcNotification) -> Result<ClientJsonRpcMessage> {
         let params = notification.params.clone().unwrap_or(Value::Null);
 
         match notification.method.as_str() {
+             // Handle specific notifications mentioned in the guide
+             "notifications/initialized" => {
+                 // Guide maps this to a specific SDK variant, not a generic notification
+                 Ok(ClientJsonRpcMessage::NotificationsInitialized)
+             },
             "$/progress" => {
                 let our_params: ProgressParams = serde_json::from_value(params)
                     .map_err(|e| anyhow!("Failed to parse ProgressParams for notification: {}", e))?;
-                // Assuming SDK has a matching Progress variant in ClientJsonRpcMessage::Notification
-                // If not, adapt to use ClientJsonRpcMessage::Notification(sdk::Notification::Generic { ... })
-                 Ok(ClientJsonRpcMessage::Notification(sdk::Notification::Progress(sdk::ProgressParams {
-                     token: our_params.token,
-                     value: our_params.value,
-                 })))
+                // Map our ProgressParams fields to SDK SdkProgressParams fields
+                let sdk_params = SdkProgressParams {
+                    // Adjust field names based on actual struct definitions
+                    token: our_params.token, // Assuming 'token' maps
+                    value: our_params.value, // Assuming 'value' maps
+                    // Map other fields if they exist and differ...
+                };
+                 // Wrap in the SDK's Notification::Progress variant
+                 Ok(ClientJsonRpcMessage::Notification(sdk::Notification::Progress(sdk_params)))
             },
             "exit" => Ok(ClientJsonRpcMessage::Exit), // Map to SDK Exit if it's parameterless
-            // Handle other specific notification methods...
+            // Handle other specific notification methods if needed...
+
+            // Default to generic notification for unhandled methods
             _ => {
-                // Generic notification
                 Ok(ClientJsonRpcMessage::Notification(sdk::Notification::Generic {
                     method: notification.method.clone(),
                     params: params,
+                    // extensions: Default::default(), // Add if sdk::Notification::Generic has extensions
                 }))
             }
         }
@@ -210,29 +223,36 @@ impl RmcpProtocolAdapter {
 
 // --- Helper Conversion Functions ---
 
-// ID Conversion
+// ID Conversion (Based on Section 2.1 of the new guide)
 fn convert_id_to_sdk(id: &Value) -> Result<SdkId> {
     match id {
         Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Ok(SdkId::Num(i))
-            } else {
-                // Handle potential precision loss or invalid number for SDK ID type
-                Err(anyhow!("Numeric ID cannot be represented as i64: {}", n))
+            if let Some(i) = n.as_u64() {
+                // SDK uses u32 for number IDs according to guide's NumberOrString
+                if i <= u32::MAX as u64 {
+                    Ok(NumberOrString::Number(i as u32))
+                } else {
+                    // Convert large numbers to string ID as per guide
+                    Ok(NumberOrString::String(i.to_string().into()))
+                }
+            } else if let Some(f) = n.as_f64() {
+                 // Handle potential floats if necessary, maybe convert to string or error
+                 Err(anyhow!("Numeric float ID cannot be represented as u32: {}", f))
+            }
+            else {
+                Err(anyhow!("Numeric ID cannot be represented as u32: {}", n))
             }
         },
-        Value::String(s) => Ok(SdkId::Str(s.clone())),
-        Value::Null => Ok(SdkId::Null), // Assuming SDK supports Null ID, otherwise error
+        Value::String(s) => Ok(NumberOrString::String(s.clone().into())), // Use Arc<str> via .into()
+        Value::Null => Err(anyhow!("SDK does not support null IDs")), // Guide explicitly states no null ID support
         _ => Err(anyhow!("Unsupported JSON-RPC ID type for SDK conversion: {:?}", id)),
     }
 }
 
-fn convert_id_from_sdk(id: &SdkId) -> Result<Value> {
+fn convert_id_from_sdk(id: &SdkId) -> Value { // Result not needed if conversion always succeeds
     match id {
-        SdkId::Num(i) => Ok(json!(i)),
-        SdkId::Str(s) => Ok(json!(s)),
-        SdkId::Null => Ok(Value::Null),
-        // Handle potential future SDK ID types if necessary
+        NumberOrString::Number(n) => json!(n), // Convert u32 to JSON number
+        NumberOrString::String(s) => json!(s.as_ref()), // Convert Arc<str> to JSON string
     }
 }
 
@@ -320,19 +340,32 @@ fn convert_error_from_sdk(error: &SdkError) -> JsonRpcError {
     }
 }
 
-fn convert_error_code_from_sdk(code: SdkErrorCode) -> i64 {
-    // Map SDK error codes to our JSON-RPC error codes
+fn convert_error_code_from_sdk(code: SdkErrorCode) -> i64 { // Return i64 for our JsonRpcError
+    // Map SDK error codes (constants from SdkErrorCode struct) to our JSON-RPC error codes (i64 constants)
+    // Based on Section 1 of the new guide
     match code {
-        SdkErrorCode::ParseError => crate::PARSE_ERROR,
-        SdkErrorCode::InvalidRequest => crate::INVALID_REQUEST,
-        SdkErrorCode::MethodNotFound => crate::METHOD_NOT_FOUND,
-        SdkErrorCode::InvalidParams => crate::INVALID_PARAMS,
-        SdkErrorCode::InternalError => crate::INTERNAL_ERROR,
-        SdkErrorCode::ServerError(_) => crate::INTERNAL_ERROR, // Map generic server errors
-        SdkErrorCode::RequestCancelled => crate::REQUEST_CANCELLED,
-        SdkErrorCode::ContentModified => crate::CONTENT_MODIFIED,
-        // Add mappings for any other specific codes in the SDK
-        _ => crate::INTERNAL_ERROR, // Default fallback
+        // Standard JSON-RPC codes
+        SdkErrorCode::PARSE_ERROR => crate::PARSE_ERROR,
+        SdkErrorCode::INVALID_REQUEST => crate::INVALID_REQUEST,
+        SdkErrorCode::METHOD_NOT_FOUND => crate::METHOD_NOT_FOUND,
+        SdkErrorCode::INVALID_PARAMS => crate::INVALID_PARAMS,
+        SdkErrorCode::INTERNAL_ERROR => crate::INTERNAL_ERROR,
+
+        // LSP specific codes (Map if SDK uses them and we have equivalents)
+        // SdkErrorCode::SERVER_ERROR_START..=SdkErrorCode::SERVER_ERROR_END => crate::INTERNAL_ERROR, // Example range mapping
+        // SdkErrorCode::SERVER_NOT_INITIALIZED => crate::SERVER_NOT_INITIALIZED, // Add if defined
+        // SdkErrorCode::UNKNOWN_ERROR_CODE => crate::INTERNAL_ERROR, // Add if defined
+
+        // RMCP specific codes (Map if SDK uses them and we have equivalents)
+        SdkErrorCode::RESOURCE_NOT_FOUND => -32002, // Use literal if no constant defined in crate
+        // SdkErrorCode::REQUEST_CANCELLED => crate::REQUEST_CANCELLED, // Add if defined
+        // SdkErrorCode::CONTENT_MODIFIED => crate::CONTENT_MODIFIED, // Add if defined
+
+        // Default fallback for unmapped SDK codes
+        _ => {
+            tracing::warn!("Unmapped SDK error code received: {}. Falling back to INTERNAL_ERROR.", code.0);
+            crate::INTERNAL_ERROR
+        }
     }
 }
 

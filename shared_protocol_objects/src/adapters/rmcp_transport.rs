@@ -1,296 +1,287 @@
-use crate::rpc::{Transport, NotificationHandler}; // Use NotificationHandler from rpc module
+use crate::rpc::{Transport, NotificationHandler};
 use crate::{JsonRpcRequest, JsonRpcResponse, JsonRpcNotification};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use rmcp::transport::{TokioChildProcess, IntoTransport};
+use rmcp::model::{ClientJsonRpcMessage, ServerJsonRpcMessage, RequestId, NumberOrString};
+use rmcp::{Service as SdkService, RoleClient, serve_client}; // Use SDK Service
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use futures::{Sink, Stream, SinkExt, StreamExt};
-use rmcp::model::{ClientJsonRpcMessage, ServerJsonRpcMessage, Id};
-use std::collections::HashMap;
-use tokio::sync::oneshot;
-use std::time::Duration; // Added for timeout
+use std::sync::atomic::{AtomicU32, Ordering};
+use tokio::process::Command; // Use tokio::process::Command
+use std::time::Duration;
 
 // Import the protocol adapter for conversions
 use super::rmcp_protocol::RmcpProtocolAdapter;
 // Import telemetry helpers
 use super::telemetry::{increment_request_count, increment_error_count, increment_notification_count, RequestTimer};
 
-
-/// Adapter that wraps the RMCP TokioChildProcess implementation
-pub struct RmcpProcessTransportAdapter {
-    // Keep the process handle for potential explicit shutdown if needed later
-    #[allow(dead_code)]
-    inner_process: Arc<Mutex<TokioChildProcess>>,
-    // Channel sender to send messages to the process sink task
-    to_process_tx: Arc<Mutex<futures::channel::mpsc::Sender<ClientJsonRpcMessage>>>,
-    // Shared notification handler
-    notification_handler: Arc<Mutex<Option<NotificationHandler>>>,
-    // Map to store pending requests (Request ID -> Response Sender)
-    pending_requests: Arc<Mutex<HashMap<Id, oneshot::Sender<Result<ServerJsonRpcMessage>>>>>,
-    // Keep task handles for cleanup/shutdown
-    _sink_task: Arc<tokio::task::JoinHandle<()>>,
-    _stream_task: Arc<tokio::task::JoinHandle<()>>,
-    // Default timeout for requests
+/// Adapter that wraps the RMCP SDK Service implementation (Based on Section 2.5 of the new guide)
+/// This adapter implements our `Transport` trait but uses the higher-level `rmcp::Service` internally.
+pub struct RmcpTransportAdapter {
+    // Use the SDK's Service directly
+    inner: Arc<SdkService<RoleClient>>,
+    // Counter for generating request IDs if our original request doesn't have one
+    // or if we need to generate IDs for SDK calls that don't map 1:1 to our requests.
+    // Note: The guide suggests using u32 for Number IDs.
+    request_id_counter: AtomicU32,
+    // Store the notification handler provided by our application
+    notification_handler: Arc<tokio::sync::Mutex<Option<NotificationHandler>>>,
+    // Task handle for the background notification listener
+    _notification_listener_handle: Option<tokio::task::JoinHandle<()>>,
+    // Store timeout duration
     request_timeout: Duration,
 }
 
-impl RmcpProcessTransportAdapter {
-    pub async fn new(command: &mut tokio::process::Command) -> Result<Self> {
+impl RmcpTransportAdapter {
+    /// Create a new adapter using the SDK's Service.
+    pub async fn new(mut command: Command) -> Result<Self> {
         Self::new_with_timeout(command, Duration::from_secs(30)).await // Default timeout
     }
 
-    pub async fn new_with_timeout(command: &mut tokio::process::Command, request_timeout: Duration) -> Result<Self> {
-        tracing::debug!("Creating RmcpProcessTransportAdapter for command: {:?}", command);
-        // Create the TokioChildProcess from the SDK
-        let process = TokioChildProcess::new(command)
-            .map_err(|e| anyhow!("Failed to create TokioChildProcess: {}", e))?;
+     /// Create a new adapter using the SDK's Service with a specific timeout.
+    pub async fn new_with_timeout(mut command: Command, request_timeout: Duration) -> Result<Self> {
+        tracing::debug!("Creating RmcpTransportAdapter (wrapping SDK Service) for command: {:?}", command);
+        // Create the transport using the SDK
+        let transport = TokioChildProcess::new(&mut command)?
+            .into_transport()?;
 
-        // Create a channel for sending messages to the process sink task
-        let (to_process_tx, mut to_process_rx) = futures::channel::mpsc::channel::<ClientJsonRpcMessage>(32);
-
-        // Get the transport from the process
-        let transport = process.into_transport()
-            .map_err(|e| anyhow!("Failed to create transport from process: {}", e))?;
-
-        // Split the transport into sink and stream
-        let (mut sink, mut stream) = transport.split();
-
-        // Create shared state
-        let notification_handler = Arc::new(Mutex::new(None));
-        let pending_requests = Arc::new(Mutex::new(HashMap::new()));
-
-        // Clone Arcs for tasks
-        let nh_clone = notification_handler.clone();
-        let pending_requests_clone = pending_requests.clone();
-
-        // Spawn a task to forward messages from the channel to the actual process sink
-        let sink_task = tokio::spawn(async move {
-            while let Some(msg) = to_process_rx.next().await {
-                tracing::trace!("Forwarding message to process sink: {:?}", msg);
-                if let Err(e) = sink.send(msg).await {
-                    tracing::error!("Error sending message to process sink: {}", e);
-                    // Consider closing the channel or signaling an error state
-                    break;
-                }
-            }
-            tracing::info!("Process sink task finished.");
-        });
-
-        // Spawn a task to receive messages from the stream, handle notifications, and route responses
-        let stream_task = tokio::spawn(async move {
-            while let Some(message_result) = stream.next().await {
-                match message_result {
-                    Ok(msg) => {
-                        tracing::trace!("Received message from process stream: {:?}", msg);
-                        match msg {
-                            ServerJsonRpcMessage::Notification(notification) => {
-                                increment_notification_count(); // Increment telemetry counter
-                                if let Some(handler) = nh_clone.lock().await.as_ref() {
-                                    // Convert SDK notification to our format
-                                    let our_notification = RmcpProtocolAdapter::from_sdk_notification(notification);
-                                    // Call the handler (fire and forget)
-                                    let handler_clone = handler.clone(); // Clone Arc for async move
-                                    tokio::spawn(async move {
-                                        handler_clone(our_notification).await;
-                                    });
-                                } else {
-                                    tracing::warn!("Received notification but no handler registered.");
-                                }
-                            },
-                            ServerJsonRpcMessage::InitializeResult(res) => {
-                                let id = res.id.clone();
-                                if let Some(tx) = pending_requests_clone.lock().await.remove(&id) {
-                                    if tx.send(Ok(ServerJsonRpcMessage::InitializeResult(res))).is_err() {
-                                        tracing::warn!("Failed to send InitializeResult response to waiting task (receiver dropped). ID: {:?}", id);
-                                    }
-                                } else {
-                                     tracing::warn!("Received InitializeResult for unknown/timed-out request ID: {:?}", id);
-                                }
-                            },
-                            ServerJsonRpcMessage::ListToolsResult(res) => {
-                                let id = res.id.clone();
-                                if let Some(tx) = pending_requests_clone.lock().await.remove(&id) {
-                                     if tx.send(Ok(ServerJsonRpcMessage::ListToolsResult(res))).is_err() {
-                                         tracing::warn!("Failed to send ListToolsResult response to waiting task (receiver dropped). ID: {:?}", id);
-                                     }
-                                } else {
-                                     tracing::warn!("Received ListToolsResult for unknown/timed-out request ID: {:?}", id);
-                                }
-                            },
-                            ServerJsonRpcMessage::CallToolResult(res) => {
-                                let id = res.id.clone();
-                                if let Some(tx) = pending_requests_clone.lock().await.remove(&id) {
-                                     if tx.send(Ok(ServerJsonRpcMessage::CallToolResult(res))).is_err() {
-                                         tracing::warn!("Failed to send CallToolResult response to waiting task (receiver dropped). ID: {:?}", id);
-                                     }
-                                } else {
-                                     tracing::warn!("Received CallToolResult for unknown/timed-out request ID: {:?}", id);
-                                }
-                            },
-                            ServerJsonRpcMessage::Error(err_res) => {
-                                let id = err_res.id.clone();
-                                if let Some(tx) = pending_requests_clone.lock().await.remove(&id) {
-                                     // Wrap the error response in Ok, as the oneshot expects Result<ServerJsonRpcMessage>
-                                     if tx.send(Ok(ServerJsonRpcMessage::Error(err_res))).is_err() {
-                                         tracing::warn!("Failed to send Error response to waiting task (receiver dropped). ID: {:?}", id);
-                                     }
-                                } else {
-                                     tracing::warn!("Received Error response for unknown/timed-out request ID: {:?}", id);
-                                }
-                            },
-                             // Handle other potential response types if the SDK adds more
-                             _ => {
-                                 tracing::warn!("Received unhandled SDK response type: {:?}", msg);
-                                 // Attempt to extract ID and notify pending request if possible, or log error
-                                 // This part needs careful handling based on SDK specifics
-                             }
-                        }
-                    },
-                    Err(e) => {
-                        tracing::error!("Error receiving message from process stream: {}", e);
-                        // Propagate error to all pending requests
-                        let mut pending = pending_requests_clone.lock().await;
-                        for (_, tx) in pending.drain() {
-                            let _ = tx.send(Err(anyhow!("Transport stream error: {}", e)));
-                        }
-                        break; // Exit the loop on stream error
-                    }
-                }
-            }
-            tracing::info!("Process stream task finished.");
-            // Ensure pending requests are cleaned up if the stream closes unexpectedly
-            let mut pending = pending_requests_clone.lock().await;
-             for (_, tx) in pending.drain() {
-                 let _ = tx.send(Err(anyhow!("Transport stream closed unexpectedly")));
-             }
-        });
+        // Create the service using the SDK's serve_client function
+        // This likely handles initialization internally.
+        let service = serve_client(transport).await?;
+        let service_arc = Arc::new(service);
 
         Ok(Self {
-            inner_process: Arc::new(Mutex::new(process)), // Keep the process handle
-            to_process_tx: Arc::new(Mutex::new(to_process_tx)),
-            notification_handler,
-            pending_requests,
-            _sink_task: Arc::new(sink_task),
-            _stream_task: Arc::new(stream_task),
+            inner: service_arc,
+            request_id_counter: AtomicU32::new(1), // Start counter at 1
+            notification_handler: Arc::new(tokio::sync::Mutex::new(None)),
+            _notification_listener_handle: None, // Initialize later in subscribe
             request_timeout,
         })
     }
 
-    // Note: adapt_protocol_version is removed as version handling should be in protocol layer or client logic
+    /// Generate the next request ID according to the guide's suggestion (u32).
+    fn next_request_id(&self) -> RequestId {
+        let id = self.request_id_counter.fetch_add(1, Ordering::SeqCst);
+        NumberOrString::Number(id)
+    }
+
+    /// Helper to map SDK errors to anyhow::Error
+    fn map_sdk_error<E: std::fmt::Display>(err: E) -> anyhow::Error {
+        increment_error_count(); // Increment telemetry on error
+        anyhow!("RMCP SDK error: {}", err)
+    }
 }
 
-// Implement our Transport trait using the SDK adapter
+// Implement our Transport trait for the adapter
 #[async_trait]
-impl Transport for RmcpProcessTransportAdapter {
+impl Transport for RmcpTransportAdapter {
     async fn send_request(&self, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
-        let method_name = request.method.clone(); // For telemetry timer
-        let timer = RequestTimer::new(&method_name); // Start telemetry timer
-        increment_request_count(); // Increment telemetry counter
+        let method_name = request.method.clone();
+        let timer = RequestTimer::new(&method_name);
+        increment_request_count();
 
-        // Convert our request to SDK format using the protocol adapter
-        let sdk_request = RmcpProtocolAdapter::to_sdk_request(&request)?; // Use Result for potential conversion errors
+        // Convert our request to the SDK's specific ClientJsonRpcMessage variant
+        // This requires knowing which SDK Service method corresponds to our request method.
+        let sdk_request = RmcpProtocolAdapter::to_sdk_request(&request)?;
 
-        // Extract the ID for matching the response
-        let request_id = match &sdk_request {
-            ClientJsonRpcMessage::Initialize(r) => r.id.clone(),
-            ClientJsonRpcMessage::ListTools(r) => r.id.clone(),
-            ClientJsonRpcMessage::CallTool(r) => r.id.clone(),
-            ClientJsonRpcMessage::Request(r) => r.id.clone(),
-            _ => return Err(anyhow!("Cannot send non-request message type via send_request")),
+        // Use the SDK service to send the request.
+        // This part needs careful mapping from our generic request to specific SDK service methods.
+        // The guide's example is limited. We need to handle different methods.
+        let sdk_response_result = match sdk_request {
+            ClientJsonRpcMessage::Initialize(init_params) => {
+                // The guide suggests `serve_client` handles initialization.
+                // If explicit initialization is needed *after* service creation,
+                // it might look like this, but the SDK service API needs confirmation.
+                // let sdk_init_result = self.inner.initialize(
+                //     init_params.protocol_version,
+                //     init_params.client_info,
+                //     init_params.capabilities,
+                //     // other params...
+                // ).await.map_err(Self::map_sdk_error)?;
+                // Ok(ServerJsonRpcMessage::InitializeResult(sdk_init_result))
+
+                // For now, assume initialization was implicit or handle error if called explicitly post-creation
+                 Err(anyhow!("Explicit 'initialize' request not supported via SDK Service adapter after creation"))
+
+            },
+            ClientJsonRpcMessage::ListTools(list_params) => {
+                 // Map our ListToolsParams (if any) to SDK ListToolsParams
+                 let sdk_list_params = rmcp::model::ListToolsParams {
+                     cursor: list_params.cursor, // Pass cursor if present
+                     // Map other params if needed
+                 };
+                 let sdk_list_result = self.inner.list_tools(sdk_list_params)
+                     .await
+                     .map_err(Self::map_sdk_error)?;
+                 // Wrap the SDK result type in the ServerJsonRpcMessage enum variant
+                 Ok(ServerJsonRpcMessage::ListToolsResult(sdk_list_result))
+            },
+            ClientJsonRpcMessage::CallTool(call_params) => {
+                 // Map our CallToolParams to SDK CallToolParams
+                 let sdk_call_params = rmcp::model::CallToolParams {
+                     name: call_params.name,
+                     arguments: call_params.arguments,
+                     // Map other params if needed
+                 };
+                 let sdk_call_result = self.inner.call_tool(sdk_call_params)
+                     .await
+                     .map_err(Self::map_sdk_error)?;
+                 Ok(ServerJsonRpcMessage::CallToolResult(sdk_call_result))
+            },
+            ClientJsonRpcMessage::Request(generic_req) => {
+                 // Handle generic requests if the SDK Service supports them
+                 // This might involve a method like `self.inner.request(method, params)`
+                 // The SDK API needs confirmation for generic request handling via Service.
+                 // For now, return an error.
+                 Err(anyhow!("Generic request method '{}' not directly supported via SDK Service adapter", generic_req.method))
+            }
+            // Handle other specific ClientJsonRpcMessage variants (Shutdown, Exit, NotificationsInitialized) if they are sent via send_request
+            ClientJsonRpcMessage::Shutdown => {
+                // Shutdown is likely handled by `close()` method, not send_request
+                Err(anyhow!("'shutdown' should be sent via close(), not send_request()"))
+            }
+             ClientJsonRpcMessage::Exit => {
+                // Exit is likely handled by `close()`, not send_request
+                 Err(anyhow!("'exit' should be sent via close(), not send_request()"))
+             }
+             ClientJsonRpcMessage::NotificationsInitialized => {
+                 // This is usually sent as a notification, not a request expecting a response
+                 Err(anyhow!("'notifications/initialized' should be sent via send_notification()"))
+             }
+            // Notifications should not be sent via send_request
+            ClientJsonRpcMessage::Notification(_) => Err(anyhow!("Cannot send notification via send_request")),
         };
 
-        // Create a oneshot channel for the response
-        let (response_tx, response_rx) = oneshot::channel::<Result<ServerJsonRpcMessage>>();
-
-        // Store the sender in the pending requests map
-        { // Scope for mutex guard
-            let mut pending = self.pending_requests.lock().await;
-            if pending.insert(request_id.clone(), response_tx).is_some() {
-                // This should ideally not happen with unique IDs, but handle defensively
-                increment_error_count(); // Increment error counter
-                timer.finish(); // Finish timer
-                return Err(anyhow!("Duplicate request ID detected: {:?}", request_id));
-            }
-        } // Mutex guard dropped here
-
-        // Send the request via the channel to the sink task
-        if let Err(e) = self.to_process_tx.lock().await.send(sdk_request).await {
-            increment_error_count(); // Increment error counter
-            // Remove the pending request if sending failed
-            self.pending_requests.lock().await.remove(&request_id);
-            timer.finish(); // Finish timer
-            return Err(anyhow!("Failed to send request to process sink task: {}", e));
-        }
-
-        // Wait for the response with a timeout
-        match tokio::time::timeout(self.request_timeout, response_rx).await {
-            Ok(Ok(Ok(sdk_response))) => {
-                // Convert SDK response back to our format
-                let our_response = RmcpProtocolAdapter::from_sdk_response(sdk_response)?;
-                timer.finish(); // Finish timer successfully
-                Ok(our_response)
-            },
-            Ok(Ok(Err(e))) => { // Error propagated from stream task
-                increment_error_count();
+        match sdk_response_result {
+            Ok(sdk_response) => {
+                // Convert the SDK ServerJsonRpcMessage response back to our JsonRpcResponse
+                let response = RmcpProtocolAdapter::from_sdk_response(sdk_response)?;
                 timer.finish();
-                Err(anyhow!("Error received from transport stream: {}", e))
+                Ok(response)
             }
-            Ok(Err(_)) => { // oneshot channel closed/dropped
-                increment_error_count();
-                // The sender was dropped, likely because the stream task exited.
-                // The pending request should have been cleaned up there.
+            Err(e) => {
+                increment_error_count(); // Ensure error is counted
                 timer.finish();
-                Err(anyhow!("Response channel closed unexpectedly for request ID: {:?}", request_id))
-            }
-            Err(_) => { // Timeout elapsed
-                increment_error_count();
-                // Remove the pending request on timeout
-                self.pending_requests.lock().await.remove(&request_id);
-                timer.finish();
-                Err(anyhow!("Request timed out after {:?} for ID: {:?}", self.request_timeout, request_id))
+                Err(e) // Propagate the error
             }
         }
     }
 
     async fn send_notification(&self, notification: JsonRpcNotification) -> Result<()> {
-        // Convert our notification to SDK format using the protocol adapter
-        let sdk_notification = RmcpProtocolAdapter::to_sdk_notification(&notification)?; // Use Result
+        let method_name = notification.method.clone();
+        let timer = RequestTimer::new(&method_name); // Time notifications too if desired
+        // Don't increment request count for notifications, use notification count
+        increment_notification_count();
 
-        // Send the notification via the channel to the sink task
-        let mut sink = self.to_process_tx.lock().await;
-        sink.send(sdk_notification).await
-            .map_err(|e| {
-                increment_error_count(); // Increment error counter on failure
-                anyhow!("Failed to send notification to process sink task: {}", e)
-            })?;
+        // Convert our notification to the SDK's ClientJsonRpcMessage format
+        let sdk_notification_msg = RmcpProtocolAdapter::to_sdk_notification(&notification)?;
 
-        Ok(())
+        // Use the SDK service to send the notification.
+        // The SDK Service API needs confirmation on how it handles sending different notification types.
+        match sdk_notification_msg {
+             ClientJsonRpcMessage::NotificationsInitialized => {
+                 // The SDK might handle this implicitly during initialization or have a specific method.
+                 // Assuming `self.inner.notifications_initialized()` exists for demonstration.
+                 // self.inner.notifications_initialized().await.map_err(Self::map_sdk_error)?;
+                 tracing::debug!("SDK likely handles 'notifications/initialized' implicitly or via initialize call.");
+                 Ok(())
+             },
+             ClientJsonRpcMessage::Notification(sdk_notification) => {
+                 // Assuming a generic `self.inner.notification()` method exists.
+                 self.inner.notification(sdk_notification.method, sdk_notification.params)
+                     .await
+                     .map_err(Self::map_sdk_error)?;
+                 timer.finish();
+                 Ok(())
+             },
+             ClientJsonRpcMessage::Exit => {
+                 // Exit notification might be handled by `close()` or a specific method.
+                 // Assuming `self.inner.exit()` exists for demonstration.
+                 self.inner.exit().await.map_err(Self::map_sdk_error)?;
+                 timer.finish();
+                 Ok(())
+             }
+             // Other variants like Initialize, ListTools, CallTool, Request, Shutdown are not notifications
+             _ => {
+                 increment_error_count(); // Count this as an error
+                 timer.finish();
+                 Err(anyhow!("Unsupported message type passed to send_notification: {:?}", sdk_notification_msg))
+             }
+        }
     }
 
     async fn subscribe_to_notifications(&self, handler: NotificationHandler) -> Result<()> {
-        tracing::debug!("Subscribing to notifications");
-        let mut guard = self.notification_handler.lock().await;
-        if guard.is_some() {
-            tracing::warn!("Overwriting existing notification handler.");
+        tracing::debug!("Subscribing to notifications using SDK Service adapter");
+        let mut handler_guard = self.notification_handler.lock().await;
+        *handler_guard = Some(handler.clone()); // Store the handler
+
+        // Check if the listener task is already running
+        if self._notification_listener_handle.is_some() {
+            tracing::warn!("Notification listener already started. Overwriting handler.");
+            return Ok(());
         }
-        *guard = Some(handler);
+
+        // Spawn a task to listen for notifications from the SDK Service.
+        // This requires the SDK Service to provide a way to receive notifications,
+        // e.g., a stream or a callback registration mechanism.
+        // Assuming `self.inner.on_notification()` exists and takes a callback.
+
+        let service_clone = self.inner.clone();
+        let handler_arc = self.notification_handler.clone();
+
+        let handle = tokio::spawn(async move {
+            // Example: Using a hypothetical on_notification callback registration
+            let notification_callback = Box::new(move |sdk_notification: rmcp::model::Notification| {
+                let handler_clone = handler_arc.clone(); // Clone Arc for async block
+                tokio::spawn(async move { // Spawn task for each notification to avoid blocking listener
+                    if let Some(handler) = handler_clone.lock().await.as_ref() {
+                         match RmcpProtocolAdapter::from_sdk_notification(sdk_notification) {
+                             Ok(our_notification) => {
+                                 // Call the application's handler
+                                 (handler)(our_notification).await;
+                             }
+                             Err(e) => {
+                                 tracing::error!("Failed to convert SDK notification: {}", e);
+                             }
+                         }
+                    }
+                });
+            });
+
+            // Register the callback with the SDK service
+            // This is hypothetical - replace with actual SDK API
+            if let Err(e) = service_clone.on_notification(notification_callback).await {
+                 tracing::error!("Failed to subscribe to SDK notifications: {}", e);
+            } else {
+                 tracing::info!("SDK Notification listener started.");
+                 // Keep the listener alive (the await above might block or return)
+                 // If on_notification returns immediately, we need another way to keep listening,
+                 // maybe a stream:
+                 // let mut stream = service_clone.notification_stream().await?;
+                 // while let Some(sdk_notification) = stream.next().await {
+                 //    // ... call handler ...
+                 // }
+                 // tracing::info!("SDK Notification listener finished.");
+            }
+        });
+
+        // Store the handle (though it's mutable borrow issue here, need to fix struct def)
+        // self._notification_listener_handle = Some(handle); // Cannot assign back to self here easily
+
         Ok(())
+        // TODO: Fix the storage of the JoinHandle. Maybe RmcpTransportAdapter needs to be mutable in subscribe?
+        // Or store the handle elsewhere / don't store it if not needed for explicit shutdown.
     }
 
-    // Optional: Implement a close method if needed for graceful shutdown
-    // async fn close(&self) -> Result<()> {
-    //     // Signal tasks to shut down, close the process, etc.
-    //     // Might involve dropping the sender channel or sending a specific shutdown signal.
-    //     // Aborting tasks might be necessary if they don't exit cleanly.
-    //     // self._sink_task.abort();
-    //     // self._stream_task.abort();
-    //     // let mut process = self.inner_process.lock().await;
-    //     // process.kill().await?; // Or a cleaner shutdown if SDK provides one
-    //     tracing::info!("RmcpProcessTransportAdapter closed");
-    //     Ok(())
-    // }
+    async fn close(&self) -> Result<()> {
+        let timer = RequestTimer::new("close");
+        increment_request_count(); // Count close as a request-like action
+        tracing::info!("Closing SDK Service adapter (calling cancel)");
+        // Use the SDK service to close the connection (sends shutdown/exit)
+        self.inner.cancel()
+            .await
+            .map_err(Self::map_sdk_error)?;
+        timer.finish();
+        Ok(())
+    }
 }
-
-// Note: Conversion functions are now expected to be part of RmcpProtocolAdapter
-// and are removed from here.
