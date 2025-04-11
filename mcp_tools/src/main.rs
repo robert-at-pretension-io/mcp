@@ -1,16 +1,5 @@
-// Remove imports related to the old manual implementation and shared_protocol_objects
-// use futures::StreamExt;
-// use serde_json::Value;
-// use shared_protocol_objects::{...};
-// use std::collections::HashMap;
-// use std::sync::Arc;
-// use tokio::io::{stdout, AsyncBufReadExt, AsyncWriteExt, BufReader};
-// use tokio::sync::{mpsc, Mutex};
-// use tokio::{io, task};
-// use tokio_stream::wrappers::LinesStream;
-
-// Keep tracing imports
-use tracing::{error, info, Level}; // Removed debug, warn as they might not be needed directly
+// Keep only the necessary imports
+use tracing::{error, info, Level};
 use tracing_appender;
 use tracing_subscriber::{self, EnvFilter};
 
@@ -18,12 +7,12 @@ use tracing_subscriber::{self, EnvFilter};
 use rmcp::{
     transport::stdio, // For standard I/O transport
     ServiceExt,       // For the .serve() method
-    // ServerHandler,    // Might be needed if implementing directly on tools Vec
-    // model::ServerInfo // Might be needed for server info
+    handler::server::tool::ToolBox, // For creating the ToolBox directly
 };
 
 // Import local modules needed
-use mcp_tools::tool_impls::create_tools;
+use mcp_tools::bash::BashTool;
+use mcp_tools::scraping_bee::ScrapingBeeTool;
 // use mcp_tools::long_running_task::LongRunningTaskManager; // Comment out for now
 
 #[tokio::main]
@@ -66,40 +55,22 @@ async fn main() {
     //     error!("Failed to load tasks: {}", err);
     // }
 
-    // Create tool implementations using the SDK-compatible factory
-    let tools = match create_tools().await {
-        Ok(tools) => {
-            if tools.is_empty() {
-                error!("No tools were created. Ensure at least one tool is converted and uncommented in tool_impls.rs");
-                // Return an empty Vec to avoid panic, but log the error.
-                // Alternatively, could implement a default handler or error out.
-                Vec::new()
-            } else {
-                info!("Successfully created {} tool(s)", tools.len());
-                tools
-            }
-        }
-        Err(e) => {
-            error!("Failed to create tools: {}", e);
-            // Exit or return an empty Vec? For now, return empty.
-            Vec::new()
-        }
-    };
-
-    // TODO: Add LongRunningTaskTool when converted
-    // let manager_arc = Arc::new(Mutex::new(my_manager.clone()));
-    // tools.push(Box::new(LongRunningTaskTool::new(manager_arc)).into_dyn()); // Assuming conversion
-
-    // Start the server using the rmcp SDK
-    info!("Initializing RMCP server with stdio transport...");
-    let server = match tools.serve(stdio()).await {
+    // Create tools with the ToolBox struct directly
+    info!("Setting up tools with rmcp SDK...");
+    
+    // For now, just use the ScrapingBeeTool to verify our implementation
+    info!("Creating ScrapingBeeTool instance...");
+    let scraping_tool = ScrapingBeeTool::new();
+    
+    // Serve the tool directly - this works as we've seen before
+    info!("Initializing RMCP server with ScrapingBeeTool...");
+    let server = match scraping_tool.serve(stdio()).await {
         Ok(s) => {
-            info!("RMCP server started successfully.");
+            info!("RMCP server started successfully with tools.");
             s
         }
         Err(e) => {
             error!("Failed to start RMCP server: {}", e);
-            // Consider exiting or handling the error appropriately
             return; // Exit if server fails to start
         }
     };
