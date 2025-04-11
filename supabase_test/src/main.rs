@@ -126,8 +126,8 @@ async fn main() -> AnyhowResult<()> {
         .arg("-y")
         .arg("@supabase/mcp-server-supabase@latest")
         .arg("--access-token")
-        .arg("test_token") // Replace with your actual token or use SUPABASE_ACCESS_TOKEN
-        .env("SUPABASE_ACCESS_TOKEN", "test_token"); // Redundant but ensures env var is set
+        .arg("sbp_6dd1b03bb0c829ebf4b2607a3a5e114ff607e83f") // Use specific token that works with Python script
+        .env("SUPABASE_ACCESS_TOKEN", "sbp_6dd1b03bb0c829ebf4b2607a3a5e114ff607e83f"); // Set same token in env var
 
     // Create transport with more detailed logging
     info!("Creating transport...");
@@ -148,8 +148,8 @@ async fn main() -> AnyhowResult<()> {
     // Using direct transport access for more explicit control
     // This approach mirrors the Python script's method
     
-    // Initialize protocol information with default version
-    let mut protocol_info = ProtocolInfo::new("2025-03-26");
+    // Initialize protocol information with version that works with Supabase
+    let mut protocol_info = ProtocolInfo::new("2023-10-27");
     info!("Starting with client protocol version: {}", protocol_info.client_version);
     
     // Step 1: Send initialize request with protocol version
@@ -159,7 +159,7 @@ async fn main() -> AnyhowResult<()> {
     
     // Send the request and wait for response
     let init_start = Instant::now();
-    let init_response = match timeout(Duration::from_secs(10), transport.send_request(init_request)).await {
+    let init_response = match timeout(Duration::from_secs(30), transport.send_request(init_request)).await {
         Ok(result) => {
             match result {
                 Ok(response) => {
@@ -222,7 +222,7 @@ async fn main() -> AnyhowResult<()> {
     
     // Send the request and wait for response
     let tools_start = Instant::now();
-    let tools_response = match timeout(Duration::from_secs(10), transport.send_request(tools_request)).await {
+    let tools_response = match timeout(Duration::from_secs(30), transport.send_request(tools_request)).await {
         Ok(result) => {
             match result {
                 Ok(response) => {
