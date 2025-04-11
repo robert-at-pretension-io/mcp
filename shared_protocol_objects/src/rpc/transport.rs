@@ -248,11 +248,23 @@ impl Transport for ProcessTransport {
         */ // --- End of removed read_buf loop ---
 
         // Release the stdout lock
+        info!("Releasing stdout lock before parsing.");
         drop(stdout_guard);
+        info!("Stdout lock released.");
+
+        // Log the raw response string before parsing
+        // Log only first 500 chars for brevity in case of large responses
+        info!("Attempting to parse response string (first 500 chars): {:.500}", response_str);
 
         // Parse the response string
         let response = serde_json::from_str::<JsonRpcResponse>(&response_str)
             .map_err(|e| anyhow!("Failed to parse response: {}, raw: {}", e, response_str))?;
+
+        // Log the successfully parsed response
+        // Use debug level for potentially verbose full response object
+        debug!("Successfully parsed response: {:?}", response);
+        info!("Successfully parsed response ID: {:?}", response.id);
+
 
         // Basic ID check - log warning if mismatch, but proceed.
         // Strict applications might want to return an error here.
