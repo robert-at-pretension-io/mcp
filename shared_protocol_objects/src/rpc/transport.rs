@@ -228,16 +228,18 @@ impl Transport for ProcessTransport {
     
     async fn send_notification(&self, notification: JsonRpcNotification) -> Result<()> {
         let notification_str = serde_json::to_string(&notification)? + "\n";
-        info!("Sending notification: {}", notification_str.trim());
-        
+        // Use trace for potentially large/frequent raw messages
+        trace!("Sending raw notification: {}", notification_str.trim());
+        info!("Sending notification method: {}", notification.method);
+
         {
             let mut stdin_guard = self.stdin.lock().await;
             stdin_guard.write_all(notification_str.as_bytes()).await?;
             stdin_guard.flush().await?;
-            debug!("Stdin flushed for notification: {}", notification.method);
-            info!("Notification sent successfully, releasing stdin lock (scope end)");
+            // debug!("Stdin flushed for notification: {}", notification.method); // Can be noisy
+            // info!("Notification sent successfully, releasing stdin lock (scope end)"); // Can be noisy
         }
-        
+
         Ok(())
     }
     
