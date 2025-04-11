@@ -9,6 +9,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStderr, ChildStdout, Command}; 
 use std::process::Stdio; // Keep Stdio
 use tokio::sync::{Mutex};
+use serde_json::Value;
 // Import trace macro along with others
 use tracing::{debug, error, info, warn, trace}; 
 
@@ -108,13 +109,104 @@ impl ProcessTransport {
         info!("Stderr reader task re-enabled.");
         // --- End re-enable ---
 
-        // Skip notification listener for now as it's causing issues
-        // transport.start_notification_listener().await?;
+        // Start the notification listener to handle incoming notifications
+        transport.start_notification_listener().await?;
         
         Ok(transport)
     }
 
-    // Removed the unused start_notification_listener function
+    /// Start a background task to listen for and handle JSON-RPC notifications
+    async fn start_notification_listener(&self) -> Result<()> {
+        // Clone the Arc<Mutex<ChildStdout>> for the listener task
+        let stdout_arc = Arc::clone(&self.stdout);
+        // Clone the notification handler for the listener task
+        let notification_handler_arc = Arc::clone(&self.notification_handler);
+        
+        // Spawn a Tokio task for the notification listener
+        tokio::spawn(async move {
+            info!("Notification listener task started");
+            
+            // Create a BufReader without locking stdout yet
+            // We'll lock for each individual read operation
+            loop {
+                // Lock stdout for the minimum time needed
+                let mut stdout_guard = match stdout_arc.lock().await {
+                    guard => guard,
+                };
+                
+                let mut reader = BufReader::new(&mut *stdout_guard);
+                let mut line = String::new();
+                
+                // Read a line from stdout
+                match reader.read_line(&mut line).await {
+                    Ok(0) => {
+                        info!("Notification listener: EOF received. Server stdout closed.");
+                        break;
+                    }
+                    Ok(n) => {
+                        trace!("Notification listener: read {} bytes", n);
+                        // Process the line only if it's not empty
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        
+                        // Release the stdout lock before processing to minimize lock time
+                        drop(stdout_guard);
+                        
+                        // Parse the line as a JSON-RPC message
+                        match serde_json::from_str::<serde_json::Value>(&line) {
+                            Ok(json_value) => {
+                                // Check if this is a notification (has method, no id)
+                                // or a response (has id)
+                                if json_value.get("method").is_some() && json_value.get("id").is_none() {
+                                    // This is a notification
+                                    match serde_json::from_value::<JsonRpcNotification>(json_value) {
+                                        Ok(notification) => {
+                                            info!("Received notification: method={}", notification.method);
+                                            
+                                            // Get the notification handler if available
+                                            let handler_guard = notification_handler_arc.lock().await;
+                                            if let Some(handler) = &*handler_guard {
+                                                // Clone the notification for the handler
+                                                let notification_clone = notification.clone();
+                                                // Drop the guard before calling the handler
+                                                drop(handler_guard);
+                                                
+                                                // Call the notification handler
+                                                handler(notification_clone).await;
+                                            } else {
+                                                debug!("No notification handler registered, notification ignored");
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to parse notification: {}", e);
+                                            error!("Raw notification data: {}", line.trim());
+                                        }
+                                    }
+                                } else {
+                                    // This is a response or malformed message, will be handled by send_request
+                                    trace!("Ignored non-notification message: {}", line.trim());
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to parse JSON-RPC message: {}", e);
+                                error!("Raw message data: {}", line.trim());
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Notification listener: Error reading from stdout: {}", e);
+                        break;
+                    }
+                }
+            }
+            
+            info!("Notification listener task ended");
+        });
+        
+        info!("Notification listener task spawned");
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -149,44 +241,101 @@ impl Transport for ProcessTransport {
 
         let mut reader = tokio::io::BufReader::new(&mut *stdout_guard);
         let mut response_line = String::new();
+        let mut found_matching_response = false;
+        let request_id = request.id.clone(); // Clone the request ID for comparison
 
-        // Use timeout for the read_line operation
-        let read_result = tokio::time::timeout(timeout_duration, reader.read_line(&mut response_line)).await;
+        // Keep reading lines until we find a response matching our request ID
+        // This handles cases where notifications come in before the response
+        while !found_matching_response {
+            // Use timeout for the read_line operation
+            let read_result = tokio::time::timeout(timeout_duration, reader.read_line(&mut response_line)).await;
 
-        let response_str = match read_result {
-            Ok(Ok(0)) => {
-                error!("EOF received while waiting for response to request id {:?} (method {}). Server likely closed stdout.", request.id, request.method);
-                return Err(anyhow!("Server closed stdout unexpectedly (EOF)"));
-            }
-            Ok(Ok(n)) => {
-                info!("Successfully read response line ({} bytes) for request id {:?}", n, request.id);
-                response_line.trim().to_string() // Trim whitespace and newline
-            }
-            Ok(Err(e)) => {
-                error!("IO error reading response for request id {:?}: {}", request.id, e);
-                return Err(anyhow!("IO error reading response: {}", e));
-            }
-            Err(_) => { // Timeout elapsed
-                error!("Timeout ({:?}) waiting for response to request id {:?} (method {})", timeout_duration, request.id, request.method);
-                // Attempt to read any buffered data for debugging, but don't block
-                let mut remaining_buf = String::new();
-                // Use a short timeout for this debug read
-                // Need to import Duration from std::time
-                use std::time::Duration; 
-                match tokio::time::timeout(Duration::from_millis(100), reader.read_to_string(&mut remaining_buf)).await {
-                    Ok(Ok(bytes_read)) if bytes_read > 0 => {
-                         warn!("Read {} additional bytes after timeout: '{}'", bytes_read, remaining_buf.trim());
+            let response_str = match read_result {
+                Ok(Ok(0)) => {
+                    error!("EOF received while waiting for response to request id {:?} (method {}). Server likely closed stdout.", request_id, request.method);
+                    return Err(anyhow!("Server closed stdout unexpectedly (EOF)"));
+                }
+                Ok(Ok(n)) => {
+                    debug!("Read response line ({} bytes) while waiting for request id {:?}", n, request_id);
+                    if response_line.trim().is_empty() {
+                        response_line.clear();
+                        continue; // Skip empty lines
                     }
-                    _ => {
-                         warn!("No additional data read after timeout.");
+                    response_line.trim().to_string() // Trim whitespace and newline
+                }
+                Ok(Err(e)) => {
+                    error!("IO error reading response for request id {:?}: {}", request_id, e);
+                    return Err(anyhow!("IO error reading response: {}", e));
+                }
+                Err(_) => { // Timeout elapsed
+                    error!("Timeout ({:?}) waiting for response to request id {:?} (method {})", timeout_duration, request_id, request.method);
+                    // Attempt to read any buffered data for debugging, but don't block
+                    let mut remaining_buf = String::new();
+                    // Use a short timeout for this debug read
+                    // Need to import Duration from std::time
+                    use std::time::Duration; 
+                    match tokio::time::timeout(Duration::from_millis(100), reader.read_to_string(&mut remaining_buf)).await {
+                        Ok(Ok(bytes_read)) if bytes_read > 0 => {
+                             warn!("Read {} additional bytes after timeout: '{}'", bytes_read, remaining_buf.trim());
+                        }
+                        _ => {
+                             warn!("No additional data read after timeout.");
+                        }
+                    }
+                    return Err(anyhow!("Timeout waiting for response"));
+                }
+            };
+
+            // Parse the response string
+            match serde_json::from_str::<serde_json::Value>(&response_str) {
+                Ok(json_value) => {
+                    // Check if this is a notification (has method, no id)
+                    if json_value.get("method").is_some() && json_value.get("id").is_none() {
+                        debug!("Received notification while waiting for response to request id {:?}", request_id);
+                        // This is a notification, pass it to the notification handler and continue
+                        if let Ok(notification) = serde_json::from_value::<JsonRpcNotification>(json_value) {
+                            let handler_guard = self.notification_handler.lock().await;
+                            if let Some(handler) = &*handler_guard {
+                                let notification_clone = notification.clone();
+                                // Drop guard before calling handler
+                                drop(handler_guard);
+                                handler(notification_clone).await;
+                            }
+                        }
+                        // Continue reading to find the actual response
+                        response_line.clear();
+                        continue;
+                    } else if let Some(id) = json_value.get("id") {
+                        // This is a response, check if it matches our request ID
+                        if *id == request_id {
+                            found_matching_response = true;
+                            info!("Found matching response for request id {:?}", request_id);
+                        } else {
+                            warn!("Received response with id {:?} while waiting for id {:?}", id, request_id);
+                            // Not our response, continue reading
+                            response_line.clear();
+                            continue;
+                        }
+                    } else {
+                        warn!("Received malformed JSON-RPC message: {}", response_str);
+                        // Continue reading to find a proper response
+                        response_line.clear();
+                        continue;
                     }
                 }
-                return Err(anyhow!("Timeout waiting for response"));
+                Err(e) => {
+                    error!("Failed to parse JSON-RPC message: {}", e);
+                    error!("Raw message data: {}", response_str);
+                    // Continue reading to find a proper response
+                    response_line.clear();
+                    continue;
+                }
             }
-        };
+        }
 
         // Release the stdout lock *before* parsing
         // info!("Releasing stdout lock before parsing."); // Can be noisy
+        let response_str = response_line.clone(); // Clone the response string before dropping the guard
         drop(stdout_guard);
         // info!("Stdout lock released."); // Can be noisy
 
