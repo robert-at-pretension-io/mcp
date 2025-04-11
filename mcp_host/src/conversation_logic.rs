@@ -509,9 +509,8 @@ pub async fn resolve_assistant_response(
                                             verification_passed: Some(false),
                                             verification_feedback: feedback_opt,
                                         };
-                                        log(format!("\n--- Error During Revision Attempt: {} ---", e));
-                                        log(format!("Returning previous (failed verification) response:\n```\n{}\n```", outcome.final_response));
-                                        log(format!("\n--- Error During Revision Attempt: {} ---", _e)); // Use _e here
+                                        // Remove duplicate log lines and use _e
+                                        log(format!("\n--- Error During Revision Attempt: {} ---", _e)); 
                                         log(format!("Returning previous (failed verification) response:\n```\n{}\n```", outcome.final_response));
                                         return Ok(outcome); // Return the last known response before the error
                                     }
