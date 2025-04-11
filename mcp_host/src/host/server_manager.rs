@@ -482,23 +482,29 @@ impl ServerManager {
                 .map_err(|e| anyhow!("Failed to spawn process for server '{}': {}", name, e))?;
             info!("Process spawned successfully for server '{}', PID: {:?}", name, process.id());
 
-            // Create a separate command for the transport (needed by ProcessTransport::new)
-            let mut transport_cmd = tokio::process::Command::new(command.get_program());
-            transport_cmd.args(command.get_args())
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            for (key, val) in command.get_envs() { // Copy env vars again for transport command
+            // Create a separate std::process::Command for the transport
+            // (needed by ProcessTransport::new which now takes StdCommand)
+            let mut transport_cmd = std::process::Command::new(command.get_program());
+            transport_cmd.args(command.get_args());
+            // Copy environment variables from the original command
+            for (key, val) in command.get_envs() {
                 if let (Some(k), Some(v)) = (key.to_str(), val.map(|v| v.to_str()).flatten()) {
                     transport_cmd.env(k, v);
                 }
             }
+            // Stdio is configured within ProcessTransport::new now
+
             debug!("Creating transport for server '{}'...", name);
+            // Pass the std::process::Command to ProcessTransport::new
             let transport = ProcessTransport::new(transport_cmd).await
                  .map_err(|e| anyhow!("Failed to create transport for server '{}': {}", name, e))?;
             info!("Transport created for server '{}'.", name);
 
             // Create and initialize the client
+                .stderr(Stdio::piped());
+            for (key, val) in command.get_envs() { // Copy env vars again for transport command
+                if let (Some(k), Some(v)) = (key.to_str(), val.map(|v| v.to_str()).flatten()) {
+            // This block is removed as transport creation is handled above now
             debug!("Creating MCP client for server '{}'...", name);
             let inner_client = shared_protocol_objects::rpc::McpClientBuilder::new(transport)
                 .client_info(&self.client_info.name, &self.client_info.version)
