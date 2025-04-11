@@ -1,5 +1,6 @@
 use serde_json::Value;
 use thiserror::Error;
+use tracing::error; // Import the error macro
 
 /// MCP client errors
 #[derive(Debug, Error)]
@@ -33,10 +34,4 @@ pub enum McpError {
     Protocol(String),
 }
 
-// Add From implementation for serde_json::Error
-impl From<serde_json::Error> for McpError {
-    fn from(error: serde_json::Error) -> Self {
-        error!("JSON deserialization error: {}", error); // Log the error
-        Self::Protocol(format!("Failed to deserialize response: {}", error))
-    }
-}
+// Removed manual From<serde_json::Error> implementation as #[from] handles it.
