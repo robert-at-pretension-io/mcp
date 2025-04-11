@@ -1,18 +1,13 @@
 use crate::aider::{aider_tool_info, handle_aider_tool_call, AiderParams};
-// Removed bash_tool_info, BashExecutor, BashParams imports
 use crate::brave_search::{search_tool_info, BraveSearchClient};
-// Removed unused gmail_integration imports
 use crate::long_running_task::{handle_long_running_tool_call, long_running_tool_info, LongRunningTaskManager};
 use crate::mermaid_chart::{handle_mermaid_chart_tool_call, mermaid_chart_tool_info, MermaidChartParams};
-// Removed unused PlannerToolImpl import
-use crate::bash::BashTool; // Import the new BashTool location
-use crate::process_html::extract_text_from_html;
-// Removed unused regex_replace imports
-use crate::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
-// Removed unused ensure_id, standard_error_response
-use crate::tool_trait::{ExecuteFuture, Tool, standard_success_response, standard_tool_result}; // Keep Tool trait for now
+use crate::bash::BashTool;
+// Import ScrapingBeeTool from scraping_bee
+use crate::scraping_bee::ScrapingBeeTool;
+use crate::tool_trait::{ExecuteFuture, Tool, standard_success_response, standard_tool_result};
 // Import DynService from rmcp::service and RoleServer for the correct trait object type
-use rmcp::{service::DynService, RoleServer, ServiceExt}; // Removed unused ServerHandler import
+use rmcp::{service::DynService, RoleServer, ServiceExt};
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
@@ -24,11 +19,8 @@ use tokio::sync::{mpsc, Mutex};
 // Removed unused debug, error
 use tracing::{info, warn};
 
-// ScrapingBee Tool Implementation
-#[derive(Debug)]
-pub struct ScrapingBeeTool {
-    api_key: String,
-}
+// Old ScrapingBee Tool Implementation - Removed in favor of SDK-based implementation
+// This was replaced by the SDK-based ScrapingBeeTool in scraping_bee.rs
 
 // Google Search Tool Implementation
 #[derive(Debug)]
@@ -37,15 +29,11 @@ pub struct GoogleSearchTool {
     cx: String,
 }
 
-impl ScrapingBeeTool {
-    pub fn new() -> Result<Self> {
-        let api_key = env::var("SCRAPINGBEE_API_KEY")
-            .map_err(|_| anyhow!("SCRAPINGBEE_API_KEY environment variable must be set"))?;
-        
-        Ok(Self { api_key })
-    }
-}
+// Old ScrapingBeeTool implementation removed - replaced by SDK version
 
+// ScrapingBeeTool is being converted to use the rmcp SDK
+// Old implementation commented out for reference
+/*
 impl Tool for ScrapingBeeTool {
     fn name(&self) -> &str {
         "scrape_url"
@@ -56,60 +44,14 @@ impl Tool for ScrapingBeeTool {
     }
     
     fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
-        let api_key = self.api_key.clone();
-        
+        // Implementation placeholder for future conversion
         Box::pin(async move {
-            let url = params
-                .arguments
-                .get("url")
-                .and_then(Value::as_str)
-                .ok_or_else(|| anyhow!("Missing required argument: url"))?
-                .to_string();
-                
-            // Get optional render_js parameter (default: true for compatibility)
-            let render_js = params
-                .arguments
-                .get("render_js")
-                .and_then(Value::as_bool)
-                .unwrap_or(true);
-                
-            let mut client = ScrapingBeeClient::new(api_key);
-            client
-                .url(&url)
-                .render_js(render_js)
-                .block_resources(true)
-                .block_ads(true);
-                
-            // Set a shorter timeout for faster responses if not using JS rendering
-            if !render_js {
-                client.timeout(8000); // 8 seconds is enough for static content
-            }
-            
-            info!("Scraping URL: {} (render_js: {})", url, render_js);
-            
-            match client.execute().await {
-                Ok(ScrapingBeeResponse::Text(body)) => {
-                    let mut markdown = extract_text_from_html(&body, Some(&url));
-                    const MAX_CHARS: usize = 25000; // Increased limit
-                    if markdown.chars().count() > MAX_CHARS {
-                        markdown = markdown.chars().take(MAX_CHARS).collect::<String>();
-                        markdown.push_str("\n\n... (content truncated)");
-                        info!("Scraped content truncated to {} characters", MAX_CHARS);
-                    }
-                    let tool_res = standard_tool_result(markdown, None);
-                    Ok(standard_success_response(id, json!(tool_res)))
-                }
-                Ok(ScrapingBeeResponse::Binary(_)) => {
-                    Err(anyhow!("Can't read binary scrapes"))
-                }
-                Err(e) => {
-                    let tool_res = standard_tool_result(format!("Error: {}", e), Some(true));
-                    Ok(standard_success_response(id, json!(tool_res)))
-                }
-            }
+            let tool_res = standard_tool_result("ScrapingBee tool is being migrated to the rmcp SDK.".to_string(), None);
+            Ok(standard_success_response(id, json!(tool_res)))
         })
     }
 }
+*/
 
 // BraveSearch Tool Implementation
 #[derive(Debug)]
@@ -309,14 +251,7 @@ impl Tool for MermaidChartTool {
 pub async fn create_tools() -> Result<Vec<Box<dyn DynService<RoleServer>>>> {
     let mut tools: Vec<Box<dyn DynService<RoleServer>>> = Vec::new(); // Use DynService vector
 
-    // Add ScrapingBee tool if environment variable is set
-    // TODO: Convert ScrapingBeeTool to SDK and add using into_dyn()
-    if let Ok(_scraping_bee_tool) = ScrapingBeeTool::new() {
-        // tools.push(Box::new(scraping_bee_tool).into_dyn()); // Placeholder for converted tool
-        // tools.push(Box::new(scraping_bee_tool)); // Cannot add non-ServerHandler tool yet
-    } else {
-        warn!("ScrapingBee tool not available: missing API key");
-    }
+    // ScrapingBeeTool is now implemented using SDK and added directly in main.rs
     
     // Add BraveSearch tool if environment variable is set
     // TODO: Convert BraveSearchTool to SDK and add using into_dyn()
