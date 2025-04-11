@@ -7,16 +7,18 @@ use crate::brave_search::{search_tool_info, BraveSearchClient};
 use crate::long_running_task::{handle_long_running_tool_call, long_running_tool_info, LongRunningTaskManager};
 use crate::mermaid_chart::{handle_mermaid_chart_tool_call, mermaid_chart_tool_info, MermaidChartParams};
 use crate::planner::{PlannerTool as PlannerToolImpl}; // Renamed to avoid conflict
+use crate::bash::BashTool; // Import the new BashTool location
 use crate::process_html::extract_text_from_html;
 // Removed unused regex_replace imports
 use crate::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
 // Removed unused ensure_id, standard_error_response
-use crate::tool_trait::{ExecuteFuture, Tool, standard_success_response, standard_tool_result};
+use crate::tool_trait::{ExecuteFuture, Tool, standard_success_response, standard_tool_result}; // Keep Tool trait for now
+use rmcp::ServerHandler; // Import SDK ServerHandler
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 // Removed unused CallToolResult, ToolResponseContent, INTERNAL_ERROR, INVALID_PARAMS
-use shared_protocol_objects::{CallToolParams, JsonRpcResponse};
+use shared_protocol_objects::{CallToolParams, JsonRpcResponse}; // Keep CallToolParams for now
 use std::env;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -105,42 +107,6 @@ impl Tool for ScrapingBeeTool {
                     let tool_res = standard_tool_result(format!("Error: {}", e), Some(true));
                     Ok(standard_success_response(id, json!(tool_res)))
                 }
-            }
-        })
-    }
-}
-
-// Bash Tool Implementation
-#[derive(Debug)]
-pub struct BashTool;
-
-impl Tool for BashTool {
-    fn name(&self) -> &str {
-        "bash"
-    }
-    
-    fn info(&self) -> shared_protocol_objects::ToolInfo {
-        bash_tool_info()
-    }
-    
-    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
-        Box::pin(async move {
-            let bash_params: BashParams = serde_json::from_value(params.arguments)?;
-            let executor = BashExecutor::new();
-            
-            match executor.execute(bash_params).await {
-                Ok(result) => {
-                    let text = format!(
-                        "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                        result.status,
-                        result.stdout,
-                        result.stderr
-                    );
-                    
-                    let tool_res = standard_tool_result(text, Some(!result.success));
-                    Ok(standard_success_response(id, json!(tool_res)))
-                }
-                Err(e) => Err(anyhow!(e))
             }
         })
     }
@@ -340,11 +306,13 @@ impl Tool for MermaidChartTool {
 }
 
 // Factory function to create all available tools
-pub async fn create_tools() -> Result<Vec<Box<dyn Tool>>> {
-    let mut tools: Vec<Box<dyn Tool>> = Vec::new();
-    
+pub async fn create_tools() -> Result<Vec<Box<dyn ServerHandler>>> { // Return SDK ServerHandler trait object
+    let mut tools: Vec<Box<dyn ServerHandler>> = Vec::new(); // Use ServerHandler vector
+
     // Add ScrapingBee tool if environment variable is set
+    // TODO: Convert ScrapingBeeTool to SDK and use into_dyn()
     if let Ok(scraping_bee_tool) = ScrapingBeeTool::new() {
+        // tools.push(Box::new(scraping_bee_tool).into_dyn()); // Placeholder for converted tool
         tools.push(Box::new(scraping_bee_tool));
     } else {
         warn!("ScrapingBee tool not available: missing API key");
@@ -356,12 +324,15 @@ pub async fn create_tools() -> Result<Vec<Box<dyn Tool>>> {
     } else {
         warn!("BraveSearch tool not available: missing API key");
     }
-    
+
+    // Add BashTool using into_dyn()
+    tools.push(Box::new(BashTool).into_dyn());
+
     // Add other tools that don't require special initialization
-    tools.push(Box::new(BashTool));
-    tools.push(Box::new(AiderTool));
-    tools.push(Box::new(MermaidChartTool));
-    tools.push(Box::new(PlannerToolImpl)); // Add the new planner tool
+    // TODO: Convert AiderTool, MermaidChartTool, PlannerToolImpl to SDK and use into_dyn()
+    // tools.push(Box::new(AiderTool).into_dyn());
+    // tools.push(Box::new(MermaidChartTool).into_dyn());
+    // tools.push(Box::new(PlannerToolImpl).into_dyn()); // Add the new planner tool
 
     // Note: LongRunningTaskTool is added separately in main.rs since it needs the manager
     

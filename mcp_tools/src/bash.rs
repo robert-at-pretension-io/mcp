@@ -1,14 +1,19 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema; // Added
 use std::process::Command;
 use serde_json::json;
+use tracing::{debug, error}; // Added tracing
+use rmcp::prelude::*; // Added rmcp prelude
 
-use shared_protocol_objects::ToolInfo;
+use shared_protocol_objects::ToolInfo; // Keep for quick_bash_tool_info for now
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)] // Added JsonSchema
 pub struct BashParams {
+    #[schemars(description = "The bash command to execute")] // Added
     pub command: String,
     #[serde(default = "default_cwd")]
+    #[schemars(description = "The working directory for the command (defaults to current dir)")] // Added
     pub cwd: String,
 }
 
@@ -34,11 +39,10 @@ impl BashExecutor {
         BashExecutor
     }
 
-    pub fn tool_info(&self) -> ToolInfo {
-        ToolInfo {
-            name: "bash".to_string(),
-            description: Some(
-                "Executes bash shell commands on the host system. Use this tool to:
+    // Removed tool_info method as it's handled by the SDK macro now
+
+    pub async fn execute(&self, params: BashParams) -> Result<BashResult> {
+        // Create working directory if it doesn't exist
                 
                 1. Run system commands and utilities
                 2. Check file/directory status
@@ -86,27 +90,60 @@ impl BashExecutor {
     }
 }
 
-pub fn bash_tool_info() -> ToolInfo {
-    ToolInfo {
-        name: BashExecutor::new().tool_info().name,
-        description: BashExecutor::new().tool_info().description,
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The bash command to execute"
-                },
-                "cwd": {
-                    "type": "string",
-                    "description": "The working directory for the command"
-                }
-            },
-            "required": ["command"],
-            "additionalProperties": false
-        }),
+// --- New SDK Implementation ---
+
+#[derive(Debug, Clone)] // Added Clone
+pub struct BashTool;
+
+#[tool(tool_box)] // Apply the SDK macro
+impl BashTool {
+    #[tool(description = "Executes bash shell commands on the host system. Use this tool to run system commands, check files, process text, manage files/dirs. Runs in a non-interactive 'sh' shell.")] // Use description from old info
+    async fn bash(
+        &self,
+        #[tool(aggr)] params: BashParams // Automatically aggregates JSON args into BashParams
+    ) -> Result<String, rmcp::Error> { // Return Result<String, rmcp::Error>
+        debug!("Executing bash tool with params: {:?}", params);
+        let executor = BashExecutor::new();
+
+        // Execute the command
+        match executor.execute(params).await {
+            Ok(result) => {
+                // Format the success/failure message as before
+                let output_text = format!(
+                    "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                    result.status,
+                    result.stdout,
+                    result.stderr
+                );
+                // Return the formatted string directly on success (even if command failed)
+                Ok(output_text)
+            }
+            Err(e) => {
+                // If the executor itself fails (e.g., can't spawn process), return an internal error
+                error!("BashExecutor failed: {}", e);
+                Err(rmcp::Error::internal_error(
+                    &format!("Failed to execute bash command: {}", e),
+                    None, // Optional data
+                ))
+            }
+        }
     }
 }
+
+// Optional: Implement ServerHandler if needed for server-level info (like instructions)
+#[tool(tool_box)]
+impl ServerHandler for BashTool {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            // Add instructions if desired, otherwise use default
+            instructions: Some("A tool for executing bash commands.".into()),
+            ..Default::default()
+        }
+    }
+}
+
+// --- End New SDK Implementation ---
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QuickBashParams {
