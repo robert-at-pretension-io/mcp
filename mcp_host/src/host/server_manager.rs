@@ -169,13 +169,15 @@ pub mod production {
     }
     
     impl ProcessTransport {
-        pub async fn new(command: tokio::process::Command) -> anyhow::Result<Self> {
+        // Update function signature to accept std::process::Command
+        pub async fn new(command: std::process::Command) -> anyhow::Result<Self> { 
             Ok(Self(rpc::ProcessTransport::new(command).await?))
         }
 
         // Helper method to create a new transport for a specific request type
         // This helps avoid the mixed response type issue by using separate transports
-        pub async fn new_for_request_type(command: tokio::process::Command, request_type: &str) -> anyhow::Result<Self> {
+        // Update function signature to accept std::process::Command
+        pub async fn new_for_request_type(command: std::process::Command, request_type: &str) -> anyhow::Result<Self> { 
             log::info!("Creating dedicated transport for request type: {}", request_type);
             // Create a new transport for this specific request type
             Ok(Self(rpc::ProcessTransport::new(command).await?))
