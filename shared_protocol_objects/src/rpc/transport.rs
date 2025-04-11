@@ -9,7 +9,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStderr, ChildStdout, Command}; 
 use std::process::Stdio; // Keep Stdio
 use tokio::sync::{Mutex};
-use tracing::{debug, error, info, warn};
+// Import trace macro along with others
+use tracing::{debug, error, info, warn, trace}; 
 
 use crate::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 
