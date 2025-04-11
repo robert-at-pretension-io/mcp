@@ -1,10 +1,12 @@
 use anyhow::{anyhow, Result};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use tracing::{info, warn, error, debug};
-use serde_json::json;
+use schemars::JsonSchema;
+use std::env;
 
-use ::shared_protocol_objects::ToolInfo;
+// Import SDK components
+use rmcp::{tool, ServerHandler, model::ServerInfo};
 
 #[derive(Debug)]
 pub enum ScrapingBeeResponse {
@@ -12,79 +14,42 @@ pub enum ScrapingBeeResponse {
     Binary(Vec<u8>),
 }
 
-#[derive(Debug, Serialize)]
-struct ScrapingBeeRequest {
-    url: String,
-    render_js: bool,
-    premium_proxy: bool,
-    block_ads: bool,
-    block_resources: bool,
-    timeout: u32,
+// Parameters for the SDK-based tool
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ScrapingBeeParams {
+    #[schemars(description = "The complete URL of the webpage to read and analyze")]
+    pub url: String,
+    
+    #[serde(default = "default_render_js")]
+    #[schemars(description = "Whether to render JavaScript (default: true; set to false for faster scraping of static sites)")]
+    pub render_js: bool,
 }
 
-#[derive(Clone)]
-pub struct ScrapingBeeClient {
-    client: reqwest::Client,
-    api_key: String,
-    base_url: String,
-    url: Option<String>,
-    render_js: bool,
-    premium_proxy: bool,
-    block_ads: bool,
-    block_resources: bool,
-    timeout: u32,
+fn default_render_js() -> bool {
+    true
 }
 
-pub fn scraping_tool_info() -> ToolInfo {
-    ToolInfo {
-        name: "scrape_url".into(),
-        description: Some(
-            "Web scraping tool that extracts and processes content from websites, now with improved performance. Use this to:
-            
-            1. Extract text from webpages (news, articles, documentation)
-            2. Gather product information from e-commerce sites
-            3. Retrieve data from sites with JavaScript-rendered content
-            4. Access content behind cookie notifications or simple overlays
-            
-            Important notes:
-            - Always provide complete URLs including protocol (e.g., 'https://example.com')
-            - JavaScript rendering is enabled by default for compatibility
-            - Content is automatically processed to extract readable text
-            - Safe mode filters out potentially harmful content
-            - Set render_js=false for static sites to get faster responses
-            
-            Example queries:
-            - News article: 'https://news.site.com/article/12345'
-            - Product page: 'https://shop.example.com/products/item-name'
-            - Documentation: 'https://docs.domain.org/tutorial'
-            
-            NOTE: This tool requires the SCRAPINGBEE_API_KEY environment variable to be set.".into()
-        ),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "url": { 
-                    "type": "string",
-                    "description": "The complete URL of the webpage to read and analyze",
-                    "format": "uri"
-                },
-                "render_js": {
-                    "type": "boolean",
-                    "description": "Whether to render JavaScript (default: true; set to false for faster scraping of static sites)",
-                    "default": true
-                }
-            },
-            "required": ["url"],
-            "additionalProperties": false
-        }),
-        annotations: None, // Added missing field
+// Define the ScrapingBee tool
+#[derive(Debug, Clone)]
+pub struct ScrapingBeeTool {
+    // The tool won't store the client directly
+    // Instead, it will create a client when needed
+}
+
+impl ScrapingBeeTool {
+    pub fn new() -> Self {
+        Self {}
     }
-}
-
-
-impl ScrapingBeeClient {
-    pub fn new(api_key: String) -> Self {
-        // Create a client with a 20-second timeout for faster response
+    
+    // Helper method to create a properly configured client
+    async fn execute_scraping(&self, url: &str, render_js: bool) -> Result<String> {
+        info!("Starting ScrapingBee request for URL: {} (render_js: {})", url, render_js);
+        
+        // Get API key from environment
+        let api_key = env::var("SCRAPINGBEE_API_KEY")
+            .map_err(|_| anyhow!("SCRAPINGBEE_API_KEY environment variable must be set"))?;
+        
+        // Create a client with a 20-second timeout
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(20))
             .build()
@@ -93,145 +58,118 @@ impl ScrapingBeeClient {
                 reqwest::Client::new()
             });
             
-        ScrapingBeeClient {
-            client,
-            api_key,
-            base_url: "https://app.scrapingbee.com/api/v1/".to_string(),
-            url: None,
-            // Default to JS rendering for compatibility
-            render_js: true,  
-            premium_proxy: true,
-            block_ads: true,
-            block_resources: true,
-            timeout: 15000, // 15 seconds default timeout for JS rendering
-        }
-    }
-
-    pub fn url(&mut self, url: &str) -> &mut Self {
-        self.url = Some(url.to_string());
-        self
-    }
-
-    pub fn render_js(&mut self, enabled: bool) -> &mut Self {
-        self.render_js = enabled;
-        self
-    }
-
-    pub fn premium_proxy(&mut self, enabled: bool) -> &mut Self {
-        self.premium_proxy = enabled;
-        self
-    }
-
-    pub fn block_ads(&mut self, enabled: bool) -> &mut Self {
-        self.block_ads = enabled;
-        self
-    }
-
-    pub fn block_resources(&mut self, enabled: bool) -> &mut Self {
-        self.block_resources = enabled;
-        self
-    }
-
-    pub fn timeout(&mut self, ms: u32) -> &mut Self {
-        self.timeout = ms;
-        self
-    }
-
-    pub async fn execute(&self) -> Result<ScrapingBeeResponse> {
-        info!("Starting ScrapingBee request execution");
-        let url = self.url.as_ref().ok_or_else(|| {
-            error!("URL not set for ScrapingBee request");
-            anyhow!("URL not set")
-        })?;
-
-        debug!("Preparing ScrapingBee request for URL: {}", url);
-        
-        let request_body = ScrapingBeeRequest {
-            url: url.to_string(),
-            render_js: self.render_js,
-            premium_proxy: self.premium_proxy,
-            block_ads: self.block_ads,
-            block_resources: self.block_resources,
-            timeout: self.timeout,
-        };
-
+        // Prepare headers and query parameters
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, HeaderValue::from_static("*/*"));
         
-        debug!("Building ScrapingBee API request");
-        let request = self.client
-            .get(&self.base_url)
+        // Calculate timeout based on render_js
+        let timeout = if render_js { 15000 } else { 8000 };
+        
+        // Build the request
+        let request = client
+            .get("https://app.scrapingbee.com/api/v1/")
             .headers(headers)
             .query(&[
-                ("api_key", &self.api_key),
-                ("url", &request_body.url),
-                ("render_js", &request_body.render_js.to_string()),
-                ("premium_proxy", &self.premium_proxy.to_string()),
-                ("block_ads", &self.block_ads.to_string()),
-                ("block_resources", &self.block_resources.to_string()),
-                ("timeout", &self.timeout.to_string()),
+                ("api_key", api_key.as_str()),
+                ("url", url),
+                ("render_js", &render_js.to_string()),
+                ("premium_proxy", "true"),
+                ("block_ads", "true"),
+                ("block_resources", "true"),
+                ("timeout", &timeout.to_string()),
             ]);
-
-        // Clone and build request for logging
-        debug!("Full request URL: {}", request.try_clone().unwrap().build()?.url());
-
-        info!("Sending request to ScrapingBee API");
-        let response = match request.send().await {
-            Ok(resp) => resp,
-            Err(e) => {
+            
+        debug!("Sending request to ScrapingBee API");
+        
+        // Execute the request
+        let response = request.send().await
+            .map_err(|e| {
                 error!("Failed to send request to ScrapingBee: {}", e);
                 
                 if e.is_timeout() {
                     error!("Request to ScrapingBee timed out");
-                    return Err(anyhow!("Request to ScrapingBee timed out after 20 seconds"));
+                    anyhow!("Request to ScrapingBee timed out after 20 seconds")
                 } else if e.is_connect() {
                     error!("Connection error to ScrapingBee API");
-                    return Err(anyhow!("Failed to connect to ScrapingBee API: {}", e));
+                    anyhow!("Failed to connect to ScrapingBee API: {}", e)
+                } else {
+                    anyhow!("ScrapingBee request failed: {}", e)
                 }
-                
-                return Err(anyhow!("ScrapingBee request failed: {}", e));
-            }
-        };
-
+            })?;
+            
         let status = response.status();
-        info!("Received response with status: {}", status);
-
-        if !response.status().is_success() {
+        debug!("Received response with status: {}", status);
+        
+        // Check if successful
+        if !status.is_success() {
             let error_text = response.text().await?;
-            error!("ScrapingBee API request failed");
-            error!("Status code: {}", status);
+            error!("ScrapingBee API request failed with status: {}", status);
             error!("Error response: {}", error_text);
-            error!("Target URL: {}", url);
-            error!("API endpoint: {}", self.base_url);
-            warn!("Request parameters:");
-            warn!("  - render_js: {}", self.render_js);
-            warn!("  - api_key length: {}", self.api_key.len());
-            return Err(anyhow!(
-                "ScrapingBee API request failed with status: {} - Response: {}", 
-                status,
-                error_text
-            ));
+            return Err(anyhow!("ScrapingBee API failed: {} - {}", status, error_text));
         }
-
+        
+        // Process the response based on content type
         let content_type = response.headers()
             .get("content-type")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
-        
-        info!("Response content type: {}", content_type);
-
+            
         if content_type.starts_with("text") || content_type.contains("json") {
-            info!("Processing text/JSON response");
+            // Process text content
             let text = response.text().await?;
-            debug!("Response length: {} characters", text.len());
-            info!("Successfully retrieved text content from ScrapingBee");
-            Ok(ScrapingBeeResponse::Text(text))
+            debug!("Received text response ({} characters)", text.len());
+            
+            // Convert HTML to readable text
+            let markdown = crate::process_html::extract_text_from_html(&text, Some(url));
+            
+            // Truncate if too long
+            const MAX_CHARS: usize = 25000;
+            if markdown.chars().count() > MAX_CHARS {
+                let truncated = markdown.chars().take(MAX_CHARS).collect::<String>();
+                Ok(format!("{}\n\n... (content truncated)", truncated))
+            } else {
+                Ok(markdown)
+            }
         } else {
-            info!("Processing binary response");
-            let bytes = response.bytes().await?.to_vec();
-            debug!("Response size: {} bytes", bytes.len());
-            info!("Successfully retrieved binary content from ScrapingBee");
-            Ok(ScrapingBeeResponse::Binary(bytes))
+            // Can't process binary responses
+            error!("Received binary response, cannot process");
+            Err(anyhow!("Cannot process binary response from URL"))
         }
     }
 }
+
+// Implement the tool using the rmcp SDK tool macro
+#[tool(tool_box)]
+impl ScrapingBeeTool {
+    #[tool(description = "Web scraping tool that extracts and processes content from websites. Use for extracting text from webpages, documentation, and articles.")]
+    async fn scrape_url(
+        &self,
+        #[tool(aggr)] params: ScrapingBeeParams
+    ) -> String {
+        // Log the operation start
+        info!("ScrapingBee tool called for URL: {}", params.url);
+        
+        // Execute scraping and handle errors
+        match self.execute_scraping(&params.url, params.render_js).await {
+            Ok(content) => content,
+            Err(e) => {
+                error!("Scraping error: {}", e);
+                format!("Error: {}", e)
+            }
+        }
+    }
+}
+
+// Implement ServerHandler for server-level information
+#[tool(tool_box)]
+impl ServerHandler for ScrapingBeeTool {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            instructions: Some("A tool for scraping and processing web content.".into()),
+            ..Default::default()
+        }
+    }
+}
+
+// Old ScrapingBeeClient struct and related functions have been refactored 
+// into ScrapingBeeTool and its implementation above.
