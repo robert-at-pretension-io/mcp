@@ -111,11 +111,7 @@ impl ProcessTransport {
                     }
                 }
             }
-        });
-                    }
-                }
-            }
-        });
+        }); // End of tokio::spawn
         info!("Stderr reader task re-enabled.");
         // --- End re-enable ---
 
