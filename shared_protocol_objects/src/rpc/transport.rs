@@ -84,18 +84,20 @@ impl ProcessTransport {
             let mut stderr_locked = stderr_reader_arc.lock().await;
             let mut reader = BufReader::new(&mut *stderr_locked); // Pass mutable reference to locked stderr
             let mut line = String::new();
+            info!("Stderr reader task started."); // Log start
             loop {
                 match reader.read_line(&mut line).await {
                     Ok(0) => {
-                        info!("Server stderr stream closed.");
+                        info!("Stderr reader task: read_line returned Ok(0) (EOF). Server stderr stream closed.");
                         break;
                     }
-                    Ok(_) => {
+                    Ok(n) => { // Log bytes read
+                        info!("Stderr reader task: read_line returned Ok({}) bytes.", n);
                         warn!("[Server STDERR] {}", line.trim_end());
                         line.clear();
                     }
                     Err(e) => {
-                        error!("Error reading from server stderr: {}", e);
+                        error!("Stderr reader task: Error reading from server stderr: {}", e);
                         break;
                     }
                 }
@@ -135,8 +137,9 @@ impl Transport for ProcessTransport {
         // <<< END DELAY >>>
         
         // Now read the response directly
-        info!("Acquiring stdout lock for response");
+        info!("Attempting to acquire stdout lock for response...");
         let mut stdout_guard = self.stdout.lock().await;
+        info!("Successfully acquired stdout lock for response.");
         // --- Re-introduce BufReader with larger capacity ---
         let mut reader = BufReader::with_capacity(16384, &mut *stdout_guard); // Use 16KB buffer
         // Use BytesMut buffer to accumulate response data
@@ -149,25 +152,27 @@ impl Transport for ProcessTransport {
 
         // --- Use read_line instead of read_buf loop ---
         let mut response_line = String::new(); // Use String directly
+        info!("Calling reader.read_line() within timeout block...");
         match tokio::time::timeout(timeout_duration, reader.read_line(&mut response_line)).await {
             Ok(Ok(0)) => { // EOF
-                error!("Child process closed stdout without sending response line.");
+                error!("read_line returned Ok(0) (EOF). Child process closed stdout without sending response line.");
                 return Err(anyhow!("Child process closed stdout without sending response"));
             }
             Ok(Ok(n)) => { // Successfully read a line
-                info!("Successfully read line ({} bytes) using read_line", n);
+                info!("read_line returned Ok({}) bytes.", n);
                 response_str = response_line.trim().to_string(); // Assign to existing variable
-                info!("Trimmed response string: {}", response_str);
+                info!("Trimmed response string (first 100 chars): {:.100}", response_str); // Log only first 100 chars
             }
             Ok(Err(e)) => { // I/O error
-                error!("Error reading line from stdout: {}", e);
+                error!("read_line returned I/O error: {}", e);
                 return Err(anyhow!("I/O error reading response line: {}", e));
             }
             Err(_) => { // Timeout
-                error!("Response read (read_line) timed out after {} seconds", timeout_duration.as_secs());
+                error!("read_line timed out after {} seconds", timeout_duration.as_secs());
                 return Err(anyhow!("Timed out waiting for response line from server"));
             }
         }
+        info!("Finished reading response line.");
         // --- End of read_line logic ---
 
         /* --- Start of removed read_buf loop ---
