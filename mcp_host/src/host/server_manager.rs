@@ -6,9 +6,9 @@ use shared_protocol_objects::{
 };
 // Removed unused async_trait
 use std::collections::HashMap;
-// Use both Command types with aliases
+// Use both Command types explicitly
 use tokio::process::Command as TokioCommand;
-use std::process::Command as StdCommand; 
+use std::process::Command as StdCommand;
 use tokio::process::Child as TokioChild;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -93,7 +93,7 @@ pub mod testing {
 #[cfg(not(test))]
 pub mod production {
     use shared_protocol_objects::rpc;
-    use tokio::process::Command; // Import Tokio Command specifically for this module
+    // Remove unused import: use tokio::process::Command; 
 
     // Wrapper for McpClient to provide Debug 
     pub struct McpClient<T: rpc::Transport> {
@@ -173,15 +173,15 @@ pub mod production {
     }
     
     impl ProcessTransport {
-        // Ensure this accepts tokio::process::Command
-        pub async fn new(command: TokioCommand) -> anyhow::Result<Self> { 
+        // Ensure this accepts tokio::process::Command explicitly
+        pub async fn new(command: super::TokioCommand) -> anyhow::Result<Self> { 
             Ok(Self(rpc::ProcessTransport::new(command).await?))
         }
 
         // Helper method to create a new transport for a specific request type
         // This helps avoid the mixed response type issue by using separate transports
-        // Ensure this accepts tokio::process::Command
-        pub async fn new_for_request_type(command: TokioCommand, request_type: &str) -> anyhow::Result<Self> { 
+        // Ensure this accepts tokio::process::Command explicitly
+        pub async fn new_for_request_type(command: super::TokioCommand, request_type: &str) -> anyhow::Result<Self> { 
             log::info!("Creating dedicated transport for request type: {}", request_type);
             // Create a new transport for this specific request type
             Ok(Self(rpc::ProcessTransport::new(command).await?))
@@ -360,8 +360,10 @@ impl ServerManager {
         for (name, server_config) in config.servers {
             info!("Preparing to start server '{}' with command: {}", name, server_config.command);
 
-            // Create a std::process::Command first to easily set env vars and args
-            let mut command = Command::new(&server_config.command);
+            // Prepare components for start_server_with_components
+            let program = server_config.command.clone();
+            let args = server_config.args.clone().unwrap_or_default();
+            let envs = server_config.env.clone();
 
             // Set environment variables if specified
             if !server_config.env.is_empty() {
@@ -377,9 +379,8 @@ impl ServerManager {
                  }
             }
 
-            // Start the server using the constructed std::process::Command
-            // The start_server_with_command method handles converting it to tokio::process::Command
-            match self.start_server_with_command(&name, command).await {
+            // Start the server using the components
+            match self.start_server_with_components(&name, &program, &args, &envs).await {
                 Ok(_) => info!("Successfully started server '{}'", name),
                 Err(e) => error!("Failed to start server '{}': {}", name, e), // Log error but continue
             }
@@ -448,10 +449,10 @@ impl ServerManager {
     }
     
     /// Start a server with the given name, command and arguments
-    pub async fn start_server(&self, name: &str, command: &str, args: &[String]) -> Result<()> {
-        let mut cmd = Command::new(command);
-        cmd.args(args);
-        self.start_server_with_command(name, cmd).await
+    pub async fn start_server(&self, name: &str, program: &str, args: &[String]) -> Result<()> {
+        // Use start_server_with_components, assuming empty envs if not provided
+        let envs = HashMap::new(); 
+        self.start_server_with_components(name, program, args, &envs).await
     }
 
     /// Start a server with the given name and command components
