@@ -5,7 +5,8 @@ use std::process::Command;
 use serde_json::json;
 use tracing::{debug, error}; // Added tracing
 // Import specific items from rmcp instead of prelude
-use rmcp::{tool, Error as RmcpError, ServerHandler, model::ServerInfo};
+// Removed unused Error alias
+use rmcp::{tool, ServerHandler, model::ServerInfo};
 
 use shared_protocol_objects::ToolInfo; // Keep for quick_bash_tool_info for now
 
