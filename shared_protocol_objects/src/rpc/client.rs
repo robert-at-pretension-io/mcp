@@ -115,13 +115,30 @@ impl<T: Transport> McpClient<T> {
         self.server_info = Some(response.server_info.clone());
         self.server_capabilities = Some(response.capabilities.clone());
 
-        // Check protocol version compatibility
-        info!("Server protocol version: {}", response.protocol_version);
-        if response.protocol_version == "2024-11-05" {
+        // Protocol version negotiation
+        info!("Client requested protocol version: {}", self.protocol_version);
+        info!("Server responded with protocol version: {}", response.protocol_version);
+        
+        // Store the server's protocol version for future calls
+        let original_version = self.protocol_version.clone();
+        self.protocol_version = response.protocol_version.clone();
+        
+        // Log if there's a version mismatch
+        if original_version != self.protocol_version {
+            warn!("Protocol version mismatch - client: {}, server: {}", 
+                  original_version, self.protocol_version);
+            info!("Adapting to server's protocol version: {}", self.protocol_version);
+        } else {
+            info!("Client and server using same protocol version: {}", self.protocol_version);
+        }
+        
+        // Set compatibility mode based on protocol version
+        if self.protocol_version == "2024-11-05" {
             info!("Using compatibility mode for 2024-11-05 protocol");
             self.compatibility_mode = true;
         } else {
-            self.compatibility_mode = false; // Ensure it's false for other versions
+            info!("Using standard mode for protocol: {}", self.protocol_version);
+            self.compatibility_mode = false;
         }
 
         // Before sending notification, make sure we've set the flag
@@ -152,6 +169,8 @@ impl<T: Transport> McpClient<T> {
     {
         // Normal path: ensure initialized and call internal
         self.ensure_initialized(method)?;
+        // Use the negotiated protocol version for this call
+        info!("Using protocol version {} for method: {}", self.protocol_version, method);
         self.call_internal(method, params).await
     }
 
