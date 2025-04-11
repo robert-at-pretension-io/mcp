@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [[example]]
+name = "direct_supabase_test"
+path = "examples/direct_supabase_test.rs"
+
+[[example]]
 name = "smiley_delimiter_example"
 path = "examples/smiley_delimiter_example.rs"
 
