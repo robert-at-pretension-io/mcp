@@ -120,109 +120,106 @@ impl ProcessTransport {
 impl Transport for ProcessTransport {
     async fn send_request(&self, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
         // Add a small delay between messages to avoid race conditions
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        // Consider if this is truly necessary or if locking handles it.
+        // tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         let request_str = serde_json::to_string(&request)? + "\n";
-        info!("Sending request: {}", request_str.trim());
+        // Use trace for potentially large/frequent raw messages
+        trace!("Sending raw request: {}", request_str.trim());
+        info!("Sending request method: {}, id: {:?}", request.method, request.id);
 
-        // First send the request directly
+        // Send the request
         {
             let mut stdin_guard = self.stdin.lock().await;
-            info!("Writing request to stdin");
+            // info!("Writing request to stdin"); // Can be noisy, use debug or trace
             stdin_guard.write_all(request_str.as_bytes()).await?;
-            info!("Flushing stdin");
+            // info!("Flushing stdin"); // Can be noisy
             stdin_guard.flush().await?;
-            info!("Releasing stdin lock (scope end)");
-            // Lock is automatically released at the end of this scope
+            // info!("Releasing stdin lock (scope end)"); // Can be noisy
         }
 
-        // Small delay to ensure process has time to handle the request
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-
-        // Now read the response directly
-        info!("Attempting to acquire stdout lock for response...");
+        // Read the response
+        // info!("Attempting to acquire stdout lock for response..."); // Can be noisy
         let mut stdout_guard = self.stdout.lock().await;
-        info!("Successfully acquired stdout lock for response.");
-        
-        // Simpler approach: read the response as a string with a timeout
-        let timeout_duration = std::time::Duration::from_secs(30); // Shorter timeout
-        info!("Reading response with timeout of {}s", timeout_duration.as_secs());
+        // info!("Successfully acquired stdout lock for response."); // Can be noisy
 
-        // Create a buffer for reading
-        let mut buf = Vec::with_capacity(16384);
+        let timeout_duration = std::time::Duration::from_secs(60); // Slightly longer default timeout
+        // info!("Reading response line with timeout of {}s", timeout_duration.as_secs()); // Can be noisy
+
         let mut reader = tokio::io::BufReader::new(&mut *stdout_guard);
-        
-        // Try to read a complete line with timeout
-        let read_future = async {
-            let mut line = String::new();
-            match reader.read_line(&mut line).await {
-                Ok(0) => Err(anyhow!("EOF reading response")),
-                Ok(_) => Ok(line),
-                Err(e) => Err(anyhow!("Error reading response: {}", e)),
+        let mut response_line = String::new();
+
+        // Use timeout for the read_line operation
+        let read_result = tokio::time::timeout(timeout_duration, reader.read_line(&mut response_line)).await;
+
+        let response_str = match read_result {
+            Ok(Ok(0)) => {
+                error!("EOF received while waiting for response to request id {:?} (method {}). Server likely closed stdout.", request.id, request.method);
+                return Err(anyhow!("Server closed stdout unexpectedly (EOF)"));
             }
-        };
-        
-        let response_str = match tokio::time::timeout(timeout_duration, read_future).await {
-            Ok(Ok(line)) => {
-                info!("Successfully read response line of {} bytes", line.len());
-                line.trim().to_string()
-            },
+            Ok(Ok(n)) => {
+                info!("Successfully read response line ({} bytes) for request id {:?}", n, request.id);
+                response_line.trim().to_string() // Trim whitespace and newline
+            }
             Ok(Err(e)) => {
-                error!("Error reading response: {}", e);
-                return Err(e);
-            },
-            Err(_) => {
-                error!("Timeout reading response");
-                
-                // Try to read what's available before giving up
-                info!("Attempting to read any available data before timeout");
-                match reader.read_to_end(&mut buf).await {
-                    Ok(n) if n > 0 => {
-                        warn!("Read {} bytes after timeout", n);
-                        match String::from_utf8(buf) {
-                            Ok(s) => {
-                                warn!("Response after timeout: {}", s);
-                                s
-                            },
-                            Err(e) => {
-                                error!("Invalid UTF-8 in response: {}", e);
-                                return Err(anyhow!("Timeout and invalid UTF-8 in response"));
-                            }
-                        }
-                    },
+                error!("IO error reading response for request id {:?}: {}", request.id, e);
+                return Err(anyhow!("IO error reading response: {}", e));
+            }
+            Err(_) => { // Timeout elapsed
+                error!("Timeout ({:?}) waiting for response to request id {:?} (method {})", timeout_duration, request.id, request.method);
+                // Attempt to read any buffered data for debugging, but don't block
+                let mut remaining_buf = String::new();
+                // Use a short timeout for this debug read
+                // Need to import Duration from std::time
+                use std::time::Duration; 
+                match tokio::time::timeout(Duration::from_millis(100), reader.read_to_string(&mut remaining_buf)).await {
+                    Ok(Ok(bytes_read)) if bytes_read > 0 => {
+                         warn!("Read {} additional bytes after timeout: '{}'", bytes_read, remaining_buf.trim());
+                    }
                     _ => {
-                        return Err(anyhow!("Timeout waiting for response"));
+                         warn!("No additional data read after timeout.");
                     }
                 }
+                return Err(anyhow!("Timeout waiting for response"));
             }
         };
 
-        // Release the stdout lock
-        info!("Releasing stdout lock before parsing.");
+        // Release the stdout lock *before* parsing
+        // info!("Releasing stdout lock before parsing."); // Can be noisy
         drop(stdout_guard);
-        info!("Stdout lock released.");
+        // info!("Stdout lock released."); // Can be noisy
 
-        // Add debug logging before parsing
-        debug!("Raw response string received: {}", response_str);
-
-        // Log the raw response string before parsing
-        info!("Attempting to parse response string (first 500 chars): {:.500}", response_str);
+        // Log raw response at trace level
+        trace!("Raw response string received: {}", response_str);
+        info!("Attempting to parse response for request id {:?}", request.id);
 
         // Parse the response string
-        let response = serde_json::from_str::<JsonRpcResponse>(&response_str)
-            .map_err(|e| anyhow!("Failed to parse response: {}, raw: {}", e, response_str))?;
+        let response: JsonRpcResponse = match serde_json::from_str(&response_str) {
+             Ok(resp) => resp,
+             Err(e) => {
+                  error!("Failed to parse JSON response for request id {:?}: {}", request.id, e);
+                  error!("Raw response data that failed parsing: {}", response_str);
+                  // Consider including more context if possible (e.g., first/last N chars)
+                  return Err(anyhow!("Failed to parse JSON response: {}. Raw data: '{}'", e, response_str));
+             }
+        };
 
-        // Log the successfully parsed response
-        debug!("Successfully parsed response: {:?}", response);
-        info!("Successfully parsed response ID: {:?}", response.id);
+        // Log the successfully parsed response ID and potentially result/error presence
+        info!("Successfully parsed response for request id {:?}. Response ID: {:?}. Has result: {}, Has error: {}",
+              request.id, response.id, response.result.is_some(), response.error.is_some());
+        // Log full response at debug level
+        debug!("Parsed response details: {:?}", response);
 
-        // Basic ID check - log warning if mismatch, but proceed.
-        if response.id != request.id {
-            warn!(
-                "Response ID mismatch for method {}: expected {:?}, got {:?}. This might indicate server issues.",
+        // Strict ID check - return error if mismatch.
+        // Allow Null ID response if request ID was Null (for notifications treated as requests, though unusual)
+        if response.id != request.id && !(response.id.is_null() && request.id.is_null()) {
+            error!(
+                "Response ID mismatch for method {}: expected {:?}, got {:?}. This indicates a critical protocol error.",
                 request.method, request.id, response.id
             );
+            return Err(anyhow!("Response ID mismatch: expected {:?}, got {:?}", request.id, response.id));
         }
+
         Ok(response)
     }
     
