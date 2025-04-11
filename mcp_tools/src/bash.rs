@@ -43,25 +43,6 @@ impl BashExecutor {
 
     pub async fn execute(&self, params: BashParams) -> Result<BashResult> {
         // Create working directory if it doesn't exist
-                
-                1. Run system commands and utilities
-                2. Check file/directory status
-                3. Process text/data with command line tools
-                4. Manage files and directories
-                
-                Important notes:
-                - Always provide the full command including any required flags
-                - Use absolute paths or specify working directory (cwd)
-                - Commands run with the same permissions as the host process
-                - Output is limited to stdout/stderr (no interactive prompts)
-                - Commands run in a non-interactive shell (sh)".to_string()
-            ),
-            input_schema: json!({})
-        }
-    }
-
-    pub async fn execute(&self, params: BashParams) -> Result<BashResult> {
-        // Create working directory if it doesn't exist
         let cwd = std::path::PathBuf::from(&params.cwd);
         if !cwd.exists() {
             std::fs::create_dir_all(&cwd)?;
@@ -97,7 +78,7 @@ pub struct BashTool;
 
 #[tool(tool_box)] // Apply the SDK macro
 impl BashTool {
-    #[tool(description = "Executes bash shell commands on the host system. Use this tool to run system commands, check files, process text, manage files/dirs. Runs in a non-interactive 'sh' shell.")] // Use description from old info
+    #[tool(description = "Executes bash shell commands on the host system. Use this tool to run system commands, check files, process text, manage files/dirs. Runs in a non-interactive `sh` shell.")] // Use description from old info (fixed quotes around sh)
     async fn bash(
         &self,
         #[tool(aggr)] params: BashParams // Automatically aggregates JSON args into BashParams
@@ -109,7 +90,7 @@ impl BashTool {
         match executor.execute(params).await {
             Ok(result) => {
                 // Format the success/failure message as before
-                let output_text = format!(
+                let output_text = format!( // Ensured standard string literal with correct \n escapes
                     "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
                     result.status,
                     result.stdout,
@@ -174,7 +155,7 @@ pub fn quick_bash_tool_info() -> ToolInfo {
             - `cat file.txt | grep pattern | wc -l`
             - `du -sh /path/to/dir`
             
-            Note: Commands run with your current user permissions.".to_string()
+            Note: Commands run with your current user permissions.".to_string() // Fixed backticks in examples
         ),
         input_schema: json!({
             "type": "object",
