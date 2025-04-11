@@ -115,6 +115,170 @@ impl ProcessTransport {
         Ok(transport)
     }
 
+    /// Read a response matching the given request ID with proper buffering
+    async fn read_matching_response(
+        &self,
+        method: &str,
+        request_id: &Value,
+        timeout_duration: std::time::Duration
+    ) -> Result<JsonRpcResponse> {
+        // Lock stdout for reading the response
+        debug!("Acquiring stdout lock to read response for method: {}", method);
+        let mut stdout_guard = self.stdout.lock().await;
+        debug!("Acquired stdout lock for method: {}", method);
+
+        let mut reader = BufReader::new(&mut *stdout_guard);
+        let mut buffer = String::new();
+        let mut found_matching_response = false;
+        
+        // Read until we find a matching response or hit timeout
+        while !found_matching_response {
+            // Clear the buffer for this iteration if needed
+            if !buffer.is_empty() {
+                buffer.clear();
+            }
+            
+            // Use timeout for the read_line operation to prevent hangs
+            let read_result = tokio::time::timeout(
+                timeout_duration, 
+                reader.read_line(&mut buffer)
+            ).await;
+            
+            match read_result {
+                // Successfully read something (or EOF)
+                Ok(Ok(0)) => {
+                    error!("EOF received while waiting for response to request id {:?} (method {}). Server stdout closed.", 
+                           request_id, method);
+                    return Err(anyhow!("Server closed stdout unexpectedly (EOF)"));
+                }
+                Ok(Ok(n)) => {
+                    debug!("Read {} bytes while waiting for response to request id {:?}", n, request_id);
+                    
+                    // Skip empty lines completely
+                    if buffer.trim().is_empty() {
+                        continue;
+                    }
+                    
+                    trace!("Raw line received: {:?}", buffer);
+                    
+                    // Process the non-empty line
+                    let line = buffer.trim().to_string();
+                    
+                    // Try parsing as JSON
+                    match serde_json::from_str::<serde_json::Value>(&line) {
+                        Ok(json_value) => {
+                            // Is this a notification? (has method, no id)
+                            if json_value.get("method").is_some() && json_value.get("id").is_none() {
+                                debug!("Received notification while waiting for response to method {}", method);
+                                
+                                // Try to handle the notification
+                                if let Ok(notification) = serde_json::from_value::<JsonRpcNotification>(json_value.clone()) {
+                                    info!("Processing notification: method={}", notification.method);
+                                    
+                                    // Pass to notification handler if available
+                                    let handler_guard = self.notification_handler.lock().await;
+                                    if let Some(handler) = &*handler_guard {
+                                        let notification_clone = notification.clone();
+                                        drop(handler_guard);
+                                        handler(notification_clone).await;
+                                    }
+                                } else {
+                                    warn!("Failed to parse notification JSON: {}", line);
+                                }
+                                
+                                // Continue waiting for our actual response
+                                continue;
+                            } 
+                            // Is this a response? (has id)
+                            else if let Some(id) = json_value.get("id") {
+                                debug!("Received response with id {:?}, expecting {:?}", id, request_id);
+                                
+                                // Does this ID match our request?
+                                if *id == *request_id {
+                                    debug!("ID match found for method {}", method);
+                                    found_matching_response = true;
+                                    
+                                    // We found our response, now parse it
+                                    drop(stdout_guard); // Release lock before potentially expensive parsing
+                                    
+                                    match serde_json::from_str::<JsonRpcResponse>(&line) {
+                                        Ok(response) => {
+                                            info!("Successfully parsed response for method {}", method);
+                                            return Ok(response);
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to parse matching response for method {}: {}", method, e);
+                                            error!("Raw response that failed parsing: {}", line);
+                                            return Err(anyhow!("Failed to parse JSON response: {}. Raw: '{}'", e, line));
+                                        }
+                                    }
+                                } else {
+                                    warn!("Received response with non-matching id: expected {:?}, got {:?}", 
+                                          request_id, id);
+                                    // Continue waiting for our response
+                                    continue;
+                                }
+                            } 
+                            // Malformed JSON-RPC message
+                            else {
+                                warn!("Received malformed JSON-RPC message (no method or id): {}", line);
+                                continue;
+                            }
+                        }
+                        Err(e) => {
+                            // Failed to parse as JSON - might be incomplete or malformed
+                            error!("Failed to parse JSON from line: {} (Error: {})", line, e);
+                            
+                            // For debugging, let's try to see if this is a valid but partial message
+                            if line.starts_with('{') && !line.ends_with('}') {
+                                warn!("Possible incomplete JSON detected - missing closing brace");
+                            } else if line.contains("}\n{") {
+                                warn!("Multiple JSON objects detected in one line - protocol error");
+                            }
+                            
+                            // Continue reading to find a valid response
+                            continue;
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    error!("IO error reading response for method {}: {}", method, e);
+                    return Err(anyhow!("IO error reading response: {}", e));
+                }
+                Err(_) => { // Timeout elapsed
+                    error!("Timeout ({:?}s) waiting for response to method {} (id {:?})", 
+                           timeout_duration.as_secs(), method, request_id);
+                    
+                    // Try to read any buffered data for diagnostics
+                    let mut debug_buffer = String::new();
+                    let debug_timeout = std::time::Duration::from_millis(100);
+                    
+                    match tokio::time::timeout(debug_timeout, reader.read_to_string(&mut debug_buffer)).await {
+                        Ok(Ok(bytes)) if bytes > 0 => {
+                            warn!("After timeout, read {} additional bytes: '{}'", bytes, debug_buffer);
+                        }
+                        _ => {
+                            warn!("No additional data available after timeout");
+                        }
+                    }
+                    
+                    // Release the lock before returning
+                    drop(stdout_guard);
+                    
+                    return Err(anyhow!(
+                        "Timeout after {}s waiting for response to method {} (id {:?})",
+                        timeout_duration.as_secs(), method, request_id
+                    ));
+                }
+            }
+        }
+        
+        // This should be unreachable due to the early returns above,
+        // but added as a fallback
+        error!("Reached end of read_matching_response without finding matching response");
+        Err(anyhow!("Failed to find matching response for method {}", method))
+    }
+
     /// Start a background task to listen for and handle JSON-RPC notifications
     async fn start_notification_listener(&self) -> Result<()> {
         // Clone the Arc<Mutex<ChildStdout>> for the listener task
@@ -212,156 +376,50 @@ impl ProcessTransport {
 #[async_trait]
 impl Transport for ProcessTransport {
     async fn send_request(&self, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
-        // Add a small delay between messages to avoid race conditions
-        // Consider if this is truly necessary or if locking handles it.
-        // tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-
-        let request_str = serde_json::to_string(&request)? + "\n";
-        // Use trace for potentially large/frequent raw messages
+        // Define constants for better readability
+        const REQUEST_TIMEOUT_SECS: u64 = 60;
+        const EMERGENCY_READ_TIMEOUT_MS: u64 = 100;
+        
+        // Ensure our request ends with a proper newline
+        // In JSON-RPC over stdin/stdout, each message must be a single line ending with \n
+        let mut request_str = serde_json::to_string(&request)?;
+        if !request_str.ends_with('\n') {
+            request_str.push('\n');
+        }
+        
         trace!("Sending raw request: {}", request_str.trim());
         info!("Sending request method: {}, id: {:?}", request.method, request.id);
 
-        // Send the request
+        // Send the request with proper message boundary
         {
             let mut stdin_guard = self.stdin.lock().await;
-            // info!("Writing request to stdin"); // Can be noisy, use debug or trace
+            debug!("Writing request to stdin (method: {})", request.method);
             stdin_guard.write_all(request_str.as_bytes()).await?;
-            // info!("Flushing stdin"); // Can be noisy
+            
+            // Explicitly flush to ensure the message is sent immediately
+            debug!("Flushing stdin after writing request");
             stdin_guard.flush().await?;
-            // info!("Releasing stdin lock (scope end)"); // Can be noisy
         }
+        debug!("Request sent and stdin flushed (method: {})", request.method);
 
-        // Read the response
-        // info!("Attempting to acquire stdout lock for response..."); // Can be noisy
-        let mut stdout_guard = self.stdout.lock().await;
-        // info!("Successfully acquired stdout lock for response."); // Can be noisy
+        // Prepare for reading the response
+        let timeout_duration = std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS);
+        let request_id = request.id.clone(); // Store the request ID for matching responses
 
-        let timeout_duration = std::time::Duration::from_secs(60); // Slightly longer default timeout
-        // info!("Reading response line with timeout of {}s", timeout_duration.as_secs()); // Can be noisy
+        // Use a separate function to handle the response reading with proper buffering
+        let response = self.read_matching_response(
+            &request.method,
+            &request_id,
+            timeout_duration
+        ).await?;
 
-        let mut reader = tokio::io::BufReader::new(&mut *stdout_guard);
-        let mut response_line = String::new();
-        let mut found_matching_response = false;
-        let request_id = request.id.clone(); // Clone the request ID for comparison
-
-        // Keep reading lines until we find a response matching our request ID
-        // This handles cases where notifications come in before the response
-        while !found_matching_response {
-            // Use timeout for the read_line operation
-            let read_result = tokio::time::timeout(timeout_duration, reader.read_line(&mut response_line)).await;
-
-            let response_str = match read_result {
-                Ok(Ok(0)) => {
-                    error!("EOF received while waiting for response to request id {:?} (method {}). Server likely closed stdout.", request_id, request.method);
-                    return Err(anyhow!("Server closed stdout unexpectedly (EOF)"));
-                }
-                Ok(Ok(n)) => {
-                    debug!("Read response line ({} bytes) while waiting for request id {:?}", n, request_id);
-                    if response_line.trim().is_empty() {
-                        response_line.clear();
-                        continue; // Skip empty lines
-                    }
-                    response_line.trim().to_string() // Trim whitespace and newline
-                }
-                Ok(Err(e)) => {
-                    error!("IO error reading response for request id {:?}: {}", request_id, e);
-                    return Err(anyhow!("IO error reading response: {}", e));
-                }
-                Err(_) => { // Timeout elapsed
-                    error!("Timeout ({:?}) waiting for response to request id {:?} (method {})", timeout_duration, request_id, request.method);
-                    // Attempt to read any buffered data for debugging, but don't block
-                    let mut remaining_buf = String::new();
-                    // Use a short timeout for this debug read
-                    // Need to import Duration from std::time
-                    use std::time::Duration; 
-                    match tokio::time::timeout(Duration::from_millis(100), reader.read_to_string(&mut remaining_buf)).await {
-                        Ok(Ok(bytes_read)) if bytes_read > 0 => {
-                             warn!("Read {} additional bytes after timeout: '{}'", bytes_read, remaining_buf.trim());
-                        }
-                        _ => {
-                             warn!("No additional data read after timeout.");
-                        }
-                    }
-                    return Err(anyhow!("Timeout waiting for response"));
-                }
-            };
-
-            // Parse the response string
-            match serde_json::from_str::<serde_json::Value>(&response_str) {
-                Ok(json_value) => {
-                    // Check if this is a notification (has method, no id)
-                    if json_value.get("method").is_some() && json_value.get("id").is_none() {
-                        debug!("Received notification while waiting for response to request id {:?}", request_id);
-                        // This is a notification, pass it to the notification handler and continue
-                        if let Ok(notification) = serde_json::from_value::<JsonRpcNotification>(json_value) {
-                            let handler_guard = self.notification_handler.lock().await;
-                            if let Some(handler) = &*handler_guard {
-                                let notification_clone = notification.clone();
-                                // Drop guard before calling handler
-                                drop(handler_guard);
-                                handler(notification_clone).await;
-                            }
-                        }
-                        // Continue reading to find the actual response
-                        response_line.clear();
-                        continue;
-                    } else if let Some(id) = json_value.get("id") {
-                        // This is a response, check if it matches our request ID
-                        if *id == request_id {
-                            found_matching_response = true;
-                            info!("Found matching response for request id {:?}", request_id);
-                        } else {
-                            warn!("Received response with id {:?} while waiting for id {:?}", id, request_id);
-                            // Not our response, continue reading
-                            response_line.clear();
-                            continue;
-                        }
-                    } else {
-                        warn!("Received malformed JSON-RPC message: {}", response_str);
-                        // Continue reading to find a proper response
-                        response_line.clear();
-                        continue;
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to parse JSON-RPC message: {}", e);
-                    error!("Raw message data: {}", response_str);
-                    // Continue reading to find a proper response
-                    response_line.clear();
-                    continue;
-                }
-            }
-        }
-
-        // Release the stdout lock *before* parsing
-        // info!("Releasing stdout lock before parsing."); // Can be noisy
-        let response_str = response_line.clone(); // Clone the response string before dropping the guard
-        drop(stdout_guard);
-        // info!("Stdout lock released."); // Can be noisy
-
-        // Log raw response at trace level
-        trace!("Raw response string received: {}", response_str);
-        info!("Attempting to parse response for request id {:?}", request.id);
-
-        // Parse the response string
-        let response: JsonRpcResponse = match serde_json::from_str(&response_str) {
-             Ok(resp) => resp,
-             Err(e) => {
-                  error!("Failed to parse JSON response for request id {:?}: {}", request.id, e);
-                  error!("Raw response data that failed parsing: {}", response_str);
-                  // Consider including more context if possible (e.g., first/last N chars)
-                  return Err(anyhow!("Failed to parse JSON response: {}. Raw data: '{}'", e, response_str));
-             }
-        };
-
-        // Log the successfully parsed response ID and potentially result/error presence
+        // Log the successfully parsed response 
         info!("Successfully parsed response for request id {:?}. Response ID: {:?}. Has result: {}, Has error: {}",
               request.id, response.id, response.result.is_some(), response.error.is_some());
-        // Log full response at debug level
         debug!("Parsed response details: {:?}", response);
 
         // Strict ID check - return error if mismatch.
-        // Allow Null ID response if request ID was Null (for notifications treated as requests, though unusual)
+        // Allow Null ID response if request ID was Null (for notifications treated as requests)
         if response.id != request.id && !(response.id.is_null() && request.id.is_null()) {
             error!(
                 "Response ID mismatch for method {}: expected {:?}, got {:?}. This indicates a critical protocol error.",
@@ -374,18 +432,25 @@ impl Transport for ProcessTransport {
     }
     
     async fn send_notification(&self, notification: JsonRpcNotification) -> Result<()> {
-        let notification_str = serde_json::to_string(&notification)? + "\n";
-        // Use trace for potentially large/frequent raw messages
+        // Ensure the notification string ends with a newline
+        let mut notification_str = serde_json::to_string(&notification)?;
+        if !notification_str.ends_with('\n') {
+            notification_str.push('\n');
+        }
+        
         trace!("Sending raw notification: {}", notification_str.trim());
         info!("Sending notification method: {}", notification.method);
 
+        // Lock stdin, write notification, and flush
         {
             let mut stdin_guard = self.stdin.lock().await;
+            debug!("Writing notification to stdin (method: {})", notification.method);
             stdin_guard.write_all(notification_str.as_bytes()).await?;
+            
+            debug!("Flushing stdin after writing notification");
             stdin_guard.flush().await?;
-            // debug!("Stdin flushed for notification: {}", notification.method); // Can be noisy
-            // info!("Notification sent successfully, releasing stdin lock (scope end)"); // Can be noisy
         }
+        debug!("Notification sent and stdin flushed (method: {})", notification.method);
 
         Ok(())
     }
