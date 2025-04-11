@@ -11,7 +11,7 @@ use rmcp::{
 };
 
 // Import local modules needed
-use mcp_tools::bash::BashTool;
+use mcp_tools::bash::BashTool; // Ensure BashTool is imported
 use mcp_tools::scraping_bee::ScrapingBeeTool;
 // use mcp_tools::long_running_task::LongRunningTaskManager; // Comment out for now
 
@@ -57,16 +57,28 @@ async fn main() {
 
     // Create tools with the ToolBox struct directly
     info!("Setting up tools with rmcp SDK...");
-    
-    // For now, just use the ScrapingBeeTool to verify our implementation
+
+    // Create a ToolBox to hold multiple tools
+    let mut toolbox = ToolBox::new();
+    info!("ToolBox created.");
+
+    // Instantiate and add ScrapingBeeTool
     info!("Creating ScrapingBeeTool instance...");
     let scraping_tool = ScrapingBeeTool::new();
-    
-    // Serve the tool directly - this works as we've seen before
-    info!("Initializing RMCP server with ScrapingBeeTool...");
-    let server = match scraping_tool.serve(stdio()).await {
+    toolbox.add_tool(scraping_tool);
+    info!("ScrapingBeeTool added to ToolBox.");
+
+    // Instantiate and add BashTool
+    info!("Creating BashTool instance...");
+    let bash_tool = BashTool::new();
+    toolbox.add_tool(bash_tool);
+    info!("BashTool added to ToolBox.");
+
+    // Serve the ToolBox containing all tools
+    info!("Initializing RMCP server with ToolBox...");
+    let server = match toolbox.serve(stdio()).await {
         Ok(s) => {
-            info!("RMCP server started successfully with tools.");
+            info!("RMCP server started successfully with ToolBox.");
             s
         }
         Err(e) => {
