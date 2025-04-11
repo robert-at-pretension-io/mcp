@@ -83,26 +83,29 @@ impl BashTool {
     async fn bash(
         &self,
         #[tool(aggr)] params: BashParams // Automatically aggregates JSON args into BashParams
-    ) -> String { // Return String directly, errors handled by `?` and macro
+    ) -> String { // Return String directly
         debug!("Executing bash tool with params: {:?}", params);
         let executor = BashExecutor::new();
 
-        // Execute the command, map error, and use `?` to propagate
-        let result = executor.execute(params).await.map_err(|e| {
-            let error_message = format!("Failed to execute bash command: {}", e);
-            error!("BashExecutor failed: {}", error_message); // Log the formatted message
-            RmcpError::internal_error(error_message, None) // Map anyhow::Error to RmcpError
-        })?; // Propagate RmcpError if execute fails
-
-        // Format the success/failure message as before
-        let output_text = format!( // Ensured standard string literal with correct \n escapes
-            "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-            result.status,
-            result.stdout,
-            result.stderr
-        );
-        // Return the formatted string directly on success (even if command failed)
-        output_text // Return String directly
+        // Execute the command and handle the Result explicitly
+        match executor.execute(params).await {
+            Ok(result) => {
+                // Format the success/failure message as before
+                format!(
+                    "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                    result.status,
+                    result.stdout,
+                    result.stderr
+                )
+            }
+            Err(e) => {
+                // If the executor itself fails, format the error into the returned string
+                let error_message = format!("Failed to execute bash command: {}", e);
+                error!("BashExecutor failed: {}", error_message); // Log the error
+                // Return the error message as the tool's output string
+                format!("TOOL EXECUTION ERROR: {}", error_message)
+            }
+        }
     }
 }
 

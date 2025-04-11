@@ -12,7 +12,7 @@ use crate::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResp
 // Removed unused ensure_id, standard_error_response
 use crate::tool_trait::{ExecuteFuture, Tool, standard_success_response, standard_tool_result}; // Keep Tool trait for now
 // Import DynService from rmcp::service and RoleServer for the correct trait object type
-use rmcp::{service::DynService, RoleServer, ServerHandler, ServiceExt}; // Corrected DynService import
+use rmcp::{service::DynService, RoleServer, ServiceExt}; // Removed unused ServerHandler import
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
