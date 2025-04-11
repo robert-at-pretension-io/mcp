@@ -119,9 +119,12 @@ impl ProcessTransport {
 #[async_trait]
 impl Transport for ProcessTransport {
     async fn send_request(&self, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
+        // Add a small delay between messages to avoid race conditions
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
         let request_str = serde_json::to_string(&request)? + "\n";
         info!("Sending request: {}", request_str.trim());
-        
+
         // First send the request directly
         {
             let mut stdin_guard = self.stdin.lock().await;
@@ -198,6 +201,9 @@ impl Transport for ProcessTransport {
         info!("Releasing stdout lock before parsing.");
         drop(stdout_guard);
         info!("Stdout lock released.");
+
+        // Add debug logging before parsing
+        debug!("Raw response string received: {}", response_str);
 
         // Log the raw response string before parsing
         info!("Attempting to parse response string (first 500 chars): {:.500}", response_str);

@@ -32,3 +32,11 @@ pub enum McpError {
     #[error("Protocol error: {0}")]
     Protocol(String),
 }
+
+// Add From implementation for serde_json::Error
+impl From<serde_json::Error> for McpError {
+    fn from(error: serde_json::Error) -> Self {
+        error!("JSON deserialization error: {}", error); // Log the error
+        Self::Protocol(format!("Failed to deserialize response: {}", error))
+    }
+}

@@ -34,6 +34,7 @@ pub struct McpClient<T: Transport> {
     request_timeout: Duration,
     initialized: bool,
     id_generator: Arc<IdGenerator>,
+    compatibility_mode: bool, // Added for protocol version handling
 }
 
 impl<T: Transport> McpClient<T> {
@@ -112,6 +113,15 @@ impl<T: Transport> McpClient<T> {
         debug!("Storing server info and capabilities.");
         self.server_info = Some(response.server_info.clone());
         self.server_capabilities = Some(response.capabilities.clone());
+
+        // Check protocol version compatibility
+        info!("Server protocol version: {}", response.protocol_version);
+        if response.protocol_version == "2024-11-05" {
+            info!("Using compatibility mode for 2024-11-05 protocol");
+            self.compatibility_mode = true;
+        } else {
+            self.compatibility_mode = false; // Ensure it's false for other versions
+        }
 
         // Before sending notification, make sure we've set the flag
         info!("Setting self.initialized = true");
@@ -298,7 +308,15 @@ impl<T: Transport> McpClient<T> {
     /// List all available tools on the server.
     pub async fn list_tools(&self) -> Result<ListToolsResult> {
         info!("Requesting tools list");
-        self.call("tools/list", None::<()>).await
+        // Use call_internal to bypass the ensure_initialized check if needed,
+        // but standard call should be fine after initialization.
+        let response: ListToolsResult = self.call("tools/list", None::<()>).await?;
+
+        // Add debug logging to see the structure received
+        debug!("List tools response structure: {:?}", response);
+
+        // Return the properly structured result
+        Ok(response)
     }
 
     /// Call a tool with the given name and arguments.
@@ -598,6 +616,7 @@ impl<T: Transport> McpClientBuilder<T> {
             request_timeout: self.timeout,
             initialized: false,
             id_generator: Arc::new(id_generator),
+            compatibility_mode: false, // Initialize in builder too
         }
     }
     

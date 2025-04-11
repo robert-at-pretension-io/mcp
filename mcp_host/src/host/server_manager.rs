@@ -384,13 +384,21 @@ impl ServerManager {
             .ok_or_else(|| anyhow!("Server not found: {}", server_name))?;
             
         info!("Sending tool list request to server {}", server_name);
-        
-        // The client's list_tools method now has special handling for numeric IDs and
-        // response validation to avoid the type mismatch issue
-        let list_tools_result = server.client.list_tools().await?; // This is now Vec<ToolInfo>
-        info!("Received tools list from server: {} tools", list_tools_result.len()); // Use .len() directly
 
-        Ok(list_tools_result) // Return the Vec<ToolInfo> directly
+        // Try-catch with detailed error reporting
+        match server.client.list_tools().await {
+            Ok(result) => {
+                // Use result.tools as list_tools now returns ListToolsResult
+                info!("Successfully received tools list: {} tools", result.tools.len());
+                debug!("Tools list details: {:?}", result); // Log the full result structure
+                Ok(result.tools) // Extract the Vec<ToolInfo> from the result
+            },
+            Err(e) => {
+                error!("Error listing tools from {}: {:?}", server_name, e); // Log the detailed error
+                // Propagate the error using context
+                Err(anyhow!("Failed to list tools from {}: {}", server_name, e)).context(e)
+            }
+        }
     }
 
     /// Call a tool on the specified server with the given arguments
