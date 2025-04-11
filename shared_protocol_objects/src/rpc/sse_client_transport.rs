@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc; // Removed unused Sender and self
 use tracing::{error, info, warn};
 
 use crate::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
@@ -62,14 +62,17 @@ impl SSEClientTransport {
     }
 
     async fn create_event_source(&self) -> Result<EventSource> {
-        let headers = self.headers.lock().unwrap().clone(); // Clone headers for builder
-        let mut builder = EventSource::builder(self.url.parse()?); // Use builder method
+        let headers_map = self.headers.lock().unwrap().clone(); // Clone headers map
 
-        for (k, v) in headers.iter() {
-            builder = builder.header(k, v);
+        // Build the request first
+        let mut request_builder = self.http_client.get(&self.url); // Use GET for SSE
+        for (k, v) in headers_map.iter() {
+            request_builder = request_builder.header(k, v);
         }
 
-        Ok(builder.build())
+        // Create EventSource from the RequestBuilder
+        EventSource::new(request_builder)
+            .map_err(|e| anyhow!("Failed to create EventSource from request: {}", e))
     }
 
     async fn send_post_request(&self, body: Value) -> Result<Value> {
