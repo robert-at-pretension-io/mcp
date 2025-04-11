@@ -4,10 +4,9 @@ use futures::future::BoxFuture;
 use std::sync::Arc;
 // Removed unused AsyncReadExt
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-// Import Command from std::process
-use std::process::{Command as StdCommand, Stdio, Child as StdChild};
-// Remove unused TokioCommand import alias
-use tokio::process::{ChildStdin, ChildStderr, ChildStdout}; 
+// Revert to using tokio::process::Command
+use tokio::process::{Child, ChildStdin, ChildStderr, ChildStdout, Command}; 
+use std::process::Stdio; // Keep Stdio
 use tokio::sync::{Mutex};
 use tracing::{debug, error, info, warn};
 
@@ -34,63 +33,52 @@ pub trait Transport: Send + Sync + 'static {
 
 /// Transport for communicating with a child process via stdin/stdout
 pub struct ProcessTransport {
-    // process field removed as StdChild is not Send/Sync
+    // Restore process field using tokio::process::Child
+    #[allow(dead_code)] // Keep allow dead_code for now
+    process: Arc<Mutex<Child>>, 
     pub stdin: Arc<Mutex<ChildStdin>>,
     pub stdout: Arc<Mutex<ChildStdout>>,
     pub stderr: Arc<Mutex<ChildStderr>>,
     notification_handler: Arc<Mutex<Option<NotificationHandler>>>,
-    _child_pid: u32, // Added field to store PID
+    // Removed _child_pid field
 }
 
 impl ProcessTransport {
-    /// Create a new process transport using std::process::Command
-    pub async fn new(mut command: StdCommand) -> Result<Self> {
-        // Set up std::process::Command with piped stdin/stdout/stderr
+    /// Create a new process transport using tokio::process::Command
+    pub async fn new(mut command: Command) -> Result<Self> { // Changed back to tokio::process::Command
+        // Set up tokio::process::Command with piped stdin/stdout/stderr
         command.stdin(Stdio::piped())
                .stdout(Stdio::piped())
                .stderr(Stdio::piped()); // Capture stderr
 
-        debug!("Spawning process using std::process: {:?}", command);
-        // Spawn using std::process::Command
-        let mut child: StdChild = command.spawn()
-            .map_err(|e| anyhow!("Failed to spawn process using std::process: {}", e))?;
-
-        // Take std handles
-        let std_stdin = child.stdin.take()
-            .ok_or_else(|| anyhow!("Failed to get std stdin handle from child process"))?;
-        let std_stdout = child.stdout.take()
-            .ok_or_else(|| anyhow!("Failed to get std stdout handle from child process"))?;
-        let std_stderr = child.stderr.take()
-            .ok_or_else(|| anyhow!("Failed to get std stderr handle from child process"))?;
-
-        // Wrap std handles in Tokio async wrappers
-        let stdin = ChildStdin::from_std(std_stdin)?;
-        let stdout = ChildStdout::from_std(std_stdout)?;
-        let stderr = ChildStderr::from_std(std_stderr)?;
+        debug!("Spawning process using tokio::process: {:?}", command);
+        // Spawn using tokio::process::Command
+        let mut child = command.spawn()
+             .map_err(|e| anyhow!("Failed to spawn process using tokio::process: {}", e))?;
+        
+        // Take tokio handles directly
+        let stdin = child.stdin.take()
+            .ok_or_else(|| anyhow!("Failed to get stdin handle from child process"))?;
+        let stdout = child.stdout.take()
+            .ok_or_else(|| anyhow!("Failed to get stdout handle from child process"))?;
+        let stderr = child.stderr.take() // Take stderr
+            .ok_or_else(|| anyhow!("Failed to get stderr handle from child process"))?;
 
         let stdin_arc = Arc::new(Mutex::new(stdin));
         let stdout_arc = Arc::new(Mutex::new(stdout));
-        let stderr_arc = Arc::new(Mutex::new(stderr)); // Wrap Tokio stderr
-
-        // We need a way to manage the StdChild lifetime or kill it.
-        // For now, we can't store StdChild directly as it's not Send/Sync.
-        // Let's store the PID and manage it manually if needed, though this is less ideal.
-        let child_pid = child.id();
-        debug!("Process spawned with PID: {}", child_pid);
-        // Consider using libraries like `async_process` if more robust management is needed.
+        let stderr_arc = Arc::new(Mutex::new(stderr)); // Wrap stderr
 
         let transport = Self {
-            // process field removed as StdChild is not Send/Sync
+            process: Arc::new(Mutex::new(child)), // Store the tokio::process::Child
             stdin: stdin_arc,
             stdout: stdout_arc,
             stderr: stderr_arc.clone(), // Clone Arc for the struct field
             notification_handler: Arc::new(Mutex::new(None)),
-            // Store PID instead of the process handle
-            _child_pid: child_pid, // Add a field to store PID (prefixed as it's mainly for debug/kill)
+            // Removed _child_pid field
         };
 
         // --- Re-enable stderr reader task ---
-        let stderr_reader_arc = stderr_arc; // Use the already cloned Arc
+        let stderr_reader_arc = stderr_arc; // Use the Arc created above
         tokio::spawn(async move {
             // Lock the Arc<Mutex<ChildStderr>>
             let mut stderr_locked = stderr_reader_arc.lock().await;
