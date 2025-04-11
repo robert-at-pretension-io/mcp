@@ -235,11 +235,15 @@ impl RmcpProtocolAdapter {
                 Ok(JsonRpcNotification {
                     jsonrpc: "2.0".to_string(),
                     method,
-                    params: Some(params),
+                    method,
+                    params: Some(params), // Pass Value directly
                 })
             },
-            // Catch-all for unhandled specific notification variants
-            _ => Err(anyhow!("Unsupported SDK Notification variant: {:?}", notification)),
+            // Catch-all for unhandled specific notification variants from the SDK
+            _ => {
+                 warn!("Received unsupported SDK Notification variant: {:?}", notification);
+                 Err(anyhow!("Unsupported SDK Notification variant received: {:?}", notification))
+            }
         }
     }
 
@@ -355,6 +359,7 @@ fn convert_id_to_sdk(id: &Value) -> Result<SdkId> {
                 Ok(NumberOrString::String(f.to_string().into()))
             } else {
                 Err(anyhow!("Numeric ID {} cannot be represented as u32 or string", n))
+                    .context("Invalid numeric ID format (unrepresentable)")
             }
         },
         Value::String(s) => {
@@ -362,12 +367,13 @@ fn convert_id_to_sdk(id: &Value) -> Result<SdkId> {
             Ok(NumberOrString::String(s.clone().into()))
         },
         Value::Null => {
-            warn!("Received null ID, SDK does not support null IDs");
-            Err(anyhow!("SDK does not support null IDs"))
+            // Keep warning, but error clearly states the issue
+            Err(anyhow!("Received null ID, which is not supported by the RMCP SDK"))
         },
         _ => {
-            error!("Unsupported JSON-RPC ID type: {:?}", id);
+            error!("Unsupported JSON-RPC ID type encountered: {:?}", id);
             Err(anyhow!("Unsupported JSON-RPC ID type for SDK conversion: {:?}", id))
+                .context("Invalid ID type")
         },
     }
 }
