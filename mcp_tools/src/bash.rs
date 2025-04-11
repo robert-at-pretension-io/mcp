@@ -102,9 +102,10 @@ impl BashTool {
             }
             Err(e) => {
                 // If the executor itself fails (e.g., can't spawn process), return an internal error
-                error!("BashExecutor failed: {}", e);
-                Err(RmcpError::internal_error( // Use aliased RmcpError
-                    &format!("Failed to execute bash command: {}", e),
+                let error_message = format!("Failed to execute bash command: {}", e);
+                error!("BashExecutor failed: {}", error_message); // Log the formatted message
+                Err(RmcpError::internal_error(
+                    error_message, // Pass the owned String
                     None, // Optional data
                 ))
             }
@@ -169,6 +170,7 @@ pub fn quick_bash_tool_info() -> ToolInfo {
             "required": ["cmd"],
             "additionalProperties": false
         }),
+        annotations: None, // Added missing field
     }
 }
 

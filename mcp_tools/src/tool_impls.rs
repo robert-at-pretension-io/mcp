@@ -11,7 +11,8 @@ use crate::process_html::extract_text_from_html;
 use crate::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
 // Removed unused ensure_id, standard_error_response
 use crate::tool_trait::{ExecuteFuture, Tool, standard_success_response, standard_tool_result}; // Keep Tool trait for now
-use rmcp::{ServerHandler, ServiceExt}; // Import SDK ServerHandler and ServiceExt
+// Import DynService and RoleServer for the correct trait object type
+use rmcp::{DynService, RoleServer, ServerHandler, ServiceExt};
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
@@ -304,8 +305,9 @@ impl Tool for MermaidChartTool {
 }
 
 // Factory function to create all available tools
-pub async fn create_tools() -> Result<Vec<Box<dyn ServerHandler>>> { // Return SDK ServerHandler trait object
-    let mut tools: Vec<Box<dyn ServerHandler>> = Vec::new(); // Use ServerHandler vector
+// Change return type to use the dyn-safe DynService trait object
+pub async fn create_tools() -> Result<Vec<Box<dyn DynService<RoleServer>>>> {
+    let mut tools: Vec<Box<dyn DynService<RoleServer>>> = Vec::new(); // Use DynService vector
 
     // Add ScrapingBee tool if environment variable is set
     // TODO: Convert ScrapingBeeTool to SDK and add using into_dyn()

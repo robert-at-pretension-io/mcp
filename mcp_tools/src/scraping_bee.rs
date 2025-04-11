@@ -77,6 +77,7 @@ pub fn scraping_tool_info() -> ToolInfo {
             "required": ["url"],
             "additionalProperties": false
         }),
+        annotations: None, // Added missing field
     }
 }
 

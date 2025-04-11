@@ -14,6 +14,7 @@ pub fn neverbounce_tool_info() -> ToolInfo {
             },
             "required": ["email"]
         }),
+        annotations: None, // Added missing field
     }
 }
 

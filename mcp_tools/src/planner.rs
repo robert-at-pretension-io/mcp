@@ -55,6 +55,7 @@ pub fn planner_tool_info() -> ToolInfo {
             },
             "required": ["user_request", "ai_interpretation", "available_tools"]
         }),
+        annotations: None, // Added missing field
     }
 }
 

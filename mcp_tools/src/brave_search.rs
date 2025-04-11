@@ -126,6 +126,7 @@ pub fn search_tool_info() -> ToolInfo {
             "required": ["query"],
             "additionalProperties": false
         }),
+        annotations: None, // Added missing field
     }
 }
 

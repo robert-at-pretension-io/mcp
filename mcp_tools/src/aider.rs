@@ -323,6 +323,7 @@ pub fn aider_tool_info() -> ToolInfo {
             "required": ["directory", "message"],
             "additionalProperties": false
         }),
+        annotations: None, // Added missing field
     }
 }
 

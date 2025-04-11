@@ -501,5 +501,6 @@ pub fn regex_replace_tool_info() -> shared_protocol_objects::ToolInfo {
             "required": ["file_path", "start_pattern", "end_pattern", "replacement"],
             "additionalProperties": false
         }),
+        annotations: None, // Added missing field
     }
 }

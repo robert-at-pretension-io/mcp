@@ -317,6 +317,7 @@ pub fn long_running_tool_info() -> ToolInfo {
             },
             "required": ["command"]
         }),
+        annotations: None, // Added missing field
     }
 }
 

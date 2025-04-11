@@ -169,6 +169,7 @@ pub fn git_tool_info() -> shared_protocol_objects::ToolInfo {
             },
             "required": ["action"],
             "additionalProperties": false
-        })
+        }),
+        annotations: None, // Added missing field
     }
 }

@@ -133,6 +133,7 @@ pub fn mermaid_chart_tool_info() -> shared_protocol_objects::ToolInfo {
             },
             "required": ["files"]
         }),
+        annotations: None, // Added missing field
     }
 }
 

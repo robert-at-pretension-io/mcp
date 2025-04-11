@@ -212,6 +212,7 @@ pub fn gmail_tool_info() -> ToolInfo {
             },
             "required": ["action"]
         }),
+        annotations: None, // Added missing field
     }
 }
 
