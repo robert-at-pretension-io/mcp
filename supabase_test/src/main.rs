@@ -9,6 +9,70 @@ use tokio::process::Command;
 use tokio::time::{sleep, timeout, Duration};
 use std::time::Instant;
 
+// Protocol version information
+struct ProtocolInfo {
+    // The version we request
+    client_version: String,
+    // The version the server supports (extracted from response)
+    server_version: Option<String>,
+    // The negotiated version to use for subsequent requests
+    negotiated_version: Option<String>,
+}
+
+impl ProtocolInfo {
+    fn new(client_version: &str) -> Self {
+        Self {
+            client_version: client_version.to_string(),
+            server_version: None,
+            negotiated_version: None,
+        }
+    }
+    
+    // Update with server information from initialize response
+    fn update_from_response(&mut self, response: &Value) -> AnyhowResult<()> {
+        // Extract server protocol version if available
+        if let Some(server_info) = response.get("serverInfo") {
+            if let Some(version) = server_info.get("protocolVersion").and_then(|v| v.as_str()) {
+                info!("Server supports protocol version: {}", version);
+                self.server_version = Some(version.to_string());
+            }
+        }
+        
+        // Extract negotiated version if available
+        if let Some(version) = response.get("protocolVersion").and_then(|v| v.as_str()) {
+            info!("Negotiated protocol version: {}", version);
+            self.negotiated_version = Some(version.to_string());
+        } else {
+            // If no explicit negotiated version, use the requested one
+            info!("No explicit protocol version in response, using requested version: {}", self.client_version);
+            self.negotiated_version = Some(self.client_version.clone());
+        }
+        
+        Ok(())
+    }
+    
+    // Get the best version to use for requests
+    fn get_effective_version(&self) -> &str {
+        self.negotiated_version.as_deref().unwrap_or(&self.client_version)
+    }
+    
+    // Log detailed protocol information
+    fn log_protocol_info(&self) {
+        info!("Protocol version information:");
+        info!("  Client requested: {}", self.client_version);
+        
+        match &self.server_version {
+            Some(v) => info!("  Server supports: {}", v),
+            None => info!("  Server didn't specify supported version"),
+        }
+        
+        match &self.negotiated_version {
+            Some(v) => info!("  Negotiated version: {}", v),
+            None => info!("  No negotiated version yet, using client default"),
+        }
+    }
+}
+
 // Create a more explicit JSON-RPC request
 fn create_request(method: &str, params: Option<Value>, id: &str) -> JsonRpcRequest {
     JsonRpcRequest {
@@ -17,6 +81,24 @@ fn create_request(method: &str, params: Option<Value>, id: &str) -> JsonRpcReque
         params,
         id: json!(id),
     }
+}
+
+// Create an initialize request with protocol version
+fn create_initialize_request(id: &str, protocol_version: &str) -> JsonRpcRequest {
+    let init_params = json!({
+        "protocolVersion": protocol_version,
+        "capabilities": {
+            "experimental": {},
+            "sampling": {},
+            "roots": {"list_changed": false}
+        },
+        "clientInfo": {
+            "name": "supabase-rust-test",
+            "version": "1.0.0"
+        }
+    });
+    
+    create_request("initialize", Some(init_params), id)
 }
 
 // Create a JSON-RPC notification (no ID field)
@@ -66,22 +148,13 @@ async fn main() -> AnyhowResult<()> {
     // Using direct transport access for more explicit control
     // This approach mirrors the Python script's method
     
-    // Step 1: Send initialize request manually
-    info!("Sending manual initialize request...");
-    let init_params = json!({
-        "protocolVersion": "2025-03-26",
-        "capabilities": {
-            "experimental": {},
-            "sampling": {},
-            "roots": {"list_changed": false}
-        },
-        "clientInfo": {
-            "name": "supabase-rust-test",
-            "version": "1.0.0"
-        }
-    });
+    // Initialize protocol information with default version
+    let mut protocol_info = ProtocolInfo::new("2025-03-26");
+    info!("Starting with client protocol version: {}", protocol_info.client_version);
     
-    let init_request = create_request("initialize", Some(init_params), "init-123");
+    // Step 1: Send initialize request with protocol version
+    info!("Sending initialize request with protocol version: {}", protocol_info.client_version);
+    let init_request = create_initialize_request("init-123", &protocol_info.client_version);
     info!("Request: {}", serde_json::to_string_pretty(&init_request).unwrap());
     
     // Send the request and wait for response
@@ -116,6 +189,15 @@ async fn main() -> AnyhowResult<()> {
     let result = init_response.result.ok_or_else(|| anyhow!("No result in initialize response"))?;
     info!("Server info: {}", result);
     
+    // Process protocol version information
+    if let Err(e) = protocol_info.update_from_response(&result) {
+        warn!("Failed to process protocol version information: {}", e);
+        // Continue with default version
+    }
+    
+    // Log detailed protocol information
+    protocol_info.log_protocol_info();
+    
     // Step 2: Send initialized notification - CRITICAL for MCP protocol
     info!("Sending initialized notification...");
     let initialized_notification = create_notification("notifications/initialized", None);
@@ -130,8 +212,11 @@ async fn main() -> AnyhowResult<()> {
     info!("Waiting for server to process notification...");
     sleep(Duration::from_millis(500)).await;
     
-    // Step 3: Send tools/list request
-    info!("Sending manual tools/list request...");
+    // Step 3: Send tools/list request with negotiated protocol version
+    let effective_version = protocol_info.get_effective_version();
+    info!("Sending tools/list request using protocol version: {}", effective_version);
+    // For now, the tools/list request doesn't use the protocol version directly, 
+    // but it's good to log it and have it available for future use
     let tools_request = create_request("tools/list", None, "tools-123");
     info!("Request: {}", serde_json::to_string_pretty(&tools_request).unwrap());
     
