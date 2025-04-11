@@ -5,7 +5,7 @@ This library provides a standard JSON-RPC client implementation for the Model Co
 ## Features
 
 * Fully async implementation using Tokio
-* Pluggable transport system (process, TCP, WebSocket)
+* Pluggable transport system (process, SSE, potentially TCP/WebSocket)
 * Support for notifications and progress tracking
 * Type-safe API for common MCP operations
 * Error handling with detailed error types
@@ -68,12 +68,14 @@ The client is built around these key components:
 1. **McpClient** - The main client interface with methods for MCP operations
 2. **Transport** - A trait abstracting the communication channel
 3. **ProcessTransport** - Implementation for child process communication
-4. **ProgressTracker** - Helper for managing progress notifications
-5. **IdGenerator** - Generates unique request IDs
+4. **SSEClientTransport** - Implementation for Server-Sent Events communication (Client-side)
+5. **SSEServerTransport** - Implementation for Server-Sent Events communication (Server-side, requires `sse_server` feature)
+6. **ProgressTracker** - Helper for managing progress notifications
+7. **IdGenerator** - Generates unique request IDs
 
 ## Transport System
 
-The Transport trait allows implementing different communication methods:
+The `Transport` trait allows implementing different communication methods:
 
 ```rust
 #[async_trait]
@@ -83,7 +85,10 @@ pub trait Transport: Send + Sync + 'static {
     async fn subscribe_to_notifications(&self, handler: NotificationHandler) -> Result<()>;
     async fn close(&self) -> Result<()>;
 }
-```
+
+Available implementations:
+*   `ProcessTransport`: Communicates with a child process via stdin/stdout.
+*   `SSEClientTransport`: Communicates with an HTTP server using Server-Sent Events.
 
 ## Error Handling
 
@@ -191,6 +196,13 @@ impl Transport for WebSocketTransport {
 Then use it with the client:
 
 ```rust
-let transport = WebSocketTransport::new("ws://localhost:8080").await?;
+// Example using ProcessTransport
+let mut command = Command::new("path/to/server");
+let transport = ProcessTransport::new(command).await?;
 let client = McpClientBuilder::new(transport).connect().await?;
+
+// Example using SSEClientTransport
+let transport = SSEClientTransport::new("http://localhost:3000/".to_string());
+// transport.add_header("Authorization", "Bearer token"); // Optional headers
+let client = McpClientBuilder::new(transport).connect().await?; // connect() will also start the SSE listener
 ```
