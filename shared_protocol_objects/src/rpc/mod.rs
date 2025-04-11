@@ -1,8 +1,4 @@
 // Main module exports for RPC client
-mod client;
-mod transport;
-mod client;
-mod transport;
 mod error;
 mod id_generator;
 mod progress;
