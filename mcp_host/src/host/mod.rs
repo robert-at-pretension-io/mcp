@@ -87,13 +87,11 @@ impl MCPHost {
             for (name, server_config) in &new_config.servers {
                 if !current_servers.contains_key(name) {
                     info!("Server '{}' marked for start.", name);
-                    // Prepare command details for starting later
-                    let mut command = std::process::Command::new(&server_config.command);
-                    if let Some(args) = &server_config.args {
-                        command.args(args);
-                    }
-                    command.envs(server_config.env.clone());
-                    servers_to_start.push((name.clone(), command));
+                    // Prepare command components for starting later
+                    let program = server_config.command.clone();
+                    let args = server_config.args.clone().unwrap_or_default();
+                    let envs = server_config.env.clone();
+                    servers_to_start.push((name.clone(), program, args, envs));
                 }
                 // Remove from the set of current servers, leaving only those to be stopped
                 current_server_names.remove(name);
@@ -121,13 +119,14 @@ impl MCPHost {
 
         // Start new servers
         if !servers_to_start.is_empty() {
-            info!("Starting new servers: {:?}", servers_to_start.iter().map(|(n, _)| n).collect::<Vec<_>>());
-            for (name, command) in servers_to_start {
+            info!("Starting new servers: {:?}", servers_to_start.iter().map(|(n, _, _, _)| n).collect::<Vec<_>>());
+            for (name, program, args, envs) in servers_to_start {
                 // ---> ADDED LOG <---
                 info!("apply_config: Preparing to call start_server_with_command for '{}'", name);
                 // ---> END ADDED LOG <---
-                debug!("Attempting to start server '{}' with command: {:?}", name, command);
-                if let Err(e) = server_manager.start_server_with_command(&name, command).await {
+                debug!("Attempting to start server '{}' with program: {}, args: {:?}, envs: {:?}", name, program, args, envs.keys());
+                // Pass components instead of a Command object
+                if let Err(e) = server_manager.start_server_with_components(&name, &program, &args, &envs).await {
                     error!("Failed to start server '{}': {}", name, e);
                     // Decide if you want to continue or return error
                 } else {
