@@ -9,7 +9,9 @@
     "memory": {
       "command": "./target/debug/mcp_tools",
       "env": {
-        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}"
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
+        "MCP_TOOLS_ENABLED": "${MCP_TOOLS_ENABLED}", // Add this
+        "RUST_LOG": "${RUST_LOG:-info}" // Add this, default to info if not set
       }
     }
   }
