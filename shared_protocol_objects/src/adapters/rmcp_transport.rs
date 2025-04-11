@@ -26,8 +26,8 @@ pub struct RmcpTransportAdapter {
     request_id_counter: AtomicU32,
     // Store the notification handler provided by our application
     notification_handler: Arc<tokio::sync::Mutex<Option<NotificationHandler>>>,
-    // Task handle for the background notification listener
-    _notification_listener_handle: Option<tokio::task::JoinHandle<()>>,
+    // Task handle for the background notification listener - Removed as storing it back is problematic
+    // _notification_listener_handle: Option<tokio::task::JoinHandle<()>>,
     // Store timeout duration
     request_timeout: Duration,
 }
@@ -54,7 +54,7 @@ impl RmcpTransportAdapter {
             inner: service_arc,
             request_id_counter: AtomicU32::new(1), // Start counter at 1
             notification_handler: Arc::new(tokio::sync::Mutex::new(None)),
-            _notification_listener_handle: None, // Initialize later in subscribe
+            // _notification_listener_handle: None, // Removed field
             request_timeout,
         })
     }
@@ -212,16 +212,19 @@ impl Transport for RmcpTransportAdapter {
 
     async fn subscribe_to_notifications(&self, handler: NotificationHandler) -> Result<()> {
         tracing::debug!("Subscribing to notifications using SDK Service adapter");
-        let mut handler_guard = self.notification_handler.lock().await;
-        *handler_guard = Some(handler.clone()); // Store the handler
-
-        // Check if the listener task is already running
-        if self._notification_listener_handle.is_some() {
-            tracing::warn!("Notification listener already started. Overwriting handler.");
-            return Ok(());
-        }
+        // Store the handler
+        {
+            let mut handler_guard = self.notification_handler.lock().await;
+            if handler_guard.is_some() {
+                 tracing::warn!("Overwriting existing notification handler during subscribe.");
+            }
+            *handler_guard = Some(handler.clone());
+        } // Lock released
 
         // Spawn a task to listen for notifications from the SDK Service.
+        // NOTE: This assumes the SDK Service allows multiple listeners or handles
+        // registration idempotently if called multiple times. If not, we might need
+        // to ensure this is only called once per adapter instance.
         // This requires the SDK Service to provide a way to receive notifications,
         // e.g., a stream or a callback registration mechanism.
         // Assuming `self.inner.on_notification()` exists and takes a callback.
@@ -262,15 +265,18 @@ impl Transport for RmcpTransportAdapter {
                  //    // ... call handler ...
                  // }
                  // tracing::info!("SDK Notification listener finished.");
+            } else {
+                 tracing::info!("SDK Notification listener task finished.");
+                 // Optional: Handle cleanup or notify if the listener stops unexpectedly.
             }
         });
 
-        // Store the handle (though it's mutable borrow issue here, need to fix struct def)
-        // self._notification_listener_handle = Some(handle); // Cannot assign back to self here easily
+        // We don't store the handle in self anymore.
+        // If explicit cancellation of the listener is needed later,
+        // the adapter design would need adjustment (e.g., using a shared cancellation token).
+        drop(handle); // Avoid unused variable warning if handle isn't used
 
         Ok(())
-        // TODO: Fix the storage of the JoinHandle. Maybe RmcpTransportAdapter needs to be mutable in subscribe?
-        // Or store the handle elsewhere / don't store it if not needed for explicit shutdown.
     }
 
     async fn close(&self) -> Result<()> {

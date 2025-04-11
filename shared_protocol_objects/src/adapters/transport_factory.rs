@@ -26,8 +26,9 @@ pub async fn create_process_transport_with_timeout(mut command: Command, request
                 Ok(Box::new(adapter))
             },
             Err(e) => {
-                // Log the error and fall back to our native implementation
-                tracing::warn!("Failed to create RMCP transport adapter: {}. Falling back to native transport.", e);
+                // Log the specific error causing the failure before falling back
+                tracing::error!(error = %e, "Failed to create RmcpTransportAdapter"); // Log the actual error object
+                tracing::warn!("Falling back to native transport implementation due to RMCP adapter creation failure.");
                 feature_detection::set_using_rmcp(false); // Mark native as active
 
                 // Create our native implementation with the same timeout
