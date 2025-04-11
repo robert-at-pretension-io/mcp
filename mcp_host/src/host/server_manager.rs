@@ -6,9 +6,10 @@ use shared_protocol_objects::{
 };
 // Removed unused async_trait
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
+// Revert Command import to tokio::process
+use tokio::process::{Command, Child as TokioChild}; 
+use std::process::Stdio; // Keep Stdio
 use std::sync::Arc;
-use tokio::process::Child as TokioChild;
 use tokio::sync::Mutex;
 use std::time::Duration;
 
@@ -169,15 +170,15 @@ pub mod production {
     }
     
     impl ProcessTransport {
-        // Update function signature to accept std::process::Command
-        pub async fn new(command: std::process::Command) -> anyhow::Result<Self> { 
+        // Change back to accept tokio::process::Command
+        pub async fn new(command: Command) -> anyhow::Result<Self> { 
             Ok(Self(rpc::ProcessTransport::new(command).await?))
         }
 
         // Helper method to create a new transport for a specific request type
         // This helps avoid the mixed response type issue by using separate transports
-        // Update function signature to accept std::process::Command
-        pub async fn new_for_request_type(command: std::process::Command, request_type: &str) -> anyhow::Result<Self> { 
+        // Change back to accept tokio::process::Command
+        pub async fn new_for_request_type(command: Command, request_type: &str) -> anyhow::Result<Self> { 
             log::info!("Creating dedicated transport for request type: {}", request_type);
             // Create a new transport for this specific request type
             Ok(Self(rpc::ProcessTransport::new(command).await?))
@@ -458,10 +459,9 @@ impl ServerManager {
         info!("Starting server '{}' with command: {:?}", name, command);
         debug!("Preparing tokio::process::Command for server '{}'", name);
 
-        // Prepare the command for spawning the process
-        let mut tokio_command_spawn = tokio::process::Command::new(command.get_program());
-        tokio_command_spawn.args(command.get_args())
-                           .stdin(Stdio::piped())
+        // Prepare the command for spawning the process (use the passed-in command directly)
+        let mut tokio_command_spawn = command; // Use the command passed in
+        tokio_command_spawn.stdin(Stdio::piped())
                            .stdout(Stdio::piped())
                            .stderr(Stdio::piped());
 
@@ -482,26 +482,26 @@ impl ServerManager {
                 .map_err(|e| anyhow!("Failed to spawn process for server '{}': {}", name, e))?;
             info!("Process spawned successfully for server '{}', PID: {:?}", name, process.id());
 
-            // Create a separate std::process::Command for the transport
-            // (needed by ProcessTransport::new which now takes StdCommand)
-            let mut transport_cmd = std::process::Command::new(command.get_program());
+            // Create the transport using the *same* command configuration
+            // ProcessTransport::new now takes tokio::process::Command again
+            // We need to clone the command configuration to pass to ProcessTransport::new
+            // as the original command was consumed by spawn()
+            let mut transport_cmd = Command::new(command.get_program()); // Create a new tokio Command
             transport_cmd.args(command.get_args());
-            // Copy environment variables from the original command
+            // Copy environment variables
             for (key, val) in command.get_envs() {
-                if let (Some(k), Some(v)) = (key.to_str(), val.map(|v| v.to_str()).flatten()) {
-                    transport_cmd.env(k, v);
-                }
+                 if let (Some(k), Some(v)) = (key.to_str(), val.map(|v| v.to_str()).flatten()) {
+                     transport_cmd.env(k, v);
+                 }
             }
-            // Stdio is configured within ProcessTransport::new now
 
             debug!("Creating transport for server '{}'...", name);
-            // Pass the std::process::Command to ProcessTransport::new
-            let transport = ProcessTransport::new(transport_cmd).await
+            // Pass the cloned tokio::process::Command to ProcessTransport::new
+            let transport = ProcessTransport::new(transport_cmd).await // Pass the cloned tokio command
                  .map_err(|e| anyhow!("Failed to create transport for server '{}': {}", name, e))?;
             info!("Transport created for server '{}'.", name);
 
             // Create and initialize the client
-            // Removed misplaced .stderr() and redundant env var loop
             debug!("Creating MCP client for server '{}'...", name);
             let inner_client = shared_protocol_objects::rpc::McpClientBuilder::new(transport)
                 .client_info(&self.client_info.name, &self.client_info.version)

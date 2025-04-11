@@ -6,8 +6,9 @@ use futures::future::BoxFuture;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
 // Removed unused imports: AsyncBufReadExt, AsyncWriteExt, BufReader
-// Removed unused import: use tokio::process::Command;
-use tracing::{debug, error, info, trace, warn}; // Added trace
+// Restore tokio::process::Command import
+use tokio::process::Command; 
+use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 
 use crate::{
