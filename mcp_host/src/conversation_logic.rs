@@ -500,8 +500,8 @@ pub async fn resolve_assistant_response(
                                         // Loop continues to re-evaluate the revised response
                                         continue; // Go to next loop iteration
                                     }
-                                    Err(e) => {
-                                        error!("Error getting revised AI response after verification failure: {:?}", e);
+                                    Err(_e) => { // Prefixed unused variable
+                                        error!("Error getting revised AI response after verification failure: {:?}", _e);
                                         warn!("Returning unverified response due to error during revision.");
                                         let outcome = VerificationOutcome {
                                             final_response: current_response, // Return the response *before* the failed revision attempt

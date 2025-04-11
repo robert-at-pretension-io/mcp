@@ -135,11 +135,35 @@ impl Transport for ProcessTransport {
 
         // Add a timeout to the read loop
         let timeout_duration = std::time::Duration::from_secs(300);
-        info!("Starting response read loop with {}s timeout...", timeout_duration.as_secs());
+        info!("Starting response read loop (using read_line) with {}s timeout...", timeout_duration.as_secs());
 
+        // --- Use read_line instead of read_buf loop ---
+        let mut response_line = String::new(); // Use String directly
+        match tokio::time::timeout(timeout_duration, reader.read_line(&mut response_line)).await {
+            Ok(Ok(0)) => { // EOF
+                error!("Child process closed stdout without sending response line.");
+                return Err(anyhow!("Child process closed stdout without sending response"));
+            }
+            Ok(Ok(n)) => { // Successfully read a line
+                info!("Successfully read line ({} bytes) using read_line", n);
+                response_str = response_line.trim().to_string(); // Assign to existing variable
+                info!("Trimmed response string: {}", response_str);
+            }
+            Ok(Err(e)) => { // I/O error
+                error!("Error reading line from stdout: {}", e);
+                return Err(anyhow!("I/O error reading response line: {}", e));
+            }
+            Err(_) => { // Timeout
+                error!("Response read (read_line) timed out after {} seconds", timeout_duration.as_secs());
+                return Err(anyhow!("Timed out waiting for response line from server"));
+            }
+        }
+        // --- End of read_line logic ---
+
+        /* --- Start of removed read_buf loop ---
         match tokio::time::timeout(timeout_duration, async {
-            let mut retry_count = 0;
-            let max_retries = 5;
+            let mut _retry_count = 0; // Prefixed with underscore
+            let _max_retries = 5; // Prefixed with underscore
             
             loop {
                 // --- Start Enhanced Logging ---
@@ -206,31 +230,7 @@ impl Transport for ProcessTransport {
                         error!("Error reading from stdout: {}", e);
                         return Err(anyhow!("I/O error reading from stdout: {}", e));
                     }
-                }
-            }
-        }).await {
-            Ok(Ok(line)) => {
-                // Successfully read a line (complete or partial at EOF)
-                // Check if we got an empty line from an EOF retry
-                if line.is_empty() {
-                    error!("Empty response returned. This likely indicates a server communication issue.");
-                    return Err(anyhow!("Empty response from server - connection may be broken"));
-                }
-                
-                info!("Raw response line (before trim): {:?}", line);
-                response_str = line.trim().to_string(); // Trim whitespace/newline
-                info!("Trimmed response string: {}", response_str);
-            }
-            Ok(Err(e)) => {
-                // Inner future returned an error (I/O, decoding, buffer limit)
-                error!("Error during response read loop: {}", e);
-                return Err(e);
-            }
-            Err(_) => { // Outer timeout error
-                error!("Response read timed out after {} seconds", timeout_duration.as_secs());
-                return Err(anyhow!("Timed out waiting for response line from server"));
-            }
-        }
+        */ // --- End of removed read_buf loop ---
 
         // Release the stdout lock
         drop(stdout_guard);
