@@ -83,33 +83,26 @@ impl BashTool {
     async fn bash(
         &self,
         #[tool(aggr)] params: BashParams // Automatically aggregates JSON args into BashParams
-    ) -> std::result::Result<String, RmcpError> { // Explicitly use std::result::Result
+    ) -> String { // Return String directly, errors handled by `?` and macro
         debug!("Executing bash tool with params: {:?}", params);
         let executor = BashExecutor::new();
 
-        // Execute the command
-        match executor.execute(params).await {
-            Ok(result) => {
-                // Format the success/failure message as before
-                let output_text = format!( // Ensured standard string literal with correct \n escapes
-                    "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                    result.status,
-                    result.stdout,
-                    result.stderr
-                );
-                // Return the formatted string directly on success (even if command failed)
-                Ok(output_text)
-            }
-            Err(e) => {
-                // If the executor itself fails (e.g., can't spawn process), return an internal error
-                let error_message = format!("Failed to execute bash command: {}", e);
-                error!("BashExecutor failed: {}", error_message); // Log the formatted message
-                Err(RmcpError::internal_error(
-                    error_message, // Pass the owned String
-                    None, // Optional data
-                ))
-            }
-        }
+        // Execute the command, map error, and use `?` to propagate
+        let result = executor.execute(params).await.map_err(|e| {
+            let error_message = format!("Failed to execute bash command: {}", e);
+            error!("BashExecutor failed: {}", error_message); // Log the formatted message
+            RmcpError::internal_error(error_message, None) // Map anyhow::Error to RmcpError
+        })?; // Propagate RmcpError if execute fails
+
+        // Format the success/failure message as before
+        let output_text = format!( // Ensured standard string literal with correct \n escapes
+            "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+            result.status,
+            result.stdout,
+            result.stderr
+        );
+        // Return the formatted string directly on success (even if command failed)
+        output_text // Return String directly
     }
 }
 
