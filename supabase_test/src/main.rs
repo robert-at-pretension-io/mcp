@@ -1,13 +1,32 @@
-use anyhow::{anyhow, bail, Context, Result as AnyhowResult};
+use anyhow::{anyhow, Result as AnyhowResult};
 use log::{debug, error, info, warn};
-use serde_json::Value;
+use serde_json::{self, json, Value};
 use shared_protocol_objects::{
-    ClientCapabilities, JsonRpcRequest, JsonRpcResponse, RootsCapability, ToolsCapability,
-    rpc::{ProcessTransport, McpClientBuilder},
+    JsonRpcRequest, JsonRpcNotification,
+    rpc::{ProcessTransport, Transport},
 };
 use tokio::process::Command;
 use tokio::time::{sleep, timeout, Duration};
 use std::time::Instant;
+
+// Create a more explicit JSON-RPC request
+fn create_request(method: &str, params: Option<Value>, id: &str) -> JsonRpcRequest {
+    JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: method.to_string(),
+        params,
+        id: json!(id),
+    }
+}
+
+// Create a JSON-RPC notification (no ID field)
+fn create_notification(method: &str, params: Option<Value>) -> JsonRpcNotification {
+    JsonRpcNotification {
+        jsonrpc: "2.0".to_string(),
+        method: method.to_string(),
+        params: params.unwrap_or(json!(null)),
+    }
+}
 
 #[tokio::main]
 async fn main() -> AnyhowResult<()> {
@@ -44,157 +63,137 @@ async fn main() -> AnyhowResult<()> {
         }
     };
 
-    // Create client with improved error handling
-    info!("Creating MCP client...");
-    let client_start = Instant::now();
-    let client = McpClientBuilder::new(transport)
-        .client_info("supabase-test", "1.0.0")
-        .timeout(Duration::from_secs(30)) // Set a timeout for requests
-        .build();
-    debug!("Client created in {:?}", client_start.elapsed());
-
-    // Set up capabilities with detailed debugging
-    let capabilities = ClientCapabilities {
-        client: Some(shared_protocol_objects::Implementation {
-            name: "supabase-test".to_string(),
-            version: "1.0.0".to_string(),
-        }),
-        roots: Some(RootsCapability {
-            list_changed: true,
-        }),
-        tools: Some(ToolsCapability {
-            list_changed: true,
-        }),
-        ..Default::default()
+    // Using direct transport access for more explicit control
+    // This approach mirrors the Python script's method
+    
+    // Step 1: Send initialize request manually
+    info!("Sending manual initialize request...");
+    let init_params = json!({
+        "protocolVersion": "2025-03-26",
+        "capabilities": {
+            "experimental": {},
+            "sampling": {},
+            "roots": {"list_changed": false}
+        },
+        "clientInfo": {
+            "name": "supabase-rust-test",
+            "version": "1.0.0"
+        }
+    });
+    
+    let init_request = create_request("initialize", Some(init_params), "init-123");
+    info!("Request: {}", serde_json::to_string_pretty(&init_request).unwrap());
+    
+    // Send the request and wait for response
+    let init_start = Instant::now();
+    let init_response = match timeout(Duration::from_secs(10), transport.send_request(init_request)).await {
+        Ok(result) => {
+            match result {
+                Ok(response) => {
+                    info!("Got initialize response in {:?}", init_start.elapsed());
+                    debug!("Response: {}", serde_json::to_string_pretty(&response).unwrap());
+                    response
+                }
+                Err(e) => {
+                    error!("Initialize request failed: {:?}", e);
+                    return Err(e.into());
+                }
+            }
+        }
+        Err(_) => {
+            error!("Initialize request timed out");
+            return Err(anyhow!("Initialize request timed out"));
+        }
     };
     
-    debug!("Initializing client with capabilities: {:?}", capabilities);
-    
-    // Initialize the connection with timeout handling
-    let init_start = Instant::now();
-    debug!("Sending initialize request...");
-    
-    match timeout(Duration::from_secs(10), client.initialize(capabilities)).await {
-        Ok(result) => {
-            match result {
-                Ok(server_capabilities) => {
-                    info!("Successfully initialized connection in {:?}", init_start.elapsed());
-                    debug!("Server capabilities: {:?}", server_capabilities);
-                }
-                Err(e) => {
-                    error!("Initialization failed: {:?}", e);
-                    return Err(anyhow!("Failed to initialize connection: {}", e));
-                }
-            }
-        }
-        Err(_) => {
-            error!("Initialization timed out after 10 seconds");
-            return Err(anyhow!("Connection initialization timed out"));
-        }
+    // Check for errors in the response
+    if let Some(error) = init_response.error {
+        error!("Initialize error: {:?}", error);
+        return Err(anyhow!("Initialize failed: {:?}", error));
     }
     
-    // Allow server to fully initialize
-    info!("Waiting for server to be ready...");
+    // Extract relevant information from the response
+    let result = init_response.result.ok_or_else(|| anyhow!("No result in initialize response"))?;
+    info!("Server info: {}", result);
+    
+    // Step 2: Send initialized notification - CRITICAL for MCP protocol
+    info!("Sending initialized notification...");
+    let initialized_notification = create_notification("notifications/initialized", None);
+    info!("Notification: {}", serde_json::to_string_pretty(&initialized_notification).unwrap());
+    
+    if let Err(e) = transport.send_notification(initialized_notification).await {
+        error!("Failed to send initialized notification: {:?}", e);
+        return Err(anyhow!("Failed to send initialized notification: {}", e));
+    }
+    
+    // Wait after sending notification to ensure it's processed
+    info!("Waiting for server to process notification...");
     sleep(Duration::from_millis(500)).await;
     
-    // List tools with detailed error handling and debugging
-    info!("Listing available tools...");
-    let tools_start = Instant::now();
+    // Step 3: Send tools/list request
+    info!("Sending manual tools/list request...");
+    let tools_request = create_request("tools/list", None, "tools-123");
+    info!("Request: {}", serde_json::to_string_pretty(&tools_request).unwrap());
     
-    match timeout(Duration::from_secs(10), client.list_tools()).await {
+    // Send the request and wait for response
+    let tools_start = Instant::now();
+    let tools_response = match timeout(Duration::from_secs(10), transport.send_request(tools_request)).await {
         Ok(result) => {
             match result {
-                Ok(tools_result) => {
-                    let elapsed = tools_start.elapsed();
-                    info!("Successfully retrieved {} tools in {:?}", tools_result.tools.len(), elapsed);
-                    
-                    // Print detailed tool information
-                    for (i, tool) in tools_result.tools.iter().enumerate() {
-                        info!("Tool {}: {}", i + 1, tool.name);
-                        if let Some(desc) = &tool.description {
-                            debug!("  Description: {}", desc);
-                        }
-                        debug!("  Schema: {}", serde_json::to_string_pretty(&tool.input_schema).unwrap_or_default());
-                    }
-                    
-                    if let Some(cursor) = tools_result.next_cursor {
-                        debug!("More tools available with cursor: {}", cursor);
-                    }
+                Ok(response) => {
+                    info!("Got tools/list response in {:?}", tools_start.elapsed());
+                    debug!("Response: {}", serde_json::to_string_pretty(&response).unwrap());
+                    response
                 }
                 Err(e) => {
-                    error!("Failed to list tools: {:?}", e);
+                    error!("tools/list request failed: {:?}", e);
+                    return Err(e.into());
                 }
             }
         }
         Err(_) => {
-            warn!("List tools request timed out");
+            error!("tools/list request timed out");
+            return Err(anyhow!("tools/list request timed out"));
         }
+    };
+    
+    // Check for errors in the response
+    if let Some(error) = tools_response.error {
+        error!("tools/list error: {:?}", error);
+        return Err(anyhow!("tools/list failed: {:?}", error));
     }
-
-    // Demonstrate calling a tool with proper JSON-RPC handling
-    if let Some(tool_name) = get_first_available_tool(&client).await {
-        info!("Calling tool: {}", tool_name);
-        let call_start = Instant::now();
-        
-        // Create a simple arguments object
-        let args = serde_json::json!({
-            "text": "Hello, world!",
-        });
-        
-        debug!("Tool arguments: {}", serde_json::to_string_pretty(&args).unwrap_or_default());
-        
-        match timeout(Duration::from_secs(20), client.call_tool(&tool_name, args)).await {
-            Ok(result) => {
-                match result {
-                    Ok(call_result) => {
-                        info!("Tool call successful in {:?}", call_start.elapsed());
-                        debug!("Response content count: {}", call_result.content.len());
+    
+    // Extract tools information from the response
+    let tools_result = tools_response.result.ok_or_else(|| anyhow!("No result in tools/list response"))?;
+    match tools_result.get("tools") {
+        Some(tools) => {
+            if let Some(tools_array) = tools.as_array() {
+                info!("Found {} tools", tools_array.len());
+                
+                // Print detailed tool information
+                for (i, tool) in tools_array.iter().enumerate() {
+                    if let Some(name) = tool.get("name").and_then(|n| n.as_str()) {
+                        info!("Tool {}: {}", i + 1, name);
                         
-                        // Print each content item
-                        for (i, content) in call_result.content.iter().enumerate() {
-                            info!("Content {}: Type={}", i + 1, content.type_);
-                            debug!("Content text: {}", content.text);
-                            
-                            if let Some(annotations) = &content.annotations {
-                                debug!("Annotations: {}", serde_json::to_string_pretty(annotations).unwrap_or_default());
-                            }
+                        if let Some(desc) = tool.get("description").and_then(|d| d.as_str()) {
+                            debug!("  Description: {}", desc);
+                        }
+                        
+                        if let Some(schema) = tool.get("inputSchema") {
+                            debug!("  Schema: {}", serde_json::to_string_pretty(schema).unwrap_or_default());
                         }
                     }
-                    Err(e) => {
-                        error!("Tool call failed: {:?}", e);
-                    }
                 }
-            }
-            Err(_) => {
-                error!("Tool call timed out after 20 seconds");
-            }
-        }
-    } else {
-        warn!("No tools available to call");
-    }
-
-    // Clean shutdown
-    info!("Test completed, shutting down");
-    if let Err(e) = client.shutdown().await {
-        warn!("Shutdown request failed: {:?}", e);
-    }
-
-    Ok(())
-}
-
-// Helper function to get the first available tool
-async fn get_first_available_tool(client: &shared_protocol_objects::rpc::McpClient<ProcessTransport>) -> Option<String> {
-    match client.list_tools().await {
-        Ok(result) => {
-            if let Some(tool) = result.tools.first() {
-                Some(tool.name.clone())
             } else {
-                None
+                warn!("tools is not an array: {:?}", tools);
             }
         }
-        Err(e) => {
-            warn!("Failed to get tools for demonstration: {:?}", e);
-            None
+        None => {
+            warn!("No 'tools' field in response: {:?}", tools_result);
         }
     }
+    
+    // Clean shutdown
+    info!("Test completed");
+    Ok(())
 }
