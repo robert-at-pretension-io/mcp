@@ -501,10 +501,7 @@ impl ServerManager {
             info!("Transport created for server '{}'.", name);
 
             // Create and initialize the client
-                .stderr(Stdio::piped());
-            for (key, val) in command.get_envs() { // Copy env vars again for transport command
-                if let (Some(k), Some(v)) = (key.to_str(), val.map(|v| v.to_str()).flatten()) {
-            // This block is removed as transport creation is handled above now
+            // Removed misplaced .stderr() and redundant env var loop
             debug!("Creating MCP client for server '{}'...", name);
             let inner_client = shared_protocol_objects::rpc::McpClientBuilder::new(transport)
                 .client_info(&self.client_info.name, &self.client_info.version)
