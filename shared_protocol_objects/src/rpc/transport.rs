@@ -71,24 +71,21 @@ impl ProcessTransport {
             notification_handler: Arc::new(Mutex::new(None)),
         };
 
-        // Spawn stderr reader task
-        // Spawn stderr reader task
+        // --- Temporarily disable stderr reader task for debugging ---
+        /*
         tokio::spawn(async move {
             let mut stderr_locked = stderr_arc.lock().await; // Lock stderr Arc outside BufReader
             let mut reader = BufReader::new(&mut *stderr_locked); // Pass mutable reference to locked stderr
             let mut line = String::new();
             loop {
-                // Reverted to read_line for stderr as it seems simpler and no issues were observed there.
                 match reader.read_line(&mut line).await {
                     Ok(0) => {
-                        // EOF
                         info!("Server stderr stream closed.");
                         break;
                     }
                     Ok(_) => {
-                        // Log the line with a prefix
                         warn!("[Server STDERR] {}", line.trim_end());
-                        line.clear(); // Clear buffer for next line
+                        line.clear();
                     }
                     Err(e) => {
                         error!("Error reading from server stderr: {}", e);
@@ -97,6 +94,9 @@ impl ProcessTransport {
                 }
             }
         });
+        */
+        info!("Stderr reader task temporarily disabled for debugging.");
+        // --- End temporary disable ---
         
         // Skip notification listener for now as it's causing issues
         // transport.start_notification_listener().await?;
