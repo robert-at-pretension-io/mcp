@@ -544,20 +544,7 @@ pub async fn resolve_assistant_response(
                         log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
                         return Ok(outcome); // Return the unverified response
                     }
-                    Err(_e) => { // Prefix unused variable
-                        // Verification call itself failed
-                        error!("Error during verification call for server '{}': {}", server_name, _e);
-                        warn!("Returning unverified response due to verification error.");
-                        let outcome = VerificationOutcome {
-                            final_response: current_response,
-                            criteria: Some(criteria.to_string()),
-                            verification_passed: None,
-                            verification_feedback: Some(format!("Verification Error: {}", _e)),
-                        };
-                        log(format!("\n--- Verification Call Error: {} ---", _e));
-                        log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
-                        return Ok(outcome); // Return the unverified response
-                    }
+                    // Removed unreachable Err(_e) pattern here
                 }
             } // End of if/else for tool_calls.is_empty()
         } // End loop

@@ -123,6 +123,10 @@ impl Transport for ProcessTransport {
             info!("Releasing stdin lock (scope end)");
             // Lock is automatically released at the end of this scope
         }
+
+        // <<< ADD DELAY HERE >>>
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await; // 100ms delay
+        // <<< END DELAY >>>
         
         // Now read the response directly
         info!("Acquiring stdout lock for response");
