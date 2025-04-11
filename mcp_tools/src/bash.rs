@@ -83,7 +83,7 @@ impl BashTool {
     async fn bash(
         &self,
         #[tool(aggr)] params: BashParams // Automatically aggregates JSON args into BashParams
-    ) -> Result<String, RmcpError> { // Use aliased RmcpError
+    ) -> std::result::Result<String, RmcpError> { // Explicitly use std::result::Result
         debug!("Executing bash tool with params: {:?}", params);
         let executor = BashExecutor::new();
 
