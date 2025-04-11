@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Result as AnyhowResult};
 use log::{debug, error, info, warn};
 use serde_json::Value;
 use shared_protocol_objects::{
@@ -10,7 +10,7 @@ use tokio::time::{sleep, timeout, Duration};
 use std::time::Instant;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> AnyhowResult<()> {
     // Initialize logger with detailed output
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Debug)
