@@ -509,16 +509,16 @@ impl ServerManager {
                     (process, client, capabilities) // Return all three
                 }
                 Ok(Err(e)) => {
+                    // Log the specific error and return it directly
                     error!("Client '{}' initialization failed: {}", name, e);
-                    // Attempt to kill the process since initialization failed
-                    // process.start_kill().ok(); // Kill the spawned process
-                    return Err(anyhow!("Client '{}' initialization failed: {}", name, e));
+                    // process.start_kill().ok(); // Consider killing if init fails critically
+                    return Err(e); // Propagate the original error
                 }
-                Err(_) => {
+                Err(elapsed) => { // Capture the elapsed error from timeout
                     error!("Client '{}' initialization timed out after {} seconds.", name, init_timeout.as_secs());
-                    // Attempt to kill the process since initialization timed out
-                    // process.start_kill().ok(); // Kill the spawned process
-                    return Err(anyhow!("Client '{}' initialization timed out", name));
+                    // process.start_kill().ok(); // Consider killing if init times out
+                    // Return a more specific timeout error
+                    return Err(anyhow!("Client '{}' initialization timed out after {}s", name, init_timeout.as_secs()).context(elapsed));
                 }
             }
         };

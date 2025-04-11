@@ -90,15 +90,17 @@ impl<T: Transport> McpClient<T> {
         };
         
         info!("Making initialize call with params: {:?}", params);
-        
+            
         // Special case for initialize - we don't check the initialized flag
+        debug!("Calling call_internal for initialize...");
         let response: InitializeResult = match self.call_internal("initialize", Some(params)).await {
             Ok(result) => {
-                info!("Initialize call succeeded");
+                info!("Initialize call succeeded, received InitializeResult.");
+                debug!("InitializeResult: {:?}", result);
                 result
             },
             Err(e) => {
-                error!("Initialize call failed: {}", e);
+                error!("Initialize call failed during call_internal: {}", e);
                 return Err(e);
             }
         };
@@ -107,24 +109,27 @@ impl<T: Transport> McpClient<T> {
             "Initialized with server: {} v{}",
             response.server_info.name, response.server_info.version
         );
-
+        debug!("Storing server info and capabilities.");
         self.server_info = Some(response.server_info.clone());
         self.server_capabilities = Some(response.capabilities.clone());
 
         // Before sending notification, make sure we've set the flag
+        info!("Setting self.initialized = true");
         self.initialized = true;
         info!("Client marked as initialized");
-        
+            
         // Send initialized notification
-        info!("Sending initialized notification");
+        info!("Attempting to send notifications/initialized notification...");
         match self.notify("notifications/initialized", None::<()>).await {
-            Ok(_) => info!("Initialized notification sent successfully"),
+            Ok(_) => info!("Successfully sent notifications/initialized notification."),
             Err(e) => {
-                error!("Failed to send initialized notification: {}", e);
-                // Continue anyway, some implementations might not need this notification
-            } // <-- Added missing closing brace
+                // Log the specific error encountered during notify
+                error!("Failed to send notifications/initialized notification: {}", e);
+                // Decide if this should be a fatal error. For now, log and continue.
+                // return Err(anyhow!("Failed to send critical initialized notification: {}", e));
+            }
         }
-        info!("Client fully initialized");
+        info!("Client fully initialized sequence complete.");
         Ok(response) // Return the full InitializeResult
     }
 
@@ -256,7 +261,13 @@ impl<T: Transport> McpClient<T> {
 
         info!("Sending notification: {}", method);
         trace!("Notification params: {:?}", params_value); // Log params value
-        self.transport.send_notification(notification).await
+        debug!("Calling transport.send_notification for method: {}", method);
+        let result = self.transport.send_notification(notification).await;
+        match &result {
+            Ok(_) => debug!("Transport successfully sent notification: {}", method),
+            Err(e) => error!("Transport failed to send notification {}: {}", method, e),
+        }
+        result // Return the result
     }
 
     /// Check if client is initialized before allowing most operations

@@ -228,6 +228,7 @@ impl Transport for ProcessTransport {
             let mut stdin_guard = self.stdin.lock().await;
             stdin_guard.write_all(notification_str.as_bytes()).await?;
             stdin_guard.flush().await?;
+            debug!("Stdin flushed for notification: {}", notification.method);
             info!("Notification sent successfully, releasing stdin lock (scope end)");
         }
         
