@@ -107,11 +107,15 @@ impl Transport for RmcpTransportAdapter {
         let sdk_request = RmcpProtocolAdapter::to_sdk_request(&request)?;
 
         // Use the SDK service to send the request.
+        // TODO: Implement timeouts for SDK service calls if the SDK doesn't handle them internally.
+        //       e.g., using tokio::time::timeout(self.request_timeout, self.inner.list_tools(...)).await
+        // TODO: Consider implementing a circuit breaker pattern here if needed for resilience.
         // This part needs careful mapping from our generic request to specific SDK service methods.
         // The guide's example is limited. We need to handle different methods.
         let sdk_response_result = match sdk_request {
-            ClientJsonRpcMessage::Initialize(init_params) => {
-                // The guide suggests `serve_client` handles initialization.
+            ClientJsonRpcMessage::Initialize(_) => { // Match on variant, ignore params for error message
+                // Initialization should happen during `serve_client` or via an explicit `initialize` method if the SDK requires it *before* other calls.
+                // Sending it via `send_request` after the service is created is likely incorrect.
                 // If explicit initialization is needed *after* service creation,
                 // it might look like this, but the SDK service API needs confirmation.
                 // let sdk_init_result = self.inner.initialize(
@@ -247,46 +251,70 @@ impl Transport for RmcpTransportAdapter {
         // NOTE: This assumes the SDK Service allows multiple listeners or handles
         // registration idempotently if called multiple times. If not, we might need
         // to ensure this is only called once per adapter instance.
-        // This requires the SDK Service to provide a way to receive notifications,
-        // e.g., a stream or a callback registration mechanism.
-        // Assuming `self.inner.on_notification()` exists and takes a callback.
+
+        // --- START HYPOTHETICAL NOTIFICATION LISTENER ---
+        // TODO: Replace this entire block with the actual notification handling mechanism provided by the rmcp::Service SDK.
+        // The current implementation assumes a callback registration (`on_notification`) which might not exist.
+        // The SDK might provide a stream (`service.notifications()`) or another method.
 
         let service_clone = self.inner.clone();
         let handler_arc = self.notification_handler.clone();
 
+        tracing::warn!("Spawning HYPOTHETICAL notification listener task. Replace with actual SDK mechanism.");
         let handle = tokio::spawn(async move {
             // Example: Using a hypothetical on_notification callback registration
             let notification_callback = Box::new(move |sdk_notification: rmcp::model::Notification| {
                 let handler_clone = handler_arc.clone(); // Clone Arc for async block
-                tokio::spawn(async move { // Spawn task for each notification to avoid blocking listener
-                    if let Some(handler) = handler_clone.lock().await.as_ref() {
-                         match RmcpProtocolAdapter::from_sdk_notification(sdk_notification) {
-                             Ok(our_notification) => {
-                                 // Call the application's handler
-                                 (handler)(our_notification).await;
-                             }
-                             Err(e) => {
-                                 tracing::error!("Failed to convert SDK notification: {}", e);
-                             }
-                         }
+                // Spawn a new task for each notification to avoid blocking the SDK's callback thread (if applicable)
+                // and to handle potential panics in the user's handler gracefully.
+                tokio::spawn(async move {
+                    let handler_guard = handler_clone.lock().await;
+                    if let Some(handler) = handler_guard.as_ref() {
+                        match RmcpProtocolAdapter::from_sdk_notification(sdk_notification) {
+                            Ok(our_notification) => {
+                                // It's crucial to handle potential panics in the user-provided handler
+                                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    // We need to block on the future here as we are inside catch_unwind
+                                    // This is not ideal, consider restructuring if handler needs to be truly async.
+                                    // Or, don't use catch_unwind and let the spawned task panic.
+                                    futures::executor::block_on(handler(our_notification))
+                                }));
+                                if let Err(panic_payload) = result {
+                                    tracing::error!("Notification handler panicked: {:?}", panic_payload);
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!(error = %e, "Failed to convert SDK notification");
+                            }
+                        }
+                    } else {
+                        tracing::warn!("Received notification but handler is None (likely unsubscribed).");
                     }
-                });
-            });
+                }); // End of spawned task for handling one notification
+            }); // End of callback definition
 
-            // Register the callback with the SDK service
-            // This is hypothetical - replace with actual SDK API
-            if let Err(e) = service_clone.on_notification(notification_callback).await {
-                 tracing::error!("Failed during SDK on_notification registration: {}", e);
-            } else {
-                 // This block executes if `on_notification().await` returns Ok(())
-                 tracing::info!("SDK on_notification registration successful. Listener task entering idle loop (or finishing if on_notification doesn't block).");
-                 // If on_notification doesn't block, the task will finish here.
-                 // If the SDK uses a stream, the logic would be different (e.g., loop over stream.next().await).
-                 // For now, assume registration might return Ok and the task ends unless SDK keeps it alive.
+            // --- Hypothetical SDK Registration ---
+            // Replace this with the actual SDK call to subscribe/listen.
+            match service_clone.on_notification(notification_callback).await {
+                Ok(_) => {
+                    // This block executes if `on_notification().await` returns Ok(())
+                    tracing::info!("Hypothetical SDK on_notification registration successful. Listener task may block or finish depending on SDK.");
+                    // If on_notification doesn't block, the task will finish here.
+                    // If the SDK uses a stream, the logic would be:
+                    // let mut stream = service_clone.notification_stream().await?;
+                    // while let Some(sdk_notification) = stream.next().await { /* call callback */ }
+                }
+                Err(e) => {
+                     tracing::error!(error = %e, "Hypothetical SDK on_notification registration failed");
+                }
             }
-            // The task finishes when the block scope ends, unless `on_notification().await` blocks indefinitely.
-            tracing::warn!("SDK Notification listener task is exiting.");
+            // --- End Hypothetical SDK Registration ---
+
+            // The task finishes when the block scope ends, unless the SDK call blocks indefinitely.
+            tracing::warn!("Hypothetical SDK Notification listener task is exiting.");
         });
+        // --- END HYPOTHETICAL NOTIFICATION LISTENER ---
+
 
         // We don't store the handle in self anymore.
         // If explicit cancellation of the listener is needed later,

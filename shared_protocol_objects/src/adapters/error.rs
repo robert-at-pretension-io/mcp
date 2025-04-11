@@ -1,5 +1,10 @@
+use crate::{
+    JsonRpcError, INTERNAL_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS,
+    PARSE_ERROR, REQUEST_CANCELLED, CONTENT_MODIFIED, SERVER_NOT_INITIALIZED,
+    PROTOCOL_VERSION_MISMATCH, // Ensure this is defined in crate::lib or crate::rpc::error
+};
 use thiserror::Error;
-use crate::{JsonRpcError, INTERNAL_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND}; // Import our error types and codes
+
 
 #[derive(Error, Debug)]
 pub enum AdapterError {
@@ -44,16 +49,22 @@ pub enum AdapterError {
 impl From<rmcp::Error> for JsonRpcError {
     fn from(err: rmcp::Error) -> Self {
         let (code, message) = match &err {
+            // Map SDK errors to our standard JSON-RPC codes
+            rmcp::Error::ParseError(msg) => (PARSE_ERROR, msg.clone()),
             rmcp::Error::InvalidRequest(msg) => (INVALID_REQUEST, msg.clone()),
             rmcp::Error::MethodNotFound(msg) => (METHOD_NOT_FOUND, msg.clone()),
-            rmcp::Error::InvalidParams(msg) => (crate::INVALID_PARAMS, msg.clone()), // Assuming crate::INVALID_PARAMS exists
+            rmcp::Error::InvalidParams(msg) => (INVALID_PARAMS, msg.clone()),
             rmcp::Error::InternalError(msg) => (INTERNAL_ERROR, msg.clone()),
-            rmcp::Error::ParseError(msg) => (crate::PARSE_ERROR, msg.clone()), // Assuming crate::PARSE_ERROR exists
-            rmcp::Error::RequestCancelled(msg) => (crate::REQUEST_CANCELLED, msg.clone()), // Assuming crate::REQUEST_CANCELLED exists
-            rmcp::Error::ContentModified(msg) => (crate::CONTENT_MODIFIED, msg.clone()), // Assuming crate::CONTENT_MODIFIED exists
+
+            // Map LSP/RMCP specific codes if they exist in our definitions
+            rmcp::Error::RequestCancelled(msg) => (REQUEST_CANCELLED, msg.clone()),
+            rmcp::Error::ContentModified(msg) => (CONTENT_MODIFIED, msg.clone()),
+            // rmcp::Error::ServerNotInitialized(msg) => (SERVER_NOT_INITIALIZED, msg.clone()), // Uncomment if SDK has this variant
+
+            // Map other SDK error types
             rmcp::Error::Transport(details) => (INTERNAL_ERROR, format!("Transport error: {}", details)),
             rmcp::Error::Encode(details) => (INTERNAL_ERROR, format!("Encoding error: {}", details)),
-            rmcp::Error::Decode(details) => (crate::PARSE_ERROR, format!("Decoding error: {}", details)),
+            rmcp::Error::Decode(details) => (PARSE_ERROR, format!("Decoding error: {}", details)), // Treat decode errors as Parse errors
             rmcp::Error::DuplicateId(id) => (INTERNAL_ERROR, format!("Duplicate request ID: {:?}", id)),
             rmcp::Error::ResponseMismatch(id) => (INTERNAL_ERROR, format!("Response ID mismatch for request ID: {:?}", id)),
             // Map other specific rmcp::Error variants as needed...

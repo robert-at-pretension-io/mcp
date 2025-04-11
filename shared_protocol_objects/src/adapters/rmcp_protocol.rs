@@ -2,24 +2,33 @@ use crate::{
     JsonRpcRequest, JsonRpcResponse, JsonRpcNotification, JsonRpcError,
     InitializeParams, InitializeResult, ToolInfo, ListToolsParams, ListToolsResult, CallToolParams, CallToolResult,
     ClientInfo, Implementation, ClientCapabilities, ServerCapabilities, ToolResponseContent,
-    ProgressParams,
-    INVALID_PARAMS, METHOD_NOT_FOUND, INTERNAL_ERROR, SERVER_NOT_INITIALIZED, PROTOCOL_VERSION_MISMATCH,
+    ProgressParams, // Our progress params type
+    // Error codes
+    PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR,
+    SERVER_NOT_INITIALIZED, REQUEST_CANCELLED, CONTENT_MODIFIED, PROTOCOL_VERSION_MISMATCH,
 };
 use rmcp::model::{
-    self as sdk, ClientJsonRpcMessage, ServerJsonRpcMessage, Notification, RequestId as SdkId, ErrorCode as SdkErrorCode,
-    Request as SdkRequest, Response as SdkResponse, Error as SdkError, NumberOrString, ProgressParams as SdkProgressParams,
+    self as sdk, ClientJsonRpcMessage, ServerJsonRpcMessage, Notification as SdkNotification, RequestId as SdkId, ErrorCode as SdkErrorCode,
+    Request as SdkRequest, Response as SdkResponse, Error as SdkError, NumberOrString,
+    // SDK Specific Types
+    ProgressParams as SdkProgressParams, ShowMessageParams as SdkShowMessageParams, LogMessageParams as SdkLogMessageParams,
+    CancelParams as SdkCancelParams, // Assuming SDK uses CancelParams for $/cancelRequest notification
     Initialize as SdkInitialize, ListTools as SdkListTools, CallTool as SdkCallTool,
     InitializeResult as SdkInitializeResult, ListToolsResult as SdkListToolsResult, CallToolResult as SdkCallToolResult,
     Tool as SdkTool, ToolContent as SdkToolContent, ClientInfo as SdkClientInfo, ServerInfo as SdkServerInfo,
     ClientCapabilities as SdkClientCapabilities, ServerCapabilities as SdkServerCapabilities,
 };
+use semver::{Version, VersionReq}; // For more robust version checking
 use serde_json::{Value, json};
 use anyhow::{anyhow, Result, Context};
 use std::sync::Arc;
 use tracing::{debug, warn, error, trace, instrument};
 
-// Current protocol version supported by our implementation
-pub const CURRENT_PROTOCOL_VERSION: &str = "1.0";
+// Protocol version requirement supported by this adapter/host.
+// Example: Requires version 1.0.x, allows any patch version.
+pub const SUPPORTED_PROTOCOL_VERSION_REQ: &str = "^1.0";
+// The specific version this host prefers to use.
+pub const PREFERRED_PROTOCOL_VERSION: &str = "1.0.0"; // Use a full semver if possible
 
 /// Adapter that handles conversion between our protocol objects and SDK objects.
 #[derive(Debug, Default)]
@@ -39,15 +48,22 @@ impl RmcpProtocolAdapter {
         match request.method.as_str() {
             "initialize" => {
                 debug!("Processing 'initialize' request");
-                let our_params: InitializeParams = serde_json::from_value(params)
+                let mut our_params: InitializeParams = serde_json::from_value(params)
                     .context("Failed to parse InitializeParams")?;
-                
-                // Check protocol version compatibility
-                Self::check_protocol_version(&our_params.protocol_version)?;
-                
+
+                // If client didn't specify a version, use our preferred one.
+                if our_params.protocol_version.is_empty() {
+                    warn!("Client did not specify protocol version in InitializeParams, using preferred: {}", PREFERRED_PROTOCOL_VERSION);
+                    our_params.protocol_version = PREFERRED_PROTOCOL_VERSION.to_string();
+                }
+
+                // Check client's requested protocol version compatibility
+                Self::check_protocol_version_compatibility(&our_params.protocol_version)
+                    .context("Protocol version check failed for client request")?;
+
                 Ok(ClientJsonRpcMessage::Initialize(SdkInitialize {
                     id: sdk_id,
-                    protocol_version: our_params.protocol_version,
+                    protocol_version: our_params.protocol_version, // Send the (potentially updated) version
                     capabilities: convert_capabilities_to_sdk(&our_params.capabilities)
                         .context("Failed to convert client capabilities")?,
                     client_info: convert_client_info_to_sdk(&our_params.client_info),
@@ -100,12 +116,13 @@ impl RmcpProtocolAdapter {
             ServerJsonRpcMessage::InitializeResult(res) => {
                 debug!("Converting SDK InitializeResult to our JsonRpcResponse");
                 let our_id = convert_id_from_sdk(&res.id);
-                
-                // Check protocol version compatibility
-                Self::check_protocol_version(&res.protocol_version)?;
-                
+
+                // Check server's reported protocol version compatibility
+                Self::check_protocol_version_compatibility(&res.protocol_version)
+                     .context("Protocol version check failed for server response")?;
+
                 let our_result = InitializeResult {
-                    protocol_version: res.protocol_version,
+                    protocol_version: res.protocol_version, // Report the version the server is using
                     capabilities: convert_capabilities_from_sdk(&res.capabilities)
                         .context("Failed to convert server capabilities")?,
                     server_info: convert_implementation_from_sdk(&res.server_info),
@@ -186,51 +203,35 @@ impl RmcpProtocolAdapter {
 
     /// Convert SDK Notification to our JsonRpcNotification.
     #[instrument(skip(notification), level = "debug")]
-    pub fn from_sdk_notification(notification: sdk::Notification) -> Result<JsonRpcNotification> {
+    pub fn from_sdk_notification(notification: SdkNotification) -> Result<JsonRpcNotification> {
         match notification {
-            sdk::Notification::Progress(params) => {
+            SdkNotification::Progress(params) => { // params is SdkProgressParams
                 debug!("Converting SDK Progress notification");
-                let our_params = ProgressParams {
+                let our_params = ProgressParams { // Assuming our ProgressParams matches SDK structure
                     token: params.token,
                     value: params.value,
                 };
-                
-                Ok(JsonRpcNotification {
-                    jsonrpc: "2.0".to_string(),
-                    method: "$/progress".to_string(),
-                    params: Some(serde_json::to_value(our_params)
-                        .context("Failed to serialize ProgressParams")?),
-                })
+                Ok(JsonRpcNotification::new("$/progress", Some(our_params))?)
             },
-            sdk::Notification::ShowMessage(params) => {
+            SdkNotification::ShowMessage(params) => { // params is SdkShowMessageParams
                 debug!("Converting SDK ShowMessage notification");
-                Ok(JsonRpcNotification {
-                    jsonrpc: "2.0".to_string(),
-                    method: "window/showMessage".to_string(),
-                    params: Some(serde_json::to_value(params)
-                        .context("Failed to serialize ShowMessage params")?),
-                })
+                // Assuming SdkShowMessageParams can be directly serialized to Value for our notification
+                Ok(JsonRpcNotification::new("window/showMessage", Some(params))?)
             },
-            sdk::Notification::LogMessage(params) => {
+            SdkNotification::LogMessage(params) => { // params is SdkLogMessageParams
                 debug!("Converting SDK LogMessage notification");
-                Ok(JsonRpcNotification {
-                    jsonrpc: "2.0".to_string(),
-                    method: "window/logMessage".to_string(),
-                    params: Some(serde_json::to_value(params)
-                        .context("Failed to serialize LogMessage params")?),
-                })
+                // Assuming SdkLogMessageParams can be directly serialized to Value
+                Ok(JsonRpcNotification::new("window/logMessage", Some(params))?)
             },
-            sdk::Notification::CancelRequest(params) => {
+            SdkNotification::CancelRequest(params) => { // params is SdkCancelParams
                 debug!("Converting SDK CancelRequest notification");
-                Ok(JsonRpcNotification {
-                    jsonrpc: "2.0".to_string(),
-                    method: "$/cancelRequest".to_string(),
-                    params: Some(serde_json::to_value(params)
-                        .context("Failed to serialize CancelRequest params")?),
-                })
+                // Convert SDK ID back to our Value format for the notification params
+                let our_id_param = json!({ "id": convert_id_from_sdk(&params.id) });
+                Ok(JsonRpcNotification::new("$/cancelRequest", Some(our_id_param))?)
             },
-            sdk::Notification::Generic { method, params } => {
+            SdkNotification::Generic { method, params } => {
                 debug!("Converting SDK Generic notification with method: {}", method);
+                // Pass through generic notification directly
                 Ok(JsonRpcNotification {
                     jsonrpc: "2.0".to_string(),
                     method,
@@ -267,17 +268,18 @@ impl RmcpProtocolAdapter {
             "$/cancelRequest" => {
                 debug!("Converting '$/cancelRequest' notification to SDK format");
                 let params_map = params.as_object()
-                    .ok_or_else(|| anyhow!("cancelRequest params must be an object"))?;
-                
+                    .ok_or_else(|| anyhow!("$/cancelRequest params must be an object"))?;
+
                 let id_value = params_map.get("id")
-                    .ok_or_else(|| anyhow!("cancelRequest params missing 'id' field"))?;
-                
+                    .ok_or_else(|| anyhow!("$/cancelRequest params missing 'id' field"))?;
+
                 let sdk_id = convert_id_to_sdk(id_value)
-                    .context("Failed to convert cancelRequest ID to SDK format")?;
-                
-                Ok(ClientJsonRpcMessage::Notification(sdk::Notification::CancelRequest {
+                    .context("Failed to convert $/cancelRequest ID to SDK format")?;
+
+                // Assuming SDK uses SdkCancelParams struct for the notification payload
+                Ok(ClientJsonRpcMessage::Notification(SdkNotification::CancelRequest(SdkCancelParams {
                     id: sdk_id,
-                }))
+                })))
             },
             "exit" => {
                 debug!("Converting 'exit' notification to SDK Exit message");
@@ -293,26 +295,40 @@ impl RmcpProtocolAdapter {
             }
         }
     }
-    
-    /// Check if the provided protocol version is compatible with our implementation
+
+    /// Check if the provided protocol version string is compatible with our supported requirement.
+    /// Uses semver for comparison.
     #[instrument(level = "debug")]
-    fn check_protocol_version(version: &str) -> Result<()> {
-        debug!("Checking protocol version compatibility: received '{}', supported '{}'", 
-               version, CURRENT_PROTOCOL_VERSION);
-        
-        // Simple version check - in a real implementation, this might be more sophisticated
-        if version != CURRENT_PROTOCOL_VERSION {
-            error!("Protocol version mismatch: received '{}', supported '{}'", 
-                   version, CURRENT_PROTOCOL_VERSION);
-            
-            // Return error but don't panic - the caller can decide how to handle this
-            return Err(anyhow!(
-                "Protocol version mismatch: received '{}', supported '{}'",
-                version, CURRENT_PROTOCOL_VERSION
-            ));
+    fn check_protocol_version_compatibility(version_str: &str) -> Result<()> {
+        debug!("Checking protocol version compatibility: received '{}', requirement '{}'",
+               version_str, SUPPORTED_PROTOCOL_VERSION_REQ);
+
+        let required = VersionReq::parse(SUPPORTED_PROTOCOL_VERSION_REQ)
+            .context("Failed to parse internal SUPPORTED_PROTOCOL_VERSION_REQ")?; // Should not fail normally
+
+        match Version::parse(version_str) {
+            Ok(received_version) => {
+                if required.matches(&received_version) {
+                    debug!("Protocol version {} is compatible with requirement {}", version_str, SUPPORTED_PROTOCOL_VERSION_REQ);
+                    Ok(())
+                } else {
+                    error!("Incompatible protocol version: received {}, requires {}", version_str, SUPPORTED_PROTOCOL_VERSION_REQ);
+                    Err(anyhow!(JsonRpcError::new(
+                        PROTOCOL_VERSION_MISMATCH, // Use specific error code
+                        format!("Incompatible protocol version: received '{}', requires '{}'", version_str, SUPPORTED_PROTOCOL_VERSION_REQ),
+                        None
+                    )))
+                }
+            }
+            Err(e) => {
+                error!("Failed to parse received protocol version '{}': {}", version_str, e);
+                 Err(anyhow!(JsonRpcError::new(
+                     INVALID_REQUEST, // Or a more specific code if available
+                     format!("Invalid protocol version format received: '{}'", version_str),
+                     None
+                 ))).context(format!("Failed to parse received protocol version: {}", version_str))
+            }
         }
-        
-        Ok(())
     }
 }
 
