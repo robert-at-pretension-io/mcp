@@ -2,13 +2,16 @@ use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn}; // Removed unused trace, warn
 use serde_json::Value;
 use shared_protocol_objects::{
-    ClientCapabilities, Implementation, ServerCapabilities, ToolInfo, CallToolResult
+    Implementation, ServerCapabilities, ToolInfo, CallToolResult, ClientCapabilities
 };
 // Removed unused async_trait
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
-use std::sync::Arc;
+// Use TokioCommand explicitly, remove unused StdCommand alias
+use tokio::process::Command as TokioCommand;
+// Removed: use std::process::Command as StdCommand;
 use tokio::process::Child as TokioChild;
+use std::process::Stdio;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use std::time::Duration;
 
@@ -56,6 +59,7 @@ pub mod testing {
                             "param1": {"type": "string"}
                         }
                     }),
+                    annotations: None, // Added missing field
                 }
             ])
         }
@@ -71,9 +75,7 @@ pub mod testing {
                     }
                 ],
                 is_error: None,
-                _meta: None,
-                progress: None,
-                total: None,
+                // Removed _meta, progress, total
             })
         }
         
@@ -91,7 +93,8 @@ pub mod testing {
 #[cfg(not(test))]
 pub mod production {
     use shared_protocol_objects::rpc;
-    
+    // Remove unused import: use tokio::process::Command; 
+
     // Wrapper for McpClient to provide Debug 
     pub struct McpClient<T: rpc::Transport> {
         inner: rpc::McpClient<T>
@@ -111,20 +114,22 @@ pub mod production {
         
         pub async fn list_tools(&self) -> anyhow::Result<Vec<shared_protocol_objects::ToolInfo>> {
             log::info!("Using enhanced list_tools method with response validation");
-            self.inner.list_tools().await
+            // Update return type and extract tools from the result struct
+            let result = self.inner.list_tools().await?;
+            Ok(result.tools)
         }
-        
+
         pub async fn call_tool(&self, name: &str, args: serde_json::Value) -> anyhow::Result<shared_protocol_objects::CallToolResult> {
             // Special handling for the common error case
             if name == "tools/list" {
                 log::info!("Using specialized list_tools() method directly for tools/list call");
                 // Use the actual list_tools method which is more robust
-                let tools = self.inner.list_tools().await?;
-                
-                // Create a synthetic response
-                let tools_json = format!("Found {} tools: {}", tools.len(), 
-                    tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", "));
-                
+                let list_tools_result = self.inner.list_tools().await?; // Get the full result
+
+                // Create a synthetic response using the tools field from the result
+                let tools_json = format!("Found {} tools: {}", list_tools_result.tools.len(), // Access .tools field
+                    list_tools_result.tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", ")); // Access .tools field
+
                 return Ok(shared_protocol_objects::CallToolResult {
                     content: vec![
                         shared_protocol_objects::ToolResponseContent {
@@ -134,9 +139,7 @@ pub mod production {
                         }
                     ],
                     is_error: Some(false),
-                    _meta: None,
-                    progress: None,
-                    total: None,
+                    // Removed _meta, progress, total
                 });
             }
             
@@ -152,8 +155,9 @@ pub mod production {
         pub fn capabilities(&self) -> Option<&shared_protocol_objects::ServerCapabilities> {
             self.inner.capabilities()
         }
-        
-        pub async fn initialize(&mut self, capabilities: shared_protocol_objects::ClientCapabilities) -> anyhow::Result<shared_protocol_objects::ServerCapabilities> {
+
+        // Update return type to InitializeResult
+        pub async fn initialize(&mut self, capabilities: shared_protocol_objects::ClientCapabilities) -> anyhow::Result<shared_protocol_objects::InitializeResult> {
             self.inner.initialize(capabilities).await
         }
     }
@@ -169,13 +173,15 @@ pub mod production {
     }
     
     impl ProcessTransport {
-        pub async fn new(command: tokio::process::Command) -> anyhow::Result<Self> {
+        // Ensure this accepts tokio::process::Command explicitly
+        pub async fn new(command: super::TokioCommand) -> anyhow::Result<Self> { 
             Ok(Self(rpc::ProcessTransport::new(command).await?))
         }
 
         // Helper method to create a new transport for a specific request type
         // This helps avoid the mixed response type issue by using separate transports
-        pub async fn new_for_request_type(command: tokio::process::Command, request_type: &str) -> anyhow::Result<Self> {
+        // Ensure this accepts tokio::process::Command explicitly
+        pub async fn new_for_request_type(command: super::TokioCommand, request_type: &str) -> anyhow::Result<Self> { 
             log::info!("Creating dedicated transport for request type: {}", request_type);
             // Create a new transport for this specific request type
             Ok(Self(rpc::ProcessTransport::new(command).await?))
@@ -354,26 +360,15 @@ impl ServerManager {
         for (name, server_config) in config.servers {
             info!("Preparing to start server '{}' with command: {}", name, server_config.command);
 
-            // Create a std::process::Command first to easily set env vars and args
-            let mut command = Command::new(&server_config.command);
+            // Prepare components for start_server_with_components
+            let program = server_config.command.clone();
+            let args = server_config.args.clone().unwrap_or_default();
+            let envs = server_config.env.clone();
 
-            // Set environment variables if specified
-            if !server_config.env.is_empty() {
-                debug!("Setting environment variables for {}: {:?}", name, server_config.env.keys());
-                command.envs(server_config.env); // Use .envs() for HashMap
-            }
+            // Removed lines trying to modify non-existent 'command' variable
 
-            // Add arguments if specified in config
-            if let Some(args) = server_config.args {
-                 if !args.is_empty() {
-                     debug!("Adding arguments for {}: {:?}", name, args);
-                     command.args(args);
-                 }
-            }
-
-            // Start the server using the constructed std::process::Command
-            // The start_server_with_command method handles converting it to tokio::process::Command
-            match self.start_server_with_command(&name, command).await {
+            // Start the server using the components
+            match self.start_server_with_components(&name, &program, &args, &envs).await {
                 Ok(_) => info!("Successfully started server '{}'", name),
                 Err(e) => error!("Failed to start server '{}': {}", name, e), // Log error but continue
             }
@@ -392,10 +387,10 @@ impl ServerManager {
         
         // The client's list_tools method now has special handling for numeric IDs and
         // response validation to avoid the type mismatch issue
-        let tools = server.client.list_tools().await?;
-        info!("Received tools list from server: {} tools", tools.len());
-        
-        Ok(tools)
+        let list_tools_result = server.client.list_tools().await?; // This is now Vec<ToolInfo>
+        info!("Received tools list from server: {} tools", list_tools_result.len()); // Use .len() directly
+
+        Ok(list_tools_result) // Return the Vec<ToolInfo> directly
     }
 
     /// Call a tool on the specified server with the given arguments
@@ -412,12 +407,12 @@ impl ServerManager {
         // Special case for tools/list to create a dedicated client if needed
         if tool_name == "tools/list" {
             info!("Using enhanced list_tools for tools/list call");
-            let result = server.client.list_tools().await?;
-            
-            // Convert to a CallToolResult format
-            let tools_json = format!("Found {} tools: {}", result.len(), 
-                result.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", "));
-            
+            let list_tools_result = server.client.list_tools().await?; // Get the full result
+
+            // Convert to a CallToolResult format using the vector directly
+            let tools_json = format!("Found {} tools: {}", list_tools_result.len(), // Use .len() directly
+                list_tools_result.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", ")); // Use .iter() directly
+
             let call_result = shared_protocol_objects::CallToolResult {
                 content: vec![
                     shared_protocol_objects::ToolResponseContent {
@@ -427,11 +422,8 @@ impl ServerManager {
                     }
                 ],
                 is_error: Some(false),
-                _meta: None,
-                progress: None,
-                total: None,
+                // Removed _meta, progress, total
             };
-            
             let output = format_tool_result(&call_result);
             return Ok(output);
         }
@@ -445,30 +437,30 @@ impl ServerManager {
     }
     
     /// Start a server with the given name, command and arguments
-    pub async fn start_server(&self, name: &str, command: &str, args: &[String]) -> Result<()> {
-        let mut cmd = Command::new(command);
-        cmd.args(args);
-        self.start_server_with_command(name, cmd).await
+    pub async fn start_server(&self, name: &str, program: &str, args: &[String]) -> Result<()> {
+        // Use start_server_with_components, assuming empty envs if not provided
+        let envs = HashMap::new(); 
+        self.start_server_with_components(name, program, args, &envs).await
     }
 
-    /// Start a server with the given name and command
-    pub async fn start_server_with_command(&self, name: &str, command: Command) -> Result<()> {
-        info!("Starting server '{}' with command: {:?}", name, command);
-        debug!("Preparing tokio::process::Command for server '{}'", name);
+    /// Start a server with the given name and command components
+    pub async fn start_server_with_components(
+        &self,
+        name: &str,
+        program: &str,
+        args: &[String],
+        envs: &HashMap<String, String>,
+    ) -> Result<()> {
+        info!("Entered start_server_with_components for server: '{}'", name);
+        info!("Starting server '{}' with program: {}, args: {:?}, envs: {:?}", name, program, args, envs.keys());
 
-        // Prepare the command for spawning the process
-        let mut tokio_command_spawn = tokio::process::Command::new(command.get_program());
-        tokio_command_spawn.args(command.get_args())
+        // --- Prepare Tokio Command for Spawning ---
+        let mut tokio_command_spawn = TokioCommand::new(program);
+        tokio_command_spawn.args(args)
+                           .envs(envs) // Set envs directly
                            .stdin(Stdio::piped())
                            .stdout(Stdio::piped())
                            .stderr(Stdio::piped());
-
-        // Copy environment variables from the std::process::Command
-        for (key, val) in command.get_envs() {
-            if let (Some(k), Some(v)) = (key.to_str(), val.map(|v| v.to_str()).flatten()) {
-                tokio_command_spawn.env(k, v);
-            }
-        }
         debug!("Tokio command prepared for spawning: {:?}", tokio_command_spawn);
 
         // --- Spawn Process and Initialize Client BEFORE acquiring the lock ---
@@ -480,19 +472,15 @@ impl ServerManager {
                 .map_err(|e| anyhow!("Failed to spawn process for server '{}': {}", name, e))?;
             info!("Process spawned successfully for server '{}', PID: {:?}", name, process.id());
 
-            // Create a separate command for the transport (needed by ProcessTransport::new)
-            let mut transport_cmd = tokio::process::Command::new(command.get_program());
-            transport_cmd.args(command.get_args())
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            for (key, val) in command.get_envs() { // Copy env vars again for transport command
-                if let (Some(k), Some(v)) = (key.to_str(), val.map(|v| v.to_str()).flatten()) {
-                    transport_cmd.env(k, v);
-                }
-            }
+            // Create the transport using the same command configuration
+            // ProcessTransport::new takes tokio::process::Command
+            let mut transport_cmd = TokioCommand::new(program); // Create a new Tokio Command
+            transport_cmd.args(args);
+            transport_cmd.envs(envs); // Set envs directly
+
             debug!("Creating transport for server '{}'...", name);
-            let transport = ProcessTransport::new(transport_cmd).await
+            // Pass the Tokio Command to ProcessTransport::new
+            let transport = ProcessTransport::new(transport_cmd).await // Pass the Tokio command
                  .map_err(|e| anyhow!("Failed to create transport for server '{}': {}", name, e))?;
             info!("Transport created for server '{}'.", name);
 
@@ -505,13 +493,19 @@ impl ServerManager {
             let mut client = production::McpClient::new(inner_client);
             info!("MCP client created, initializing server '{}'...", name);
 
-            let client_capabilities = ClientCapabilities { experimental: None, sampling: None, roots: None };
+            // Use correct default values for ClientCapabilities
+            let client_capabilities = ClientCapabilities {
+                experimental: serde_json::json!({}), // Use default empty object
+                sampling: serde_json::json!({}),     // Use default empty object
+                roots: Default::default(), // Use default RootsCapability
+            };
             let init_timeout = Duration::from_secs(15);
+            // Update to handle InitializeResult instead of just ServerCapabilities
             match tokio::time::timeout(init_timeout, client.initialize(client_capabilities)).await {
-                Ok(Ok(server_caps)) => {
+                Ok(Ok(init_result)) => { // init_result is InitializeResult
                     info!("Client '{}' initialized successfully.", name);
-                    // Get capabilities after successful initialization
-                    let capabilities = Some(server_caps); // Store the returned capabilities
+                    // Get capabilities from the InitializeResult
+                    let capabilities = Some(init_result.capabilities); // Store capabilities from the result
                     (process, client, capabilities) // Return all three
                 }
                 Ok(Err(e)) => {

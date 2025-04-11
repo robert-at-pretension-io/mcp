@@ -359,10 +359,10 @@ pub async fn resolve_assistant_response(
                         state.add_assistant_message(&next_resp);
                         next_resp
                     }
-                    Err(e) => {
-                        error!("Detailed error getting next AI response after tools: {:?}", e);
-                        let error_msg = format!("Failed to get AI response after tool execution: {}", e);
-                        log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg));
+                    Err(_e) => { // Prefix unused variable with underscore
+                        error!("Detailed error getting next AI response after tools: {:?}", _e);
+                        let error_msg = format!("Failed to get AI response after tool execution: {}", _e);
+                        log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg)); // Use error_msg here
                         return Err(anyhow!(error_msg));
                     }
                 };
@@ -500,8 +500,8 @@ pub async fn resolve_assistant_response(
                                         // Loop continues to re-evaluate the revised response
                                         continue; // Go to next loop iteration
                                     }
-                                    Err(e) => {
-                                        error!("Error getting revised AI response after verification failure: {:?}", e);
+                                    Err(_e) => { // Prefixed unused variable
+                                        error!("Error getting revised AI response after verification failure: {:?}", _e);
                                         warn!("Returning unverified response due to error during revision.");
                                         let outcome = VerificationOutcome {
                                             final_response: current_response, // Return the response *before* the failed revision attempt
@@ -509,7 +509,8 @@ pub async fn resolve_assistant_response(
                                             verification_passed: Some(false),
                                             verification_feedback: feedback_opt,
                                         };
-                                        log(format!("\n--- Error During Revision Attempt: {} ---", e));
+                                        // Remove duplicate log lines and use _e
+                                        log(format!("\n--- Error During Revision Attempt: {} ---", _e)); 
                                         log(format!("Returning previous (failed verification) response:\n```\n{}\n```", outcome.final_response));
                                         return Ok(outcome); // Return the last known response before the error
                                     }
@@ -529,20 +530,21 @@ pub async fn resolve_assistant_response(
                             }
                         }
                     }
-                    Err(e) => {
+                    Err(_e) => { // Prefix unused variable
                         // Verification call itself failed
-                        error!("Error during verification call for server '{}': {}", server_name, e);
+                        error!("Error during verification call for server '{}': {}", server_name, _e);
                         warn!("Returning unverified response due to verification error.");
                         let outcome = VerificationOutcome {
                             final_response: current_response,
                             criteria: Some(criteria.to_string()),
                             verification_passed: None,
-                            verification_feedback: Some(format!("Verification Error: {}", e)),
+                            verification_feedback: Some(format!("Verification Error: {}", _e)),
                         };
-                        log(format!("\n--- Verification Call Error: {} ---", e));
+                        log(format!("\n--- Verification Call Error: {} ---", _e));
                         log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
                         return Ok(outcome); // Return the unverified response
                     }
+                    // Removed unreachable Err(_e) pattern here
                 }
             } // End of if/else for tool_calls.is_empty()
         } // End loop
@@ -550,15 +552,34 @@ pub async fn resolve_assistant_response(
     .await
 }
 
-/// Internal helper to execute a single tool call.
+/// Internal helper to execute a single tool call. Handles multi-server lookup.
 async fn execute_single_tool_internal(
     host: &MCPHost,
-    server_name: &str,
+    server_context: &str, // Can be specific server name or "*all*"
     tool_name: &str,
     args: serde_json::Value,
     config: &ConversationConfig, // Now includes optional log_sender
 ) -> Result<String> {
-    debug!("Executing tool '{}' on server '{}'", tool_name, server_name);
+    debug!("Attempting to execute tool '{}' in context '{}'", tool_name, server_context);
+
+    // --- Determine Target Server ---
+    let target_server_name = if server_context == "*all*" {
+        // Find the server that provides this tool
+        match host.get_server_for_tool(tool_name).await {
+            Ok(name) => name,
+            Err(e) => {
+                // Tool not found on any server
+                let error_msg = format!("Tool '{}' not found on any available server.", tool_name);
+                error!("{}", error_msg);
+                // Return the error message as the result for the AI to see
+                return Ok(error_msg);
+            }
+        }
+    } else {
+        // Use the specific server context provided
+        server_context.to_string()
+    };
+    debug!("Target server for tool '{}' is '{}'", tool_name, target_server_name);
 
     // --- Logging Setup ---
     // Removed unused 'log' closure definition
@@ -568,19 +589,19 @@ async fn execute_single_tool_internal(
     let progress_msg = format!(
         "Calling tool '{}' on server '{}'...",
         style(tool_name).yellow(),
-        style(server_name).green()
+        style(&target_server_name).green() // Use target_server_name
     );
 
     // Execute with or without progress indicator based on config
     let result_string = if config.interactive_output {
         crate::repl::with_progress(
             progress_msg, // Already styled
-            host.call_tool(server_name, tool_name, args),
+            host.call_tool(&target_server_name, tool_name, args), // Use target_server_name
         )
         .await
     } else {
         // Execute directly without progress spinner
-        host.call_tool(server_name, tool_name, args).await
+        host.call_tool(&target_server_name, tool_name, args).await // Use target_server_name
     };
 
     // Process result (handle potential errors from call_tool)
@@ -594,22 +615,24 @@ async fn execute_single_tool_internal(
                 // Use the formatting function from conversation_state
                 println!(
                     "\n{}",
-                    crate::conversation_state::format_tool_response(tool_name, &truncated_output)
+                    // Show the actual server used in the output
+                    crate::conversation_state::format_tool_response(&format!("{} (on {})", tool_name, target_server_name), &truncated_output)
                 );
             }
-            debug!("Tool '{}' executed successfully.", tool_name);
+            debug!("Tool '{}' executed successfully on server '{}'.", tool_name, target_server_name);
             Ok(truncated_output) // Return the truncated output
         }
         Err(error) => {
-            let error_msg = format!("Error executing tool '{}': {}", tool_name, error);
+            let error_msg = format!("Error executing tool '{}' on server '{}': {}", tool_name, target_server_name, error);
             error!("{}", error_msg); // Log the error
 
             // Format error for printing if interactive
             if config.interactive_output {
                 let formatted_error = format!(
-                    "{} executing tool '{}': {}",
+                    "{} executing tool '{}' on server '{}': {}",
                     style("Error").red(),
                     style(tool_name).yellow(),
+                    style(&target_server_name).green(), // Include server name in error
                     error // Use the original error for detail
                 );
                 println!("\n{}", formatted_error);

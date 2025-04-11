@@ -22,7 +22,7 @@ use crate::tool_trait::{
 pub struct PlannerParams {
     pub user_request: String,
     pub ai_interpretation: String,
-    pub available_tools: Vec<ToolInfo>,
+    pub available_tools: String, // Changed from Vec<ToolInfo> to String
 }
 
 /// Generates the tool information for the planning tool.
@@ -49,17 +49,8 @@ pub fn planner_tool_info() -> ToolInfo {
                     "description": "The AI's interpretation or summary of the user's request and goal."
                 },
                 "available_tools": {
-                    "type": "array",
-                    "description": "A list of all tools available to the AI, including name, description, and input schema.",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "description": {"type": ["string", "null"]},
-                            "input_schema": {"type": "object"}
-                        },
-                        "required": ["name", "input_schema"]
-                    }
+                    "type": "string",
+                    "description": "A formatted string listing all tools available to the AI, including only their name and description (excluding input schema)."
                 }
             },
             "required": ["user_request", "ai_interpretation", "available_tools"]
@@ -67,21 +58,7 @@ pub fn planner_tool_info() -> ToolInfo {
     }
 }
 
-/// Formats the tool list into a string suitable for the LLM prompt.
-fn format_tool_list(tools: &[ToolInfo]) -> String {
-    tools
-        .iter()
-        .map(|tool| {
-            format!(
-                "- Name: {}\n  Description: {}\n  Input Schema: {}\n",
-                tool.name,
-                tool.description.as_deref().unwrap_or("No description"),
-                serde_json::to_string_pretty(&tool.input_schema).unwrap_or_else(|_| "{}".to_string())
-            )
-        })
-        .collect::<Vec<String>>()
-        .join("\n")
-}
+// Removed format_tool_list function as available_tools is now provided as a string.
 
 /// Calls the Gemini API via RLLM to generate a plan.
 // Return type changed to Result<Box<dyn ChatResponse>, rllm::error::LLMError>
@@ -125,10 +102,7 @@ async fn handle_planning_tool_call(
 ) -> Result<JsonRpcResponse> {
     info!("Handling planning_tool call");
 
-    // Format the available tools for the prompt
-    let formatted_tools = format_tool_list(&params.available_tools);
-
-    // Construct the detailed prompt for Gemini
+    // Construct the detailed prompt for Gemini using the provided string
     let prompt = format!(
         "Generate a plan based on the following information:\n\n\
          User Request:\n\"{}\"\n\n\
@@ -136,7 +110,7 @@ async fn handle_planning_tool_call(
          Available Tools:\n{}\n\
          ------------------------------------\n\
          PLAN:",
-        params.user_request, params.ai_interpretation, formatted_tools
+        params.user_request, params.ai_interpretation, params.available_tools // Use the string directly
     );
 
     match generate_plan_with_gemini(&prompt).await {

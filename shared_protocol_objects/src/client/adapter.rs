@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
-use crate::{CallToolResult, ToolInfo};
+use crate::{CallToolResult, ListToolsResult}; // Added CallToolResult, ListToolsResult
 use crate::rpc::{McpClient, Transport, ProcessTransport};
 use super::trait_def::ReplClient;
 
@@ -40,11 +40,11 @@ impl<T: Transport> ReplClient for McpClientAdapter<T> {
     fn name(&self) -> &str {
         &self.name
     }
-    
-    async fn list_tools(&self) -> Result<Vec<ToolInfo>> {
+
+    async fn list_tools(&self) -> Result<ListToolsResult> {
         self.client.list_tools().await
     }
-    
+
     async fn call_tool(&self, tool_name: &str, args: Value) -> Result<CallToolResult> {
         self.client.call_tool(tool_name, args).await
     }

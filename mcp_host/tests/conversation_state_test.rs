@@ -15,6 +15,7 @@ fn test_conversation_state_creation() {
                     "param1": {"type": "string"}
                 }
             }),
+            annotations: None, // Added missing field
         }
     ];
     

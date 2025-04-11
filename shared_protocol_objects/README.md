@@ -16,6 +16,7 @@ This library provides a standard JSON-RPC client implementation for the Model Co
 use shared_protocol_objects::rpc::{McpClientBuilder, ProcessTransport};
 use serde_json::json;
 use tokio::process::Command;
+use std::time::Duration; // Added for timeout example
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -23,26 +24,36 @@ async fn main() -> anyhow::Result<()> {
     let mut command = Command::new("cargo");
     command.args(["run", "--bin", "mcp_tools"]);
     
-    // Create transport and connect
+    // Create transport
     let transport = ProcessTransport::new(command).await?;
+
+    // Build and connect client
     let client = McpClientBuilder::new(transport)
         .client_info("my-app", "1.0.0")
+        .timeout(Duration::from_secs(60)) // Example: Set timeout
         .connect().await?;
-        
+
+    println!("Connected to server: {:?}", client.server_info());
+
     // List available tools
-    let tools = client.list_tools().await?;
-    println!("Available tools: {:?}", tools);
-    
+    let list_tools_result = client.list_tools().await?;
+    println!("Available tools:");
+    for tool in &list_tools_result.tools {
+        println!(" - {}", tool.name);
+    }
+
     // Call a tool
     let result = client.call_tool("bash", json!({
         "command": "ls -la"
-    })).await?;
-    
+    }))
+    .await?;
+
     // Process the result
+    println!("Tool result:");
     for content in result.content {
         println!("{}", content.text);
     }
-    
+
     // Close the connection
     client.close().await?;
     
@@ -90,7 +101,11 @@ pub enum McpError {
     #[error("Client not initialized")]
     NotInitialized,
     #[error("RPC error {code}: {message}")]
-    RpcError { code: i64, message: String, data: Option<Value> },
+    RpcError {
+        code: i64,
+        message: String,
+        data: Option<Value>,
+    },
     #[error("No result in response")]
     NoResult,
     #[error("Capability not supported: {0}")]
@@ -105,14 +120,16 @@ pub enum McpError {
 ### Initialization
 
 ```rust
-// Initialize with custom capabilities
-let capabilities = ClientCapabilities {
-    experimental: Some(json!({ "my_feature": true })),
-    sampling: Some(json!({})),
-    roots: Some(RootsCapability { list_changed: true }),
-};
-
-let server_caps = client.initialize(capabilities).await?;
+// Initialize with default capabilities
+// let init_result = client.initialize(ClientCapabilities::default()).await?;
+// Or customize capabilities:
+// let capabilities = ClientCapabilities {
+//     experimental: json!({ "my_feature": true }),
+//     sampling: json!({}), // Assuming default derived
+//     roots: RootsCapability { list_changed: true },
+// };
+// let init_result = client.initialize(capabilities).await?;
+// println!("Server capabilities: {:?}", init_result.capabilities);
 ```
 
 ### Calling Tools
@@ -125,25 +142,35 @@ let result = client.call_tool("tool_name", json!({
 })).await?;
 
 // Tool call with progress tracking
-let result = client.call_tool_with_progress(
-    "long_running_tool", 
-    json!({ "duration": 30 }),
-    |progress| Box::pin(async move {
-        println!("Progress: {}/{}", 
-            progress.progress, 
-            progress.total.unwrap_or(100));
-    })
-).await?;
+let result = client
+    .call_tool_with_progress(
+        "long_running_tool",
+        json!({ "duration": 30 }),
+        |progress_params| {
+            Box::pin(async move {
+                println!(
+                    "Progress ({}): {}/{} - {}",
+                    progress_params.progress_token,
+                    progress_params.progress,
+                    progress_params.total.map(|t| t.to_string()).unwrap_or_else(|| "?".to_string()),
+                    progress_params.message.as_deref().unwrap_or("")
+                );
+            })
+        },
+    )
+    .await?;
 ```
 
 ### Working with Resources
 
 ```rust
 // List resources
-let resources = client.list_resources().await?;
+let list_resources_result = client.list_resources().await?;
+println!("Resources: {:?}", list_resources_result.resources);
 
 // Read a resource
-let contents = client.read_resource("file:///path/to/resource").await?;
+let read_result = client.read_resource("file:///path/to/resource").await?;
+println!("Resource content: {:?}", read_result.contents);
 ```
 
 ## Extending

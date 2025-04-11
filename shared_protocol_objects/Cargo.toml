@@ -19,3 +19,4 @@ tokio-stream = { version = "0.1", features = ["io-util"] }
 tracing = "0.1"
 futures = "0.3"
 nix = { version = "0.26", features = ["signal", "process"] }
+bytes = "1.0" # Added for reading stderr buffer

@@ -3647,6 +3647,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bytes",
  "futures",
  "nix 0.26.4",
  "serde",

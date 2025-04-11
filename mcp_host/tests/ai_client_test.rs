@@ -1,4 +1,4 @@
-use mcp_host::ai_client::{AIClient, AIClientFactory, GenerationConfig, ModelCapabilities, Content};
+use mcp_host::ai_client::{AIClient, AIClientFactory, GenerationConfig, ModelCapabilities}; // Removed Content
 use serde_json::json;
 use shared_protocol_objects::Role;
 use std::path::Path;
@@ -97,14 +97,15 @@ impl mcp_host::ai_client::AIRequestBuilder for MockRequestBuilder {
 
 #[async_trait::async_trait]
 impl AIClient for MockAIClient {
-    fn builder(&self) -> Box<dyn mcp_host::ai_client::AIRequestBuilder> {
+    // Add system_prompt argument to match trait
+    fn builder(&self, _system_prompt: &str) -> Box<dyn mcp_host::ai_client::AIRequestBuilder> {
         Box::new(MockRequestBuilder::new())
     }
-    
-    fn raw_builder(&self) -> Box<dyn mcp_host::ai_client::AIRequestBuilder> {
+
+    // Add system_prompt argument to match trait
+    fn raw_builder(&self, _system_prompt: &str) -> Box<dyn mcp_host::ai_client::AIRequestBuilder> {
         Box::new(MockRequestBuilder::new())
     }
-    
     fn model_name(&self) -> String {
         self.model_name.clone()
     }
@@ -126,9 +127,9 @@ async fn test_ai_client_basic_functionality() {
     assert!(caps.supports_images);
     assert!(caps.supports_system_messages);
     assert_eq!(caps.max_tokens, Some(4096));
-    
-    // Test builder
-    let builder = client.builder();
+
+    // Test builder - pass empty system prompt
+    let builder = client.builder("");
     let builder = builder.system("System prompt".to_string());
     let builder = builder.user("User message".to_string());
     
@@ -140,9 +141,9 @@ async fn test_ai_client_basic_functionality() {
 #[tokio::test]
 async fn test_ai_client_builder_chaining() {
     let client = MockAIClient::new("test-model");
-    
-    // Test chained builder methods
-    let builder = client.builder()
+
+    // Test chained builder methods - pass empty system prompt
+    let builder = client.builder("")
         .system("Initial instructions".to_string())
         .user("Hello".to_string())
         .assistant("Hi there".to_string())
@@ -169,8 +170,9 @@ async fn test_ai_client_with_config() {
         frequency_penalty: None,
         presence_penalty: None,
     };
-    
-    let builder = client.builder()
+
+    // Pass empty system prompt
+    let builder = client.builder("")
         .system("System message".to_string())
         .config(config);
     

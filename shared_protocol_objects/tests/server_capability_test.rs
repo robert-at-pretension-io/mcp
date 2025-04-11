@@ -133,9 +133,9 @@ async fn test_initialize_flow() {
         protocol_version: "2025-03-26".to_string(),
         capabilities: server_caps.clone(),
         server_info: server_info.clone(),
-        _meta: None,
+        instructions: Some("This server provides access to project data and search tools.".to_string()), // Added instructions
     };
-    
+
     // Create response
     let init_response = JsonRpcResponse {
         jsonrpc: "2.0".to_string(),

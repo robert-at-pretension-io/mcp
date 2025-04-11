@@ -69,6 +69,9 @@ impl MCPHost {
 
     /// Apply a new configuration, starting/stopping servers as needed.
     pub async fn apply_config(&self, new_config: HostConfig) -> Result<()> {
+        // ---> ADDED LOG <---
+        info!("Entered apply_config. Processing {} servers from new config.", new_config.servers.len());
+        // ---> END ADDED LOG <---
         info!("Applying new configuration...");
         debug!("Acquiring servers lock to determine changes...");
         let server_manager = self.server_manager();
@@ -84,13 +87,11 @@ impl MCPHost {
             for (name, server_config) in &new_config.servers {
                 if !current_servers.contains_key(name) {
                     info!("Server '{}' marked for start.", name);
-                    // Prepare command details for starting later
-                    let mut command = std::process::Command::new(&server_config.command);
-                    if let Some(args) = &server_config.args {
-                        command.args(args);
-                    }
-                    command.envs(server_config.env.clone());
-                    servers_to_start.push((name.clone(), command));
+                    // Prepare command components for starting later
+                    let program = server_config.command.clone();
+                    let args = server_config.args.clone().unwrap_or_default();
+                    let envs = server_config.env.clone();
+                    servers_to_start.push((name.clone(), program, args, envs));
                 }
                 // Remove from the set of current servers, leaving only those to be stopped
                 current_server_names.remove(name);
@@ -118,10 +119,14 @@ impl MCPHost {
 
         // Start new servers
         if !servers_to_start.is_empty() {
-            info!("Starting new servers: {:?}", servers_to_start.iter().map(|(n, _)| n).collect::<Vec<_>>());
-            for (name, command) in servers_to_start {
-                debug!("Attempting to start server '{}' with command: {:?}", name, command);
-                if let Err(e) = server_manager.start_server_with_command(&name, command).await {
+            info!("Starting new servers: {:?}", servers_to_start.iter().map(|(n, _, _, _)| n).collect::<Vec<_>>());
+            for (name, program, args, envs) in servers_to_start {
+                // ---> ADDED LOG <---
+                info!("apply_config: Preparing to call start_server_with_command for '{}'", name);
+                // ---> END ADDED LOG <---
+                debug!("Attempting to start server '{}' with program: {}, args: {:?}, envs: {:?}", name, program, args, envs.keys());
+                // Pass components instead of a Command object
+                if let Err(e) = server_manager.start_server_with_components(&name, &program, &args, &envs).await {
                     error!("Failed to start server '{}': {}", name, e);
                     // Decide if you want to continue or return error
                 } else {
@@ -292,10 +297,66 @@ impl MCPHost {
         self.server_manager().stop_server(name).await
     }
 
-    /// Enter chat mode with a server
+    /// List tools from all currently running servers, removing duplicates by name.
+    pub async fn list_all_tools(&self) -> Result<Vec<shared_protocol_objects::ToolInfo>> {
+        info!("Listing tools from all active servers...");
+        let mut all_tools = HashMap::new(); // Use HashMap to deduplicate by name
+        let server_names = { // Scope lock
+            let servers_guard = self.servers.lock().await;
+            servers_guard.keys().cloned().collect::<Vec<_>>()
+        }; // Lock released
+
+        for server_name in server_names {
+            match self.list_server_tools(&server_name).await {
+                Ok(tools) => {
+                    debug!("Found {} tools on server '{}'", tools.len(), server_name);
+                    for tool in tools {
+                        // Insert into HashMap, replacing duplicates (last one wins if names collide)
+                        all_tools.insert(tool.name.clone(), tool);
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to list tools for server '{}': {}. Skipping.", server_name, e);
+                }
+            }
+        }
+        let unique_tools: Vec<_> = all_tools.into_values().collect();
+        info!("Found {} unique tools across all servers.", unique_tools.len());
+        Ok(unique_tools)
+    }
+
+    /// Find the name of the server that provides a specific tool.
+    pub async fn get_server_for_tool(&self, tool_name: &str) -> Result<String> {
+        debug!("Searching for server providing tool: {}", tool_name);
+        let server_names = { // Scope lock
+            let servers_guard = self.servers.lock().await;
+            servers_guard.keys().cloned().collect::<Vec<_>>()
+        }; // Lock released
+
+        for server_name in server_names {
+            // In the future, we could check cached capabilities here first.
+            // For now, we call list_tools again.
+            match self.list_server_tools(&server_name).await {
+                Ok(tools) => {
+                    if tools.iter().any(|t| t.name == tool_name) {
+                        debug!("Found tool '{}' on server '{}'", tool_name, server_name);
+                        return Ok(server_name);
+                    }
+                }
+                Err(e) => {
+                    warn!("Could not list tools for server '{}' while searching for tool '{}': {}", server_name, tool_name, e);
+                }
+            }
+        }
+        error!("Tool '{}' not found on any active server.", tool_name);
+        Err(anyhow!("Tool '{}' not found on any active server", tool_name))
+    }
+
+
+    /// Enter chat mode with a specific server
     pub async fn enter_chat_mode(&self, server_name: &str) -> Result<crate::conversation_state::ConversationState> {
-        // This implementation remains largely the same as in host.rs
-        // Fetch tools from the server
+        info!("Entering single-server chat mode for '{}'", server_name);
+        // Fetch tools from the specific server
         let tool_info_list = self.list_server_tools(server_name).await?;
 
         // Convert our tool list to a JSON structure - we'll use this for debugging
@@ -333,6 +394,31 @@ impl MCPHost {
         // so we don't need to add it separately here.
         // The generate_tool_system_prompt function is called within ConversationState::new.
 
+        Ok(state)
+    }
+
+    /// Enter chat mode using tools from all available servers.
+    pub async fn enter_multi_server_chat_mode(&self) -> Result<crate::conversation_state::ConversationState> {
+        info!("Entering multi-server chat mode.");
+        // Fetch tools from all servers
+        let all_tools = self.list_all_tools().await?;
+
+        // Generate system prompt using combined tool list
+        let system_prompt = format!(
+            "You are a helpful assistant with access to tools from multiple servers. Use tools EXACTLY according to their descriptions.\n\
+            TOOLS:\n{}",
+            all_tools.iter().map(|tool| {
+                format!(
+                    "- {}: {}\n  input schema: {:?}",
+                    tool.name,
+                    tool.description.as_ref().unwrap_or(&"".to_string()),
+                    tool.input_schema
+                )
+            }).collect::<Vec<_>>().join("\n")
+        );
+
+        // Create the conversation state
+        let state = crate::conversation_state::ConversationState::new(system_prompt, all_tools);
         Ok(state)
     }
 
