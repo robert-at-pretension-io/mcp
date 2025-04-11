@@ -2,12 +2,12 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::future::BoxFuture;
 use std::sync::Arc;
-// Added AsyncReadExt for read_buf
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader}; 
+// Removed unused AsyncReadExt
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader}; 
 use tokio::process::{Child, ChildStdin, ChildStderr, ChildStdout, Command}; // Added ChildStderr
 use std::process::Stdio;
 use tokio::sync::{Mutex};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, warn}; // Removed unused trace
 
 use crate::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 

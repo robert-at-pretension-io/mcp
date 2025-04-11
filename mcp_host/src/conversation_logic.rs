@@ -362,7 +362,7 @@ pub async fn resolve_assistant_response(
                     Err(_e) => { // Prefix unused variable with underscore
                         error!("Detailed error getting next AI response after tools: {:?}", _e);
                         let error_msg = format!("Failed to get AI response after tool execution: {}", _e);
-                        log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg));
+                        log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg)); // Use error_msg here
                         return Err(anyhow!(error_msg));
                     }
                 };
