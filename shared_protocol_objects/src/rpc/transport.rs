@@ -33,13 +33,12 @@ pub trait Transport: Send + Sync + 'static {
 
 /// Transport for communicating with a child process via stdin/stdout
 pub struct ProcessTransport {
-    #[allow(dead_code)]
-    process: Arc<Mutex<Child>>, // Wrap Child in Arc<Mutex> for potential future use (e.g., kill)
+    // process field removed as StdChild is not Send/Sync
     pub stdin: Arc<Mutex<ChildStdin>>,
     pub stdout: Arc<Mutex<ChildStdout>>,
-    pub stderr: Arc<Mutex<ChildStderr>>, // Added stderr field
+    pub stderr: Arc<Mutex<ChildStderr>>,
     notification_handler: Arc<Mutex<Option<NotificationHandler>>>,
-    // Removed _stderr_reader_handle as we'll spawn directly
+    _child_pid: u32, // Added field to store PID
 }
 
 impl ProcessTransport {
