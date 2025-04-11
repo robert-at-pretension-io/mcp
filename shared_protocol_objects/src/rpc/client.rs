@@ -54,6 +54,7 @@ impl<T: Transport> McpClient<T> {
             request_timeout: timeout,
             initialized: false,
             id_generator: Arc::new(IdGenerator::new(true)), // Use UUIDs by default for most requests
+            compatibility_mode: false, // Initialize compatibility mode to false
         }
     }
 
