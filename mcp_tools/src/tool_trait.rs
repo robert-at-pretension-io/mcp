@@ -57,8 +57,6 @@ pub fn standard_tool_result(
             annotations: None,
         }],
         is_error,
-        _meta: None,
-        progress: None,
-        total: None,
+        // Removed _meta, progress, total fields as they don't exist in shared_protocol_objects::CallToolResult
     }
 }

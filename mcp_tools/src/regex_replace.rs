@@ -415,9 +415,7 @@ pub async fn handle_regex_replace_tool_call(params: CallToolParams, id: Option<V
             annotations: None,
         }],
         is_error: Some(false),
-        _meta: None,
-        progress: None,
-        total: None,
+        // Removed _meta, progress, total fields
     };
     
     Ok(success_response(id, serde_json::to_value(tool_res)?))

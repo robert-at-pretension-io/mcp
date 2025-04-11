@@ -359,9 +359,7 @@ pub async fn handle_long_running_tool_call(
                     ])),
                 }],
                 is_error: Some(false),
-                _meta: None,
-                progress: None,
-                total: None,
+                // Removed _meta, progress, total fields
             };
             Ok(success_response(id, serde_json::to_value(tool_res)?))
         }
@@ -401,9 +399,7 @@ pub async fn handle_long_running_tool_call(
                     annotations: None,
                 }],
                 is_error: Some(state.status == TaskStatus::Error),
-                _meta: None,
-                progress: None,
-                total: None,
+                // Removed _meta, progress, total fields
             };
             Ok(success_response(id, serde_json::to_value(tool_res)?))
         }
@@ -443,9 +439,7 @@ pub async fn handle_long_running_tool_call(
                     annotations: None,
                 }],
                 is_error: Some(false),
-                _meta: None,
-                progress: None,
-                total: None,
+                // Removed _meta, progress, total fields
             };
             Ok(success_response(id, serde_json::to_value(tool_res)?))
         }

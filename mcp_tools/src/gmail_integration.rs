@@ -242,9 +242,7 @@ pub async fn handle_gmail_tool_call(
                                 annotations: None,
                             }],
                             is_error: None,
-                            _meta: None,
-                            progress: None,
-                            total: None,
+                            // Removed _meta, progress, total fields
                         })?
                     )
                 )
@@ -269,9 +267,7 @@ pub async fn handle_gmail_tool_call(
                                 annotations: None,
                             }],
                             is_error: None,
-                            _meta: None,
-                            progress: None,
-                            total: None,
+                            // Removed _meta, progress, total fields
                         })?
                     )
                 )
@@ -313,9 +309,7 @@ pub async fn handle_gmail_tool_call(
                             annotations: None,
                         }],
                         is_error: Some(false),
-                        _meta: None,
-                        progress: None,
-                        total: None,
+                        // Removed _meta, progress, total fields
                     })?
                 )
             )
@@ -360,9 +354,7 @@ pub async fn handle_gmail_tool_call(
                             annotations: None,
                         }],
                         is_error: Some(false),
-                        _meta: None,
-                        progress: None,
-                        total: None,
+                        // Removed _meta, progress, total fields
                     })?
                 )
             )
@@ -414,9 +406,7 @@ pub async fn handle_gmail_tool_call(
                             annotations: None,
                         }],
                         is_error: Some(false),
-                        _meta: None,
-                        progress: None,
-                        total: None,
+                        // Removed _meta, progress, total fields
                     })?
                 )
             )
@@ -454,9 +444,7 @@ pub async fn handle_gmail_tool_call(
                             annotations: None,
                         }],
                         is_error: Some(false),
-                        _meta: None,
-                        progress: None,
-                        total: None,
+                        // Removed _meta, progress, total fields
                     })?
                 )
             )
@@ -503,9 +491,7 @@ pub async fn handle_gmail_tool_call(
                             annotations: None,
                         }],
                         is_error: Some(false),
-                        _meta: None,
-                        progress: None,
-                        total: None,
+                        // Removed _meta, progress, total fields
                     })?
                 )
             )
@@ -1065,9 +1051,7 @@ fn missing_auth_response(id: Option<Value>, msg: &str) -> JsonRpcResponse {
                 annotations: None,
             }],
             is_error: Some(true),
-            _meta: None,
-            progress: None,
-            total: None,
+            // Removed _meta, progress, total fields
         })
     )
 }

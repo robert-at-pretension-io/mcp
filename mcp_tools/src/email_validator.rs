@@ -104,9 +104,7 @@ pub async fn handle_neverbounce_tool_call(
             annotations: None,
         }],
         is_error: None,
-        _meta: None,
-        progress: None,
-        total: None,
+        // Removed _meta, progress, total fields
     };
     Ok(success_response(id, serde_json::to_value(tool_res)?))
 }

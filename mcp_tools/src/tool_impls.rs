@@ -1,19 +1,17 @@
 use crate::aider::{aider_tool_info, handle_aider_tool_call, AiderParams};
-use crate::bash::{bash_tool_info, BashExecutor, BashParams}; // Removed unused quick bash imports
+// Removed bash_tool_info, BashExecutor, BashParams imports
 use crate::brave_search::{search_tool_info, BraveSearchClient};
-// Removed unused email_validator imports
-// Removed unused git_integration imports
 // Removed unused gmail_integration imports
 use crate::long_running_task::{handle_long_running_tool_call, long_running_tool_info, LongRunningTaskManager};
 use crate::mermaid_chart::{handle_mermaid_chart_tool_call, mermaid_chart_tool_info, MermaidChartParams};
-use crate::planner::{PlannerTool as PlannerToolImpl}; // Renamed to avoid conflict
+// Removed unused PlannerToolImpl import
 use crate::bash::BashTool; // Import the new BashTool location
 use crate::process_html::extract_text_from_html;
 // Removed unused regex_replace imports
 use crate::scraping_bee::{scraping_tool_info, ScrapingBeeClient, ScrapingBeeResponse};
 // Removed unused ensure_id, standard_error_response
 use crate::tool_trait::{ExecuteFuture, Tool, standard_success_response, standard_tool_result}; // Keep Tool trait for now
-use rmcp::ServerHandler; // Import SDK ServerHandler
+use rmcp::{ServerHandler, ServiceExt}; // Import SDK ServerHandler and ServiceExt
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
@@ -310,22 +308,24 @@ pub async fn create_tools() -> Result<Vec<Box<dyn ServerHandler>>> { // Return S
     let mut tools: Vec<Box<dyn ServerHandler>> = Vec::new(); // Use ServerHandler vector
 
     // Add ScrapingBee tool if environment variable is set
-    // TODO: Convert ScrapingBeeTool to SDK and use into_dyn()
-    if let Ok(scraping_bee_tool) = ScrapingBeeTool::new() {
-        // tools.push(Box::new(scraping_bee_tool).into_dyn()); // Placeholder for converted tool
-        tools.push(Box::new(scraping_bee_tool));
-    } else {
-        warn!("ScrapingBee tool not available: missing API key");
-    }
+    // TODO: Convert ScrapingBeeTool to SDK and add using into_dyn()
+    // if let Ok(scraping_bee_tool) = ScrapingBeeTool::new() {
+    //     // tools.push(Box::new(scraping_bee_tool).into_dyn()); // Placeholder for converted tool
+    //     // tools.push(Box::new(scraping_bee_tool)); // Cannot add non-ServerHandler tool
+    // } else {
+    //     warn!("ScrapingBee tool not available: missing API key");
+    // }
     
     // Add BraveSearch tool if environment variable is set
-    if let Ok(brave_search_tool) = BraveSearchTool::new() {
-        tools.push(Box::new(brave_search_tool));
-    } else {
-        warn!("BraveSearch tool not available: missing API key");
+    // TODO: Convert BraveSearchTool to SDK and add using into_dyn()
+    // if let Ok(brave_search_tool) = BraveSearchTool::new() {
+    //     // tools.push(Box::new(brave_search_tool).into_dyn()); // Placeholder for converted tool
+    //     // tools.push(Box::new(brave_search_tool)); // Cannot add non-ServerHandler tool
+    // } else {
+    //     warn!("BraveSearch tool not available: missing API key");
     }
-
-    // Add BashTool using into_dyn()
+    
+    // Add BashTool using into_dyn() - Requires ServiceExt trait in scope
     tools.push(Box::new(BashTool).into_dyn());
 
     // Add other tools that don't require special initialization

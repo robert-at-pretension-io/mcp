@@ -4,7 +4,8 @@ use schemars::JsonSchema; // Added
 use std::process::Command;
 use serde_json::json;
 use tracing::{debug, error}; // Added tracing
-use rmcp::prelude::*; // Added rmcp prelude
+// Import specific items from rmcp instead of prelude
+use rmcp::{tool, Error as RmcpError, ServerHandler, model::ServerInfo};
 
 use shared_protocol_objects::ToolInfo; // Keep for quick_bash_tool_info for now
 
@@ -82,7 +83,7 @@ impl BashTool {
     async fn bash(
         &self,
         #[tool(aggr)] params: BashParams // Automatically aggregates JSON args into BashParams
-    ) -> Result<String, rmcp::Error> { // Return Result<String, rmcp::Error>
+    ) -> Result<String, RmcpError> { // Use aliased RmcpError
         debug!("Executing bash tool with params: {:?}", params);
         let executor = BashExecutor::new();
 
@@ -102,7 +103,7 @@ impl BashTool {
             Err(e) => {
                 // If the executor itself fails (e.g., can't spawn process), return an internal error
                 error!("BashExecutor failed: {}", e);
-                Err(rmcp::Error::internal_error(
+                Err(RmcpError::internal_error( // Use aliased RmcpError
                     &format!("Failed to execute bash command: {}", e),
                     None, // Optional data
                 ))
