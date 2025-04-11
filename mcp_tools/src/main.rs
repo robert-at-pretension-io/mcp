@@ -108,13 +108,16 @@ async fn main() {
     impl ServerHandler for McpToolServer {
         // Optionally override get_info for custom server details
         fn get_info(&self) -> ServerInfo {
-            ServerInfo {
-                name: Some("MCP Tools Server (SDK)".into()),
-                version: Some(env!("CARGO_PKG_VERSION").into()),
-                description: Some("Provides various tools like bash execution and web scraping.".into()),
-                instructions: Some("Use 'call' with tool name and parameters.".into()),
-                ..Default::default() // Use defaults for other fields
-            }
+            // Explicitly create the ServerInfo struct first
+            let server_info = ServerInfo {
+                 name: Some("MCP Tools Server (SDK)".into()),
+                 version: Some(env!("CARGO_PKG_VERSION").into()),
+                 description: Some("Provides various tools like bash execution and web scraping.".into()),
+                 instructions: Some("Use 'call' with tool name and parameters.".into()),
+                 ..Default::default() // Ensure all other fields use default values
+             };
+             // Return the created struct
+             server_info
         }
     }
     // --- End New SDK Server Structure ---

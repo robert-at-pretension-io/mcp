@@ -6,7 +6,7 @@ use crate::mermaid_chart::{handle_mermaid_chart_tool_call, mermaid_chart_tool_in
 // Removed: use crate::scraping_bee::ScrapingBeeTool; // Handled by McpToolServer
 use crate::tool_trait::{ExecuteFuture, Tool, standard_success_response, standard_tool_result};
 // Import DynService from rmcp::service and RoleServer for the correct trait object type
-use rmcp::{service::DynService, RoleServer, ServiceExt}; // Keep for potential future SDK tool conversions here
+use rmcp::{service::DynService, RoleServer}; // Removed unused ServiceExt
 
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
@@ -248,7 +248,7 @@ impl Tool for MermaidChartTool {
 // Factory function to create all available tools
 // Change return type to use the dyn-safe DynService trait object
 pub async fn create_tools() -> Result<Vec<Box<dyn DynService<RoleServer>>>> {
-    let mut tools: Vec<Box<dyn DynService<RoleServer>>> = Vec::new(); // Use DynService vector
+    let tools: Vec<Box<dyn DynService<RoleServer>>> = Vec::new(); // Use DynService vector, remove mut
 
     // ScrapingBeeTool is now implemented using SDK and added directly in main.rs
     

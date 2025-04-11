@@ -6,7 +6,7 @@ use serde_json::json;
 use tracing::{debug, error}; // Added tracing
 // Import specific items from rmcp instead of prelude
 // Removed unused Error alias
-use rmcp::{tool, ServerHandler, model::ServerInfo};
+use rmcp::tool; // Removed unused ServerHandler, model::ServerInfo
 
 use shared_protocol_objects::ToolInfo; // Keep for quick_bash_tool_info for now
 

@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use std::env;
 
 // Import SDK components
-use rmcp::{tool, ServerHandler, model::ServerInfo};
+use rmcp::tool; // Removed unused ServerHandler, model::ServerInfo
 
 #[derive(Debug)]
 pub enum ScrapingBeeResponse {
