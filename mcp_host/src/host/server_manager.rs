@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Result};
-use log::{debug, error, info, warn}; // Removed unused trace, warn
+use anyhow::{anyhow, Context, Result}; // Added Context import
+use log::{debug, error, info, warn};
 use serde_json::Value;
 use shared_protocol_objects::{
     Implementation, ServerCapabilities, ToolInfo, CallToolResult, ClientCapabilities
@@ -387,11 +387,10 @@ impl ServerManager {
 
         // Try-catch with detailed error reporting
         match server.client.list_tools().await {
-            Ok(result) => {
-                // Use result.tools as list_tools now returns ListToolsResult
-                info!("Successfully received tools list: {} tools", result.tools.len());
-                debug!("Tools list details: {:?}", result); // Log the full result structure
-                Ok(result.tools) // Extract the Vec<ToolInfo> from the result
+            Ok(tools_vec) => { // list_tools now returns Vec<ToolInfo> directly
+                info!("Successfully received tools list: {} tools", tools_vec.len());
+                debug!("Tools list details: {:?}", tools_vec); // Log the vector
+                Ok(tools_vec) // Return the Vec<ToolInfo> directly
             },
             Err(e) => {
                 error!("Error listing tools from {}: {:?}", server_name, e); // Log the detailed error
