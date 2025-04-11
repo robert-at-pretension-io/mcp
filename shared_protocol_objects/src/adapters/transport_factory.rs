@@ -4,7 +4,8 @@ use crate::rpc::Transport; // Use the Transport trait from rpc module
 use std::time::Duration; // Added for timeout configuration
 
 // Import the specific transport types
-use super::rmcp_transport::RmcpProcessTransportAdapter;
+// Correct the struct name to match the implementation in rmcp_transport.rs
+use super::rmcp_transport::RmcpTransportAdapter;
 use crate::rpc::ProcessTransport as NativeProcessTransport; // Alias native transport
 
 // Import feature detection helper
@@ -19,9 +20,12 @@ pub async fn create_process_transport(mut command: Command) -> Result<Box<dyn Tr
 pub async fn create_process_transport_with_timeout(mut command: Command, request_timeout: Duration) -> Result<Box<dyn Transport>> {
     // Check if the RMCP feature is enabled and attempt to use it
     if cfg!(feature = "rmcp-integration") {
-        match RmcpProcessTransportAdapter::new_with_timeout(&mut command, request_timeout).await {
+        // Clone the command because new_with_timeout takes ownership (mut Command)
+        // and we might need the original command for the fallback path.
+        let rmcp_command = command.clone();
+        match RmcpTransportAdapter::new_with_timeout(rmcp_command, request_timeout).await {
             Ok(adapter) => {
-                tracing::info!("Successfully created RMCP transport adapter.");
+                tracing::info!("Successfully created RMCP transport adapter (RmcpTransportAdapter)."); // Updated log message
                 feature_detection::set_using_rmcp(true); // Mark RMCP as active
                 Ok(Box::new(adapter))
             },
