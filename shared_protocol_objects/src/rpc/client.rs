@@ -610,7 +610,8 @@ impl<T: Transport> McpClientBuilder<T> {
 
 /// Convenience function to create a client with process transport
 #[allow(dead_code)] // Allow unused function for now
-pub async fn connect_to_process(command: Command) -> Result<McpClient<ProcessTransport>> {
+// Update function signature to accept std::process::Command
+pub async fn connect_to_process(command: std::process::Command) -> Result<McpClient<ProcessTransport>> { 
     let transport = ProcessTransport::new(command).await?;
 
     McpClientBuilder::new(transport)
