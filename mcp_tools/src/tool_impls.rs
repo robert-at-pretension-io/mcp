@@ -309,30 +309,30 @@ pub async fn create_tools() -> Result<Vec<Box<dyn ServerHandler>>> { // Return S
 
     // Add ScrapingBee tool if environment variable is set
     // TODO: Convert ScrapingBeeTool to SDK and add using into_dyn()
-    // if let Ok(scraping_bee_tool) = ScrapingBeeTool::new() {
-    //     // tools.push(Box::new(scraping_bee_tool).into_dyn()); // Placeholder for converted tool
-    //     // tools.push(Box::new(scraping_bee_tool)); // Cannot add non-ServerHandler tool
-    // } else {
-    //     warn!("ScrapingBee tool not available: missing API key");
-    // }
+    if let Ok(_scraping_bee_tool) = ScrapingBeeTool::new() {
+        // tools.push(Box::new(scraping_bee_tool).into_dyn()); // Placeholder for converted tool
+        // tools.push(Box::new(scraping_bee_tool)); // Cannot add non-ServerHandler tool yet
+    } else {
+        warn!("ScrapingBee tool not available: missing API key");
+    }
     
     // Add BraveSearch tool if environment variable is set
     // TODO: Convert BraveSearchTool to SDK and add using into_dyn()
-    // if let Ok(brave_search_tool) = BraveSearchTool::new() {
-    //     // tools.push(Box::new(brave_search_tool).into_dyn()); // Placeholder for converted tool
-    //     // tools.push(Box::new(brave_search_tool)); // Cannot add non-ServerHandler tool
-    // } else {
-    //     warn!("BraveSearch tool not available: missing API key");
+    if let Ok(_brave_search_tool) = BraveSearchTool::new() {
+        // tools.push(Box::new(brave_search_tool).into_dyn()); // Placeholder for converted tool
+        // tools.push(Box::new(brave_search_tool)); // Cannot add non-ServerHandler tool yet
+    } else {
+        warn!("BraveSearch tool not available: missing API key");
     }
     
     // Add BashTool using into_dyn() - Requires ServiceExt trait in scope
     tools.push(Box::new(BashTool).into_dyn());
 
     // Add other tools that don't require special initialization
-    // TODO: Convert AiderTool, MermaidChartTool, PlannerToolImpl to SDK and use into_dyn()
+    // TODO: Convert AiderTool, MermaidChartTool, PlannerTool to SDK and use into_dyn()
     // tools.push(Box::new(AiderTool).into_dyn());
     // tools.push(Box::new(MermaidChartTool).into_dyn());
-    // tools.push(Box::new(PlannerToolImpl).into_dyn()); // Add the new planner tool
+    // tools.push(Box::new(PlannerTool).into_dyn()); // Use PlannerTool struct name
 
     // Note: LongRunningTaskTool is added separately in main.rs since it needs the manager
     

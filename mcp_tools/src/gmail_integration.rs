@@ -556,9 +556,7 @@ pub async fn handle_gmail_tool_call(
                             annotations: None,
                         }],
                         is_error: Some(false),
-                        _meta: None,
-                        progress: None,
-                        total: None,
+                        // Removed _meta, progress, total fields
                     })?
                 )
             )
