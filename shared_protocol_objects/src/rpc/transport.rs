@@ -132,10 +132,6 @@ impl Transport for ProcessTransport {
             // Lock is automatically released at the end of this scope
         }
 
-        // <<< ADD DELAY HERE >>>
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await; // 100ms delay
-        // <<< END DELAY >>>
-        
         // Now read the response directly
         info!("Attempting to acquire stdout lock for response...");
         let mut stdout_guard = self.stdout.lock().await;
