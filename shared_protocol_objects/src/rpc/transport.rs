@@ -3,11 +3,12 @@ use async_trait::async_trait;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 // Removed unused AsyncReadExt
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader}; 
-use tokio::process::{Child, ChildStdin, ChildStderr, ChildStdout, Command}; // Added ChildStderr
-use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+// Import Command from std::process and rename tokio::process::Command
+use std::process::{Command as StdCommand, Stdio, Child as StdChild};
+use tokio::process::{ChildStdin, ChildStderr, ChildStdout, Command as TokioCommand}; // Keep Tokio types for handles
 use tokio::sync::{Mutex};
-use tracing::{debug, error, info, warn}; // Removed unused trace
+use tracing::{debug, error, info, warn};
 
 use crate::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 
@@ -42,39 +43,57 @@ pub struct ProcessTransport {
 }
 
 impl ProcessTransport {
-    /// Create a new process transport
-    pub async fn new(mut command: Command) -> Result<Self> {
-        // Set up process with piped stdin/stdout/stderr
+    /// Create a new process transport using std::process::Command
+    pub async fn new(mut command: StdCommand) -> Result<Self> {
+        // Set up std::process::Command with piped stdin/stdout/stderr
         command.stdin(Stdio::piped())
                .stdout(Stdio::piped())
                .stderr(Stdio::piped()); // Capture stderr
 
-        debug!("Spawning process: {:?}", command);
-        let mut child = command.spawn()?;
-        
-        let stdin = child.stdin.take()
-            .ok_or_else(|| anyhow!("Failed to get stdin handle from child process"))?;
-        let stdout = child.stdout.take()
-            .ok_or_else(|| anyhow!("Failed to get stdout handle from child process"))?;
-        let stderr = child.stderr.take() // Take stderr
-            .ok_or_else(|| anyhow!("Failed to get stderr handle from child process"))?;
+        debug!("Spawning process using std::process: {:?}", command);
+        // Spawn using std::process::Command
+        let mut child: StdChild = command.spawn()
+            .map_err(|e| anyhow!("Failed to spawn process using std::process: {}", e))?;
+
+        // Take std handles
+        let std_stdin = child.stdin.take()
+            .ok_or_else(|| anyhow!("Failed to get std stdin handle from child process"))?;
+        let std_stdout = child.stdout.take()
+            .ok_or_else(|| anyhow!("Failed to get std stdout handle from child process"))?;
+        let std_stderr = child.stderr.take()
+            .ok_or_else(|| anyhow!("Failed to get std stderr handle from child process"))?;
+
+        // Wrap std handles in Tokio async wrappers
+        let stdin = ChildStdin::from_std(std_stdin)?;
+        let stdout = ChildStdout::from_std(std_stdout)?;
+        let stderr = ChildStderr::from_std(std_stderr)?;
 
         let stdin_arc = Arc::new(Mutex::new(stdin));
         let stdout_arc = Arc::new(Mutex::new(stdout));
-        let stderr_arc = Arc::new(Mutex::new(stderr)); // Wrap stderr
+        let stderr_arc = Arc::new(Mutex::new(stderr)); // Wrap Tokio stderr
+
+        // We need a way to manage the StdChild lifetime or kill it.
+        // For now, we can't store StdChild directly as it's not Send/Sync.
+        // Let's store the PID and manage it manually if needed, though this is less ideal.
+        let child_pid = child.id();
+        debug!("Process spawned with PID: {}", child_pid);
+        // Consider using libraries like `async_process` if more robust management is needed.
 
         let transport = Self {
-            process: Arc::new(Mutex::new(child)), // Wrap child process
+            // process field removed as StdChild is not Send/Sync
             stdin: stdin_arc,
             stdout: stdout_arc,
             stderr: stderr_arc.clone(), // Clone Arc for the struct field
             notification_handler: Arc::new(Mutex::new(None)),
+            // Store PID instead of the process handle
+            _child_pid: child_pid, // Add a field to store PID (prefixed as it's mainly for debug/kill)
         };
 
-        // --- Temporarily disable stderr reader task for debugging ---
-        /*
+        // --- Re-enable stderr reader task ---
+        let stderr_reader_arc = stderr_arc; // Use the already cloned Arc
         tokio::spawn(async move {
-            let mut stderr_locked = stderr_arc.lock().await; // Lock stderr Arc outside BufReader
+            // Lock the Arc<Mutex<ChildStderr>>
+            let mut stderr_locked = stderr_reader_arc.lock().await;
             let mut reader = BufReader::new(&mut *stderr_locked); // Pass mutable reference to locked stderr
             let mut line = String::new();
             loop {
@@ -94,10 +113,13 @@ impl ProcessTransport {
                 }
             }
         });
-        */
-        info!("Stderr reader task temporarily disabled for debugging.");
-        // --- End temporary disable ---
-        
+                    }
+                }
+            }
+        });
+        info!("Stderr reader task re-enabled.");
+        // --- End re-enable ---
+
         // Skip notification listener for now as it's causing issues
         // transport.start_notification_listener().await?;
         
