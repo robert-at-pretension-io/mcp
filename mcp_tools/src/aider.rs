@@ -1,32 +1,39 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::path::PathBuf;
 use tokio::process::Command;
 use tracing::{debug, error, info};
+use schemars::JsonSchema;
 
-use shared_protocol_objects::ToolInfo;
+// Import rmcp SDK components
+use rmcp::tool;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AiderParams {
-    /// The directory to run aider in (must exist)
+    #[schemars(description = "The directory path where aider should run (must exist and contain code files)")]
     pub directory: String,
-    /// The message to send to aider
+    
+    #[schemars(description = "Detailed instructions for what changes aider should make to the code")]
     pub message: String,
-    /// Additional options to pass to aider (optional)
+    
     #[serde(default)]
+    #[schemars(description = "Additional command-line options to pass to aider (optional)")]
     pub options: Vec<String>,
-    /// The provider to use (e.g., "anthropic", "openai")
+    
     #[serde(default)]
+    #[schemars(description = "The provider to use (e.g., 'anthropic', 'openai'). Defaults to 'anthropic' if not specified.")]
     pub provider: Option<String>,
-    /// The model to use (e.g., "claude-3-opus-20240229")
+    
     #[serde(default)]
+    #[schemars(description = "The model to use (e.g., 'claude-3-opus-20240229'). Falls back to AIDER_MODEL environment variable if not specified.")]
     pub model: Option<String>,
-    /// Number of thinking tokens for Anthropic models
+    
     #[serde(default)]
+    #[schemars(description = "Number of thinking tokens to use for Anthropic models (Claude). Higher values allow more thorough reasoning.")]
     pub thinking_tokens: Option<u32>,
-    /// Reasoning effort level for OpenAI models
+    
     #[serde(default)]
+    #[schemars(description = "Reasoning effort level for OpenAI models. Values: 'auto', 'low', 'medium', 'high'.")]
     pub reasoning_effort: Option<String>,
 }
 
@@ -231,106 +238,51 @@ impl AiderExecutor {
     }
 }
 
-/// Returns the tool info for the aider tool
-pub fn aider_tool_info() -> ToolInfo {
-    ToolInfo {
-        name: "aider".to_string(),
-        description: Some(
-            "AI pair programming tool for making targeted code changes. Use this tool to:
-            
-            1. Implement new features or functionality in existing code
-            2. Add tests to an existing codebase
-            3. Fix bugs in code
-            4. Refactor or improve existing code
-            5. Make structural changes across multiple files
+#[derive(Debug, Clone)]
+pub struct AiderTool;
 
-            When using aider, make sure to pass ALL of the context into the message needed for a particular issue. don't just provide the solution.
-            
-            The tool requires:
-            - A directory path where the code exists
-            - A detailed message describing what changes to make. Please only describe one change per message. If you need to make multiple changes, please submit multiple requests. You must include all context required because this tool doesn't have any memory of previous requests.
-            
-            Best practices for messages:
-            - Clearly describe the problem we're seeing in the tests
-            - Show the relevant code that's failing
-            - Explain why it's failing
-            - Provide the specific error messages
-            - Outline the approach to fix it
-            - Include any related code that might be affected by the changes
-            - Specify the file paths that include relevent context for the problem
-            
-            
-            Note: This tool runs aider with the --yes-always flag which automatically accepts all proposed changes.
-            
-            MODEL AND PROVIDER OPTIONS:
-            This tool supports both Anthropic (Claude) and OpenAI models. You can specify which provider and model to use:
-            
-            - Default provider: 'anthropic' with model 'anthropic/claude-3-7-sonnet-20250219'
-            - Alternative provider: 'openai' with default model 'openai/o3-mini'
-            
-            Examples of provider/model usage:
-            - Basic usage (uses default Anthropic model): {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\"}
-            - Specify provider: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"openai\"}
-            - Specify provider and model: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"anthropic\", \"model\": \"claude-3-opus-20240229\"}
-            
-            ADVANCED FEATURES:
-            - For Anthropic models (Claude), the default 'thinking_tokens' is set to 32000 for optimal performance, but you can override it:
-              Example: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"anthropic\", \"thinking_tokens\": 16000}
-            
-            - For OpenAI models, the default 'reasoning_effort' is set to 'high' for optimal performance, but you can override it:
-              Example: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"openai\", \"reasoning_effort\": \"medium\"}
-              Valid values: 'auto', 'low', 'medium', 'high'
-            
-            Note: The tool will look for API keys in environment variables. It first checks for provider-specific keys 
-            (ANTHROPIC_API_KEY or OPENAI_API_KEY) and then falls back to AIDER_API_KEY if needed."
-                .to_string(),
-        ),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "directory": {
-                    "type": "string",
-                    "description": "The directory path where aider should run (must exist and contain code files)"
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Detailed instructions for what changes aider should make to the code"
-                },
-                "options": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "description": "Additional command-line options to pass to aider (optional)"
-                },
-                "provider": {
-                    "type": "string",
-                    "description": "The provider to use (e.g., 'anthropic', 'openai'). Defaults to 'anthropic' if not specified."
-                },
-                "model": {
-                    "type": "string",
-                    "description": "The model to use (e.g., 'claude-3-opus-20240229'). Falls back to AIDER_MODEL environment variable if not specified."
-                },
-                "thinking_tokens": {
-                    "type": "integer",
-                    "description": "Number of thinking tokens to use for Anthropic models (Claude). Higher values allow more thorough reasoning."
-                },
-                "reasoning_effort": {
-                    "type": "string",
-                    "description": "Reasoning effort level for OpenAI models. Values: 'auto', 'low', 'medium', 'high'."
-                }
-            },
-            "required": ["directory", "message"],
-            "additionalProperties": false
-        }),
-        annotations: None, // Added missing field
+impl AiderTool {
+    pub fn new() -> Self {
+        Self
     }
 }
 
-/// Handler function for aider tool calls
-pub async fn handle_aider_tool_call(params: AiderParams) -> Result<AiderResult> {
-    let executor = AiderExecutor::new();
-    executor.execute(params).await
+#[tool(tool_box)]
+impl AiderTool {
+    #[tool(description = "AI pair programming tool for making targeted code changes. Use for implementing new features, adding tests, fixing bugs, refactoring code, or making structural changes across multiple files.")]
+    pub async fn aider(
+        &self,
+        #[tool(aggr)] params: AiderParams
+    ) -> String {
+        info!("Running aider in directory: {} with provider: {:?}", 
+             params.directory, params.provider);
+        
+        let executor = AiderExecutor::new();
+        
+        match executor.execute(params).await {
+            Ok(result) => {
+                // Format a nice response
+                let model_info = match &result.model {
+                    Some(model) => format!("Provider: {} | Model: {}", result.provider, model),
+                    None => format!("Provider: {}", result.provider),
+                };
+                
+                format!(
+                    "Aider execution {} [{}]\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                    if result.success { "succeeded" } else { "failed" },
+                    model_info,
+                    result.directory,
+                    result.status,
+                    result.stdout,
+                    result.stderr
+                )
+            },
+            Err(e) => {
+                error!("Aider execution failed: {}", e);
+                format!("Error executing aider: {}", e)
+            }
+        }
+    }
 }
 
 #[cfg(test)]

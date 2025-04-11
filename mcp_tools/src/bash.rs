@@ -2,13 +2,12 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema; // Added
 use std::process::Command;
-use serde_json::json;
+
 use tracing::{debug, error}; // Added tracing
 // Import specific items from rmcp instead of prelude
 // Removed unused Error alias
 use rmcp::tool; // Removed unused ServerHandler, model::ServerInfo
 
-use shared_protocol_objects::ToolInfo; // Keep for quick_bash_tool_info for now
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)] // Added JsonSchema
 pub struct BashParams {
@@ -116,79 +115,4 @@ impl BashTool {
             }
         }
     }
-}
-
-// Remove ServerHandler implementation for the individual tool
-// This is now handled by McpToolServer
-/* REMOVED
-impl ServerHandler for BashTool {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            // Add instructions if desired, otherwise use default
-            instructions: Some("A tool for executing bash commands.".into()),
-            ..Default::default()
-        }
-    }
-}
-*/
-// --- End New SDK Implementation ---
-
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct QuickBashParams {
-    pub cmd: String,
-}
-
-pub fn quick_bash_tool_info() -> ToolInfo {
-    ToolInfo {
-        name: "quick_bash".to_string(),
-        description: Some(
-            "Fast shell command tool for simple one-liners. Use this to:
-            
-            1. Run quick system checks (ls, ps, grep, find, etc.)
-            2. View file contents (cat, head, tail, less)
-            3. Create, move, or delete files and directories
-            4. Process text with utilities like grep, sed, awk
-            
-            Advantages over regular bash tool:
-            - Streamlined interface for common commands
-            - Optimized for one-line operations
-            - Focuses on readable command output
-            - Perfect for file system operations and text processing
-            
-            Example commands:
-            - `ls -la /path/to/dir`
-            - `grep -r \"pattern\" /search/path`
-            - `find . -name \"*.txt\" -mtime -7`
-            - `cat file.txt | grep pattern | wc -l`
-            - `du -sh /path/to/dir`
-            
-            Note: Commands run with your current user permissions.".to_string() // Fixed backticks in examples
-        ),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "cmd": {
-                    "type": "string",
-                    "description": "The shell command to execute"
-                }
-            },
-            "required": ["cmd"],
-            "additionalProperties": false
-        }),
-        annotations: None, // Added missing field
-    }
-}
-
-pub async fn handle_quick_bash(params: QuickBashParams) -> Result<BashResult> {
-    let executor = BashExecutor::new();
-    
-    // Convert the quick bash params to regular bash params
-    let bash_params = BashParams {
-        command: params.cmd,
-        cwd: default_cwd(),  // Always use the current working directory
-    };
-    
-    // Execute the command using the existing executor
-    executor.execute(bash_params).await
 }

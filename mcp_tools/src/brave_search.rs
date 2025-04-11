@@ -1,10 +1,14 @@
 use serde::{Deserialize, Serialize};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
-use anyhow::Result;
-use serde_json::json;
+use anyhow::{anyhow, Result};
+use schemars::JsonSchema;
+use tracing::{info, error, debug};
+use std::env;
 
-use shared_protocol_objects::ToolInfo;
+// Import SDK components
+use rmcp::tool;
 
+// Response Models
 #[derive(Debug, Deserialize)]
 pub struct SearchResponse {
     #[serde(rename = "type")]
@@ -63,8 +67,24 @@ pub struct Query {
     pub reddit_cluster: Option<String>,
 }
 
+// Tool Parameters
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct BraveSearchParams {
+    #[schemars(description = "The search query - be specific and include relevant keywords")]
+    pub query: String,
+    
+    #[serde(default = "default_count")]
+    #[schemars(description = "Number of results to return (max 20). Use more results for broad research, fewer for specific queries.")]
+    pub count: u8,
+}
+
+fn default_count() -> u8 {
+    10
+}
+
+// Request Parameters
 #[derive(Debug, Serialize)]
-pub struct SearchParams {
+struct SearchParams {
     pub q: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub count: Option<u8>,
@@ -74,78 +94,32 @@ pub struct SearchParams {
     pub safesearch: Option<String>,
 }
 
-pub struct BraveSearchClient {
-    client: reqwest::Client,
-    api_key: String,
-    base_url: String,
+// Define the BraveSearch tool
+#[derive(Debug, Clone)]
+pub struct BraveSearchTool {
+    // We'll get the API key from env in execute_search
 }
 
-pub fn search_tool_info() -> ToolInfo {
-    ToolInfo {
-        name: "brave_search".into(),
-        description: Some(
-            "Web search tool powered by Brave Search that retrieves relevant results from across the internet. Use this to:
-            
-            1. Find current information and facts from the web
-            2. Research topics with results from multiple sources
-            3. Verify claims or check information accuracy
-            4. Discover recent news, trends, and developments
-            5. Find specific websites, documentation, or resources
-            
-            Tips for effective searches:
-            - Use specific keywords rather than full questions
-            - Include important technical terms, names, or identifiers
-            - Add date ranges for time-sensitive information
-            - Use quotes for exact phrase matching
-            
-            Each result contains:
-            - Title and URL of the webpage
-            - Brief description of the content
-            - Age indicators showing content freshness
-            
-            The search defaults to returning 10 results but can provide up to 20 with the count parameter.
-            
-            NOTE: This tool requires the BRAVE_API_KEY environment variable to be set.".into()
-        ),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The search query - be specific and include relevant keywords",
-                    "minLength": 1
-                },
-                "count": {
-                    "type": "integer",
-                    "description": "Number of results to return (max 20). Use more results for broad research, fewer for specific queries.",
-                    "default": 10,
-                    "minimum": 1,
-                    "maximum": 20
-                }
-            },
-            "required": ["query"],
-            "additionalProperties": false
-        }),
-        annotations: None, // Added missing field
+impl BraveSearchTool {
+    pub fn new() -> Self {
+        Self {}
     }
-}
-
-impl BraveSearchClient {
-    pub fn new(api_key: String) -> Self {
-        let client = reqwest::Client::new();
-        let base_url = "https://api.search.brave.com/res/v1/web/search".to_string();
+    
+    // Helper method to create a properly configured client and execute search
+    async fn execute_search(&self, query: &str, count: u8) -> Result<String> {
+        info!("Starting Brave Search request for query: {}", query);
         
-        Self {
-            client,
-            api_key,
-            base_url,
-        }
-    }
-
-    pub async fn search(&self, query: &str) -> Result<SearchResponse> {
+        // Get API key from environment
+        let api_key = env::var("BRAVE_API_KEY")
+            .map_err(|_| anyhow!("BRAVE_API_KEY environment variable must be set"))?;
+        
+        // Create client
+        let client = reqwest::Client::new();
+        let base_url = "https://api.search.brave.com/res/v1/web/search";
+        
         let params = SearchParams {
             q: query.to_string(),
-            count: Some(20),  // maximum results
+            count: Some(count.min(20)),  // maximum 20 results
             offset: None,
             safesearch: Some("moderate".to_string()),
         };
@@ -155,37 +129,91 @@ impl BraveSearchClient {
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
         headers.insert(
             "X-Subscription-Token",
-            HeaderValue::from_str(&self.api_key)?,
+            HeaderValue::from_str(&api_key)?,
         );
 
+        debug!("Sending request to Brave Search API");
+        
         // Make the request
-        let response = self.client
-            .get(&self.base_url)
+        let response = client
+            .get(base_url)
             .headers(headers)
             .query(&params)
             .send()
-            .await?;
+            .await
+            .map_err(|e| {
+                error!("Failed to send request to Brave Search: {}", e);
+                anyhow!("Brave Search request failed: {}", e)
+            })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
-            anyhow::bail!("API request failed with status {}", error_text);
+            error!("API request failed with status: {}", error_text);
+            return Err(anyhow!("API request failed: {}", error_text));
         }
 
         // Parse the JSON response
         let search_response = response.json::<SearchResponse>().await
-            .map_err(|e| anyhow::anyhow!("Failed to parse response: {}", e))?;
+            .map_err(|e| {
+                error!("Failed to parse Brave Search response: {}", e);
+                anyhow!("Failed to parse response: {}", e)
+            })?;
 
-        Ok(search_response)
+        debug!("Successfully parsed Brave Search response");
+        
+        // Format the results
+        let results = match search_response.web {
+            Some(web) => {
+                if web.results.is_empty() {
+                    "No search results found.".to_string()
+                } else {
+                    web.results
+                        .iter()
+                        .take(count as usize)
+                        .map(|result| {
+                            format!(
+                                "Title: {}\nURL: {}\nDescription: {}\n{}",
+                                result.title,
+                                result.url,
+                                result
+                                    .description
+                                    .as_deref()
+                                    .unwrap_or("No description available"),
+                                if result.page_age.is_some() {
+                                    format!("Age: {}\n", result.page_age.as_deref().unwrap())
+                                } else {
+                                    "".to_string()
+                                }
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n---\n\n")
+                }
+            },
+            None => "No web results found".to_string(),
+        };
+        
+        Ok(results)
     }
 }
 
-// Example error type for API errors
-#[derive(Debug, thiserror::Error)]
-pub enum SearchError {
-    #[error("API request failed: {0}")]
-    RequestFailed(String),
-    #[error("Failed to parse response: {0}")]
-    ParseError(String),
-    #[error("Network error: {0}")]
-    NetworkError(#[from] reqwest::Error),
+#[tool(tool_box)]
+impl BraveSearchTool {
+    #[tool(description = "Web search tool powered by Brave Search that retrieves relevant results from across the internet. Use this to find current information and facts from the web, research topics with multiple sources, verify claims, discover recent news and trends, or find specific websites and resources.")]
+    pub async fn brave_search(
+        &self,
+        #[tool(aggr)] params: BraveSearchParams
+    ) -> String {
+        // Log the operation start
+        info!("Brave Search tool called for query: {}", params.query);
+        
+        // Execute search and handle errors
+        match self.execute_search(&params.query, params.count).await {
+            Ok(content) => content,
+            Err(e) => {
+                error!("Search error: {}", e);
+                format!("Error: {}", e)
+            }
+        }
+    }
 }

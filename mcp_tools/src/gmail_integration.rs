@@ -1,22 +1,14 @@
 use serde::{ Deserialize, Serialize };
-use serde_json::{ json, Value };
+use serde_json::json;
 use std::path::PathBuf;
-use std::{ fs, time }; // Removed unused io
+use std::{ fs, time };
 use anyhow::{ anyhow, Result };
 use reqwest::Client;
 use base64::engine::general_purpose::URL_SAFE;
 use base64::Engine as _; // Import the Engine trait
 use tracing::{ debug, error };
-
-use shared_protocol_objects::{
-    CallToolParams,
-    CallToolResult,
-    JsonRpcResponse,
-    ToolInfo,
-    ToolResponseContent,
-    success_response,
-    // Removed unused error_response
-};
+use schemars::JsonSchema;
+use rmcp::tool;
 
 /// Minimal struct for storing tokens.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -117,40 +109,92 @@ pub struct TokenResponse {
     pub token_type: String,
 }
 
-/// Parameters accepted by our Gmail tool.
-#[derive(Debug, Serialize, Deserialize)]
-struct GmailParams {
-    /// "auth_init", "auth_exchange", "send_message", "list_messages", "read_message", "search_messages", "modify_message"
-    action: String,
+/// Parameters accepted by our Gmail tool for authentication initialization
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AuthInitParams {
+    // No parameters needed for auth_init
+}
 
-    /// For "auth_exchange"
-    code: Option<String>,
+/// Parameters accepted by our Gmail tool for authentication exchange
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AuthExchangeParams {
+    #[schemars(description = "Authorization code from Google OAuth flow")]
+    pub code: String,
+}
 
-    /// For "send_message"
-    to: Option<String>,
-    subject: Option<String>,
-    body: Option<String>,
+/// Parameters accepted by our Gmail tool for sending messages
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SendMessageParams {
+    #[schemars(description = "Recipient email for sending messages")]
+    pub to: String,
+    
+    #[schemars(description = "Subject of the email to send")]
+    pub subject: String,
+    
+    #[schemars(description = "Body of the email to send")]
+    pub body: String,
+}
 
-    /// For "read_message" or "modify_message"
-    message_id: Option<String>,
+/// Parameters accepted by our Gmail tool for listing messages
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ListMessagesParams {
+    #[serde(default = "default_page_size")]
+    #[schemars(description = "Number of messages to list (default: 10)")]
+    pub page_size: u32,
+}
 
-    /// For pagination, listing, etc.
-    page_size: Option<u32>,
+fn default_page_size() -> u32 {
+    10
+}
 
-    /// For "search_messages"
-    search_query: Option<String>,
+/// Parameters accepted by our Gmail tool for reading messages
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadMessageParams {
+    #[schemars(description = "Message ID to read")]
+    pub message_id: String,
+}
 
-    // --- Fields for "modify_message" ---
+/// Parameters accepted by our Gmail tool for searching messages
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SearchMessagesParams {
+    #[serde(default = "default_search_query")]
+    #[schemars(description = "Gmail search query. Examples: 'is:unread', 'from:someone@example.com', 'subject:important'")]
+    pub search_query: String,
+    
+    #[serde(default = "default_page_size")]
+    #[schemars(description = "Number of search results to return (default: 10)")]
+    pub page_size: u32,
+}
+
+fn default_search_query() -> String {
+    "is:unread".to_string()
+}
+
+/// Parameters accepted by our Gmail tool for modifying messages
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ModifyMessageParams {
+    #[schemars(description = "Message ID to modify")]
+    pub message_id: String,
+    
     #[serde(default)]
-    archive: bool,
+    #[schemars(description = "If true, remove 'INBOX' label from the message (archive)")]
+    pub archive: bool,
+    
     #[serde(default)]
-    mark_read: bool,
+    #[schemars(description = "If true, remove 'UNREAD' label from the message")]
+    pub mark_read: bool,
+    
     #[serde(default)]
-    mark_unread: bool,
+    #[schemars(description = "If true, add 'UNREAD' label to the message")]
+    pub mark_unread: bool,
+    
     #[serde(default)]
-    star: bool,
+    #[schemars(description = "If true, add 'STARRED' label to the message")]
+    pub star: bool,
+    
     #[serde(default)]
-    unstar: bool,
+    #[schemars(description = "If true, remove 'STARRED' label from the message")]
+    pub unstar: bool,
 }
 
 /// Metadata about an email message
@@ -165,407 +209,201 @@ pub struct EmailMetadata {
     pub snippet: Option<String>,
 }
 
-/// Return a static `ToolInfo` describing the input JSON schema for your Gmail tool.
-pub fn gmail_tool_info() -> ToolInfo {
-    ToolInfo {
-        name: "gmail_tool".to_string(),
-        description: Some(
-            "Gmail integration tool for OAuth 2.0 login, search, send/receive, and label operations. Make sure to explicitly provide the authorization URL to the user.".into()
-        ),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "description": "Action to perform: 'auth_init', 'auth_exchange', 'send_message', 'list_messages', 'read_message', 'search_messages', 'modify_message'"
-                },
-                "code": {"type": "string", "description": "Authorization code (if 'auth_exchange')."},
-                "to": {"type": "string", "description": "Recipient email for sending messages."},
-                "subject": {"type": "string", "description": "Subject of the email to send."},
-                "body": {"type": "string", "description": "Body of the email to send."},
-                "message_id": {"type": "string", "description": "Message ID to read or modify."},
-                "page_size": {"type": "number", "description": "How many messages to list, for 'list_messages'."},
-                "search_query": {
-                    "type": "string", 
-                    "description": "Gmail search query. Examples: 'is:unread', 'from:someone@example.com', 'subject:important', 'after:2024/01/01', 'has:attachment'. Default: 'is:unread'."
-                },
-                "archive": {
-                    "type": "boolean",
-                    "description": "If true, remove 'INBOX' label from the message (archive)."
-                },
-                "mark_read": {
-                    "type": "boolean",
-                    "description": "If true, remove 'UNREAD' label from the message."
-                },
-                "mark_unread": {
-                    "type": "boolean",
-                    "description": "If true, add 'UNREAD' label to the message."
-                },
-                "star": {
-                    "type": "boolean",
-                    "description": "If true, add 'STARRED' label to the message."
-                },
-                "unstar": {
-                    "type": "boolean",
-                    "description": "If true, remove 'STARRED' label from the message."
-                }
-            },
-            "required": ["action"]
-        }),
-        annotations: None, // Added missing field
+#[derive(Debug, Clone)]
+pub struct GmailTool;
+
+impl GmailTool {
+    pub fn new() -> Self {
+        Self
     }
 }
 
-/// Handle the actual logic for each "action"
-pub async fn handle_gmail_tool_call(
-    params: CallToolParams,
-    id: Option<Value>
-) -> Result<JsonRpcResponse> {
-    debug!("handle_gmail_tool_call invoked with params: {:?}", params);
-
-    // Parse JSON arguments into our GmailParams struct
-    let gmail_params: GmailParams = serde_json
-        ::from_value(params.arguments)
-        .map_err(|e| anyhow!("Invalid GmailParams: {}", e))?;
-
-    match gmail_params.action.as_str() {
-        "auth_init" => {
-            // If we already have a token in store, skip auth
-            if let Ok(Some(_token)) = read_cached_token() {
-                let content = "Already authorized! No need to re-authenticate.\nUse other Gmail actions directly.";
-                Ok(
-                    success_response(
-                        id,
-                        serde_json::to_value(CallToolResult {
-                            content: vec![ToolResponseContent {
-                                type_: "text".into(),
-                                text: content.to_string(),
-                                annotations: None,
-                            }],
-                            is_error: None,
-                            // Removed _meta, progress, total fields
-                        })?
-                    )
-                )
-            } else {
-                let config = GoogleOAuthConfig::from_env()
-                    .map_err(|e| anyhow!("Failed to load OAuth config: {}", e))?;
-                let auth_url = build_auth_url(&config)
-                    .map_err(|e| anyhow!("Failed to build auth URL: {}", e))?;
-
-                let content = format!(
-                    "Navigate to this URL to authorize:\n\n{}",
-                    auth_url
-                );
-
-                Ok(
-                    success_response(
-                        id,
-                        serde_json::to_value(CallToolResult {
-                            content: vec![ToolResponseContent {
-                                type_: "text".into(),
-                                text: content,
-                                annotations: None,
-                            }],
-                            is_error: None,
-                            // Removed _meta, progress, total fields
-                        })?
-                    )
-                )
+#[tool(tool_box)]
+impl GmailTool {
+    /// Initialize Gmail OAuth authentication flow
+    #[tool(description = "Initiates OAuth authentication flow for Gmail. Provides a URL for user to authorize access.")]
+    pub async fn auth_init(&self, #[tool(aggr)] _params: AuthInitParams) -> String {
+        // If we already have a token in store, skip auth
+        if let Ok(Some(_token)) = read_cached_token() {
+            return "Already authorized! No need to re-authenticate.\nUse other Gmail actions directly.".to_string();
+        } else {
+            match GoogleOAuthConfig::from_env() {
+                Ok(config) => match build_auth_url(&config) {
+                    Ok(auth_url) => format!("Navigate to this URL to authorize:\n\n{}", auth_url),
+                    Err(e) => format!("Failed to build auth URL: {}", e),
+                },
+                Err(e) => format!("Failed to load OAuth config: {}", e),
             }
         }
+    }
 
-        "auth_exchange" => {
-            // Exchange an authorization code for an access token & refresh token
-            let code = gmail_params.code
-                .clone()
-                .ok_or_else(|| anyhow!("'code' is required for 'auth_exchange'"))?;
+    /// Exchange authorization code for access token
+    #[tool(description = "Exchanges OAuth authorization code for access token. Use after completing the auth_init step.")]
+    pub async fn auth_exchange(&self, #[tool(aggr)] params: AuthExchangeParams) -> String {
+        let config = match GoogleOAuthConfig::from_env() {
+            Ok(c) => c,
+            Err(e) => return format!("Failed to load OAuth config: {}", e),
+        };
 
-            let config = GoogleOAuthConfig::from_env()
-                .map_err(|e| anyhow!("Failed to load OAuth config: {}", e))?;
+        let token_response = match exchange_code_for_token(&config, &params.code).await {
+            Ok(r) => r,
+            Err(e) => return format!("Failed to exchange code for token: {}", e),
+        };
 
-            let token_response = exchange_code_for_token(&config, &code).await?;
+        let now_secs = match current_epoch() {
+            Ok(t) => t,
+            Err(e) => return format!("Failed to get current time: {}", e),
+        };
+        
+        let gmail_token = GmailToken {
+            access_token: token_response.access_token,
+            refresh_token: token_response.refresh_token,
+            expires_in: token_response.expires_in,
+            token_type: token_response.token_type,
+            scope: Some(token_response.scope),
+            obtained_at: now_secs,
+        };
 
-            let now_secs = current_epoch()?;
-            let gmail_token = GmailToken {
-                access_token: token_response.access_token,
-                refresh_token: token_response.refresh_token,
-                expires_in: token_response.expires_in,
-                token_type: token_response.token_type,
-                scope: Some(token_response.scope),
-                obtained_at: now_secs,
-            };
+        // Store the token on disk
+        match store_cached_token(&gmail_token) {
+            Ok(_) => "OAuth exchange successful! Access token acquired and stored.".to_string(),
+            Err(e) => format!("Failed to store token: {}", e),
+        }
+    }
 
-            // Store the token on disk
-            store_cached_token(&gmail_token)?;
+    /// Send a Gmail message
+    #[tool(description = "Sends an email message from your Gmail account. Requires prior authorization.")]
+    pub async fn send_message(&self, #[tool(aggr)] params: SendMessageParams) -> String {
+        // Make sure we have a valid token first
+        let token = match get_or_refresh_token().await {
+            Ok(t) => t,
+            Err(e) => return format!(
+                "Failed to get a valid token: {}. Please do 'auth_init' + 'auth_exchange'.",
+                e
+            ),
+        };
 
-            let success_message = "OAuth exchange successful! Access token acquired and stored.";
-            Ok(
-                success_response(
-                    id,
-                    serde_json::to_value(CallToolResult {
-                        content: vec![ToolResponseContent {
-                            type_: "text".into(),
-                            text: success_message.to_string(),
-                            annotations: None,
-                        }],
-                        is_error: Some(false),
-                        // Removed _meta, progress, total fields
-                    })?
-                )
-            )
+        match send_gmail_message(&token.access_token, &params.to, &params.subject, &params.body).await {
+            Ok(_) => format!("Email to '{}' sent successfully.", params.to),
+            Err(e) => format!("Failed to send email: {}", e),
+        }
+    }
+
+    /// List Gmail messages
+    #[tool(description = "Lists recent messages from your Gmail inbox. Requires prior authorization.")]
+    pub async fn list_messages(&self, #[tool(aggr)] params: ListMessagesParams) -> String {
+        let token = match get_or_refresh_token().await {
+            Ok(t) => t,
+            Err(e) => return format!(
+                "Failed to get a valid token: {}. Please re-authenticate.",
+                e
+            ),
+        };
+
+        match list_gmail_messages_with_metadata(&token.access_token, params.page_size).await {
+            Ok(messages) => {
+                let mut output = String::new();
+                if messages.is_empty() {
+                    output.push_str("No messages found.");
+                } else {
+                    for (i, msg) in messages.iter().enumerate() {
+                        output.push_str(&format!(
+                            "{index}. ID: {id}\n   From: {from}\n   To: {to}\n   Subject: {subject}\n   Snippet: {snippet}\n\n",
+                            index = i + 1,
+                            id = msg.id,
+                            from = msg.from.as_deref().unwrap_or("Unknown"),
+                            to = msg.to.as_deref().unwrap_or("Unknown"),
+                            subject = msg.subject.as_deref().unwrap_or("(No subject)"),
+                            snippet = msg.snippet.as_deref().unwrap_or("(No preview available)")
+                        ));
+                    }
+                }
+                output
+            },
+            Err(e) => format!("Failed to list messages: {}", e),
+        }
+    }
+
+    /// Read a Gmail message
+    #[tool(description = "Reads the content of a specific Gmail message. Requires message ID and prior authorization.")]
+    pub async fn read_message(&self, #[tool(aggr)] params: ReadMessageParams) -> String {
+        let token = match get_or_refresh_token().await {
+            Ok(t) => t,
+            Err(e) => return format!(
+                "Failed to get a valid token: {}. Please re-authenticate.",
+                e
+            ),
+        };
+
+        match read_gmail_message(&token.access_token, &params.message_id).await {
+            Ok(msg_body) => format!("Message ID: {}\n\n{}", params.message_id, msg_body),
+            Err(e) => format!("Failed to read message: {}", e),
+        }
+    }
+
+    /// Search Gmail messages
+    #[tool(description = "Searches Gmail messages using Gmail search syntax. Requires prior authorization.")]
+    pub async fn search_messages(&self, #[tool(aggr)] params: SearchMessagesParams) -> String {
+        let token = match get_or_refresh_token().await {
+            Ok(t) => t,
+            Err(e) => return format!("Failed to get a valid token: {}.", e),
+        };
+
+        match search_gmail_messages_with_metadata(&token.access_token, &params.search_query, params.page_size).await {
+            Ok(messages) => {
+                match serde_json::to_string_pretty(&messages) {
+                    Ok(json_output) => format!(
+                        "Found {} messages matching '{}':\n{}",
+                        messages.len(),
+                        params.search_query,
+                        json_output
+                    ),
+                    Err(e) => format!("Error formatting results: {}", e),
+                }
+            },
+            Err(e) => format!("Failed to search messages: {}", e),
+        }
+    }
+
+    /// Modify Gmail message labels
+    #[tool(description = "Modifies Gmail message labels (archive, mark read/unread, star). Requires prior authorization.")]
+    pub async fn modify_message(&self, #[tool(aggr)] params: ModifyMessageParams) -> String {
+        let token = match get_or_refresh_token().await {
+            Ok(t) => t,
+            Err(e) => return format!("Failed to get a valid token: {}.", e),
+        };
+
+        // Decide which labels to add or remove
+        let mut add_labels = Vec::new();
+        let mut remove_labels = Vec::new();
+
+        if params.archive {
+            // Archiving => remove "INBOX"
+            remove_labels.push("INBOX".to_string());
+        }
+        if params.mark_read {
+            // Mark as read => remove "UNREAD"
+            remove_labels.push("UNREAD".to_string());
+        }
+        if params.mark_unread {
+            // Mark as unread => add "UNREAD"
+            add_labels.push("UNREAD".to_string());
+        }
+        if params.star {
+            // Star => add "STARRED"
+            add_labels.push("STARRED".to_string());
+        }
+        if params.unstar {
+            // Unstar => remove "STARRED"
+            remove_labels.push("STARRED".to_string());
         }
 
-        "send_message" => {
-            // Make sure we have a valid token first
-            let token = match get_or_refresh_token().await {
-                Ok(t) => t,
-                Err(e) => {
-                    return Ok(
-                        missing_auth_response(
-                            id,
-                            &format!(
-                                "Failed to get a valid token: {}. Please do 'auth_init' + 'auth_exchange'.",
-                                e
-                            )
-                        )
-                    )
-                }
-            };
-
-            let to = gmail_params.to
-                .clone()
-                .ok_or_else(|| anyhow!("'to' is required for 'send_message'"))?;
-            let subject = gmail_params.subject
-                .clone()
-                .ok_or_else(|| anyhow!("'subject' is required for 'send_message'"))?;
-            let body = gmail_params.body
-                .clone()
-                .ok_or_else(|| anyhow!("'body' is required for 'send_message'"))?;
-
-            send_gmail_message(&token.access_token, &to, &subject, &body).await?;
-
-            Ok(
-                success_response(
-                    id,
-                    serde_json::to_value(CallToolResult {
-                        content: vec![ToolResponseContent {
-                            type_: "text".into(),
-                            text: format!("Email to '{}' sent successfully.", to),
-                            annotations: None,
-                        }],
-                        is_error: Some(false),
-                        // Removed _meta, progress, total fields
-                    })?
-                )
-            )
-        }
-
-        "list_messages" => {
-            let token = match get_or_refresh_token().await {
-                Ok(t) => t,
-                Err(e) => {
-                    return Ok(
-                        missing_auth_response(
-                            id,
-                            &format!(
-                                "Failed to get a valid token: {}. Please re-authenticate.",
-                                e
-                            )
-                        )
-                    )
-                }
-            };
-
-            let page_size = gmail_params.page_size.unwrap_or(10);
-            let messages = list_gmail_messages_with_metadata(&token.access_token, page_size).await?;
-
-            let mut output = String::new();
-            if messages.is_empty() {
-                output.push_str("No messages found.");
-            } else {
-                for (i, msg) in messages.iter().enumerate() {
-                    output.push_str(&format!(
-                        "{index}. ID: {id}\n   From: {from}\n   To: {to}\n   Subject: {subject}\n   Snippet: {snippet}\n\n",
-                        index = i + 1,
-                        id = msg.id,
-                        from = msg.from.as_deref().unwrap_or("Unknown"),
-                        to = msg.to.as_deref().unwrap_or("Unknown"),
-                        subject = msg.subject.as_deref().unwrap_or("(No subject)"),
-                        snippet = msg.snippet.as_deref().unwrap_or("(No preview available)")
-                    ));
-                }
-            }
-
-            Ok(
-                success_response(
-                    id,
-                    serde_json::to_value(CallToolResult {
-                        content: vec![ToolResponseContent {
-                            type_: "text".into(),
-                            text: output,
-                            annotations: None,
-                        }],
-                        is_error: Some(false),
-                        // Removed _meta, progress, total fields
-                    })?
-                )
-            )
-        }
-
-        "read_message" => {
-            let token = match get_or_refresh_token().await {
-                Ok(t) => t,
-                Err(e) => {
-                    return Ok(
-                        missing_auth_response(
-                            id,
-                            &format!(
-                                "Failed to get a valid token: {}. Please re-authenticate.",
-                                e
-                            )
-                        )
-                    )
-                }
-            };
-
-            let msg_id = gmail_params.message_id
-                .clone()
-                .ok_or_else(|| anyhow!("'message_id' is required for 'read_message'"))?;
-
-            let msg_body = read_gmail_message(&token.access_token, &msg_id).await?;
-
-            Ok(
-                success_response(
-                    id,
-                    serde_json::to_value(CallToolResult {
-                        content: vec![ToolResponseContent {
-                            type_: "text".into(),
-                            text: format!("Message ID: {}\n\n{}", msg_id, msg_body),
-                            annotations: None,
-                        }],
-                        is_error: Some(false),
-                        // Removed _meta, progress, total fields
-                    })?
-                )
-            )
-        }
-
-        "search_messages" => {
-            let token = match get_or_refresh_token().await {
-                Ok(t) => t,
-                Err(e) => {
-                    return Ok(
-                        missing_auth_response(
-                            id,
-                            &format!("Failed to get a valid token: {}.", e)
-                        )
-                    )
-                }
-            };
-
-            let query = gmail_params.search_query
-                .clone()
-                .unwrap_or_else(|| "is:unread".to_string());
-            let page_size = gmail_params.page_size.unwrap_or(10);
-
-            let messages = search_gmail_messages_with_metadata(
-                &token.access_token,
-                &query,
-                page_size
-            ).await?;
-
-            let json_output = serde_json::to_string_pretty(&messages)?;
-
-            Ok(
-                success_response(
-                    id,
-                    serde_json::to_value(CallToolResult {
-                        content: vec![ToolResponseContent {
-                            type_: "text".into(),
-                            text: format!(
-                                "Found {} messages matching '{}':\n{}",
-                                messages.len(),
-                                query,
-                                json_output
-                            ),
-                            annotations: None,
-                        }],
-                        is_error: Some(false),
-                        // Removed _meta, progress, total fields
-                    })?
-                )
-            )
-        }
-
-        "modify_message" => {
-            let token = match get_or_refresh_token().await {
-                Ok(t) => t,
-                Err(e) => {
-                    return Ok(
-                        missing_auth_response(
-                            id,
-                            &format!("Failed to get a valid token: {}.", e)
-                        )
-                    )
-                }
-            };
-
-            let msg_id = gmail_params.message_id
-                .clone()
-                .ok_or_else(|| anyhow!("'message_id' is required for 'modify_message'"))?;
-
-            // Decide which labels to add or remove
-            let mut add_labels = Vec::new();
-            let mut remove_labels = Vec::new();
-
-            if gmail_params.archive {
-                // Archiving => remove "INBOX"
-                remove_labels.push("INBOX".to_string());
-            }
-            if gmail_params.mark_read {
-                // Mark as read => remove "UNREAD"
-                remove_labels.push("UNREAD".to_string());
-            }
-            if gmail_params.mark_unread {
-                // Mark as unread => add "UNREAD"
-                add_labels.push("UNREAD".to_string());
-            }
-            if gmail_params.star {
-                // Star => add "STARRED"
-                add_labels.push("STARRED".to_string());
-            }
-            if gmail_params.unstar {
-                // Unstar => remove "STARRED"
-                remove_labels.push("STARRED".to_string());
-            }
-
-            modify_gmail_message_labels(&token.access_token, &msg_id, &add_labels, &remove_labels).await?;
-
-            let summary = format!(
+        match modify_gmail_message_labels(&token.access_token, &params.message_id, &add_labels, &remove_labels).await {
+            Ok(_) => format!(
                 "Modified message {}. Added labels: {:?}, removed labels: {:?}",
-                msg_id, add_labels, remove_labels
-            );
-
-            Ok(
-                success_response(
-                    id,
-                    serde_json::to_value(CallToolResult {
-                        content: vec![ToolResponseContent {
-                            type_: "text".into(),
-                            text: summary,
-                            annotations: None,
-                        }],
-                        is_error: Some(false),
-                        // Removed _meta, progress, total fields
-                    })?
-                )
-            )
-        }
-
-        _ => {
-            // Invalid action
-            Err(anyhow!("Invalid action '{}'", gmail_params.action))
+                params.message_id, add_labels, remove_labels
+            ),
+            Err(e) => format!("Failed to modify message: {}", e),
         }
     }
 }
@@ -697,7 +535,7 @@ pub async fn send_gmail_message(
     // Use the Engine trait for encoding
     let encoded_email = URL_SAFE.encode(email_content.as_bytes());
 
-    let payload = serde_json::json!({
+    let payload = json!({
         "raw": encoded_email
     });
 
@@ -975,7 +813,7 @@ pub async fn modify_gmail_message_labels(
         message_id
     );
 
-    let payload = serde_json::json!({
+    let payload = json!({
         "addLabelIds": add_label_ids,
         "removeLabelIds": remove_label_ids
     });
@@ -1037,20 +875,4 @@ fn current_epoch() -> Result<i64> {
         .duration_since(time::UNIX_EPOCH)
         .map_err(|e| anyhow!("Failed to get system time: {}", e))?;
     Ok(now.as_secs() as i64)
-}
-
-/// Return a "please authenticate" response
-fn missing_auth_response(id: Option<Value>, msg: &str) -> JsonRpcResponse {
-    success_response(
-        id,
-        json!(CallToolResult {
-            content: vec![ToolResponseContent {
-                type_: "text".into(),
-                text: msg.to_string(),
-                annotations: None,
-            }],
-            is_error: Some(true),
-            // Removed _meta, progress, total fields
-        })
-    )
 }

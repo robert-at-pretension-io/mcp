@@ -14,8 +14,17 @@ use rmcp::{
 
 // Import local modules needed
 use mcp_tools::bash::{BashParams, BashTool}; // Import BashParams too
-use mcp_tools::scraping_bee::ScrapingBeeTool;
-// use mcp_tools::long_running_task::LongRunningTaskManager; // Comment out for now
+use mcp_tools::scraping_bee::{ScrapingBeeTool, ScrapingBeeParams};
+use mcp_tools::brave_search::{BraveSearchTool, BraveSearchParams};
+use mcp_tools::long_running_task::{LongRunningTaskTool, StartTaskParams, GetStatusParams, ListTasksParams};
+use mcp_tools::aider::{AiderTool, AiderParams};
+use mcp_tools::mermaid_chart::{MermaidChartTool, MermaidChartParams};
+use mcp_tools::planner::{PlannerTool, PlannerParams};
+use mcp_tools::gmail_integration::{
+    GmailTool, AuthInitParams, AuthExchangeParams, SendMessageParams,
+    ListMessagesParams, ReadMessageParams, SearchMessagesParams, ModifyMessageParams
+};
+use mcp_tools::email_validator::{EmailValidatorTool, NeverBounceParams};
 
 #[tokio::main]
 async fn main() {
@@ -62,14 +71,38 @@ async fn main() {
     struct McpToolServer {
         bash_tool: BashTool,
         scraping_tool: ScrapingBeeTool,
-        // Add other tools here as they are converted
+        brave_search_tool: BraveSearchTool,
+        long_running_task_tool: LongRunningTaskTool,
+        aider_tool: AiderTool,
+        mermaid_chart_tool: MermaidChartTool,
+        planner_tool: PlannerTool,
+        gmail_tool: GmailTool,
+        email_validator_tool: EmailValidatorTool,
     }
 
     impl McpToolServer {
         fn new() -> Self {
+            // Create the long-running task manager
+            let task_tool = LongRunningTaskTool::new("tasks.json");
+            let task_tool_clone = task_tool.clone();
+            
+            // Try to load any existing tasks
+            tokio::spawn(async move {
+                if let Err(e) = task_tool_clone.load_persistent_tasks().await {
+                    error!("Failed to load persistent tasks: {}", e);
+                }
+            });
+            
             Self {
                 bash_tool: BashTool::new(),
                 scraping_tool: ScrapingBeeTool::new(),
+                brave_search_tool: BraveSearchTool::new(),
+                long_running_task_tool: task_tool,
+                aider_tool: AiderTool::new(),
+                mermaid_chart_tool: MermaidChartTool::new(),
+                planner_tool: PlannerTool::new(),
+                gmail_tool: GmailTool::new(),
+                email_validator_tool: EmailValidatorTool::new(),
             }
         }
     }
@@ -78,27 +111,165 @@ async fn main() {
     #[tool(tool_box)] // Apply the SDK macro to generate list_tools/call_tool
     impl McpToolServer {
         // Re-implement the bash tool logic here, calling the original executor if needed
-        // Or directly use the BashTool instance's method if it makes sense
         #[tool(description = "Executes bash shell commands on the host system. Use this tool to run system commands, check files, process text, manage files/dirs. Runs in a non-interactive `sh` shell.")]
         async fn bash(
             &self,
             #[tool(aggr)] params: BashParams, // Aggregate parameters
         ) -> String {
             // Delegate to the BashTool's implementation logic
-            // Note: We might need to adjust BashTool's bash method slightly if it wasn't public
-            // or refactor the core logic into a reusable function.
-            // Assuming BashTool::bash is callable (might need adjustment in bash.rs)
             self.bash_tool.bash(params).await // Call the method on the instance
         }
 
-        // Rename this method to match the tool's purpose better within the server context
+        // Web scraping tool implementation
         #[tool(description = "Web scraping tool that extracts and processes content from websites. Use for extracting text from webpages, documentation, and articles.")]
-        async fn scrape_url( // Renamed from scrape to scrape_url
+        async fn scrape_url(
             &self,
-            #[tool(aggr)] params: mcp_tools::scraping_bee::ScrapingBeeParams,
+            #[tool(aggr)] params: ScrapingBeeParams,
         ) -> String {
             // Delegate to ScrapingBeeTool's implementation
-            self.scraping_tool.scrape_url(params).await // Call the correct method name
+            self.scraping_tool.scrape_url(params).await
+        }
+        
+        // Brave search tool implementation
+        #[tool(description = "Web search tool powered by Brave Search that retrieves relevant results from across the internet. Use this to find current information and facts from the web, research topics with multiple sources, verify claims, discover recent news and trends, or find specific websites and resources.")]
+        async fn brave_search(
+            &self,
+            #[tool(aggr)] params: BraveSearchParams,
+        ) -> String {
+            // Delegate to BraveSearchTool's implementation
+            self.brave_search_tool.brave_search(params).await
+        }
+        
+        // Long-running task tools
+        #[tool(description = "Start a new long-running task. The task will continue running even after this conversation ends and can be monitored later.")]
+        async fn start_task(
+            &self,
+            #[tool(aggr)] params: StartTaskParams,
+        ) -> String {
+            // Delegate to LongRunningTaskTool's implementation
+            self.long_running_task_tool.start_task(params).await
+        }
+        
+        #[tool(description = "Get the status and output of a long-running task. This will show if the task is still running and display its stdout/stderr.")]
+        async fn get_status(
+            &self,
+            #[tool(aggr)] params: GetStatusParams,
+        ) -> String {
+            // Delegate to LongRunningTaskTool's implementation
+            self.long_running_task_tool.get_status(params).await
+        }
+        
+        #[tool(description = "List all tasks or filter by status (created, running, ended, error). Shows a summary of each task without the full output.")]
+        async fn list_tasks(
+            &self,
+            #[tool(aggr)] params: ListTasksParams,
+        ) -> String {
+            // Delegate to LongRunningTaskTool's implementation
+            self.long_running_task_tool.list_tasks(params).await
+        }
+        
+        // Aider tool implementation
+        #[tool(description = "AI pair programming tool for making targeted code changes. Use for implementing new features, adding tests, fixing bugs, refactoring code, or making structural changes across multiple files.")]
+        async fn aider(
+            &self,
+            #[tool(aggr)] params: AiderParams,
+        ) -> String {
+            // Delegate to AiderTool's implementation
+            self.aider_tool.aider(params).await
+        }
+        
+        // Mermaid chart tool implementation
+        #[tool(description = "Generate a Mermaid chart from a collection of files. Provide a list of file paths, and this tool will create a string with their contents and generate a Mermaid diagram visualization.")]
+        async fn mermaid_chart(
+            &self,
+            #[tool(aggr)] params: MermaidChartParams,
+        ) -> String {
+            // Delegate to MermaidChartTool's implementation
+            self.mermaid_chart_tool.mermaid_chart(params).await
+        }
+        
+        // Planner tool implementation
+        #[tool(description = "Generates a multi-step plan using available tools to fulfill a user request. Provide the original user request, the AI's interpretation of that request, and a list of all available tools (including their descriptions and parameters). The tool will call a powerful LLM (Gemini) to devise a plan, including potential contingencies and points for reflection or waiting for results.")]
+        async fn planning_tool(
+            &self,
+            #[tool(aggr)] params: PlannerParams,
+        ) -> String {
+            // Delegate to PlannerTool's implementation
+            self.planner_tool.planning_tool(params).await
+        }
+        
+        // Gmail integration tools
+        #[tool(description = "Initiates OAuth authentication flow for Gmail. Provides a URL for user to authorize access.")]
+        async fn auth_init(
+            &self,
+            #[tool(aggr)] params: AuthInitParams,
+        ) -> String {
+            // Delegate to GmailTool's implementation
+            self.gmail_tool.auth_init(params).await
+        }
+        
+        #[tool(description = "Exchanges OAuth authorization code for access token. Use after completing the auth_init step.")]
+        async fn auth_exchange(
+            &self,
+            #[tool(aggr)] params: AuthExchangeParams,
+        ) -> String {
+            // Delegate to GmailTool's implementation
+            self.gmail_tool.auth_exchange(params).await
+        }
+        
+        #[tool(description = "Sends an email message from your Gmail account. Requires prior authorization.")]
+        async fn send_message(
+            &self,
+            #[tool(aggr)] params: SendMessageParams,
+        ) -> String {
+            // Delegate to GmailTool's implementation
+            self.gmail_tool.send_message(params).await
+        }
+        
+        #[tool(description = "Lists recent messages from your Gmail inbox. Requires prior authorization.")]
+        async fn list_messages(
+            &self,
+            #[tool(aggr)] params: ListMessagesParams,
+        ) -> String {
+            // Delegate to GmailTool's implementation
+            self.gmail_tool.list_messages(params).await
+        }
+        
+        #[tool(description = "Reads the content of a specific Gmail message. Requires message ID and prior authorization.")]
+        async fn read_message(
+            &self,
+            #[tool(aggr)] params: ReadMessageParams,
+        ) -> String {
+            // Delegate to GmailTool's implementation
+            self.gmail_tool.read_message(params).await
+        }
+        
+        #[tool(description = "Searches Gmail messages using Gmail search syntax. Requires prior authorization.")]
+        async fn search_messages(
+            &self,
+            #[tool(aggr)] params: SearchMessagesParams,
+        ) -> String {
+            // Delegate to GmailTool's implementation
+            self.gmail_tool.search_messages(params).await
+        }
+        
+        #[tool(description = "Modifies Gmail message labels (archive, mark read/unread, star). Requires prior authorization.")]
+        async fn modify_message(
+            &self,
+            #[tool(aggr)] params: ModifyMessageParams,
+        ) -> String {
+            // Delegate to GmailTool's implementation
+            self.gmail_tool.modify_message(params).await
+        }
+        
+        // Email validator tool
+        #[tool(description = "Validates email addresses using the NeverBounce API.")]
+        async fn never_bounce(
+            &self,
+            #[tool(aggr)] params: NeverBounceParams,
+        ) -> String {
+            // Delegate to EmailValidatorTool's implementation
+            self.email_validator_tool.never_bounce(params).await
         }
     }
 
@@ -106,18 +277,22 @@ async fn main() {
     // The #[tool(tool_box)] macro can automatically implement this based on the tools defined above
     #[tool(tool_box)]
     impl ServerHandler for McpToolServer {
-        // Optionally override get_info for custom server details
+        // Override get_info for custom server details
         fn get_info(&self) -> ServerInfo {
-            // Explicitly create the ServerInfo struct first
-            let server_info = ServerInfo {
-                 name: Some("MCP Tools Server (SDK)".into()),
-                 version: Some(env!("CARGO_PKG_VERSION").into()),
-                 description: Some("Provides various tools like bash execution and web scraping.".into()),
-                 instructions: Some("Use 'call' with tool name and parameters.".into()),
-                 ..Default::default() // Ensure all other fields use default values
-             };
-             // Return the created struct
-             server_info
+            // Create the ServerInfo struct with the correct fields
+            ServerInfo {
+                // Set protocol_version to latest
+                protocol_version: rmcp::model::ProtocolVersion::LATEST,
+                // Use default capabilities
+                capabilities: rmcp::model::ServerCapabilities::default(),
+                // Set server_info with implementation details
+                server_info: rmcp::model::Implementation {
+                    name: "MCP Tools Server (SDK)".into(),
+                    version: env!("CARGO_PKG_VERSION").into(),
+                },
+                // Add instructions for using the tools
+                instructions: Some("Use 'call' with tool name and parameters.".into()),
+            }
         }
     }
     // --- End New SDK Server Structure ---
@@ -147,4 +322,3 @@ async fn main() {
 
     info!("MCP server shutdown complete.");
 }
-

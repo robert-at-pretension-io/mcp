@@ -1,18 +1,16 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-// Removed unused CallToolParams, CallToolResult
-use shared_protocol_objects::{JsonRpcResponse};
 use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-// Removed unused debug, info
-use tracing::{error};
+use tracing::{error, info};
 use reqwest::Client;
+use schemars::JsonSchema;
 
-// Removed unused ensure_id
-use crate::tool_trait::{standard_error_response, standard_success_response, standard_tool_result};
+// Import rmcp SDK components
+use rmcp::tool;
 
 /// Call the Gemini API to generate content
 async fn call_gemini_api(prompt: &str) -> Result<String> {
@@ -99,141 +97,118 @@ async fn call_gemini_api(prompt: &str) -> Result<String> {
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct MermaidChartParams {
+    #[schemars(description = "List of file paths to include in the chart generation")]
     pub files: Vec<String>,
+    
+    #[serde(default)]
+    #[schemars(description = "Optional. The type of chart to generate (e.g., 'flowchart', 'class', 'sequence', etc.). Defaults to 'flowchart' if not specified.")]
     pub chart_type: Option<String>,
+    
+    #[serde(default)]
+    #[schemars(description = "Optional. Additional instructions for the chart generation")]
     pub prompt: Option<String>,
 }
 
-/// Info for the mermaid chart generation tool
-pub fn mermaid_chart_tool_info() -> shared_protocol_objects::ToolInfo {
-    shared_protocol_objects::ToolInfo {
-        name: "mermaid_chart".to_string(),
-        description: Some("Generate a Mermaid chart from a collection of files. Provide a list of file paths, and this tool will create a string with their contents and generate a Mermaid diagram visualization.".to_string()),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "files": {
-                    "type": "array",
-                    "description": "List of file paths to include in the chart generation",
-                    "items": {
-                        "type": "string"
+#[derive(Debug, Clone)]
+pub struct MermaidChartTool;
+
+impl MermaidChartTool {
+    pub fn new() -> Self {
+        Self
+    }
+    
+    // Helper method to generate the mermaid chart
+    async fn generate_chart(&self, params: MermaidChartParams) -> Result<String> {
+        // Check for API key first to fail fast
+        if env::var("GEMINI_API_KEY").is_err() {
+            error!("GEMINI_API_KEY environment variable is not set");
+            return Err(anyhow!("GEMINI_API_KEY environment variable must be set to use the mermaid_chart tool."));
+        }
+        
+        // Validate file paths
+        for file_path in &params.files {
+            if !Path::new(file_path).exists() {
+                return Err(anyhow!("File not found: {}", file_path));
+            }
+        }
+
+        // Read file contents
+        let mut file_contents = String::new();
+        for file_path in &params.files {
+            let path = Path::new(file_path);
+            
+            // Skip very large files, binary files, etc.
+            let metadata = std::fs::metadata(path)?;
+            if metadata.len() > 1_000_000 {  // Skip files larger than 1MB
+                file_contents.push_str(&format!("# File: {} (skipped - too large)\n\n", file_path));
+                continue;
+            }
+            
+            let extension = path.extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("");
+                
+            match File::open(path) {
+                Ok(mut file) => {
+                    let mut content = String::new();
+                    if file.read_to_string(&mut content).is_ok() {
+                        // Add file header and content to the collection
+                        file_contents.push_str(&format!("# File: {}\n```{}\n{}\n```\n\n", 
+                            file_path, extension, content));
+                    } else {
+                        // If we can't read as string, it might be binary
+                        file_contents.push_str(&format!("# File: {} (skipped - binary or encoding issue)\n\n", file_path));
                     }
-                },
-                "chart_type": {
-                    "type": "string",
-                    "description": "Optional. The type of chart to generate (e.g., 'flowchart', 'class', 'sequence', etc.). Defaults to 'flowchart' if not specified.",
-                    "enum": ["flowchart", "class", "sequence", "er", "gantt", "pie"]
-                },
-                "prompt": {
-                    "type": "string",
-                    "description": "Optional. Additional instructions for the chart generation"
                 }
-            },
-            "required": ["files"]
-        }),
-        annotations: None, // Added missing field
+                Err(e) => {
+                    return Err(anyhow!("Failed to open file {}: {}", file_path, e));
+                }
+            }
+        }
+
+        // Build the prompt for chart generation
+        let chart_type = params.chart_type.unwrap_or_else(|| "flowchart".to_string());
+        let additional_instructions = params.prompt.unwrap_or_else(|| "".to_string());
+        
+        let prompt = format!(
+            "Based on the code files below, generate a clean, well-structured Mermaid {} diagram that visualizes the relationships between components.\n\n\
+             {}\n\n\
+             INSTRUCTIONS:\n\
+             - Create a Mermaid diagram using proper {} syntax\n\
+             - Focus only on the important components and their relationships\n\
+             - Include {} specific classes, methods, and relationships\n\
+             - Keep the diagram easy to read and understand\n\
+             - {}\n\n\
+             IMPORTANT: Return only the diagram code with no code block formatting, explanations, or other text.",
+            chart_type, file_contents, chart_type, chart_type, additional_instructions
+        );
+
+        // Call Gemini API to generate the diagram
+        call_gemini_api(&prompt).await
     }
 }
 
-/// Handle the mermaid chart generation
-pub async fn handle_mermaid_chart_tool_call(
-    params: MermaidChartParams,
-    id: Option<Value>,
-) -> Result<JsonRpcResponse> {
-    // Check for API key first to fail fast
-    if env::var("GEMINI_API_KEY").is_err() {
-        error!("GEMINI_API_KEY environment variable is not set");
-        let error_message = "GEMINI_API_KEY environment variable must be set to use the mermaid_chart tool.";
-        let tool_res = standard_tool_result(error_message.to_string(), Some(true));
-        return Ok(standard_success_response(id, json!(tool_res)));
-    }
-    
-    // Validate file paths
-    for file_path in &params.files {
-        if !Path::new(file_path).exists() {
-            return Ok(standard_error_response(
-                id,
-                -32602,
-                &format!("File not found: {}", file_path),
-            ));
-        }
-    }
-
-    // Read file contents
-    let mut file_contents = String::new();
-    for file_path in &params.files {
-        let path = Path::new(file_path);
+#[tool(tool_box)]
+impl MermaidChartTool {
+    #[tool(description = "Generate a Mermaid chart from a collection of files. Provide a list of file paths, and this tool will create a string with their contents and generate a Mermaid diagram visualization.")]
+    pub async fn mermaid_chart(
+        &self,
+        #[tool(aggr)] params: MermaidChartParams
+    ) -> String {
+        info!("Generating Mermaid chart for {} files with chart type: {:?}", 
+              params.files.len(), params.chart_type);
         
-        // Skip very large files, binary files, etc.
-        let metadata = std::fs::metadata(path)?;
-        if metadata.len() > 1_000_000 {  // Skip files larger than 1MB
-            file_contents.push_str(&format!("# File: {} (skipped - too large)\n\n", file_path));
-            continue;
-        }
-        
-        // Prefix unused variable with underscore
-        let _filename = path.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("unknown");
-        
-        let extension = path.extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or("");
-            
-        match File::open(path) {
-            Ok(mut file) => {
-                let mut content = String::new();
-                if file.read_to_string(&mut content).is_ok() {
-                    // Add file header and content to the collection
-                    file_contents.push_str(&format!("# File: {}\n```{}\n{}\n```\n\n", 
-                        file_path, extension, content));
-                } else {
-                    // If we can't read as string, it might be binary
-                    file_contents.push_str(&format!("# File: {} (skipped - binary or encoding issue)\n\n", file_path));
-                }
-            }
+        match self.generate_chart(params).await {
+            Ok(diagram) => {
+                // Format the diagram with a Mermaid code block
+                format!("```mermaid\n{}\n```", diagram)
+            },
             Err(e) => {
-                return Ok(standard_error_response(
-                    id,
-                    -32603,
-                    &format!("Failed to open file {}: {}", file_path, e),
-                ));
+                error!("Error generating Mermaid chart: {}", e);
+                format!("Error generating Mermaid chart: {}", e)
             }
-        }
-    }
-
-    // Build the prompt for chart generation
-    let chart_type = params.chart_type.unwrap_or_else(|| "flowchart".to_string());
-    let additional_instructions = params.prompt.unwrap_or_else(|| "".to_string());
-    
-    let prompt = format!(
-        "Based on the code files below, generate a clean, well-structured Mermaid {} diagram that visualizes the relationships between components.\n\n\
-         {}\n\n\
-         INSTRUCTIONS:\n\
-         - Create a Mermaid diagram using proper {} syntax\n\
-         - Focus only on the important components and their relationships\n\
-         - Include {} specific classes, methods, and relationships\n\
-         - Keep the diagram easy to read and understand\n\
-         - {}\n\n\
-         IMPORTANT: Return only the diagram code with no code block formatting, explanations, or other text.",
-        chart_type, file_contents, chart_type, chart_type, additional_instructions
-    );
-
-    // Call Gemini API to generate the diagram
-    match call_gemini_api(&prompt).await {
-        Ok(diagram) => {
-            // Success case - return the diagram
-            let tool_res = standard_tool_result(diagram, None);
-            Ok(standard_success_response(id, json!(tool_res)))
-        },
-        Err(e) => {
-            // Error case - return a properly formatted error message
-            error!("Gemini API error: {}", e);
-            let error_message = format!("Error generating Mermaid chart: {}", e);
-            let tool_res = standard_tool_result(error_message, Some(true));
-            Ok(standard_success_response(id, json!(tool_res)))
         }
     }
 }

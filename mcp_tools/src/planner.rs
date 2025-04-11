@@ -1,61 +1,34 @@
-// Removed unused anyhow import
-use anyhow::{Result};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use std::env;
-use tracing::{debug, error, info, warn}; // Import warn macro
+use tracing::{debug, error, info, warn};
+use schemars::JsonSchema;
 
 use rllm::builder::{LLMBackend, LLMBuilder};
-// Removed unused ChatRole import
-use rllm::chat::{ChatMessageBuilder, ChatResponse, ChatRole}; // Import ChatRole for builder
-use rllm::error::LLMError; // Import rllm's error type
+use rllm::chat::{ChatMessageBuilder, ChatResponse, ChatRole};
+use rllm::error::LLMError;
 
-use shared_protocol_objects::{
-    CallToolParams, JsonRpcResponse, ToolInfo, INVALID_PARAMS, // Import error codes from here, removed unused INTERNAL_ERROR
-};
-use crate::tool_trait::{
-    ExecuteFuture, Tool, standard_error_response, standard_success_response, standard_tool_result,
-    // Removed INTERNAL_ERROR, INVALID_PARAMS from here
-};
+// Import rmcp SDK components
+use rmcp::tool;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct PlannerParams {
+    #[schemars(description = "The original request from the user.")]
     pub user_request: String,
+    
+    #[schemars(description = "The AI's interpretation or summary of the user's request and goal.")]
     pub ai_interpretation: String,
-    pub available_tools: String, // Changed from Vec<ToolInfo> to String
+    
+    #[schemars(description = "A formatted string listing all tools available to the AI, including only their name and description (excluding input schema).")]
+    pub available_tools: String,
 }
 
-/// Generates the tool information for the planning tool.
-pub fn planner_tool_info() -> ToolInfo {
-    ToolInfo {
-        name: "planning_tool".to_string(),
-        description: Some(
-            "Generates a multi-step plan using available tools to fulfill a user request.
-            Provide the original user request, the AI's interpretation of that request,
-            and a list of all available tools (including their descriptions and parameters).
-            The tool will call a powerful LLM (Gemini) to devise a plan,
-            including potential contingencies and points for reflection or waiting for results."
-                .to_string(),
-        ),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "user_request": {
-                    "type": "string",
-                    "description": "The original request from the user."
-                },
-                "ai_interpretation": {
-                    "type": "string",
-                    "description": "The AI's interpretation or summary of the user's request and goal."
-                },
-                "available_tools": {
-                    "type": "string",
-                    "description": "A formatted string listing all tools available to the AI, including only their name and description (excluding input schema)."
-                }
-            },
-            "required": ["user_request", "ai_interpretation", "available_tools"]
-        }),
-        annotations: None, // Added missing field
+#[derive(Debug, Clone)]
+pub struct PlannerTool;
+
+impl PlannerTool {
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -96,91 +69,68 @@ async fn generate_plan_with_gemini(prompt: &str) -> Result<Box<dyn ChatResponse>
     llm.chat(&messages).await
 }
 
-/// Handles the execution of the planning tool call.
-async fn handle_planning_tool_call(
-    params: PlannerParams,
-    id: Option<Value>,
-) -> Result<JsonRpcResponse> {
-    info!("Handling planning_tool call");
+// Replaced by PlannerTool.generate_plan method
 
-    // Construct the detailed prompt for Gemini using the provided string
-    let prompt = format!(
-        "Generate a plan based on the following information:\n\n\
-         User Request:\n\"{}\"\n\n\
-         AI Interpretation of Goal:\n\"{}\"\n\n\
-         Available Tools:\n{}\n\
-         ------------------------------------\n\
-         PLAN:",
-        params.user_request, params.ai_interpretation, params.available_tools // Use the string directly
-    );
+impl PlannerTool {
+    // Helper method to generate a plan using the provided parameters
+    async fn generate_plan(&self, params: PlannerParams) -> Result<String> {
+        // Construct the detailed prompt for Gemini using the provided string
+        let prompt = format!(
+            "Generate a plan based on the following information:\n\n\
+             User Request:\n\"{}\"\n\n\
+             AI Interpretation of Goal:\n\"{}\"\n\n\
+             Available Tools:\n{}\n\
+             ------------------------------------\n\
+             PLAN:",
+            params.user_request, params.ai_interpretation, params.available_tools
+        );
 
-    match generate_plan_with_gemini(&prompt).await {
-        // Handle the Box<dyn ChatResponse>
-        Ok(response_box) => {
-            let plan_option = response_box.text(); // Use text() method instead of content(), returns Option<String>
-            info!("Successfully generated plan from Gemini");
-            // Use debug formatting for Option<String>
-            debug!("Generated Plan:\n{:?}", plan_option);
-            // Handle the Option before passing to standard_tool_result
-            let plan_text = plan_option.unwrap_or_else(|| {
-                warn!("Gemini response text was None, returning empty plan.");
-                String::new()
-            });
-            let tool_res = standard_tool_result(plan_text, None);
-            Ok(standard_success_response(id, json!(tool_res)))
-        }
-        // Use rllm::error::LLMError variants based on provided documentation
-        Err(e) => {
-            error!("Error generating plan using Gemini via RLLM: {}", e);
-            // Map rllm::error::LLMError to a user-friendly message
-            let error_message = match e {
-                LLMError::HttpError(msg) => format!("Network error contacting Gemini: {}", msg),
-                LLMError::AuthError(msg) => format!("Gemini authentication/authorization error: {}", msg),
-                LLMError::InvalidRequest(msg) => format!("Invalid request sent to Gemini: {}", msg),
-                LLMError::ProviderError(msg) => format!("Gemini provider error: {}", msg), // Includes rate limits, API errors etc.
-                LLMError::JsonError(msg) => format!("Error processing Gemini response: {}", msg),
-                // Add a catch-all for safety, though the enum definition seems exhaustive
-                // _ => format!("An unexpected error occurred: {}", e),
-            };
-            // Return an error response through the standard tool result mechanism
-             let tool_res = standard_tool_result(error_message.clone(), Some(true));
-             // Even though it's an error *from* the tool, we return it as a *successful* RPC call
-             // containing the error details within the CallToolResult.
-             Ok(standard_success_response(id, json!(tool_res)))
+        match generate_plan_with_gemini(&prompt).await {
+            Ok(response_box) => {
+                let plan_option = response_box.text();
+                info!("Successfully generated plan from Gemini");
+                debug!("Generated Plan:\n{:?}", plan_option);
+                
+                let plan_text = plan_option.unwrap_or_else(|| {
+                    warn!("Gemini response text was None, returning empty plan.");
+                    String::new()
+                });
+                
+                Ok(plan_text)
+            }
+            Err(e) => {
+                error!("Error generating plan using Gemini via RLLM: {}", e);
+                
+                // Map rllm::error::LLMError to a user-friendly message
+                let error_message = match e {
+                    LLMError::HttpError(msg) => format!("Network error contacting Gemini: {}", msg),
+                    LLMError::AuthError(msg) => format!("Gemini authentication/authorization error: {}", msg),
+                    LLMError::InvalidRequest(msg) => format!("Invalid request sent to Gemini: {}", msg),
+                    LLMError::ProviderError(msg) => format!("Gemini provider error: {}", msg),
+                    LLMError::JsonError(msg) => format!("Error processing Gemini response: {}", msg),
+                };
+                
+                Err(anyhow!(error_message))
+            }
         }
     }
 }
 
-// --- Tool Trait Implementation ---
-
-#[derive(Debug)]
-pub struct PlannerTool;
-
-impl Tool for PlannerTool {
-    fn name(&self) -> &str {
-        "planning_tool"
-    }
-
-    fn info(&self) -> ToolInfo {
-        planner_tool_info()
-    }
-
-    fn execute(&self, params: CallToolParams, id: Option<Value>) -> ExecuteFuture {
-        Box::pin(async move {
-            match serde_json::from_value::<PlannerParams>(params.arguments.clone()) {
-                Ok(planner_params) => {
-                    // Call the specific handler function
-                    handle_planning_tool_call(planner_params, id).await
-                }
-                Err(e) => {
-                    error!("Failed to parse PlannerParams: {}", e);
-                    Ok(standard_error_response(
-                        id,
-                        INVALID_PARAMS,
-                        &format!("Invalid parameters for planning_tool: {}", e),
-                    ))
-                }
+#[tool(tool_box)]
+impl PlannerTool {
+    #[tool(description = "Generates a multi-step plan using available tools to fulfill a user request. Provide the original user request, the AI's interpretation of that request, and a list of all available tools (including their descriptions and parameters). The tool will call a powerful LLM (Gemini) to devise a plan, including potential contingencies and points for reflection or waiting for results.")]
+    pub async fn planning_tool(
+        &self,
+        #[tool(aggr)] params: PlannerParams
+    ) -> String {
+        info!("Generating plan for user request: {}", params.user_request);
+        
+        match self.generate_plan(params).await {
+            Ok(plan) => plan,
+            Err(e) => {
+                error!("Failed to generate plan: {}", e);
+                format!("Error generating plan: {}", e)
             }
-        })
+        }
     }
 }
