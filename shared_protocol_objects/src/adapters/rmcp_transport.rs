@@ -58,45 +58,27 @@ impl RmcpTransportAdapter {
              })?;
         tracing::debug!("Transport obtained successfully from process.");
 
-        // --- TEMPORARY CHANGE FOR DEBUGGING ---
-        // Step 3: Skip serve_client for now to test process/transport creation
-        tracing::warn!("Temporarily skipping rmcp::serve_client call for debugging.");
+        // --- Restoring Original Code ---
+        // Step 3: Create the service using the SDK's serve_client function
+        // This likely handles initialization internally.
+        tracing::debug!("Calling rmcp::serve_client...");
+        let service = serve_client(transport).await
+             .map_err(|e| {
+                 tracing::error!(error = %e, "Failed during rmcp::serve_client");
+                 anyhow!("Failed during rmcp::serve_client: {}", e)
+             })?;
+        tracing::debug!("rmcp::serve_client completed successfully.");
+        let service_arc = Arc::new(service);
 
-        // Create a dummy/placeholder service or handle the lack of it later.
-        // For now, we can't fully construct the adapter as intended without the service.
-        // Let's return an error here to indicate we stopped early for debugging.
-        // This allows us to see if Steps 1 & 2 succeeded based on logs.
-        return Err(anyhow!("DEBUG: Stopped before calling serve_client. Check logs for Steps 1 & 2 success."));
-
-        // --- ORIGINAL CODE ---
-        // // Step 3: Create the service using the SDK's serve_client function
-        // // This likely handles initialization internally.
-        // tracing::debug!("Calling rmcp::serve_client...");
-        // let service = serve_client(transport).await
-        //      .map_err(|e| {
-        //          tracing::error!(error = %e, "Failed during rmcp::serve_client");
-        //          anyhow!("Failed during rmcp::serve_client: {}", e)
-        //      })?;
-        // tracing::debug!("rmcp::serve_client completed successfully.");
-        // let service_arc = Arc::new(service);
-        //
-        // tracing::info!("RmcpTransportAdapter created successfully."); // Log success only if all steps pass
-        // Ok(Self {
-        //     inner: service_arc,
-        //     request_id_counter: AtomicU32::new(1), // Start counter at 1
-        //     notification_handler: Arc::new(tokio::sync::Mutex::new(None)),
-        //     // _notification_listener_handle: None, // Removed field
-        //     request_timeout,
-        // })
-        // --- END ORIGINAL CODE ---
-    }
-
-    /// Generate the next request ID according to the guide's suggestion (u32).
+        tracing::info!("RmcpTransportAdapter created successfully."); // Log success only if all steps pass
+        Ok(Self {
+            inner: service_arc,
             request_id_counter: AtomicU32::new(1), // Start counter at 1
             notification_handler: Arc::new(tokio::sync::Mutex::new(None)),
             // _notification_listener_handle: None, // Removed field
             request_timeout,
         })
+        // --- End Restored Original Code ---
     }
 
     /// Generate the next request ID according to the guide's suggestion (u32).
