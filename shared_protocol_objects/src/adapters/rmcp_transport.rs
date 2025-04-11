@@ -40,16 +40,36 @@ impl RmcpTransportAdapter {
 
      /// Create a new adapter using the SDK's Service with a specific timeout.
     pub async fn new_with_timeout(mut command: Command, request_timeout: Duration) -> Result<Self> {
-        tracing::debug!("Creating RmcpTransportAdapter (wrapping SDK Service) for command: {:?}", command);
-        // Create the transport using the SDK
-        let transport = TokioChildProcess::new(&mut command)?
-            .into_transport()?;
+        tracing::debug!("Attempting to create RmcpTransportAdapter (wrapping SDK Service) for command: {:?}", command);
 
-        // Create the service using the SDK's serve_client function
+        // Step 1: Create TokioChildProcess
+        let process = TokioChildProcess::new(&mut command)
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed during TokioChildProcess::new");
+                anyhow!("Failed during TokioChildProcess::new: {}", e)
+            })?;
+        tracing::debug!("TokioChildProcess created successfully.");
+
+        // Step 2: Get transport from process
+        let transport = process.into_transport()
+             .map_err(|e| {
+                 tracing::error!(error = %e, "Failed during process.into_transport()");
+                 anyhow!("Failed during process.into_transport(): {}", e)
+             })?;
+        tracing::debug!("Transport obtained successfully from process.");
+
+        // Step 3: Create the service using the SDK's serve_client function
         // This likely handles initialization internally.
-        let service = serve_client(transport).await?;
+        tracing::debug!("Calling rmcp::serve_client...");
+        let service = serve_client(transport).await
+             .map_err(|e| {
+                 tracing::error!(error = %e, "Failed during rmcp::serve_client");
+                 anyhow!("Failed during rmcp::serve_client: {}", e)
+             })?;
+        tracing::debug!("rmcp::serve_client completed successfully.");
         let service_arc = Arc::new(service);
 
+        tracing::info!("RmcpTransportAdapter created successfully."); // Log success only if all steps pass
         Ok(Self {
             inner: service_arc,
             request_id_counter: AtomicU32::new(1), // Start counter at 1
@@ -254,21 +274,16 @@ impl Transport for RmcpTransportAdapter {
             // Register the callback with the SDK service
             // This is hypothetical - replace with actual SDK API
             if let Err(e) = service_clone.on_notification(notification_callback).await {
-                 tracing::error!("Failed to subscribe to SDK notifications: {}", e);
+                 tracing::error!("Failed during SDK on_notification registration: {}", e);
             } else {
-                 tracing::info!("SDK Notification listener started.");
-                 // Keep the listener alive (the await above might block or return)
-                 // If on_notification returns immediately, we need another way to keep listening,
-                 // maybe a stream:
-                 // let mut stream = service_clone.notification_stream().await?;
-                 // while let Some(sdk_notification) = stream.next().await {
-                 //    // ... call handler ...
-                 // }
-                 // tracing::info!("SDK Notification listener finished.");
-            } else {
-                 tracing::info!("SDK Notification listener task finished.");
-                 // Optional: Handle cleanup or notify if the listener stops unexpectedly.
+                 // This block executes if `on_notification().await` returns Ok(())
+                 tracing::info!("SDK on_notification registration successful. Listener task entering idle loop (or finishing if on_notification doesn't block).");
+                 // If on_notification doesn't block, the task will finish here.
+                 // If the SDK uses a stream, the logic would be different (e.g., loop over stream.next().await).
+                 // For now, assume registration might return Ok and the task ends unless SDK keeps it alive.
             }
+            // The task finishes when the block scope ends, unless `on_notification().await` blocks indefinitely.
+            tracing::warn!("SDK Notification listener task is exiting.");
         });
 
         // We don't store the handle in self anymore.
