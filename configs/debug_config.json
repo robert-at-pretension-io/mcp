@@ -5,6 +5,12 @@
       "env": {
         "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}"
       }
+    },
+    "memory": {
+      "command": "./target/debug/mcp_tools",
+      "env": {
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}"
+      }
     }
   }
 }
