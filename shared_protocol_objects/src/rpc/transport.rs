@@ -175,12 +175,16 @@ impl ProcessTransport {
                                 if let Ok(notification) = serde_json::from_value::<JsonRpcNotification>(json_value.clone()) {
                                     info!("Processing notification: method={}", notification.method);
                                     
-                                    // Pass to notification handler if available
-                                    let handler_guard = self.notification_handler.lock().await;
-                                    if let Some(handler) = &*handler_guard {
-                                        let notification_clone = notification.clone();
-                                        drop(handler_guard);
-                                        handler(notification_clone).await;
+                                    // Clone notification before acquiring lock to minimize lock time
+                                    let notification_clone = notification.clone();
+                                    
+                                    // Use a block to limit the scope of the handler_guard
+                                    {
+                                        let handler_guard = self.notification_handler.lock().await;
+                                        if let Some(handler) = &*handler_guard {
+                                            // Call handler within the guard's scope
+                                            handler(notification_clone).await;
+                                        }
                                     }
                                 } else {
                                     warn!("Failed to parse notification JSON: {}", line);
@@ -196,7 +200,6 @@ impl ProcessTransport {
                                 // Does this ID match our request?
                                 if *id == *request_id {
                                     debug!("ID match found for method {}", method);
-                                    found_matching_response = true;
                                     
                                     // We found our response, now parse it
                                     drop(stdout_guard); // Release lock before potentially expensive parsing
@@ -328,18 +331,18 @@ impl ProcessTransport {
                                         Ok(notification) => {
                                             info!("Received notification: method={}", notification.method);
                                             
-                                            // Get the notification handler if available
-                                            let handler_guard = notification_handler_arc.lock().await;
-                                            if let Some(handler) = &*handler_guard {
-                                                // Clone the notification for the handler
-                                                let notification_clone = notification.clone();
-                                                // Drop the guard before calling the handler
-                                                drop(handler_guard);
-                                                
-                                                // Call the notification handler
-                                                handler(notification_clone).await;
-                                            } else {
-                                                debug!("No notification handler registered, notification ignored");
+                                            // Clone the notification for the handler
+                                            let notification_clone = notification.clone();
+                                            
+                                            // Use a block to limit the scope of the handler_guard
+                                            {
+                                                let handler_guard = notification_handler_arc.lock().await;
+                                                if let Some(handler) = &*handler_guard {
+                                                    // Call the notification handler within the guard's scope
+                                                    handler(notification_clone).await;
+                                                } else {
+                                                    debug!("No notification handler registered, notification ignored");
+                                                }
                                             }
                                         }
                                         Err(e) => {
