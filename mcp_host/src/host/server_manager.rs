@@ -6,9 +6,9 @@ use shared_protocol_objects::{
 };
 // Removed unused async_trait
 use std::collections::HashMap;
-// Use both Command types explicitly
+// Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
-use std::process::Command as StdCommand;
+// Removed: use std::process::Command as StdCommand;
 use tokio::process::Child as TokioChild;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -365,19 +365,7 @@ impl ServerManager {
             let args = server_config.args.clone().unwrap_or_default();
             let envs = server_config.env.clone();
 
-            // Set environment variables if specified
-            if !server_config.env.is_empty() {
-                debug!("Setting environment variables for {}: {:?}", name, server_config.env.keys());
-                command.envs(server_config.env); // Use .envs() for HashMap
-            }
-
-            // Add arguments if specified in config
-            if let Some(args) = server_config.args {
-                 if !args.is_empty() {
-                     debug!("Adding arguments for {}: {:?}", name, args);
-                     command.args(args);
-                 }
-            }
+            // Removed lines trying to modify non-existent 'command' variable
 
             // Start the server using the components
             match self.start_server_with_components(&name, &program, &args, &envs).await {
