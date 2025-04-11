@@ -78,10 +78,18 @@ impl BashExecutor {
 #[derive(Debug, Clone)] // Added Clone
 pub struct BashTool;
 
-#[tool(tool_box)] // Apply the SDK macro
 impl BashTool {
+    // Add a constructor
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+// Remove the tool_box macro here, as McpToolServer handles registration
+impl BashTool {
+    // Make the method public so McpToolServer can call it
     #[tool(description = "Executes bash shell commands on the host system. Use this tool to run system commands, check files, process text, manage files/dirs. Runs in a non-interactive `sh` shell.")] // Use description from old info (fixed quotes around sh)
-    async fn bash(
+    pub async fn bash( // Changed to pub async fn
         &self,
         #[tool(aggr)] params: BashParams // Automatically aggregates JSON args into BashParams
     ) -> String { // Return String directly
@@ -112,7 +120,7 @@ impl BashTool {
 
 // Remove ServerHandler implementation for the individual tool
 // This is now handled by McpToolServer
-/*
+/* REMOVED
 impl ServerHandler for BashTool {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {

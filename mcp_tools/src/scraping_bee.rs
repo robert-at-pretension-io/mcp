@@ -140,9 +140,9 @@ impl ScrapingBeeTool {
 
 // Remove the tool_box macro here, as McpToolServer handles registration
 impl ScrapingBeeTool {
-    // Make the method public
+    // Make the method public so McpToolServer can call it
     #[tool(description = "Web scraping tool that extracts and processes content from websites. Use for extracting text from webpages, documentation, and articles.")]
-    pub async fn scrape_url( // Changed to pub async fn
+    pub async fn scrape_url( // Method should already be public
         &self,
         #[tool(aggr)] params: ScrapingBeeParams // Keep tool(aggr) for potential future direct use? Or remove if only called by McpToolServer? Let's keep it for now.
     ) -> String {
@@ -162,7 +162,7 @@ impl ScrapingBeeTool {
 
 // Remove ServerHandler implementation for the individual tool
 // This is now handled by McpToolServer
-/*
+/* REMOVED
 impl ServerHandler for ScrapingBeeTool {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
