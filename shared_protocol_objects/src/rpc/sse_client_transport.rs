@@ -1,13 +1,13 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use reqwest::{Client as HttpClient, RequestBuilder, StatusCode};
+use reqwest::{Client as HttpClient, StatusCode}; // Removed unused RequestBuilder
 use reqwest_eventsource::{Event, EventSource};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::mpsc; // Removed unused Sender and self
+// Removed unused tokio::sync::mpsc
 use tracing::{error, info, warn};
 
 use crate::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
@@ -78,22 +78,32 @@ impl SSEClientTransport {
     async fn send_post_request(&self, body: Value) -> Result<Value> {
         let mut request_builder = self.http_client.post(&self.url);
 
-        let headers = self.headers.lock().unwrap();
-        for (k, v) in headers.iter() {
+        // Clone headers and drop lock *before* await
+        let headers_clone = {
+            let guard = self.headers.lock().unwrap();
+            guard.clone()
+        }; // MutexGuard is dropped here
+
+        for (k, v) in headers_clone.iter() {
             request_builder = request_builder.header(k, v);
         }
 
         let response = request_builder.json(&body).send().await?;
 
-        if response.status() != StatusCode::OK {
-            let error_text = response.text().await.unwrap_or_default();
+        // Get status *before* consuming body
+        let status = response.status();
+
+        if status != StatusCode::OK {
+            // Consume body only if there's an error
+            let error_text = response.text().await.unwrap_or_else(|e| format!("Failed to read error body: {}", e));
             return Err(anyhow!(
                 "Server responded with status: {}. Body: {}",
-                response.status(),
+                status, // Use the stored status
                 error_text
             ));
         }
 
+        // Consume body for successful response
         let response_body = response.json::<Value>().await?;
         Ok(response_body)
     }
