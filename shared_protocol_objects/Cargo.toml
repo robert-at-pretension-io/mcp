@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = []
+default = ["rmcp-integration"]
+rmcp-integration = ["dep:rmcp"]
 examples = []
 sse_server = ["dep:axum", "dep:tower-http"] # Feature flag for server-side SSE
 
@@ -28,3 +29,6 @@ reqwest-eventsource = "0.5" # Or latest compatible version
 axum = { version = "0.7", optional = true, features = ["ws", "json"] } # Optional for server-side
 tower-http = { version = "0.5", optional = true, features = ["trace"] } # Optional for server-side
 # Removed duplicate tokio-stream entry
+
+# Optional RMCP dependency
+rmcp = { version = "0.1", optional = true, features = ["client", "transport-child-process"] }
