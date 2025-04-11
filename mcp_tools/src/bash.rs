@@ -110,8 +110,9 @@ impl BashTool {
     }
 }
 
-// Optional: Implement ServerHandler if needed for server-level info (like instructions)
-#[tool(tool_box)]
+// Remove ServerHandler implementation for the individual tool
+// This is now handled by McpToolServer
+/*
 impl ServerHandler for BashTool {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
@@ -121,7 +122,7 @@ impl ServerHandler for BashTool {
         }
     }
 }
-
+*/
 // --- End New SDK Implementation ---
 
 
