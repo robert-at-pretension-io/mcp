@@ -1,6 +1,6 @@
 pub mod server_manager;
 pub mod config;
-pub mod protocol;
+// pub mod protocol; // Removed unused module
 pub mod error;
 
 use std::sync::Arc;
@@ -19,7 +19,7 @@ use rmcp::model::Tool as RmcpTool; // Alias Tool
 use std::sync::Arc as StdArc; // Add alias import
 
 use crate::ai_client::{AIClient, AIClientFactory};
-use crate::host::config::{AIProviderConfig, Config as HostConfig, ProviderModelsConfig, ServerConfig}; // Added ServerConfig
+use crate::host::config::{AIProviderConfig, Config as HostConfig, ProviderModelsConfig}; // Removed unused ServerConfig
 use std::path::PathBuf;
 pub struct MCPHost {
     pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
@@ -306,7 +306,7 @@ impl MCPHost {
         let peers_to_query: Vec<(String, rmcp::service::Peer<rmcp::service::RoleClient>)> = {
             let servers_guard = self.servers.lock().await;
             servers_guard.iter()
-                .map(|(name, server)| (name.clone(), server.client.peer().clone())) // Clone the Peer
+                .map(|(name, server)| (name.clone(), server.client.clone())) // Clone the Peer directly
                 .collect()
         }; // Lock released here
         debug!("Collected {} peers to query.", peers_to_query.len());

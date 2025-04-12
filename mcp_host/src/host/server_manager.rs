@@ -1,20 +1,20 @@
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, warn};
-use rmcp::RoleClient;
+// Removed unused import: use rmcp::RoleClient;
 use serde_json::Value;
 use rmcp::model::{
     Implementation as RmcpImplementation, // Alias Implementation
     Tool as RmcpTool, // Alias Tool
     CallToolResult as RmcpCallToolResult, // Alias CallToolResult
     ServerCapabilities as RmcpServerCapabilities, // Alias ServerCapabilities
-    ClientCapabilities as RmcpClientCapabilities, // Alias ClientCapabilities
-    InitializeResult as RmcpInitializeResult, // Alias InitializeResult
+    // Removed unused import: ClientCapabilities as RmcpClientCapabilities,
+    // Removed unused import: InitializeResult as RmcpInitializeResult,
     CallToolRequestParam as RmcpCallToolRequestParam, // Alias CallToolRequestParam
-    Content as RmcpContent, // Alias Content
+    // Removed unused import: Content as RmcpContent,
     RawContent as RmcpRawContent, // Alias RawContent
-    RawTextContent as RmcpRawTextContent, // Alias RawTextContent
+    // Removed unused import: RawTextContent as RmcpRawTextContent,
 };
-use rmcp::service::{serve_client, RoleClient as RmcpRoleClient}; // Import RoleClient alias
+use rmcp::service::{serve_client, Peer, RoleClient as RmcpRoleClient}; // Import Peer, RoleClient alias
 use rmcp::transport::TokioChildProcess;
 use std::collections::HashMap;
 // Use TokioCommand explicitly, remove unused StdCommand alias
@@ -133,7 +133,7 @@ pub use self::production::McpClient; // Only export McpClient for production
 pub struct ManagedServer {
     pub name: String,
     pub process: Arc<Mutex<TokioChild>>, // Wrap process in Arc<Mutex> for killing
-    pub client: RmcpRoleClient, // Use the aliased RoleClient type
+    pub client: Peer<RmcpRoleClient>, // Store the Peer directly
     pub capabilities: Option<RmcpServerCapabilities>, // Use aliased type
 }
 
@@ -244,16 +244,16 @@ impl ServerManager {
         };
         info!("RunningService (including Peer) created for server '{}'.", name);
 
-        let client = running_service.client(); // Get the RoleClient
-        let capabilities = running_service.peer_info().map(|info| info.capabilities.clone()); // Get capabilities
+        let client = running_service.peer().clone(); // Get the Peer
+        let capabilities = running_service.peer_info().map(|init_result| init_result.capabilities.clone()); // Get capabilities from InitializeResult
 
-        info!("McpClient (RoleClient) created for server '{}'.", name);
+        info!("Peer<RoleClient> obtained for server '{}'.", name);
 
         // --- Store Managed Server ---
         let managed_server = ManagedServer {
             name: name.to_string(),
             process: Arc::new(Mutex::new(process)), // Wrap process in Arc<Mutex>
-            client, // Store the RoleClient directly
+            client, // Store the Peer
             capabilities,
         };
 
@@ -327,9 +327,10 @@ impl ServerManager {
 
         info!("Sending tool list request to server {}", server_name);
 
-        // Use the client's list_tools method (which delegates to rmcp's Peer)
-        match server.client.peer().list_tools().await {
-            Ok(tools_vec) => {
+        // Call list_tools directly on the Peer stored in ManagedServer
+        match server.client.list_tools(None).await { // Pass None for default params
+            Ok(list_tools_result) => {
+                let tools_vec = list_tools_result.tools; // Extract Vec<Tool>
                 info!("Successfully received tools list: {} tools", tools_vec.len());
                 debug!("Tools list details: {:?}", tools_vec);
                 Ok(tools_vec)
@@ -353,8 +354,19 @@ impl ServerManager {
         let server = servers.get(server_name)
             .ok_or_else(|| anyhow!("Server not found: {}", server_name))?;
 
-        // Use the client's call_tool method (which delegates to rmcp's RoleClient)
-        let result = server.client.call_tool(tool_name, args).await
+        // Prepare parameters for the Peer's call_tool method
+        let arguments_map = match args {
+            Value::Object(map) => Some(map),
+            Value::Null => None,
+            _ => return Err(anyhow!("Tool arguments must be a JSON object or null")),
+        };
+        let params = RmcpCallToolRequestParam {
+            name: tool_name.to_string().into(),
+            arguments: arguments_map,
+        };
+
+        // Call call_tool directly on the Peer stored in ManagedServer
+        let result = server.client.call_tool(params).await
             .map_err(|e| anyhow!("Failed to call tool '{}' on server '{}': {}", tool_name, server_name, e))?;
 
         // Format the tool response content using rmcp::model::CallToolResult

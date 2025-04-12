@@ -462,8 +462,9 @@ impl CommandProcessor {
         let server = servers_map.get(&server_name)
             .ok_or_else(|| anyhow!("Internal error: Server '{}' vanished", server_name))?;
 
-        // Call list_tools directly on the ManagedServer's client
-        let tools = server.client.list_tools().await?;
+        // Call list_tools directly on the Peer stored in ManagedServer
+        let list_tools_result = server.client.list_tools(None).await?; // Pass None for default params
+        let tools = list_tools_result.tools; // Extract Vec<Tool>
 
         if tools.is_empty() {
             return Ok(format!("No tools available on {}", style(&server_name).green()));
@@ -506,9 +507,22 @@ impl CommandProcessor {
 
         // Call tool with progress indicator
         let progress_msg = format!("Calling tool '{}' on server '{}'...", style(tool_name).yellow(), style(&server_name).green());
+
+        // Prepare parameters for the Peer's call_tool method
+        let arguments_map = match args_value {
+            Value::Object(map) => Some(map),
+            Value::Null => None,
+            _ => return Err(anyhow!("Tool arguments must be a JSON object or null")),
+        };
+        let params = rmcp::model::CallToolRequestParam { // Use rmcp type directly
+            name: tool_name.to_string().into(),
+            arguments: arguments_map,
+        };
+
+        // Call call_tool directly on the Peer stored in ManagedServer
         let result = crate::repl::with_progress(
             progress_msg,
-            server.client.call_tool(tool_name, args_value)
+            server.client.call_tool(params) // Pass the prepared params
         ).await?;
 
         // Format result
