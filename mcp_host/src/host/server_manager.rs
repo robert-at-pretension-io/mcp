@@ -211,7 +211,7 @@ impl ServerManager {
 
         let transport = match TokioChildProcess::new(&mut transport_cmd) {
             Ok(t) => t,
-            Ok(t) => t,
+            // Removed duplicate Ok(t) arm
             Err(e) => {
                 error!("Failed to create TokioChildProcess transport for server '{}': {}", name, e);
                 // Attempt to kill the spawned process if transport creation fails

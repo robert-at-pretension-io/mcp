@@ -5,9 +5,8 @@ use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabi
 use serde_json::Value;
 // Use the local Role definition from repl/mod.rs
 use rllm::builder::{LLMBackend, LLMBuilder};
-// Import ContentPart and ChatContent if they exist, or adjust based on rllm's actual API
-// Assuming ChatMessage content field takes something convertible from Vec<ContentPart>
-use rllm::chat::{ChatMessage, ChatRole, MessageType, ChatContent, ContentPart};
+// Import necessary types from rllm::chat
+use rllm::chat::{ChatMessage, ChatRole, MessageType}; // Removed ChatContent, ContentPart
 use std::path::Path;
 use log;
 
@@ -496,13 +495,16 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             }
         }
         
-        // Store the image path in a special format that will be handled during execution
+        // TODO: Implement proper image path handling. This requires reading the file,
+        // potentially base64 encoding it, checking model capabilities, and using
+        // MessageType::Image. For now, store as a special text message.
         let mut msgs = self.messages.clone();
-        msgs.push((Role::User, text));
+        msgs.push((Role::User, text)); // Add the text part
+        // Add the image path as a separate placeholder message
         msgs.push((Role::User, format!("__IMAGE_PATH__:{}", image_path.display())));
-        
+
         let mut builder = (*self).clone();
-        builder.messages = msgs;
+        builder.messages = msgs; // Update messages in the cloned builder
         Ok(Box::new(builder))
     }
 
@@ -531,13 +533,16 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         
         // Store messages with the image URL in a special format
         let mut msgs = self.messages.clone();
-        msgs.push((Role::User, text));
-        
-        // Store the image URL in a special format
+        // TODO: Implement proper image URL handling. This requires checking model
+        // capabilities and potentially using MessageType::Image(url).
+        // For now, store as a special text message.
+        let mut msgs = self.messages.clone();
+        msgs.push((Role::User, text)); // Add the text part
+        // Add the image URL as a separate placeholder message
         msgs.push((Role::User, format!("__IMAGE_URL__:{}", image_url)));
-        
+
         let mut builder = (*self).clone();
-        builder.messages = msgs;
+        builder.messages = msgs; // Update messages in the cloned builder
         Box::new(builder)
     }
 
@@ -607,85 +612,42 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         // --- System Prompt is handled by the builder now, removed manual injection ---
 
         // --- Process User/Assistant Messages ---
-        // Use the appropriate type for content parts, assuming ContentPart enum exists
-        let mut current_user_message_parts: Vec<ContentPart> = Vec::new();
-
         for (role, content) in self.messages.iter() {
-            match role {
+            let (rllm_role, message_type) = match role {
                 Role::User => {
-                    // Handle potential multi-part user messages (text + image)
+                    // Determine message type based on content prefix
                     if content.starts_with("__IMAGE_PATH__:") {
-                        _has_image = true;
-                        let path_str = content.strip_prefix("__IMAGE_PATH__:").unwrap_or("");
-                        log::warn!("Image path handling not fully implemented in rllm_adapter. Sending path as text for now: {}", path_str);
-                        // TODO: Implement proper image path handling (read file, base64 encode)
-                        // This requires checking model capabilities and using rllm's MessageType::ImageBytes
-                        // For now, append as text part to potentially combine with previous text
-                        current_user_message_parts.push(format!("[Image Path: {}]", path_str).into());
-
+                        // TODO: Implement proper image path handling (read file, base64 encode, use MessageType::Image)
+                        log::warn!("Image path handling not fully implemented. Sending as text.");
+                        (ChatRole::User, MessageType::Text)
                     } else if content.starts_with("__IMAGE_URL__:") {
-                         _has_image = true;
-                         let url_str = content.strip_prefix("__IMAGE_URL__:").unwrap_or("");
-                         log::debug!("Adding image URL part: {}", url_str);
-                         // TODO: Check model capabilities for vision support before adding image URL.
-                         // Assuming rllm handles the structure for OpenAI vision via ContentPart::ImageUrl
-                         current_user_message_parts.push(ContentPart::ImageUrl { url: url_str.to_string() });
-
+                        // TODO: Check model capabilities and use MessageType::Image(url) if supported.
+                        log::warn!("Image URL handling not fully implemented. Sending as text.");
+                        (ChatRole::User, MessageType::Text)
                     } else {
-                        // Regular text part
-                        log::debug!("Adding user text part: '{}...'", content.chars().take(50).collect::<String>());
-                        // Assume ContentPart::Text exists
-                        current_user_message_parts.push(ContentPart::Text(content.clone()));
+                        (ChatRole::User, MessageType::Text)
                     }
                 }
-                Role::Assistant => {
-                    // If we have pending user message parts, finalize and add them first
-                    // If we have pending user message parts, finalize and add them first
-                    if !current_user_message_parts.is_empty() {
-                        log::debug!("Finalizing user message with {} parts.", current_user_message_parts.len());
-                        // Create ChatContent from the Vec<ContentPart>
-                        let user_content: ChatContent = current_user_message_parts.clone().into();
-                        chat_messages.push(ChatMessage {
-                            role: ChatRole::User,
-                            content: user_content,
-                            // Remove message_type, let rllm infer or handle it
-                        });
-                        current_user_message_parts.clear(); // Clear parts for the next user message
-                        _has_image = false; // Reset image flag
-                    }
+                Role::Assistant => (ChatRole::Assistant, MessageType::Text),
+                // System role is handled by the builder
+            };
 
-                    // Add the assistant message (assuming content is always text for assistant)
-                    log::debug!("Adding assistant message: '{}...'", content.chars().take(50).collect::<String>());
-                    let assistant_content: ChatContent = content.clone().into();
-                    chat_messages.push(ChatMessage {
-                        role: ChatRole::Assistant,
-                        content: assistant_content,
-                        // Remove message_type
-                    });
-                }
-                // System role is handled at the beginning
-            }
+            log::debug!("Adding message: Role={:?}, Type={:?}, Content='{}...'",
+                       rllm_role, message_type, content.chars().take(50).collect::<String>());
+
+            chat_messages.push(ChatMessage {
+                role: rllm_role,
+                content: content.clone(), // Content is now just a String
+                message_type, // Add the required message_type field
+                name: None, // Add default name field if required by ChatMessage struct
+            });
         }
-
-        // Add any remaining user message parts after the loop
-        // Add any remaining user message parts after the loop
-        if !current_user_message_parts.is_empty() {
-             log::debug!("Finalizing trailing user message with {} parts.", current_user_message_parts.len());
-             let trailing_user_content: ChatContent = current_user_message_parts.into();
-             chat_messages.push(ChatMessage {
-                 role: ChatRole::User,
-                 content: trailing_user_content,
-                 // Remove message_type
-             });
-        }
-
 
         // --- Log the final messages being sent (using rllm Debug) ---
         log::debug!("Final RLLM ChatMessages Payload ({} messages):", chat_messages.len());
         for msg in &chat_messages {
-            // Access the content string directly and take a preview
             let content_preview = msg.content.lines().next().unwrap_or("").chars().take(100).collect::<String>();
-            log::debug!("  - Role: {:?}, Content Preview: '{}...'", msg.role, content_preview);
+            log::debug!("  - Role: {:?}, Type: {:?}, Content Preview: '{}...'", msg.role, msg.message_type, content_preview);
         }
         // --- End Logging ---
 
@@ -703,17 +665,13 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         match llm.chat(&chat_messages).await {
             Ok(response) => {
                 let elapsed = start_time.elapsed();
-                // Extract the primary text content from the response
-                // Assuming the response object has a method or field like `text()` or `content()`
-                // Adjust based on the actual structure of rllm::chat::ChatResponse
-                let response_str = response.text() // Assuming this method exists
-                    .unwrap_or_else(|| {
-                        log::warn!("Response text extraction failed, falling back to full response.");
-                        response.to_string() // Fallback to the full string representation
-                    });
-                
-                // choices.get(0) // Get the first choice
-                //     .and_then(|choice| choice.message.content.clone()) // Get the message content
+                // The response from rllm.chat() is already a Result<String, LLMError>
+                // So, 'response' here is the String content.
+                let response_str = response;
+
+                // Removed old extraction logic:
+                // choices.get(0)
+                //     .and_then(|choice| choice.message.content.clone())
                 //     .unwrap_or_else(|| {
                 //         log::warn!("Could not extract primary text from RLLM response, falling back to full string representation.");
                 //         response.to_string() // Fallback to the full string representation if extraction fails
