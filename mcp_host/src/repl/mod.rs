@@ -27,8 +27,7 @@ use tokio::time::Duration;
 
 // Removed unused import: use crate::conversation_service::handle_assistant_response;
 use crate::host::MCPHost;
-// Correct rllm import path
-use rllm::config::ModelConfig; // Placeholder, might need specific Role import if available, otherwise define locally
+// Removed incorrect rllm import
 // Define Role locally if not directly available from rllm 1.1.7
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Role { System, User, Assistant } // Local definition matching usage
@@ -437,8 +436,7 @@ impl Repl {
                          Role::System => builder = builder.system(msg.content.clone()),
                          Role::User => builder = builder.user(msg.content.clone()),
                          Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                         // Add default case if PromptMessageRole has more variants
-                         _ => {}
+                         // Removed unreachable pattern: _ => {}
                      }
                 }
                 // Tool prompt is already included in state via ConversationState::new

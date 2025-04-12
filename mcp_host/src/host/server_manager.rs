@@ -6,13 +6,13 @@ use rmcp::model::{
     Implementation, Tool as ToolInfo, CallToolResult, ClientCapabilities, Content, InitializeResult
     // Removed unused ServerCapabilities
 };
-use rmcp::service::{Peer, serve_client}; // Removed unused RoleClient
+use rmcp::service::{Peer, serve_client};
 use rmcp::transport::child_process::TokioChildProcess;
-// Correct path for NoopClientHandler if it exists, or use a different default handler
-use rmcp::handler::NoopClientHandler;
+// Correct path for NoopClientHandler
+use rmcp::handler::client::NoopClientHandler; // Corrected path
 use std::collections::HashMap;
-// Removed unused Cow import here (used in testing module)
 use std::sync::Arc as StdArc;
+use anyhow::anyhow; // Import the anyhow macro
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
 // Removed: use std::process::Command as StdCommand;
@@ -31,6 +31,7 @@ pub mod testing {
     use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Content, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion};
     use std::borrow::Cow;
     use std::sync::Arc as StdArc;
+    // Removed unused imports: Content, ClientCapabilities, ProtocolVersion, Cow, StdArc
 
     // Test mock implementations
     #[derive(Debug)]
@@ -80,7 +81,8 @@ pub mod testing {
         pub async fn call_tool(&self, _name: &str, _args: serde_json::Value) -> anyhow::Result<CallToolResult> {
             Ok(CallToolResult {
                 content: vec![
-                    Content::Text {
+                    // Qualify Content variant
+                    rmcp::model::Content::Text {
                         text: "Tool executed successfully".to_string(),
                         annotations: None,
                     }
@@ -115,9 +117,8 @@ pub mod testing {
 pub mod production {
     // Import necessary rmcp types
     use rmcp::{
-        model::{Tool as ToolInfo, CallToolResult, ClientCapabilities, InitializeResult}, // Removed unused Implementation
-        // Removed unused TokioChildProcess import
-        service::{Peer, RoleClient},
+        model::{Tool as ToolInfo, CallToolResult}, // Removed unused ClientCapabilities, InitializeResult
+        service::{Peer, RoleClient}, // Keep RoleClient for Peer type annotation
     };
 
     // Import shared protocol objects Transport for compatibility - KEEPING FOR NOW until fully migrated
@@ -154,13 +155,19 @@ pub mod production {
 
         pub async fn call_tool(&self, name: &str, args: serde_json::Value) -> anyhow::Result<CallToolResult> {
             log::info!("Calling tool via rmcp Peer::call_tool method: {}", name);
-            // Peer::call_tool takes CallToolRequestParam
-            let params = rmcp::model::CallToolRequestParam {
-                name: name.to_string(),
-                arguments: args,
+            // Convert Value to Option<Map<String, Value>> for arguments
+            let arguments_map = match args {
+                Value::Object(map) => Some(map),
+                Value::Null => None, // Allow null to mean no arguments
+                _ => return Err(anyhow!("Tool arguments must be a JSON object or null")),
             };
-            self.inner.call_tool(params).await // Pass the correct param type
-                .map_err(|e| anyhow!("Failed to call tool via Peer: {}", e)) // Map ServiceError to anyhow::Error
+
+            let params = rmcp::model::CallToolRequestParam {
+                name: name.into(), // Convert &str to Cow
+                arguments: arguments_map, // Use the converted map
+            };
+            self.inner.call_tool(params).await
+                .map_err(|e| anyhow!("Failed to call tool via Peer: {}", e))
         }
 
         pub async fn close(self) -> anyhow::Result<()> {
@@ -467,24 +474,28 @@ impl ServerManager {
 
             // Wrap Peer in our McpClient wrapper
             let mut client = production::McpClient::new(peer);
-            info!("McpClient created, initializing server '{}'...", name);
+            info!("McpClient created for server '{}'.", name);
 
-            // Define client capabilities using rmcp::model::ClientCapabilities
-            // Keep it simple for now, assuming default capabilities are sufficient
+            // Initialization happens implicitly during serve_client.
+            // We need to get capabilities from the Peer *after* it's created.
+            // The Peer struct in rmcp 0.1.5 doesn't seem to expose capabilities directly after creation.
+            // Let's assume capabilities are not available immediately after connection
+            // and might need a separate mechanism or are part of InitializeResult if explicit init is used later.
+            // For now, set capabilities to None.
+            let capabilities = None;
+            warn!("Capabilities are not retrieved during initial connection with rmcp 0.1.5 Peer.");
+
+            // Return the process handle, the wrapped client, and None capabilities
+            (process, client, capabilities)
+            /* // Old explicit initialize logic removed:
             let client_capabilities = rmcp::model::ClientCapabilities::default();
-            debug!("Using default client capabilities for initialization.");
-
-            let init_timeout = Duration::from_secs(15); // Keep timeout
-
-            // Initialize the client (which now calls RoleClient::initialize)
+            let init_timeout = Duration::from_secs(15);
             match tokio::time::timeout(init_timeout, client.initialize(client_capabilities)).await {
-                Ok(Ok(init_result)) => {
-                    info!("Server '{}' initialized successfully.", name);
-                    // Store the capabilities obtained from the server
-                    let capabilities = Some(init_result.capabilities);
-                    // Return the original process handle, the wrapped client, and capabilities
-                    (process, client, capabilities)
-                }
+                 Ok(Ok(init_result)) => {
+                     info!("Server '{}' initialized successfully.", name);
+                     let capabilities = Some(init_result.capabilities);
+                     (process, client, capabilities)
+                 }
                 Ok(Err(e)) => {
                     error!("Client '{}' initialization failed: {}", name, e);
                     return Err(e);
@@ -505,10 +516,10 @@ impl ServerManager {
                 .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()) // Add pipes for consistency
                 .spawn()?;
             // Use the testing McpClient and MockProcessTransport
-            let mut client = testing::McpClient::new(testing::create_test_transport()); // Use testing constructor
-            // Mock initialization
-            let _ = client.initialize(rmcp::model::ClientCapabilities::default()).await; // Call mock initialize
-            let capabilities = client.capabilities().cloned(); // Get capabilities after mock init
+            let mut client = testing::McpClient::new(testing::create_test_transport());
+            // Mock initialization returns InitializeResult which contains capabilities
+            let init_result = client.initialize(rmcp::model::ClientCapabilities::default()).await?;
+            let capabilities = Some(init_result.capabilities); // Get capabilities from mock init result
             info!("Mock process and client created for test server '{}'", name);
             (process, client, capabilities)
         };

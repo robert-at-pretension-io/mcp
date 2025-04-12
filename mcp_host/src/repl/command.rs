@@ -15,7 +15,7 @@ use crate::host::config::{ServerConfig};
 use rustyline::Editor;
 use rustyline::history::DefaultHistory;
 use crate::repl::helper::ReplHelper;
-use rmcp::model::Tool as ToolInfo; // Add import for ToolInfo alias
+// Removed unused ToolInfo import
 
 /// Command processor for the REPL
 pub struct CommandProcessor {
@@ -472,10 +472,10 @@ impl CommandProcessor {
 
         let tool_list = tools.iter()
             .map(|tool| {
-                // Use .as_ref() on Cow<_, str> to get Option<&str>, then unwrap_or
-                let desc = tool.description.as_ref().map(|cow| cow.as_ref()).unwrap_or("No description");
+                // Use .as_ref() on Cow to get &str
+                let desc = tool.description.as_ref();
                 // Style tool name yellow, description dimmed
-                format!("  {} - {}", style(&tool.name).yellow(), style(desc).dim())
+                format!("  {} - {}", style(tool.name.as_ref()).yellow(), style(desc).dim()) // Use as_ref for name too
             })
             .collect::<Vec<_>>()
             .join("\n");

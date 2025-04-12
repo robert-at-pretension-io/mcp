@@ -127,7 +127,8 @@ impl Completer for ReplHelper {
                 // Complete tool names for 'call' command using current_tools
                 let matches: Vec<Pair> = self.current_tools.iter()
                     .filter(|tool| tool.name.starts_with(word))
-                    .map(|tool| Pair { display: tool.name.clone(), replacement: tool.name.clone() })
+                    // Convert Cow to String for Pair
+                    .map(|tool| Pair { display: tool.name.to_string(), replacement: tool.name.to_string() })
                     .collect();
                 return Ok((start, matches));
             } else if command == "provider" {

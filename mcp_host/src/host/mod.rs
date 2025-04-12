@@ -373,9 +373,8 @@ impl MCPHost {
         let tools_str = tool_info_list.iter().map(|tool| {
             format!(
                 "- {}: {}\ninput schema: {:?}",
-                tool.name,
-                // Use .as_ref().map().unwrap_or() for Option<Cow>
-                tool.description.as_ref().map(|cow| cow.as_ref()).unwrap_or(""),
+                tool.name.as_ref(), // Use as_ref() for Cow
+                tool.description.as_ref(), // Use as_ref() for Cow
                 tool.input_schema
             )
         }).collect::<Vec<_>>().join("");
@@ -412,9 +411,8 @@ impl MCPHost {
             all_tools.iter().map(|tool| {
                 format!(
                     "- {}: {}\n  input schema: {:?}",
-                    tool.name,
-                    // Use .as_ref().map().unwrap_or() for Option<Cow>
-                    tool.description.as_ref().map(|cow| cow.as_ref()).unwrap_or(""),
+                    tool.name.as_ref(), // Use as_ref() for Cow
+                    tool.description.as_ref(), // Use as_ref() for Cow
                     tool.input_schema
                 )
             }).collect::<Vec<_>>().join("\n")

@@ -121,8 +121,7 @@ async fn verify_response(
                     Role::User => crate::conversation_state::format_chat_message(&msg.role, &msg.content),
                     Role::Assistant => crate::conversation_state::format_assistant_response_with_tool_calls(&msg.content),
                     Role::System => String::new(), // Skip system messages in this sequence
-                    // Add default case if PromptMessageRole has more variants
-                    _ => String::new(),
+                    // Removed unreachable pattern: _ => String::new(),
                 }
             })
             .collect::<Vec<String>>()
@@ -400,8 +399,7 @@ pub async fn resolve_assistant_response(
                         Role::System => {}
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                        // Add default case if PromptMessageRole has more variants
-                        _ => {}
+                        // Removed unreachable pattern: _ => {}
                     }
                 }
 
@@ -489,8 +487,7 @@ pub async fn resolve_assistant_response(
                                         Role::System => {}
                                         Role::User => builder = builder.user(msg.content.clone()),
                                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                                        // Add default case if PromptMessageRole has more variants
-                                        _ => {}
+                                        // Removed unreachable pattern: _ => {}
                                     }
                                 }
 
@@ -539,17 +536,17 @@ pub async fn resolve_assistant_response(
                             }
                         }
                     }
-                    Err(e) => { // Use the error variable
+                    Err(_e) => { // Prefix unused variable
                         // Verification call itself failed
-                        error!("Error during verification call for server '{}': {}", server_name, e);
+                        error!("Error during verification call for server '{}': {}", server_name, _e);
                         warn!("Returning unverified response due to verification error.");
                         let outcome = VerificationOutcome {
                             final_response: current_response,
                             criteria: Some(criteria.to_string()),
                             verification_passed: None,
-                            verification_feedback: Some(format!("Verification Error: {}", e)),
+                            verification_feedback: Some(format!("Verification Error: {}", _e)),
                         };
-                        log(format!("\n--- Verification Call Error: {} ---", e)); // Use e here
+                        log(format!("\n--- Verification Call Error: {} ---", _e)); // Use _e here
                         log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
                         return Ok(outcome); // Return the unverified response
                     }

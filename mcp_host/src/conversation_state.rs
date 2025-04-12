@@ -77,7 +77,7 @@ pub fn format_chat_message(role: &Role, content: &str) -> String {
         Role::System => style("System").blue().bold(),
         Role::User => style("User").magenta().bold(),
         Role::Assistant => style("Assistant").cyan().bold(),
-        _ => style("Unknown").red().bold(), // Handle any new role types
+        // Removed unreachable pattern: _ => style("Unknown").red().bold(),
     };
 
     // Apply markdown formatting (which includes dimming) to the content

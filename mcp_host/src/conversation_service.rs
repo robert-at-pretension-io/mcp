@@ -15,9 +15,8 @@ pub fn generate_tool_system_prompt(tools: &[rmcp::model::Tool]) -> String {
     let tools_info = tools.iter()
         .map(|t| format!(
             "- Name: {}\n  Description: {}\n  Schema: {}",
-            t.name,
-            // Use .as_ref() on Cow<_, str> to get Option<&str>, then unwrap_or
-            t.description.as_ref().map(|cow| cow.as_ref()).unwrap_or("No description"),
+            t.name.as_ref(), // Use as_ref() for Cow
+            t.description.as_ref(), // Use as_ref() for Cow
             serde_json::to_string_pretty(&t.input_schema).unwrap_or_else(|_| "{}".to_string())
         ))
         .collect::<Vec<String>>()
