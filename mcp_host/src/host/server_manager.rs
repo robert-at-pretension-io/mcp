@@ -508,7 +508,7 @@ impl ServerManager {
                     error!("Client '{}' initialization timed out after {} seconds.", name, init_timeout.as_secs());
                     return Err(anyhow!("Client '{}' initialization timed out after {}s", name, init_timeout.as_secs()).context(elapsed));
                 }
-            }
+            }*/
         };
 
         #[cfg(test)]
