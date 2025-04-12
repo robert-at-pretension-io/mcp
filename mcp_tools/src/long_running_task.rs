@@ -10,7 +10,6 @@ use futures::StreamExt;
 use tokio_util::codec::{FramedRead, LinesCodec};
 use tracing::{debug, info, error};
 use schemars::JsonSchema;
-use nix; // <-- Add this line
 
 // Import SDK components
 use rmcp::tool;
