@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, warn};
+use rmcp::RoleClient;
 use serde_json::Value;
 use rmcp::model::{
     Implementation as RmcpImplementation, // Alias Implementation
@@ -30,107 +31,6 @@ use std::time::Duration;
 // Removed unused Config import
 
 
-// --- Manual Transport Implementation Removed ---
-// The ManualTransport struct and its impl blocks have been deleted.
-// We will use rmcp::transport::TokioChildProcess directly.
-
-
-// Add re-exports for dependent code
-// No cfg attribute - make this available to tests
-pub mod testing {
-    // Use aliased rmcp types in testing mocks
-    use crate::host::server_manager::{
-        RmcpTool, RmcpCallToolResult, RmcpServerCapabilities, RmcpImplementation,
-        RmcpInitializeResult, RmcpClientCapabilities, RmcpContent, RmcpRawContent,
-        RmcpRawTextContent,
-    };
-    use rmcp::model::ProtocolVersion; // Keep ProtocolVersion direct
-    use std::borrow::Cow;
-    use std::sync::Arc as StdArc;
-
-    // Test mock implementations (McpClient remains a simple struct for tests)
-    #[derive(Debug)]
-    pub struct McpClient {
-        pub _transport: MockProcessTransport, // Use MockProcessTransport
-    }
-    
-    // Simple struct for testing - represents the transport mechanism
-    #[derive(Debug)]
-    pub struct MockProcessTransport; // Renamed for clarity
-
-    // Helper function to create instance
-    pub fn create_test_transport() -> MockProcessTransport { // Renamed
-        MockProcessTransport
-    }
-
-    // Helper function to create a client with transport
-    pub fn create_test_client() -> McpClient {
-        McpClient { _transport: create_test_transport() }
-    }
-
-    impl McpClient {
-        // Update constructor to accept the mock transport
-        pub fn new(_transport: MockProcessTransport) -> Self { // Renamed transport type
-            Self { _transport }
-        }
-
-        pub async fn list_tools(&self) -> anyhow::Result<Vec<RmcpTool>> { // Use aliased type
-            // Test implementation - returns rmcp::model::Tool
-            // Fix field types according to rmcp::model::Tool definition
-            Ok(vec![
-                // Explicitly type the struct literal as RmcpTool
-                RmcpTool {
-                    name: Cow::Borrowed("test_tool"),
-                    // Assign Some directly to the Option field
-                    description: ("test tool".to_string()).into(),
-                    input_schema: StdArc::new(serde_json::json!({ // input_schema needs Arc<Map<String, Value>>
-                        "type": "object",
-                        "properties": {
-                            "param1": {"type": "string"}
-                        }
-                    }).as_object().unwrap().clone()), // Convert Value to Map and Arc it
-                    // Removed annotations field as it doesn't exist in rmcp::model::Tool
-                }
-            ])
-        }
-
-        // Test implementation - returns rmcp::model::CallToolResult
-        pub async fn call_tool(&self, _name: &str, _args: serde_json::Value) -> anyhow::Result<RmcpCallToolResult> { // Use aliased type
-            // Use aliased rmcp types
-            Ok(RmcpCallToolResult {
-                content: vec![
-                    RmcpContent::new( // Use aliased type
-                        RmcpRawContent::Text( // Use aliased type
-                            RmcpRawTextContent { // Use aliased type
-                                text: "Tool executed successfully".to_string(),
-                            }
-                        ),
-                        None // Annotations are Option<Vec<Annotation>>
-                    )
-                ],
-                is_error: Some(false),
-            })
-        }
-
-        // Add mock initialize method
-        pub async fn initialize(&mut self, _capabilities: RmcpClientCapabilities) -> anyhow::Result<RmcpInitializeResult> { // Use aliased types
-            Ok(RmcpInitializeResult { // Use aliased type
-                protocol_version: ProtocolVersion::LATEST,
-                capabilities: RmcpServerCapabilities::default(), // Use aliased type
-                server_info: RmcpImplementation { name: "mock-server".into(), version: "0.0.0".into(), ..Default::default() }, // Use aliased type
-                instructions: None,
-            })
-        }
-
-        pub async fn close(self) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        pub fn capabilities(&self) -> Option<&RmcpServerCapabilities> { // Use aliased type
-            None
-        }
-    }
-}
 
 // In production code, use rmcp types directly
 #[cfg(not(test))]
@@ -224,10 +124,6 @@ pub mod production {
     // The #[async_trait] and impl block are removed.
 }
 
-// For testing, use the mock implementations
-#[cfg(test)]
-pub use self::testing::McpClient; // Only export McpClient for testing
-
 // For production, use the wrapped types
 #[cfg(not(test))]
 pub use self::production::McpClient; // Only export McpClient for production
@@ -237,25 +133,11 @@ pub use self::production::McpClient; // Only export McpClient for production
 pub struct ManagedServer {
     pub name: String,
     pub process: TokioChild, // Keep the process handle for killing
-    pub client: McpClient, // This now wraps Peer<RoleClient> (or is the test mock)
+    pub client: RoleClient, // This now wraps Peer<RoleClient> (or is the test mock)
     pub capabilities: Option<RmcpServerCapabilities>, // Use aliased type
 }
 
-// Add a helper method for testing
-impl ManagedServer {
-    #[cfg(test)]
-    pub fn create_mock_client() -> McpClient {
-        #[cfg(not(test))]
-        {
-            panic!("This method should only be called in tests");
-        }
-        
-        #[cfg(test)]
-        {
-            testing::create_test_client() // This now returns the testing::McpClient
-        }
-    }
-}
+
 
 // Define the concrete type for the servers map using the production McpClient
 type ServerMap = HashMap<String, ManagedServer>;
@@ -297,7 +179,7 @@ impl ServerManager {
         info!("Sending tool list request to server {}", server_name);
 
         // Use the client's list_tools method (which delegates to rmcp's Peer)
-        match server.client.list_tools().await {
+        match server.client.peer().list_tools().await {
             Ok(tools_vec) => {
                 info!("Successfully received tools list: {} tools", tools_vec.len());
                 debug!("Tools list details: {:?}", tools_vec);
@@ -332,158 +214,7 @@ impl ServerManager {
         Ok(output)
     }
 
-    /// Start a server with the given name, command and arguments
-    pub async fn start_server(&self, name: &str, program: &str, args: &[String]) -> Result<()> {
-        // Use start_server_with_components, assuming empty envs if not provided
-        let envs = HashMap::new(); 
-        self.start_server_with_components(name, program, args, &envs).await
-    }
 
-    /// Start a server with the given name and command components
-    pub async fn start_server_with_components(
-        &self,
-        name: &str,
-        program: &str,
-        args: &[String],
-        envs: &HashMap<String, String>,
-    ) -> Result<()> {
-        info!("Entered start_server_with_components for server: '{}'", name);
-        info!("Starting server '{}' with program: {}, args: {:?}, envs: {:?}", name, program, args, envs.keys());
-
-        // --- Prepare Tokio Command Directly (No Shell Wrapper) ---
-        let mut command = TokioCommand::new(program);
-        command.args(args); // Add arguments directly
-        command.envs(envs) // Set environment variables
-               .stdin(Stdio::piped())
-               .stdout(Stdio::piped())
-               .stderr(Stdio::piped()); // Capture stderr for potential debugging
-        debug!("Prepared direct Tokio command: {:?}", command);
-
-        // --- Spawn the SINGLE Process ---
-        #[cfg(not(test))]
-        let (process, client, capabilities) = {
-            // --- Spawn ONCE just for the handle ---
-            debug!("Spawning command to get handle for server '{}'...", name);
-            // Create a mutable command instance for the first spawn
-            let mut handle_command = TokioCommand::new(program);
-            handle_command.args(args).envs(envs)
-                          .stdin(Stdio::piped()) // Keep stdio piped for the handle process too? Or null? Let's keep piped for now.
-                          .stdout(Stdio::piped())
-                          .stderr(Stdio::piped());
-             let child_for_handle = handle_command.spawn() // Spawn once just for the handle
-                 .map_err(|e| anyhow!("Failed to spawn process for handle for server '{}': {}", name, e))?;
-             let process_id_handle = child_for_handle.id();
-             info!("Process for handle spawned successfully for server '{}', PID: {:?}", name, process_id_handle);
-
-            // --- Create Transport using TokioChildProcess::new ---
-            // Create an identical command instance for the transport
-            let mut transport_cmd = TokioCommand::new(program);
-            transport_cmd.args(args).envs(envs)
-                         .stdin(Stdio::piped())
-                         .stdout(Stdio::piped())
-                         .stderr(Stdio::piped()); // Ensure stderr is piped for the transport's child
-
-            // TokioChildProcess::new takes &mut Command and spawns internally
-            debug!("Creating TokioChildProcess transport with new command instance for server '{}'...", name);
-            let transport = TokioChildProcess::new(&mut transport_cmd) // Use ::new(&mut command)
-                .map_err(|e| anyhow!("Failed to create TokioChildProcess transport from command for server '{}': {}", name, e))?;
-            info!("TokioChildProcess transport created from command for server '{}'.", name);
-
-            // --- Serve Client using the Transport ---
-            debug!("Serving client handler '()' with TokioChildProcess for server '{}'...", name);
-            let running_service = serve_client((), transport).await // Pass the transport directly
-                .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess for server '{}': {}", name, e))?;
-            info!("RunningService (including Peer) created using TokioChildProcess for server '{}'.", name);
-
-            // Extract Peer and Capabilities
-            let peer = running_service.peer().clone();
-            let capabilities = Some(running_service.peer_info().capabilities.clone());
-
-            // --- Wrap Peer in McpClient ---
-            let client = production::McpClient::new(peer);
-            info!("McpClient created for server '{}'.", name);
-
-            // Return the handle from the *first* spawn, the client, and capabilities
-            (child_for_handle, client, capabilities) // Return the handle we kept
-        };
-
-        #[cfg(test)] // Keep test logic separate and simpler
-        let (process, client, capabilities) = { // Removed mut from client
-            // For tests, create a dummy client and process
-            debug!("Creating mock process and client for test server '{}'", name);
-            let process = tokio::process::Command::new("echo") // Keep dummy process
-                .arg("test")
-                .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()) // Add pipes for consistency
-                .spawn()?;
-            // Use the testing McpClient and MockProcessTransport
-            let mut client = testing::McpClient::new(testing::create_test_transport()); // Removed mut
-            // Mock initialization returns InitializeResult which contains capabilities
-            let init_result = client.initialize(RmcpClientCapabilities::default()).await?; // Call mock initialize, use aliased type
-            let capabilities = Some(init_result.capabilities);
-            info!("Mock process and client created for test server '{}'", name);
-            (process, client, capabilities)
-        };
-        // --- End of process spawning and client initialization ---
-
-        // --- Acquire Lock and Insert Server ---
-        debug!("Creating ManagedServer struct for '{}'", name);
-        let server = ManagedServer {
-            name: name.to_string(),
-            process,
-            client,
-            capabilities,
-        };
-
-        debug!("Acquiring servers lock to insert server '{}'...", name);
-        { // Scope for the lock
-            let mut servers_guard = self.servers.lock().await;
-            debug!("Servers lock acquired for inserting '{}'.", name);
-            servers_guard.insert(name.to_string(), server);
-            debug!("Server '{}' inserted into map.", name);
-        } // Lock released here
-        debug!("Servers lock released after inserting '{}'.", name);
-
-        info!("Finished start_server_with_command for '{}'", name);
-        Ok(())
-    }
-
-
-    /// Stop a server and clean up its resources
-    pub async fn stop_server(&self, name: &str) -> Result<()> {
-        debug!("Attempting to stop server '{}'...", name);
-        debug!("Acquiring servers lock to remove server '{}'...", name);
-        let server_to_stop = { // Scope for lock
-            let mut servers = self.servers.lock().await;
-            debug!("Servers lock acquired for removing '{}'.", name);
-            servers.remove(name) // Remove the server from the map
-        }; // Lock released here
-        debug!("Servers lock released after removing '{}'.", name);
-
-        if let Some(mut server) = server_to_stop {
-            info!("Found server '{}' in map, proceeding with shutdown.", name);
-            // Close the client first to ensure clean shutdown
-            debug!("Closing client for server '{}'...", name);
-            if let Err(e) = server.client.close().await {
-                error!("Error closing client for server '{}': {}", name, e);
-                // Continue with process kill even if client close fails
-            } else {
-                debug!("Client for server '{}' closed successfully.", name);
-            }
-
-            // Then kill the process if it's still running
-            debug!("Attempting to kill process for server '{}'...", name);
-            if let Err(e) = server.process.start_kill() {
-                error!("Error killing process for server '{}': {}", name, e);
-                // Return error if killing fails? Or just log? For now, just log.
-            } else {
-                info!("Process for server '{}' killed successfully.", name);
-            }
-            Ok(()) // Return Ok even if there were errors during shutdown
-        } else {
-            warn!("Server '{}' not found in map, cannot stop.", name);
-            Ok(()) // Not an error if the server wasn't running
-        }
-    }
 }
 
 /// Format a tool result (rmcp::model::CallToolResult) into a string for display
