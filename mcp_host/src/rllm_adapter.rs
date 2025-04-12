@@ -123,6 +123,13 @@ impl RLLMClient {
     // Removed unused convert_role function
 }
 
+// Static Regex for extracting text from GoogleChatResponse string format
+// Looks for `text: "` followed by the captured group `(.*?)` until the next `"`
+static GOOGLE_TEXT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"text:\s*"(.*?)""#).expect("Invalid Google Text Regex")
+});
+
+
 // Implement Debug
 impl std::fmt::Debug for RLLMClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
