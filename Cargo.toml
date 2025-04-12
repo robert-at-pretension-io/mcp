@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "mcp_host",
     "mcp_tools",
-    "mcp_test",
 ]
 default-members = ["mcp_host"]
 
