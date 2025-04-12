@@ -135,7 +135,7 @@ pub struct Message {
 #[derive(Debug, Clone)]
 pub struct ConversationState {
     pub messages: Vec<Message>,
-    pub system_prompt: String,
+    // pub system_prompt: String,
     // Use rmcp::model::Tool here
     pub tools: Vec<RmcpTool>, // Use aliased rmcp Tool
 }
