@@ -107,15 +107,23 @@ impl LongRunningTaskManager {
 
         let manager_clone = self.clone();
         tokio::spawn(async move {
-            // Mark as Running
-            state.status = TaskStatus::Running;
+            // Update status to Running directly in the map
             {
                 let mut guard = manager_clone.tasks_in_memory.lock().await;
-                guard.insert(task_id.clone(), state.clone());
+                if let Some(ts) = guard.get_mut(&task_id) {
+                    ts.status = TaskStatus::Running;
+                    info!("Task {} status updated to Running in map.", task_id);
+                } else {
+                    // This shouldn't happen if the initial insert succeeded
+                    error!("Task {} not found in map when trying to set status to Running.", task_id);
+                    // Bail out of this background task if the state is missing
+                    return;
+                }
             }
-            let _ = manager_clone.save().await;
+            // Removed: Immediate save after marking as Running
+            // let _ = manager_clone.save().await;
 
-            // Launch the process (removed mut)
+            // Launch the process
             let child = Command::new("bash")
                 .arg("-c")
                 .arg(&state.command)
