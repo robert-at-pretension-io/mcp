@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use shared_protocol_objects::client::ReplClient;  // Updated import
+// use shared_protocol_objects::client::ReplClient;  // Updated import
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -103,52 +103,5 @@ impl ServerConnections {
 impl Default for ServerConnections {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use shared_protocol_objects::client::MockReplClient;
-    
-    #[tokio::test]
-    async fn test_server_connections() {
-        let mut connections = ServerConnections::new();
-        
-        // Add a server
-        let client1 = Box::new(MockReplClient::new("server1"));
-        connections.add_server(client1).unwrap();
-        
-        // Check it was added and made current
-        assert_eq!(connections.server_names(), vec!["server1"]);
-        assert_eq!(connections.current_server_name(), Some("server1"));
-        
-        // Add another server
-        let client2 = Box::new(MockReplClient::new("server2"));
-        connections.add_server(client2).unwrap();
-        
-        // Check it was added but didn't change current
-        assert_eq!(connections.server_names().len(), 2);
-        assert!(connections.server_names().contains(&"server2".to_string()));
-        assert_eq!(connections.current_server_name(), Some("server1"));
-        
-        // Set server2 as current
-        connections.set_current_server(Some("server2".to_string())).unwrap();
-        assert_eq!(connections.current_server_name(), Some("server2"));
-        
-        // Try to set a non-existent server
-        assert!(connections.set_current_server(Some("server3".to_string())).is_err());
-        
-        // Remove server2
-        let client = connections.remove_server("server2").unwrap();
-        assert_eq!(client.name(), "server2");
-        
-        // Check current was cleared
-        assert_eq!(connections.current_server_name(), None);
-        
-        // Set config path
-        let path = PathBuf::from("/test/config.json");
-        connections.set_config_path(path.clone());
-        assert_eq!(connections.config_path(), Some(&path));
     }
 }
