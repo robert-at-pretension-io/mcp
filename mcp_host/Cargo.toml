@@ -18,7 +18,7 @@ serde = { version = "1.0.215", features = ["derive"] }
 serde_json = "1.0.133"
 tokio = { version = "1.42.0", features = ["full"] }
 uuid = {version ="1.11.0", features = ["v4", "serde"] }
-regex = "1.9.5"
+regex = "1" # Updated regex version constraint
 lazy_static = "1.4.0"
 schemars = "0.8"
 base64 = "0.22.1"

@@ -11,6 +11,8 @@ use rllm::builder::{LLMBackend, LLMBuilder};
 use rllm::chat::{ChatMessage, ChatRole, MessageType}; // Removed ChatContent, ContentPart
 use std::path::Path;
 use log;
+use regex::Regex;
+use once_cell::sync::Lazy; // For static regex compilation
 
 /// Client adapter for the rllm crate to interface with the MCP system
 pub struct RLLMClient {
@@ -672,10 +674,27 @@ impl AIRequestBuilder for RLLMRequestBuilder {
 
         // Chat with the LLM
         match llm.chat(&chat_messages).await {
-            Ok(response_box) => { // Renamed variable to avoid confusion
+            Ok(response_box) => {
                 let elapsed = start_time.elapsed();
                 // Convert the Box<dyn ChatResponse> to a String using Display trait
-                let response_str = response_box.to_string();
+                let raw_response_str = response_box.to_string();
+                log::trace!("Raw response string from rllm: {}", raw_response_str); // Log raw response
+
+                // Attempt to extract clean text, especially handling Google's format
+                let response_str = if raw_response_str.starts_with("GoogleChatResponse") {
+                    log::debug!("Detected GoogleChatResponse format, attempting text extraction.");
+                    // Try to extract text using regex from the specific Google format
+                    GOOGLE_TEXT_RE.captures(&raw_response_str)
+                        .and_then(|caps| caps.get(1)) // Get the first capture group
+                        .map(|match_| match_.as_str().to_string()) // Convert match to String
+                        .unwrap_or_else(|| {
+                            log::warn!("Could not extract text from GoogleChatResponse format using regex, falling back to raw string.");
+                            raw_response_str // Fallback to the raw string if regex fails
+                        })
+                } else {
+                    // For other providers, assume to_string() gives the desired text directly
+                    raw_response_str
+                };
 
                 // Removed old extraction logic:
                 // choices.get(0)
