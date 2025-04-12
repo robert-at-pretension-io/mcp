@@ -157,16 +157,22 @@ impl LongRunningTaskManager {
                                         if let Some(ts) = guard.get_mut(&task_id_for_stdout) {
                                             ts.stdout.push_str(&line);
                                             ts.stdout.push('\n');
+                                        } else {
+                                            // Task might have been cleared, log and stop reading
+                                            warn!("Task {} not found in map while reading stdout. Stopping reader.", task_id_for_stdout);
+                                            break;
                                         }
                                     }
                                     Err(e) => {
+                                        error!("Error reading stdout for task {}: {}", task_id_for_stdout, e);
                                         let mut guard = manager_for_stdout.tasks_in_memory.lock().await;
+                                        // Attempt to log the error to the task's stderr if it still exists
                                         if let Some(ts) = guard.get_mut(&task_id_for_stdout) {
-                                            ts.stderr.push_str(&format!(
-                                                "[reading stdout error]: {}\n",
-                                                e
-                                            ));
+                                            ts.stderr.push_str(&format!("[Error reading stdout stream: {}]\n", e));
+                                        } else {
+                                             warn!("Task {} not found in map while handling stdout read error.", task_id_for_stdout);
                                         }
+                                        break; // Stop reading on error
                                     }
                                 }
                             }
@@ -186,16 +192,22 @@ impl LongRunningTaskManager {
                                         if let Some(ts) = guard.get_mut(&task_id_for_stderr) {
                                             ts.stderr.push_str(&line);
                                             ts.stderr.push('\n');
+                                        } else {
+                                            // Task might have been cleared, log and stop reading
+                                            warn!("Task {} not found in map while reading stderr. Stopping reader.", task_id_for_stderr);
+                                            break;
                                         }
                                     }
                                     Err(e) => {
+                                        error!("Error reading stderr for task {}: {}", task_id_for_stderr, e);
                                         let mut guard = manager_for_stderr.tasks_in_memory.lock().await;
+                                         // Attempt to log the error to the task's stderr if it still exists
                                         if let Some(ts) = guard.get_mut(&task_id_for_stderr) {
-                                            ts.stderr.push_str(&format!(
-                                                "[reading stderr error]: {}\n",
-                                                e
-                                            ));
+                                            ts.stderr.push_str(&format!("[Error reading stderr stream: {}]\n", e));
+                                        } else {
+                                             warn!("Task {} not found in map while handling stderr read error.", task_id_for_stderr);
                                         }
+                                        break; // Stop reading on error
                                     }
                                 }
                             }
@@ -226,17 +238,25 @@ impl LongRunningTaskManager {
                 }
             }
 
-            // Merge partial logs in aggregator with final `state`
+            // Update the final status in the shared map directly.
+            // The stdout/stderr have already been updated by the reader tasks.
+            // This block is reached only when child.wait() completes.
+            info!("Task {} process finished. Updating final status to {:?}.", task_id, state.status);
             {
                 let mut guard = manager_clone.tasks_in_memory.lock().await;
-                if let Some(ts) = guard.get(&task_id) {
-                    state.stdout = ts.stdout.clone();
-                    state.stderr = ts.stderr.clone();
+                if let Some(ts) = guard.get_mut(&task_id) {
+                    // Update only the status field of the existing TaskState
+                    ts.status = state.status; // Use the final status determined above (Ended or Error)
+                } else {
+                    // This case might happen if the task was cleared concurrently.
+                    error!("Task {} not found in map for final status update after process exit.", task_id);
                 }
-                // Overwrite aggregator with final state
-                guard.insert(task_id.clone(), state.clone());
             }
-            let _ = manager_clone.save().await;
+            // Save the updated state
+            if let Err(e) = manager_clone.save().await {
+                 error!("Failed to save final task state for {}: {}", task_id, e);
+            }
+            info!("Task {} monitoring task finished.", task_id);
         });
 
         Ok(task_id_clone)
