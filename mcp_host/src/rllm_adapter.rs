@@ -531,12 +531,10 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             log::warn!("Image URL doesn't have a common image extension (.jpg, .png, etc). Some models may reject it.");
         }
         
-        // Store messages with the image URL in a special format
-        let mut msgs = self.messages.clone();
         // TODO: Implement proper image URL handling. This requires checking model
         // capabilities and potentially using MessageType::Image(url).
         // For now, store as a special text message.
-        let mut msgs = self.messages.clone();
+        let mut msgs = self.messages.clone(); // Keep only this declaration
         msgs.push((Role::User, text)); // Add the text part
         // Add the image URL as a separate placeholder message
         msgs.push((Role::User, format!("__IMAGE_URL__:{}", image_url)));
@@ -639,7 +637,7 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 role: rllm_role,
                 content: content.clone(), // Content is now just a String
                 message_type, // Add the required message_type field
-                name: None, // Add default name field if required by ChatMessage struct
+                // name: None, // Removed: Field not found in rllm::chat::ChatMessage
             });
         }
 
@@ -666,8 +664,8 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             Ok(response) => {
                 let elapsed = start_time.elapsed();
                 // The response from rllm.chat() is already a Result<String, LLMError>
-                // So, 'response' here is the String content.
-                let response_str = response;
+                // So, 'response' here *is* the String content.
+                // let response_str = response; // No need for this intermediate variable
 
                 // Removed old extraction logic:
                 // choices.get(0)
@@ -680,9 +678,9 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 log::info!(
                     "RLLM request completed in {:.2}s, received {} characters",
                     elapsed.as_secs_f64(),
-                    response_str.len()
+                    response.len() // Use response.len() directly
                 );
-                Ok(response_str)
+                Ok(response) // Return the response String directly
             },
             Err(e) => {
                 let elapsed = start_time.elapsed();
