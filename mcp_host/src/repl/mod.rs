@@ -502,21 +502,7 @@ impl Repl {
         Ok(())
     }
 
-
-    /// Load a configuration file
-    pub async fn load_config(&mut self, config_path: &str) -> Result<()> {
-        println!("{}", style(format!("Loading configuration from: {}", config_path)).yellow());
-
-        // Use self.host directly to load the config
-        self.host.load_config(config_path).await?;
-        println!("{}", style("Successfully loaded configuration using host").green());
-
-        // Reload the command processor with the potentially updated host state?
-        // Or assume host updates its internal state which command_processor uses.
-        // For now, assume host state is updated and command_processor uses the clone.
-
-        Ok(())
-    }
+    // Removed load_config method. Config is loaded/reloaded via MCPHost.
 
     /// This method is deprecated and will be removed
     #[deprecated(note = "Use MCPHost.start_server instead")]
