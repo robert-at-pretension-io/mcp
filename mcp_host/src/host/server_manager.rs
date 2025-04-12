@@ -384,30 +384,11 @@ impl ServerManager {
             let process_id = child.id();
             info!("Single process spawned successfully for server '{}', PID: {:?}", name, process_id);
 
-            // --- Create TokioChildProcess Transport ---
-            // TokioChildProcess::new takes ownership of the Child process
-            debug!("Creating TokioChildProcess transport for server '{}'...", name);
-            let transport = TokioChildProcess::new(child) // Pass the child process directly
-                .map_err(|e| anyhow!("Failed to create TokioChildProcess transport for server '{}': {}", name, e))?;
-            info!("TokioChildProcess transport created for server '{}'.", name);
-
-            // --- Serve Client using TokioChildProcess Transport ---
-            // serve_client takes anything implementing IntoTransport, which TokioChildProcess does.
-            debug!("Serving client handler '()' with TokioChildProcess for server '{}'...", name);
-            let running_service = serve_client((), transport).await // Pass the transport directly
-                .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess for server '{}': {}", name, e))?;
-            info!("RunningService (including Peer) created using TokioChildProcess for server '{}'.", name);
-
-            // --- Extract Peer and Capabilities ---
-            // The Peer is part of the RunningService. We need the original child handle for ManagedServer.
-            // We need to re-spawn the command just to get a handle to store, which is awkward.
-            // Let's rethink: TokioChildProcess consumes the child. We need the handle *before* creating the transport.
-
             // --- Re-approach: Spawn, get handle, THEN create transport ---
             // Spawn the process first to keep the handle
-            debug!("Re-spawning command to get handle for server '{}' (temporary workaround)...", name);
-             let mut child_for_handle = command.spawn() // Spawn again just for the handle
-                 .map_err(|e| anyhow!("Failed to re-spawn process for handle for server '{}': {}", name, e))?;
+            debug!("Spawning command to get handle for server '{}'...", name);
+             let mut child_for_handle = command.spawn() // Spawn once just for the handle
+                 .map_err(|e| anyhow!("Failed to spawn process for handle for server '{}': {}", name, e))?;
              let process_id_handle = child_for_handle.id();
              info!("Process for handle spawned successfully for server '{}', PID: {:?}", name, process_id_handle);
 
@@ -435,16 +416,25 @@ impl ServerManager {
                          .stdout(Stdio::piped())
                          .stderr(Stdio::piped()); // Ensure stderr is piped for the transport's child
 
+            // --- Create TokioChildProcess Transport using the command ---
+            // TokioChildProcess::new takes &mut Command and spawns internally
             debug!("Creating TokioChildProcess transport with new command instance for server '{}'...", name);
-            let transport = TokioChildProcess::new_from_command(&mut transport_cmd) // Use new_from_command
+            let transport = TokioChildProcess::new(&mut transport_cmd) // Use ::new(&mut command)
                 .map_err(|e| anyhow!("Failed to create TokioChildProcess transport from command for server '{}': {}", name, e))?;
             info!("TokioChildProcess transport created from command for server '{}'.", name);
 
+            // --- Serve Client using TokioChildProcess Transport ---
+            // serve_client takes anything implementing IntoTransport, which TokioChildProcess does.
+            debug!("Serving client handler '()' with TokioChildProcess for server '{}'...", name);
+            let running_service = serve_client((), transport).await // Pass the transport directly
+                .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess for server '{}': {}", name, e))?;
+            info!("RunningService (including Peer) created using TokioChildProcess for server '{}'.", name);
+
             // Serve the client using this transport
-            debug!("Serving client handler '()' with TokioChildProcess (from command) for server '{}'...", name);
-            let running_service = serve_client((), transport).await
-                .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess (from command) for server '{}': {}", name, e))?;
-            info!("RunningService (including Peer) created using TokioChildProcess (from command) for server '{}'.", name);
+            debug!("Serving client handler '()' with TokioChildProcess for server '{}'...", name);
+            let running_service = serve_client((), transport).await // Pass the transport created with ::new()
+                .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess for server '{}': {}", name, e))?;
+            info!("RunningService (including Peer) created using TokioChildProcess for server '{}'.", name);
 
             // Extract Peer and Capabilities from the running service
             let peer = running_service.peer().clone();
