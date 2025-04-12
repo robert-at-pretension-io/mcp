@@ -543,9 +543,9 @@ pub async fn resolve_assistant_response(
                             final_response: current_response,
                             criteria: Some(criteria.to_string()),
                             verification_passed: None,
-                            verification_feedback: Some(format!("Verification Error: {}", _e)),
+                            verification_feedback: Some(format!("Verification Error: {}", e)), // Use e here
                         };
-                        log(format!("\n--- Verification Call Error: {} ---", _e)); // Use _e here
+                        log(format!("\n--- Verification Call Error: {} ---", e)); // Use e here
                         log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
                         return Ok(outcome); // Return the unverified response
                     }
@@ -627,8 +627,8 @@ async fn execute_single_tool_internal(
             debug!("Tool '{}' executed successfully on server '{}'.", tool_name, target_server_name);
             Ok(truncated_output) // Return the truncated output
         }
-        Err(error) => {
-            let error_msg = format!("Error executing tool '{}' on server '{}': {}", tool_name, target_server_name, error);
+        Err(_error) => { // Prefix with underscore to mark as unused
+            let error_msg = format!("Error executing tool '{}' on server '{}': {}", tool_name, target_server_name, _error);
             error!("{}", error_msg); // Log the error
 
             // Format error for printing if interactive

@@ -18,7 +18,8 @@ pub struct SSEClientTransport {
     url: String,
     http_client: HttpClient,
     headers: Arc<Mutex<HashMap<String, String>>>,
-    event_stream: Arc<Mutex<Option<EventSource>>>,
+    // Removed unused event_stream field
+    // event_stream: Arc<Mutex<Option<EventSource>>>,
     notification_handler: Arc<Mutex<Option<NotificationHandler>>>,
     is_running: Arc<Mutex<bool>>,
     reconnect_delay: Duration,
@@ -44,7 +45,7 @@ impl SSEClientTransport {
             url,
             http_client,
             headers: Arc::new(Mutex::new(HashMap::new())),
-            event_stream: Arc::new(Mutex::new(None)),
+            // event_stream: Arc::new(Mutex::new(None)), // Removed initialization
             notification_handler: Arc::new(Mutex::new(None)),
             is_running: Arc::new(Mutex::new(false)),
             reconnect_delay: Duration::from_secs(5),

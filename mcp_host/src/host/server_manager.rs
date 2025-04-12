@@ -1,7 +1,6 @@
-use anyhow::Result; // Keep only Result here
+use anyhow::{anyhow, Context, Result}; // Import Context trait
 use log::{debug, error, info, warn};
 use serde_json::Value;
-use anyhow::anyhow; // Import the macro separately
 // Replace shared_protocol_objects imports with rmcp::model
 use rmcp::model::{
     Implementation, Tool as ToolInfo, CallToolResult
@@ -25,10 +24,10 @@ use crate::host::config::Config;
 // No cfg attribute - make this available to tests
 pub mod testing {
     // Use rmcp types directly in testing mocks as well for consistency
-    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion, Content}; // Added Content back
+    // Removed unused Content import
+    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion};
     use std::borrow::Cow;
     use std::sync::Arc as StdArc;
-    // Removed unused imports: ProtocolVersion, StdArc
 
     // Test mock implementations
     #[derive(Debug)]
@@ -76,13 +75,15 @@ pub mod testing {
 
         // Test implementation - returns rmcp::model::CallToolResult
         pub async fn call_tool(&self, _name: &str, _args: serde_json::Value) -> anyhow::Result<CallToolResult> {
+            // Use rmcp::model::RawContent for variants
             Ok(CallToolResult {
                 content: vec![
-                    // Qualify Content variant
-                    rmcp::model::Content::Text {
-                        text: "Tool executed successfully".to_string(),
-                        annotations: None,
-                    }
+                    rmcp::model::Content::new(rmcp::model::RawContent::Text(
+                        rmcp::model::RawTextContent {
+                            text: "Tool executed successfully".to_string(),
+                            annotations: None,
+                        }
+                    ))
                 ],
                 is_error: Some(false),
             })
@@ -114,13 +115,12 @@ pub mod testing {
 pub mod production {
     // Import necessary rmcp types
     use rmcp::{
-        model::{Tool as ToolInfo, CallToolResult}, // Removed unused ClientCapabilities, InitializeResult
+        model::{Tool as ToolInfo, CallToolResult},
         service::{Peer, RoleClient},
     };
     use serde_json::Value;
     use anyhow::anyhow;
-    // Add missing model imports needed for initialize method signature
-    use rmcp::model::{ClientCapabilities, InitializeResult};
+    // Removed unused ClientCapabilities, InitializeResult imports
 
     // Import shared protocol objects Transport for compatibility - KEEPING FOR NOW until fully migrated
     // pub use shared_protocol_objects::rpc::Transport; // Comment out for now
@@ -388,7 +388,8 @@ impl ServerManager {
             },
             Err(e) => {
                 error!("Error listing tools from {}: {:?}", server_name, e);
-                Err(anyhow!("Failed to list tools from {}: {}", server_name, e)).context(e)
+                // Use context method from anyhow::Context trait
+                Err(anyhow!("Failed to list tools from {}: {}", server_name, e)).context(format!("Listing tools failed for {}", server_name))
             }
         }
     }
@@ -509,7 +510,7 @@ impl ServerManager {
         };
 
         #[cfg(test)]
-        let (process, mut client, capabilities) = { // Make client mutable
+        let (process, client, capabilities) = { // Removed mut from client
             // For tests, create a dummy client and process
             debug!("Creating mock process and client for test server '{}'", name);
             let process = tokio::process::Command::new("echo") // Keep dummy process
@@ -517,12 +518,12 @@ impl ServerManager {
                 .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()) // Add pipes for consistency
                 .spawn()?;
             // Use the testing McpClient and MockProcessTransport
-            let mut client = testing::McpClient::new(testing::create_test_transport()); // Keep mutable for initialize call
+            let client = testing::McpClient::new(testing::create_test_transport()); // Removed mut
             // Mock initialization returns InitializeResult which contains capabilities
             let init_result = client.initialize(rmcp::model::ClientCapabilities::default()).await?; // Call mock initialize
             let capabilities = Some(init_result.capabilities);
             info!("Mock process and client created for test server '{}'", name);
-            (process, client, capabilities) // Return non-mutable client
+            (process, client, capabilities)
         };
         // --- End of process spawning and client initialization ---
 
@@ -596,15 +597,15 @@ pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
     }
 
     for content in &result.content {
-        // Qualify Content variants with rmcp::model::
-        match content {
+        // Match on the inner RawContent
+        match &content.content { // Access the inner RawContent enum
             // Handle Text content
-            rmcp::model::Content::Text { text, annotations: _ } => {
-                output.push_str(text);
+            rmcp::model::RawContent::Text(text_content) => {
+                output.push_str(&text_content.text); // Access text field
             }
             // Handle Json content - pretty print it
-            rmcp::model::Content::Json { json, annotations: _ } => {
-                match serde_json::to_string_pretty(json) {
+            rmcp::model::RawContent::Json(json_content) => {
+                match serde_json::to_string_pretty(&json_content.json) { // Access json field
                     Ok(pretty_json) => {
                         output.push_str("```json\n");
                         output.push_str(&pretty_json);
@@ -616,13 +617,21 @@ pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
                 }
             }
              // Handle Image content - provide a placeholder
-             rmcp::model::Content::Image { image: _, annotations: _ } => {
+             rmcp::model::RawContent::Image { .. } => { // Match Image variant
                  output.push_str("[Image content - display not supported]");
              }
-            // Handle other potential content types if added in the future
-             _ => {
-                 output.push_str("[Unsupported content type]");
+             // Handle Audio content
+             rmcp::model::RawContent::Audio { .. } => { // Match Audio variant
+                 output.push_str("[Audio content - display not supported]");
              }
+             // Handle Resource content
+             rmcp::model::RawContent::Resource { .. } => { // Match Resource variant
+                 output.push_str("[Resource content - display not supported]");
+             }
+            // Handle other potential content types if added in the future
+             // _ => { // This becomes unreachable if all variants are handled
+             //     output.push_str("[Unsupported content type]");
+             // }
         }
         output.push('\n');
     }

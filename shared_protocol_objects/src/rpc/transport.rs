@@ -129,10 +129,10 @@ impl ProcessTransport {
 
         let mut reader = BufReader::new(&mut *stdout_guard);
         let mut buffer = String::new();
-        let mut found_matching_response = false;
-        
+        let found_matching_response = false; // Removed mut
+
         // Read until we find a matching response or hit timeout
-        while !found_matching_response {
+        while !found_matching_response { // This loop condition needs adjustment if the variable is never true
             // Clear the buffer for this iteration if needed
             if !buffer.is_empty() {
                 buffer.clear();
@@ -381,8 +381,8 @@ impl Transport for ProcessTransport {
     async fn send_request(&self, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
         // Define constants for better readability
         const REQUEST_TIMEOUT_SECS: u64 = 60;
-        const EMERGENCY_READ_TIMEOUT_MS: u64 = 100;
-        
+        // Removed unused EMERGENCY_READ_TIMEOUT_MS
+
         // Ensure our request ends with a proper newline
         // In JSON-RPC over stdin/stdout, each message must be a single line ending with \n
         let mut request_str = serde_json::to_string(&request)?;
