@@ -15,7 +15,6 @@ use crate::host::config::{ServerConfig};
 use rustyline::Editor;
 use rustyline::history::DefaultHistory;
 use crate::repl::helper::ReplHelper;
-// Removed unused ToolInfo import
 
 /// Command processor for the REPL
 pub struct CommandProcessor {
@@ -475,7 +474,7 @@ impl CommandProcessor {
                 // Use .as_ref() on Cow to get &str
                 let desc = tool.description.as_ref();
                 // Style tool name yellow, description dimmed
-                format!("  {} - {}", style(tool.name.as_ref()).yellow(), style(desc).dim()) // Use as_ref for name too
+                format!("  {} - {}", style(tool.name.as_ref()).yellow(), style(desc).dim())
             })
             .collect::<Vec<_>>()
             .join("\n");

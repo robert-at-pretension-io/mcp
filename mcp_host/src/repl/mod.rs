@@ -432,11 +432,11 @@ impl Repl {
                 log::trace!("Building raw AI request for initial chat turn.");
                 // Add messages *up to this point* (excluding potential future tool results)
                 for msg in state.messages.iter() {
-                     match msg.role { // Already using aliased Role
+                     match msg.role {
                          Role::System => builder = builder.system(msg.content.clone()),
                          Role::User => builder = builder.user(msg.content.clone()),
                          Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                         // Removed unreachable pattern: _ => {}
+                         // Removed unreachable pattern
                      }
                 }
                 // Tool prompt is already included in state via ConversationState::new

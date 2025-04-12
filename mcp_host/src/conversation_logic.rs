@@ -121,7 +121,7 @@ async fn verify_response(
                     Role::User => crate::conversation_state::format_chat_message(&msg.role, &msg.content),
                     Role::Assistant => crate::conversation_state::format_assistant_response_with_tool_calls(&msg.content),
                     Role::System => String::new(), // Skip system messages in this sequence
-                    // Removed unreachable pattern: _ => String::new(),
+                    // Removed unreachable pattern
                 }
             })
             .collect::<Vec<String>>()
@@ -394,11 +394,11 @@ pub async fn resolve_assistant_response(
                 debug!("Calling AI again after invalid tool format detection.");
                 let mut builder = client.raw_builder(&state.system_prompt);
                 for msg in &state.messages {
-                    match msg.role { // Already using aliased Role
+                    match msg.role {
                         Role::System => {}
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                        // Removed unreachable pattern: _ => {}
+                        // Removed unreachable pattern
                     }
                 }
 
@@ -482,11 +482,11 @@ pub async fn resolve_assistant_response(
                                 debug!("Calling AI again after verification failure (feedback as user message).");
                                 let mut builder = client.raw_builder(&state.system_prompt);
                                 for msg in &state.messages {
-                                    match msg.role { // Already using aliased Role
+                                    match msg.role {
                                         Role::System => {}
                                         Role::User => builder = builder.user(msg.content.clone()),
                                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                                        // Removed unreachable pattern: _ => {}
+                                        // Removed unreachable pattern
                                     }
                                 }
 
@@ -535,17 +535,17 @@ pub async fn resolve_assistant_response(
                             }
                         }
                     }
-                    Err(_e) => { // Prefix unused variable
+                    Err(e) => { // Use the error variable
                         // Verification call itself failed
-                        error!("Error during verification call for server '{}': {}", server_name, _e);
+                        error!("Error during verification call for server '{}': {}", server_name, e);
                         warn!("Returning unverified response due to verification error.");
                         let outcome = VerificationOutcome {
                             final_response: current_response,
                             criteria: Some(criteria.to_string()),
                             verification_passed: None,
-                            verification_feedback: Some(format!("Verification Error: {}", _e)),
+                            verification_feedback: Some(format!("Verification Error: {}", e)),
                         };
-                        log(format!("\n--- Verification Call Error: {} ---", _e)); // Use _e here
+                        log(format!("\n--- Verification Call Error: {} ---", e)); // Use e here
                         log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
                         return Ok(outcome); // Return the unverified response
                     }

@@ -128,7 +128,7 @@ impl Completer for ReplHelper {
                 let matches: Vec<Pair> = self.current_tools.iter()
                     .filter(|tool| tool.name.starts_with(word))
                     // Convert Cow to String for Pair
-                    .map(|tool| Pair { display: tool.name.to_string(), replacement: tool.name.to_string() })
+                    .map(|tool| Pair { display: tool.name.to_string(), replacement: tool.name.to_string() }) // Already correct
                     .collect();
                 return Ok((start, matches));
             } else if command == "provider" {

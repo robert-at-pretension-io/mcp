@@ -5,12 +5,11 @@ use serde_json::Value;
 use rmcp::model::{
     Implementation, Tool as ToolInfo, CallToolResult // Removed unused ClientCapabilities, Content, InitializeResult
 };
-use rmcp::service::{serve_client}; // Removed unused Peer
+use rmcp::service::{serve_client};
 use rmcp::transport::child_process::TokioChildProcess;
 // Correct path for NoopClientHandler
-use rmcp::handler::client::NoopClientHandler;
+use rmcp::handler::client::NoopClientHandler; // Corrected path
 use std::collections::HashMap;
-// Removed unused StdArc alias
 use anyhow::anyhow; // Import the anyhow macro
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
@@ -29,10 +28,10 @@ use crate::host::config::Config;
 // No cfg attribute - make this available to tests
 pub mod testing {
     // Use rmcp types directly in testing mocks as well for consistency
-    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Content, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion};
+    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion}; // Removed Content
     use std::borrow::Cow;
     use std::sync::Arc as StdArc;
-    // Removed unused imports: Content, ClientCapabilities, ProtocolVersion, Cow, StdArc
+    // Removed unused imports: ClientCapabilities, ProtocolVersion, Cow, StdArc
 
     // Test mock implementations
     #[derive(Debug)]
@@ -83,12 +82,12 @@ pub mod testing {
             Ok(CallToolResult {
                 content: vec![
                     // Qualify Content variant
-                    rmcp::model::Content::Text {
+                    rmcp::model::Content::Text { // Already qualified, no change needed here
                         text: "Tool executed successfully".to_string(),
                         annotations: None,
                     }
                 ],
-                is_error: Some(false), // Explicitly set is_error
+                is_error: Some(false),
             })
         }
 
@@ -118,9 +117,13 @@ pub mod testing {
 pub mod production {
     // Import necessary rmcp types
     use rmcp::{
-        model::{Tool as ToolInfo, CallToolResult}, // Removed unused ClientCapabilities, InitializeResult
-        service::{Peer, RoleClient}, // Keep RoleClient for Peer type annotation
+        model::{Tool as ToolInfo, CallToolResult},
+        service::{Peer, RoleClient},
     };
+    // Added missing use statement for Value
+    use serde_json::Value;
+    // Added missing use statement for anyhow
+    use anyhow::anyhow;
 
     // Import shared protocol objects Transport for compatibility - KEEPING FOR NOW until fully migrated
     // pub use shared_protocol_objects::rpc::Transport; // Comment out for now
@@ -159,15 +162,15 @@ pub mod production {
             // Convert Value to Option<Map<String, Value>> for arguments
             let arguments_map = match args {
                 Value::Object(map) => Some(map),
-                Value::Null => None, // Allow null to mean no arguments
+                Value::Null => None,
                 _ => return Err(anyhow!("Tool arguments must be a JSON object or null")),
             };
 
             let params = rmcp::model::CallToolRequestParam {
-                name: name.into(), // Convert &str to Cow
-                arguments: arguments_map, // Use the converted map
+                name: name.into(),
+                arguments: arguments_map,
             };
-            self.inner.call_tool(params).await
+            self.inner.call_tool(params).await // Already correct
                 .map_err(|e| anyhow!("Failed to call tool via Peer: {}", e))
         }
 
@@ -599,25 +602,24 @@ pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
         // Qualify Content variants with rmcp::model::
         match content {
             // Handle Text content
-            rmcp::model::Content::Text { text, annotations: _ } => { // Ignore annotations for now
+            rmcp::model::Content::Text { text, annotations: _ } => { // Already qualified
                 output.push_str(text);
             }
             // Handle Json content - pretty print it
-            rmcp::model::Content::Json { json, annotations: _ } => { // Ignore annotations
+            rmcp::model::Content::Json { json, annotations: _ } => { // Already qualified
                 match serde_json::to_string_pretty(json) {
                     Ok(pretty_json) => {
                         output.push_str("```json\n");
                         output.push_str(&pretty_json);
-                        output.push_str("\n```"); // Add closing fence
+                        output.push_str("\n```");
                     }
                     Err(_) => {
-                        // Fallback to debug print if pretty printing fails
                         output.push_str(&format!("{:?}", json));
                     }
                 }
             }
              // Handle Image content - provide a placeholder
-             rmcp::model::Content::Image { image: _, annotations: _ } => {
+             rmcp::model::Content::Image { image: _, annotations: _ } => { // Already qualified
                  output.push_str("[Image content - display not supported]");
              }
             // Handle other potential content types if added in the future
@@ -625,7 +627,7 @@ pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
                  output.push_str("[Unsupported content type]");
              }
         }
-        output.push('\n'); // Add newline between content parts
+        output.push('\n');
     }
     // Trim trailing newline if present
     output.trim_end().to_string()
