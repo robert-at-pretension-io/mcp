@@ -13,6 +13,7 @@ pub use helper::ReplHelper;
 // Import required types
 use anyhow::{anyhow, Result};
 use console::style;
+use rmcp::model::Role;
 use rustyline::error::ReadlineError;
 use rustyline::history::DefaultHistory; // Import History types (Removed unused History trait)
 use rustyline::Editor;
@@ -25,8 +26,7 @@ use tokio::time::Duration;
 // Removed unused import: use crate::conversation_service::handle_assistant_response;
 use crate::host::MCPHost;
 // Define Role locally if not directly available from rllm 1.1.7
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum Role { System, User, Assistant } // Local definition matching usage
+
 use crate::conversation_logic::generate_verification_criteria; // Import the function
 
 /// Main REPL implementation with enhanced CLI features
@@ -430,7 +430,6 @@ impl Repl {
                 // Add messages *up to this point* (excluding potential future tool results)
                 for msg in state.messages.iter() {
                      match msg.role {
-                         Role::System => builder = builder.system(msg.content.clone()),
                          Role::User => builder = builder.user(msg.content.clone()),
                          Role::Assistant => builder = builder.assistant(msg.content.clone()),
                          // Removed unreachable pattern
