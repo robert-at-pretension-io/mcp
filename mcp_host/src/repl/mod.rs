@@ -27,7 +27,6 @@ use tokio::time::Duration;
 
 // Removed unused import: use crate::conversation_service::handle_assistant_response;
 use crate::host::MCPHost;
-// Removed incorrect rllm import
 // Define Role locally if not directly available from rllm 1.1.7
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Role { System, User, Assistant } // Local definition matching usage

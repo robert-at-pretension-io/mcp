@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result}; // Removed Context
 use log::{debug, error, info, warn};
 use serde_json::Value;
 // Replace shared_protocol_objects imports with rmcp::model
@@ -7,8 +7,7 @@ use rmcp::model::{
 };
 use rmcp::service::{serve_client};
 use rmcp::transport::child_process::TokioChildProcess;
-// Correct path for NoopClientHandler
-use rmcp::handler::client::NoopClientHandler; // Corrected path
+// Removed incorrect NoopClientHandler import - will use () instead
 use std::collections::HashMap;
 use anyhow::anyhow; // Import the anyhow macro
 // Use TokioCommand explicitly, remove unused StdCommand alias
@@ -17,8 +16,7 @@ use tokio::process::Command as TokioCommand;
 use tokio::process::Child as TokioChild;
 use std::process::Stdio;
 // Import Arc directly as StdArc alias was removed
-use std::sync::Arc;
-use std::sync::Arc;
+use std::sync::Arc; // Removed duplicate Arc import
 use tokio::sync::Mutex;
 use std::time::Duration;
 
@@ -28,10 +26,10 @@ use crate::host::config::Config;
 // No cfg attribute - make this available to tests
 pub mod testing {
     // Use rmcp types directly in testing mocks as well for consistency
-    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion}; // Removed Content
+    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion};
     use std::borrow::Cow;
     use std::sync::Arc as StdArc;
-    // Removed unused imports: ClientCapabilities, ProtocolVersion, Cow, StdArc
+    // Removed unused imports: ClientCapabilities, ProtocolVersion, StdArc
 
     // Test mock implementations
     #[derive(Debug)]
@@ -118,12 +116,12 @@ pub mod production {
     // Import necessary rmcp types
     use rmcp::{
         model::{Tool as ToolInfo, CallToolResult},
-        service::{Peer, RoleClient},
+        service::{Peer, RoleClient}, // Keep RoleClient for Peer type annotation
     };
-    // Added missing use statement for Value
     use serde_json::Value;
-    // Added missing use statement for anyhow
     use anyhow::anyhow;
+    // Add missing model imports needed for initialize method signature
+    use rmcp::model::{ClientCapabilities, InitializeResult};
 
     // Import shared protocol objects Transport for compatibility - KEEPING FOR NOW until fully migrated
     // pub use shared_protocol_objects::rpc::Transport; // Comment out for now
@@ -189,15 +187,12 @@ pub mod production {
             None // Or retrieve from InitializeResult if stored within McpClient after init
         }
 
-        pub async fn initialize(&mut self, capabilities: ClientCapabilities) -> anyhow::Result<InitializeResult> {
-            log::info!("Initializing connection via rmcp Peer::initialize");
-            // Peer handles initialization internally during serve_client or via an explicit initialize method if available
-            // Let's assume Peer has an initialize method for now, matching the old structure.
-            // If not, initialization happens implicitly during serve_client.
-            // **Correction:** Peer *does* have an initialize method.
-            self.inner.initialize(capabilities, None).await
-                .map_err(|e| anyhow!("Failed to initialize Peer: {}", e)) // Map ServiceError to anyhow::Error
-        }
+        // Remove initialize method - initialization happens via serve_client
+        // pub async fn initialize(&mut self, capabilities: ClientCapabilities) -> anyhow::Result<InitializeResult> {
+        //     log::info!("Initializing connection via rmcp Peer::initialize");
+        //     self.inner.initialize(capabilities, None).await
+        //         .map_err(|e| anyhow!("Failed to initialize Peer: {}", e))
+        // }
     }
 
     // ProcessTransport struct is no longer needed as we use TokioChildProcess directly
@@ -470,26 +465,29 @@ impl ServerManager {
                  .map_err(|e| anyhow!("Failed to create TokioChildProcess transport for server '{}': {}", name, e))?; // Remove .await
             info!("TokioChildProcess transport created for server '{}'.", name);
 
-            // Create Peer by serving the client
-            debug!("Serving client handler to create Peer for server '{}'...", name);
-            let peer = serve_client(NoopClientHandler, transport).await
+            // Create Peer by serving the client - use () as the handler
+            debug!("Serving client handler '()' to create Peer for server '{}'...", name);
+            // serve_client returns Result<RunningService<RoleClient, ()>, E>
+            // RunningService contains the peer and initialization result (implicitly)
+            let running_service = serve_client((), transport).await
                 .map_err(|e| anyhow!("Failed to serve client and create Peer for server '{}': {}", name, e))?;
-            info!("Peer created for server '{}'.", name);
+            info!("RunningService (including Peer) created for server '{}'.", name);
+
+            // Extract the peer from RunningService
+            let peer = running_service.peer().clone(); // Clone the peer Arc
+
+            // Capabilities *should* be available after serve_client completes successfully.
+            // However, RunningService in rmcp 0.1.5 doesn't directly expose InitializeResult.
+            // We might need to infer capabilities later or assume defaults for now.
+            let capabilities = None; // Assume None for now, needs further investigation if capabilities are crucial here.
+            warn!("Capabilities are not directly accessible from RunningService in rmcp 0.1.5. Assuming None.");
+
 
             // Wrap Peer in our McpClient wrapper
-            let mut client = production::McpClient::new(peer);
+            let client = production::McpClient::new(peer); // Client no longer needs to be mutable
             info!("McpClient created for server '{}'.", name);
 
-            // Initialization happens implicitly during serve_client.
-            // We need to get capabilities from the Peer *after* it's created.
-            // The Peer struct in rmcp 0.1.5 doesn't seem to expose capabilities directly after creation.
-            // Let's assume capabilities are not available immediately after connection
-            // and might need a separate mechanism or are part of InitializeResult if explicit init is used later.
-            // For now, set capabilities to None.
-            let capabilities = None;
-            warn!("Capabilities are not retrieved during initial connection with rmcp 0.1.5 Peer.");
-
-            // Return the process handle, the wrapped client, and None capabilities
+            // Return the process handle, the wrapped client, and capabilities
             (process, client, capabilities)
             /* // Old explicit initialize logic removed:
             let client_capabilities = rmcp::model::ClientCapabilities::default();
@@ -520,12 +518,12 @@ impl ServerManager {
                 .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()) // Add pipes for consistency
                 .spawn()?;
             // Use the testing McpClient and MockProcessTransport
-            let mut client = testing::McpClient::new(testing::create_test_transport());
+            let mut client = testing::McpClient::new(testing::create_test_transport()); // Keep mutable for initialize call
             // Mock initialization returns InitializeResult which contains capabilities
-            let init_result = client.initialize(rmcp::model::ClientCapabilities::default()).await?;
-            let capabilities = Some(init_result.capabilities); // Get capabilities from mock init result
+            let init_result = client.initialize(rmcp::model::ClientCapabilities::default()).await?; // Call mock initialize
+            let capabilities = Some(init_result.capabilities);
             info!("Mock process and client created for test server '{}'", name);
-            (process, client, capabilities)
+            (process, client, capabilities) // Return non-mutable client
         };
         // --- End of process spawning and client initialization ---
 
