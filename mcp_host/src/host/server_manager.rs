@@ -485,13 +485,11 @@ impl ServerManager {
             // Extract the peer from RunningService
             let peer = running_service.peer().clone(); // Clone the peer Arc
 
-            // Capabilities are obtained during the serve_client handshake,
-            // but rmcp 0.1.5 RunningService doesn't seem to expose the InitializeResult directly after connection.
-            // Set capabilities to None for now.
-            let capabilities: Option<RmcpServerCapabilities> = None; // Set to None
-            warn!("Server capabilities are not directly accessible via RunningService in rmcp 0.1.5. Assuming None for server '{}'.", name);
-            // Removed the check for capabilities.is_some() as it's always None here.
-            // if capabilities.is_some() { ... } else { ... }
+            // Capabilities are available via the RunningService peer_info method (which returns Option<InitializeResult>)
+            let capabilities = running_service.peer_info().map(|init_result| init_result.capabilities.clone()); // Use Option::map
+            if capabilities.is_some() {
+                info!("Successfully obtained capabilities for server '{}'.", name);
+            } else {
                 warn!("Could not obtain capabilities for server '{}' after initialization.", name);
             }
 
