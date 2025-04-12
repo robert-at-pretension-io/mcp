@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use rmcp::model::Role;
 // Import LLMError for detailed error matching
 use rllm::error::LLMError;
+use tracing::info;
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities};
 use serde_json::Value;
 // Use the local Role definition from repl/mod.rs
@@ -684,24 +685,8 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             Ok(response_box) => {
                 let elapsed = start_time.elapsed();
                 // Convert the Box<dyn ChatResponse> to a String using Display trait
-                let raw_response_str = response_box.to_string();
-                log::trace!("Raw response string from rllm: {}", raw_response_str); // Log raw response
-
-                // Attempt to extract clean text, especially handling Google's format
-                let response_str = if raw_response_str.starts_with("GoogleChatResponse") {
-                    log::debug!("Detected GoogleChatResponse format, attempting text extraction.");
-                    // Try to extract text using regex from the specific Google format
-                    GOOGLE_TEXT_RE.captures(&raw_response_str)
-                        .and_then(|caps| caps.get(1)) // Get the first capture group
-                        .map(|match_| match_.as_str().to_string()) // Convert match to String
-                        .unwrap_or_else(|| {
-                            log::warn!("Could not extract text from GoogleChatResponse format using regex, falling back to raw string.");
-                            raw_response_str // Fallback to the raw string if regex fails
-                        })
-                } else {
-                    // For other providers, assume to_string() gives the desired text directly
-                    raw_response_str
-                };
+                info!("time elapsed: {:.2}s", elapsed.as_secs_f64());
+                Ok(response_box.text().unwrap())
 
                 // Removed old extraction logic:
                 // choices.get(0)
@@ -711,12 +696,6 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 //         response.to_string() // Fallback to the full string representation if extraction fails
                 //     });
 
-                log::info!(
-                    "RLLM request completed in {:.2}s, received {} characters",
-                    elapsed.as_secs_f64(),
-                    response_str.len() // Use length of the converted string
-                );
-                Ok(response_str) // Return the converted String
             },
             Err(e) => {
                 let elapsed = start_time.elapsed();

@@ -145,7 +145,7 @@ async fn verify_response(
         1. Carefully review the *entire sequence* including user feedback, assistant actions (tool calls/results shown), and the final response.\n\
         2. Compare this sequence against each point in the 'Success Criteria'.\n\
         3. Determine if the *outcome* of the assistant's actions and the final response *fully and accurately* satisfy *all* criteria.\n\
-        4. Output ONLY the raw JSON object. Your entire response must start with `{` and end with `}`.\n\
+        4. Output ONLY the raw JSON object. Your entire response must start with `{{` and end with `}}`.\n\
         5. The JSON object must have the following structure: `{{\"passes\": boolean, \"feedback\": \"string (provide concise feedback ONLY if passes is false, explaining which criteria failed and why, referencing the assistant's actions/responses if relevant)\"}}`\n\
         6. ABSOLUTELY DO NOT include any other text, explanations, apologies, introductory phrases, or markdown formatting like ```json or ```.",
         original_request, criteria, final_actions_and_response_for_verifier // Use the full sequence here
