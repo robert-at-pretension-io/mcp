@@ -628,19 +628,22 @@ async fn execute_single_tool_internal(
             Ok(truncated_output) // Return the truncated output
         }
         Err(_error) => { // Prefix with underscore to mark as unused
-            let error_msg = format!("Error executing tool '{}' on server '{}': {}", tool_name, target_server_name, _error);
-            error!("{}", error_msg); // Log the error
+            // Remove _error from the format string as it's ignored
+            let error_msg = format!("Error executing tool '{}' on server '{}'", tool_name, target_server_name);
+            error!("{}: {:?}", error_msg, _error); // Log the actual error separately
 
             // Format error for printing if interactive
             if config.interactive_output {
+                 // Remove _error from the format string here too
                 let formatted_error = format!(
-                    "{} executing tool '{}' on server '{}': {}",
+                    "{} executing tool '{}' on server '{}'",
                     style("Error").red(),
                     style(tool_name).yellow(),
-                    style(&target_server_name).green(), // Include server name in error
-                    _error // Use the original error variable _error
+                    style(&target_server_name).green() // Include server name in error
+                    // _error // Removed usage of ignored variable
                 );
-                println!("\n{}", formatted_error);
+                 // Print the formatted message and the error details separately
+                 println!("\n{}: {:?}", formatted_error, _error);
             }
             // Return the error message itself as the "result" string to be added to the conversation
             // This allows the AI to potentially react to the tool failure.
