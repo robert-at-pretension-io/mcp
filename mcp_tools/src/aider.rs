@@ -290,7 +290,7 @@ impl AiderTool {
 
 #[tool(tool_box)]
 impl AiderTool {
-    #[tool(description = "AI pair programming tool for making targeted code changes. Use for implementing new features, adding tests, fixing bugs, refactoring code, or making structural changes across multiple files.")]
+    #[tool(description = "AI pair programming tool for making targeted code changes. Requires VERY SPECIFIC instructions to perform well. Use for implementing new features, adding tests, fixing bugs, refactoring code, or making structural changes across multiple files.")]
     pub async fn aider(
         &self,
         #[tool(aggr)] params: AiderParams
