@@ -10,7 +10,7 @@
 
 
 /// Generate a system prompt instructing the AI about tool usage with text delimiters
-pub fn generate_tool_system_prompt(tools: &[shared_protocol_objects::ToolInfo]) -> String {
+pub fn generate_tool_system_prompt(tools: &[rmcp::model::Tool]) -> String {
     // Format tools information
     let tools_info = tools.iter()
         .map(|t| format!(

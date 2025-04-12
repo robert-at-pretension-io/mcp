@@ -1,4 +1,4 @@
-use shared_protocol_objects::{Role, ToolInfo};
+use rmcp::model::{PromptMessageRole as Role, Tool as ToolInfo};
 use console::style;
 use serde_json;
 
@@ -73,6 +73,7 @@ pub fn format_chat_message(role: &Role, content: &str) -> String {
         Role::System => style("System").blue().bold(),
         Role::User => style("User").magenta().bold(),
         Role::Assistant => style("Assistant").cyan().bold(),
+        _ => style("Unknown").red().bold(), // Handle any new role types
     };
 
     // Apply markdown formatting (which includes dimming) to the content
