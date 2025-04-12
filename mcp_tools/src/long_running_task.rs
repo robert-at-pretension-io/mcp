@@ -34,14 +34,18 @@ pub struct TaskState {
     /// A new field to store *why* we created this task.
     #[serde(default)]
     pub reason: String,
+    /// Store the process ID, skip serialization as it's runtime-specific
+    #[serde(skip)]
+    pub pid: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TaskStatus {
     Created,
     Running,
-    Ended,
-    Error,
+    Ended, // Task completed normally
+    Error, // Task failed or errored
+    Stopped, // Task was manually stopped
 }
 impl Default for TaskStatus {
     fn default() -> Self {
@@ -92,6 +96,7 @@ impl LongRunningTaskManager {
             stdout: String::new(),
             stderr: String::new(),
             reason: reason.to_string(),
+            pid: None, // Initialize PID as None
         };
 
         // Insert initial record in the tasks map
@@ -120,6 +125,24 @@ impl LongRunningTaskManager {
 
             match child {
                 Ok(mut child) => {
+                    // --- Store the PID ---
+                    let process_id = child.id();
+                    state.pid = process_id; // Store PID in the local state copy first
+                    if let Some(pid_val) = process_id {
+                        info!("Task {} started with PID: {}", task_id, pid_val);
+                        // Update the PID in the shared map immediately
+                        {
+                             let mut guard = manager_clone.tasks_in_memory.lock().await;
+                             if let Some(ts) = guard.get_mut(&task_id) {
+                                 ts.pid = Some(pid_val);
+                             }
+                        }
+                    } else {
+                         error!("Task {} spawned but could not get PID.", task_id);
+                         // Proceed, but stopping might not work
+                    }
+                    // --- End Store PID ---
+
                     // read stdout lines
                     if let Some(stdout) = child.stdout.take() {
                         let manager_for_stdout = manager_clone.clone();
@@ -284,9 +307,16 @@ fn default_lines() -> usize {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ListTasksParams {
     #[serde(default)]
-    #[schemars(description = "Optional filter for tasks (created, running, ended, error)")]
+    #[schemars(description = "Optional filter for tasks (created, running, ended, error, stopped)")]
     pub status: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct StopTaskParams {
+    #[schemars(description = "The ID of the running task to stop")]
+    pub task_id: String,
+}
+
 
 #[derive(Debug, Clone)]
 pub struct LongRunningTaskTool {
@@ -337,11 +367,79 @@ impl LongRunningTaskTool {
             Some("running") => Some(TaskStatus::Running),
             Some("ended") => Some(TaskStatus::Ended),
             Some("error") => Some(TaskStatus::Error),
+            Some("stopped") => Some(TaskStatus::Stopped),
             None => None,        // no filter => all tasks
-            _ => None,           // unrecognized => return all
+            _ => None,           // unrecognized => return all (or maybe error?)
         };
-        
+
         manager.list_tasks(filter_status).await
+    }
+
+    // Helper method to stop a task
+    async fn stop_task_internal(&self, task_id: &str) -> Result<String> {
+        use nix::sys::signal::{kill, Signal};
+        use nix::unistd::Pid;
+
+        let manager = self.manager.lock().await;
+        let mut tasks_guard = manager.tasks_in_memory.lock().await;
+
+        match tasks_guard.get_mut(task_id) {
+            Some(task) => {
+                if task.status != TaskStatus::Running {
+                    return Ok(format!("Task {} is not currently running (status: {:?}). Cannot stop.", task_id, task.status));
+                }
+
+                if let Some(pid_val) = task.pid {
+                    info!("Attempting to stop task {} (PID: {})", task_id, pid_val);
+                    let pid = Pid::from_raw(pid_val as i32);
+                    match kill(pid, Signal::SIGTERM) { // Send SIGTERM first for graceful shutdown
+                        Ok(_) => {
+                            task.status = TaskStatus::Stopped;
+                            task.stderr.push_str("\n[Task manually stopped via SIGTERM]");
+                            info!("Sent SIGTERM to task {} (PID: {})", task_id, pid_val);
+                            // Drop the lock before saving
+                            drop(tasks_guard);
+                            let _ = manager.save().await;
+                            Ok(format!("Stop signal (SIGTERM) sent to task {}. Status set to Stopped.", task_id))
+                        }
+                        Err(e) => {
+                            error!("Failed to send SIGTERM to task {} (PID: {}): {}. Attempting SIGKILL.", task_id, pid_val, e);
+                            // If SIGTERM fails (e.g., process doesn't exist anymore), try SIGKILL
+                            match kill(pid, Signal::SIGKILL) {
+                                Ok(_) => {
+                                    task.status = TaskStatus::Stopped;
+                                    task.stderr.push_str("\n[Task manually stopped via SIGKILL]");
+                                    info!("Sent SIGKILL to task {} (PID: {})", task_id, pid_val);
+                                    // Drop the lock before saving
+                                    drop(tasks_guard);
+                                    let _ = manager.save().await;
+                                    Ok(format!("Stop signal (SIGKILL) sent to task {}. Status set to Stopped.", task_id))
+                                }
+                                Err(e2) => {
+                                     error!("Failed to send SIGKILL to task {} (PID: {}): {}", task_id, pid_val, e2);
+                                     // Update status anyway? Maybe Error? Or leave as Running but log failure?
+                                     // Let's mark as error if we couldn't kill it.
+                                     task.status = TaskStatus::Error;
+                                     task.stderr.push_str(&format!("\n[Failed to stop task: {}]", e2));
+                                     drop(tasks_guard);
+                                     let _ = manager.save().await;
+                                     Err(anyhow!("Failed to send SIGTERM or SIGKILL to process {}: {}", pid_val, e2))
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Task is running but PID is missing - this shouldn't happen with the new code
+                    error!("Task {} is running but has no PID stored. Cannot stop.", task_id);
+                    task.status = TaskStatus::Error; // Mark as error if we can't control it
+                    task.stderr.push_str("\n[Error: Cannot stop task - PID missing]");
+                     drop(tasks_guard);
+                     let _ = manager.save().await;
+                    Err(anyhow!("Task {} is running but PID is missing. Cannot stop.", task_id))
+                }
+            }
+            None => Err(anyhow!("Task not found: {}", task_id)),
+        }
     }
 }
 
@@ -422,5 +520,24 @@ impl LongRunningTaskTool {
         }
         
         result
+    }
+
+    #[tool(description = "Stop a currently running background task. This attempts to gracefully terminate the process using SIGTERM, falling back to SIGKILL if necessary. Use this to cancel tasks that are no longer needed or are running indefinitely.")]
+    pub async fn stop_task(
+        &self,
+        #[tool(aggr)] params: StopTaskParams
+    ) -> String {
+        info!("Attempting to stop task ID: {}", params.task_id);
+
+        match self.stop_task_internal(&params.task_id).await {
+            Ok(message) => {
+                info!("Stop task result for {}: {}", params.task_id, message);
+                message
+            }
+            Err(e) => {
+                error!("Failed to stop task {}: {}", params.task_id, e);
+                format!("Error stopping task {}: {}", params.task_id, e)
+            }
+        }
     }
 }

@@ -16,7 +16,9 @@ use rmcp::{
 use mcp_tools::bash::{BashParams, BashTool}; // Import BashParams too
 use mcp_tools::scraping_bee::{ScrapingBeeTool, ScrapingBeeParams};
 use mcp_tools::brave_search::{BraveSearchTool, BraveSearchParams};
-use mcp_tools::long_running_task::{LongRunningTaskTool, StartTaskParams, GetStatusParams, ListTasksParams};
+use mcp_tools::long_running_task::{
+    LongRunningTaskTool, StartTaskParams, GetStatusParams, ListTasksParams, StopTaskParams // Added StopTaskParams
+};
 use mcp_tools::aider::{AiderTool, AiderParams};
 use mcp_tools::mermaid_chart::{MermaidChartTool, MermaidChartParams};
 // use mcp_tools::planner::{PlannerTool, PlannerParams};
@@ -167,7 +169,16 @@ async fn main() {
             // Delegate to LongRunningTaskTool's implementation
             self.long_running_task_tool.list_tasks(params).await
         }
-        
+
+        #[tool(description = "Stop a currently running background task. This attempts to gracefully terminate the process using SIGTERM, falling back to SIGKILL if necessary. Use this to cancel tasks that are no longer needed or are running indefinitely.")]
+        async fn stop_task(
+            &self,
+            #[tool(aggr)] params: StopTaskParams,
+        ) -> String {
+            // Delegate to LongRunningTaskTool's implementation
+            self.long_running_task_tool.stop_task(params).await
+        }
+
         // Aider tool implementation
         #[tool(description = "AI pair programming tool for making targeted code changes. Requires VERY SPECIFIC instructions to perform well. It has NO CONTEXT from the conversation; all necessary details must be in the 'message'. Use for implementing new features, adding tests, fixing bugs, refactoring code, or making structural changes across multiple files.")]
         async fn aider(
