@@ -14,7 +14,7 @@ use rmcp::model::{
     RawTextContent as RmcpRawTextContent, // Alias RawTextContent
 };
 use rmcp::service::serve_client; // Removed unused Peer, RoleClient imports
-use rmcp::transport::child_process::TokioChildProcess;
+// Removed unused TokioChildProcess import
 use std::collections::HashMap;
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
@@ -24,15 +24,16 @@ use std::process::Stdio;
 use std::sync::Arc; // Re-add top-level Arc import
 use tokio::sync::Mutex;
 use std::time::Duration;
-use tokio::io::{AsyncRead, AsyncWrite}; // Added
+// Removed unused AsyncRead, AsyncWrite
 use tokio::process::{ChildStdin, ChildStdout}; // Added
-use rmcp::transport::{TransportStream, TransportSink, TransportError, Frame}; // Added
-use bytes::BytesMut; // Added
+use rmcp::{TransportStream, TransportSink, TransportError}; // Corrected rmcp imports
+use bytes::Bytes; // Use bytes::Bytes directly for Frame type
+// Removed unused BytesMut
 use futures::{SinkExt, StreamExt}; // Added
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec}; // Added
 
 
-use crate::host::config::Config;
+// Removed unused Config import
 
 
 // --- Manual Transport Implementation ---
@@ -61,9 +62,9 @@ impl ManualTransport {
 
 // Implement the stream trait for reading frames
 impl TransportStream for ManualTransport {
-    async fn read_frame(&mut self) -> Option<Result<Frame, TransportError>> {
+    async fn read_frame(&mut self) -> Option<Result<Bytes, TransportError>> { // Use Bytes for Frame
         match self.reader.next().await {
-            Some(Ok(bytes_mut)) => Some(Ok(bytes_mut.freeze())), // Convert BytesMut -> Bytes (Frame)
+            Some(Ok(bytes_mut)) => Some(Ok(bytes_mut.freeze())), // Convert BytesMut -> Bytes
             Some(Err(e)) => Some(Err(TransportError::Read(format!("Codec error: {}", e)))),
             None => None, // Stream ended
         }
@@ -72,7 +73,7 @@ impl TransportStream for ManualTransport {
 
 // Implement the sink trait for writing frames
 impl TransportSink for ManualTransport {
-    async fn send_frame(&mut self, frame: Frame) -> Result<(), TransportError> {
+    async fn send_frame(&mut self, frame: Bytes) -> Result<(), TransportError> { // Use Bytes for Frame
         self.writer.send(frame).await.map_err(|e| TransportError::Write(format!("Codec error: {}", e)))
     }
 
@@ -82,7 +83,7 @@ impl TransportSink for ManualTransport {
 }
 
 // Combine the traits into the main Transport trait required by serve_client
-impl rmcp::transport::Transport for ManualTransport {}
+impl rmcp::Transport for ManualTransport {} // Correct path for Transport trait
 // --- End Manual Transport ---
 
 
