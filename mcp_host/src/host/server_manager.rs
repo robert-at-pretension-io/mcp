@@ -430,25 +430,11 @@ impl ServerManager {
                 .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess for server '{}': {}", name, e))?;
             info!("RunningService (including Peer) created using TokioChildProcess for server '{}'.", name);
 
-            // Serve the client using this transport
-            debug!("Serving client handler '()' with TokioChildProcess for server '{}'...", name);
-            let running_service = serve_client((), transport).await // Pass the transport created with ::new()
-                .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess for server '{}': {}", name, e))?;
-            info!("RunningService (including Peer) created using TokioChildProcess for server '{}'.", name);
-
             // Extract Peer and Capabilities from the running service
             let peer = running_service.peer().clone();
             // Use if let for clarity and potentially avoid compiler issue
-            let capabilities = if let Some(info) = running_service.peer_info() {
-                Some(info.capabilities.clone())
-            } else {
-                None
-            };
-            if capabilities.is_some() {
-                 info!("Successfully obtained capabilities for server '{}' after initialization.", name); // Corrected log
-            } else {
-                 warn!("Could not obtain capabilities for server '{}' after initialization.", name); // Corrected log
-            }
+            let capabilities = Some(running_service.peer_info().capabilities.clone());
+
 
             // --- Wrap Peer in McpClient ---
             let client = production::McpClient::new(peer);
