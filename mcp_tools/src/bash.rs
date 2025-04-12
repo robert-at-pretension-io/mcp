@@ -5,8 +5,9 @@ use std::process::Command;
 
 use tracing::{debug, error}; // Added tracing
 // Import specific items from rmcp instead of prelude
-// Removed unused Error alias
-use rmcp::tool; // Removed unused ServerHandler, model::ServerInfo
+use rmcp::tool;
+
+// Removed unused shared_protocol_objects::ToolInfo import
 
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)] // Added JsonSchema
