@@ -535,9 +535,9 @@ pub async fn resolve_assistant_response(
                             }
                         }
                     }
-                    Err(_e) => { // Prefix unused variable
+                    Err(e) => { // Use the error variable
                         // Verification call itself failed
-                        error!("Error during verification call for server '{}': {}", server_name, _e);
+                        error!("Error during verification call for server '{}': {}", server_name, e);
                         warn!("Returning unverified response due to verification error.");
                         let outcome = VerificationOutcome {
                             final_response: current_response,

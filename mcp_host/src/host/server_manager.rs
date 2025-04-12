@@ -1,6 +1,7 @@
-use anyhow::{anyhow, Result}; // Removed Context
+use anyhow::Result; // Keep only Result here
 use log::{debug, error, info, warn};
 use serde_json::Value;
+use anyhow::anyhow; // Import the macro separately
 // Replace shared_protocol_objects imports with rmcp::model
 use rmcp::model::{
     Implementation, Tool as ToolInfo, CallToolResult
@@ -9,13 +10,12 @@ use rmcp::service::{serve_client};
 use rmcp::transport::child_process::TokioChildProcess;
 // Removed incorrect NoopClientHandler import - will use () instead
 use std::collections::HashMap;
-use anyhow::anyhow; // Import the anyhow macro
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
 // Removed: use std::process::Command as StdCommand;
 use tokio::process::Child as TokioChild;
 use std::process::Stdio;
-// Removed unused Arc import at this level
+use std::sync::Arc; // Re-add top-level Arc import
 use tokio::sync::Mutex;
 use std::time::Duration;
 
@@ -25,10 +25,10 @@ use crate::host::config::Config;
 // No cfg attribute - make this available to tests
 pub mod testing {
     // Use rmcp types directly in testing mocks as well for consistency
-    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion};
+    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion, Content}; // Added Content back
     use std::borrow::Cow;
     use std::sync::Arc as StdArc;
-    // Removed unused imports: ClientCapabilities, ProtocolVersion, StdArc
+    // Removed unused imports: ProtocolVersion, StdArc
 
     // Test mock implementations
     #[derive(Debug)]
@@ -79,7 +79,7 @@ pub mod testing {
             Ok(CallToolResult {
                 content: vec![
                     // Qualify Content variant
-                    rmcp::model::Content::Text { // Already qualified, no change needed here
+                    rmcp::model::Content::Text {
                         text: "Tool executed successfully".to_string(),
                         annotations: None,
                     }
@@ -114,8 +114,8 @@ pub mod testing {
 pub mod production {
     // Import necessary rmcp types
     use rmcp::{
-        model::{Tool as ToolInfo, CallToolResult},
-        service::{Peer, RoleClient}, // Keep RoleClient for Peer type annotation
+        model::{Tool as ToolInfo, CallToolResult}, // Removed unused ClientCapabilities, InitializeResult
+        service::{Peer, RoleClient},
     };
     use serde_json::Value;
     use anyhow::anyhow;
@@ -599,11 +599,11 @@ pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
         // Qualify Content variants with rmcp::model::
         match content {
             // Handle Text content
-            rmcp::model::Content::Text { text, annotations: _ } => { // Already qualified
+            rmcp::model::Content::Text { text, annotations: _ } => {
                 output.push_str(text);
             }
             // Handle Json content - pretty print it
-            rmcp::model::Content::Json { json, annotations: _ } => { // Already qualified
+            rmcp::model::Content::Json { json, annotations: _ } => {
                 match serde_json::to_string_pretty(json) {
                     Ok(pretty_json) => {
                         output.push_str("```json\n");
@@ -616,7 +616,7 @@ pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
                 }
             }
              // Handle Image content - provide a placeholder
-             rmcp::model::Content::Image { image: _, annotations: _ } => { // Already qualified
+             rmcp::model::Content::Image { image: _, annotations: _ } => {
                  output.push_str("[Image content - display not supported]");
              }
             // Handle other potential content types if added in the future

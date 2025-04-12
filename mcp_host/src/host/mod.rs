@@ -374,7 +374,7 @@ impl MCPHost {
             format!(
                 "- {}: {}\ninput schema: {:?}",
                 tool.name.as_ref(),
-                tool.description.as_ref(), // Corrected: No map needed here
+                tool.description.as_deref().unwrap_or(""), // Use as_deref().unwrap_or("")
                 tool.input_schema
             )
         }).collect::<Vec<_>>().join("");
