@@ -165,10 +165,10 @@ pub mod production {
             };
 
             let params = rmcp::model::CallToolRequestParam {
-                name: name.into(),
+                name: name.to_string().into(), // Convert &str to String first, then to Cow
                 arguments: arguments_map,
             };
-            self.inner.call_tool(params).await // Already correct
+            self.inner.call_tool(params).await
                 .map_err(|e| anyhow!("Failed to call tool via Peer: {}", e))
         }
 
