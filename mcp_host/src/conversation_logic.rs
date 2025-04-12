@@ -333,8 +333,7 @@ pub async fn resolve_assistant_response(
                         Role::System => {} // System prompt is handled by raw_builder
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                        // Add default case if PromptMessageRole has more variants
-                        _ => {}
+                        // Removed unreachable pattern: _ => {}
                     }
                 }
 
