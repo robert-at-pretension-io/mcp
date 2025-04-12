@@ -129,10 +129,10 @@ impl ProcessTransport {
 
         let mut reader = BufReader::new(&mut *stdout_guard);
         let mut buffer = String::new();
-        let found_matching_response = false; // Removed mut
+        // Removed unused found_matching_response variable
 
         // Read until we find a matching response or hit timeout
-        while !found_matching_response { // This loop condition needs adjustment if the variable is never true
+        loop { // Changed to infinite loop, exits via return
             // Clear the buffer for this iteration if needed
             if !buffer.is_empty() {
                 buffer.clear();
