@@ -123,10 +123,13 @@ impl LongRunningTaskManager {
             // Removed: Immediate save after marking as Running
             // let _ = manager_clone.save().await;
 
-            // Launch the process
+            // Launch the process, ensuring it runs in the background within the shell
+            // Append ' &' to the command to make the shell background it.
+            let background_command = format!("{} &", state.command);
+            info!("Executing background command: bash -c '{}'", background_command);
             let child = Command::new("bash")
                 .arg("-c")
-                .arg(&state.command)
+                .arg(&background_command) // Use the modified command string
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn();
