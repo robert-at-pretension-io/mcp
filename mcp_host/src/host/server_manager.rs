@@ -20,12 +20,13 @@ use crate::host::config::Config;
 // Add re-exports for dependent code
 // No cfg attribute - make this available to tests
 pub mod testing {
-    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Content};
-    
-    // Test mock implementations 
+    // Use rmcp types directly in testing mocks as well for consistency
+    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Content, Implementation, InitializeResult, ClientCapabilities}; // Added Implementation, InitializeResult, ClientCapabilities
+
+    // Test mock implementations
     #[derive(Debug)]
     pub struct McpClient {
-        pub _transport: ProcessTransport,
+        pub _transport: MockProcessTransport, // Use MockProcessTransport
     }
     
     // Simple struct for testing - represents the transport mechanism
@@ -97,21 +98,23 @@ pub mod testing {
     }
 }
 
-// In production code, use these types from shared_protocol_objects, but wrap them
+// In production code, use rmcp types directly
 #[cfg(not(test))]
 pub mod production {
+    // Import necessary rmcp types
     use rmcp::{
-        model::{ClientJsonRpcMessage, ServerJsonRpcMessage, Tool as ToolInfo, CallToolResult, ClientCapabilities, InitializeResult},
-        transport::child_process::TokioChildProcess, 
-        service::RoleClient
+        model::{Tool as ToolInfo, CallToolResult, ClientCapabilities, InitializeResult, Implementation}, // Added Implementation
+        transport::child_process::TokioChildProcess,
+        service::RoleClient, // Use RoleClient directly
     };
-    use shared_protocol_objects;
-    use std::sync::Arc;
+    // Removed unused shared_protocol_objects import
+    // Removed unused Arc import
+    // Removed unused ClientJsonRpcMessage, ServerJsonRpcMessage
 
-    // Import shared protocol objects Transport for compatibility
+    // Import shared protocol objects Transport for compatibility - KEEPING FOR NOW until fully migrated
     pub use shared_protocol_objects::rpc::Transport;
-    
-    // Wrapper for McpClient to provide Debug 
+
+    // Wrapper for McpClient to provide Debug and hold RoleClient
     pub struct McpClient {
         inner: RoleClient
     }
@@ -135,42 +138,11 @@ pub mod production {
             Ok(result.tools)
         }
 
+        // Use rmcp's call_tool directly
         pub async fn call_tool(&self, name: &str, args: serde_json::Value) -> anyhow::Result<CallToolResult> {
-            // Special handling for the tools/list case
-            if name == "tools/list" {
-                log::info!("Using specialized list_tools() method directly for tools/list call");
-                let list_tools_result = self.inner.list_tools(None).await?;
-
-                // Create a synthetic response using the tools field from the result
-                let tools_json = format!("Found {} tools: {}", list_tools_result.tools.len(),
-                    list_tools_result.tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", "));
-
-                // Convert to shared_protocol_objects format temporarily
-                let spo_result = shared_protocol_objects::CallToolResult {
-                    content: vec![
-                        shared_protocol_objects::ToolResponseContent {
-                            type_: "text".to_string(),
-                            text: tools_json,
-                            annotations: None,
-                        }
-                    ],
-                    is_error: Some(false),
-                };
-                
-                // Create rmcp equivalent
-                return Ok(CallToolResult {
-                    content: vec![
-                        rmcp::model::Content::Text { 
-                            text: tools_json,
-                            annotations: None 
-                        }
-                    ],
-                    is_error: Some(false),
-                });
-            }
-            
-            // Normal path for other tools
             log::info!("Calling tool via rmcp call_tool method: {}", name);
+            // The special handling for "tools/list" is removed as RoleClient::call_tool should handle it.
+            // If issues arise, we might need to re-introduce specific handling here or fix RoleClient.
             self.inner.call_tool(name, args).await
         }
 
@@ -211,54 +183,22 @@ pub mod production {
             log::info!("Creating dedicated transport");
             Self::new(command).await
         }
-    }
-    
-    // Implement shared_protocol_objects::rpc::Transport for our ProcessTransport wrapper
-    #[async_trait::async_trait]
-    impl Transport for ProcessTransport {
-        async fn send_request(&self, request: shared_protocol_objects::JsonRpcRequest) -> anyhow::Result<shared_protocol_objects::JsonRpcResponse> {
-            // Convert from shared_protocol_objects to rmcp
-            let rmcp_request = ClientJsonRpcMessage::Request(rmcp::model::JsonRpcRequest {
-                jsonrpc: rmcp::model::JsonRpcVersion2_0,
-                id: rmcp::model::RequestId::Number(1), // Use a default ID for now
-                request: rmcp::model::Request {
-                    method: request.method.clone(),
-                    params: None, // This is a simplification for now
-                }
-            });
-            
-            // Send the request
-            let response = self.0.send(rmcp_request).await?;
-            
-            // Convert back to shared_protocol_objects
-            Ok(shared_protocol_objects::JsonRpcResponse {
-                jsonrpc: "2.0".to_string(),
-                id: serde_json::Value::Number(1.into()),
-                result: Some(serde_json::Value::Null),
-                error: None,
-            })
-        }
-        
-        async fn send_notification(&self, _notification: shared_protocol_objects::JsonRpcNotification) -> anyhow::Result<()> {
-            // Simplified implementation - we're not processing notifications in this version
-            Ok(())
-        }
-        
-        async fn subscribe_to_notifications(&self, _handler: shared_protocol_objects::rpc::NotificationHandler) -> anyhow::Result<()> {
-            // Simplified implementation - we're not processing notifications in this version
-            Ok(())
-        }
-        
-        async fn close(&self) -> anyhow::Result<()> {
-            // Just delegate to the inner transport
-            self.0.close().await
+
+        // Add a method to get the inner transport if needed elsewhere, though RoleClient abstracts it
+        pub fn into_inner(self) -> TokioChildProcess {
+             self.0
         }
     }
+
+    // Remove the manual implementation of shared_protocol_objects::rpc::Transport
+    // RoleClient handles the transport interaction internally.
+    // The #[async_trait] and impl block are removed.
 }
 
 // For testing, use the mock implementations
 #[cfg(test)]
-pub use self::testing::{McpClient, ProcessTransport};
+// Use alias for consistency if ProcessTransport name is used elsewhere in tests
+pub use self::testing::{McpClient, MockProcessTransport as ProcessTransport};
 
 // For production, use the wrapped types
 #[cfg(not(test))]
@@ -267,10 +207,10 @@ pub use self::production::{McpClient, ProcessTransport};
 /// Represents a server managed by MCP host
 #[derive(Debug)]
 pub struct ManagedServer {
-    pub name: String, 
-    pub process: TokioChild,
-    pub client: McpClient,
-    pub capabilities: Option<rmcp::model::ServerCapabilities>,
+    pub name: String,
+    pub process: TokioChild, // Keep the process handle for killing
+    pub client: McpClient, // This now wraps RoleClient (or is the test mock)
+    pub capabilities: Option<rmcp::model::ServerCapabilities>, // Type is already correct
 }
 
 // Add a helper method for testing
@@ -297,16 +237,17 @@ type ServerMap = HashMap<String, ManagedServer>;
 /// The ServerManager handles communication with tool servers using the shared protocol
 /// library, providing a clean API for starting, stopping, and interacting with tool servers.
 pub struct ServerManager {
-    pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
-    pub client_info: Implementation,
+    // Use the concrete ServerMap type here
+    pub servers: Arc<Mutex<ServerMap>>,
+    pub client_info: Implementation, // This should be rmcp::model::Implementation
     pub request_timeout: Duration,
 }
 
 impl ServerManager {
     /// Create a new ServerManager with the given parameters
     pub fn new(
-        servers: Arc<Mutex<HashMap<String, ManagedServer>>>, 
-        client_info: Implementation,
+        servers: Arc<Mutex<ServerMap>>, // Use ServerMap
+        client_info: Implementation, // Use rmcp::model::Implementation
         request_timeout: Duration,
     ) -> Self {
         Self {
@@ -557,14 +498,18 @@ impl ServerManager {
         };
 
         #[cfg(test)]
-        let (process, client, capabilities) = {
+        let (process, mut client, capabilities) = { // Make client mutable
             // For tests, create a dummy client and process
             debug!("Creating mock process and client for test server '{}'", name);
-            let process = tokio::process::Command::new("echo")
+            let process = tokio::process::Command::new("echo") // Keep dummy process
                 .arg("test")
+                .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()) // Add pipes for consistency
                 .spawn()?;
-            let client = McpClient { _transport: ProcessTransport };
-            let capabilities = client.capabilities().cloned();
+            // Use the testing McpClient and MockProcessTransport
+            let mut client = testing::McpClient::new(testing::create_test_transport()); // Use testing constructor
+            // Mock initialization
+            let _ = client.initialize(rmcp::model::ClientCapabilities::default()).await; // Call mock initialize
+            let capabilities = client.capabilities().cloned(); // Get capabilities after mock init
             info!("Mock process and client created for test server '{}'", name);
             (process, client, capabilities)
         };
