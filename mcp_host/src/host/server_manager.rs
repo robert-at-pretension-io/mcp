@@ -14,7 +14,7 @@ use rmcp::model::{
     RawTextContent as RmcpRawTextContent, // Alias RawTextContent
 };
 use rmcp::service::serve_client; // Removed unused Peer, RoleClient imports
-// Removed unused TokioChildProcess import
+use rmcp::transport::TokioChildProcess; // Add back TokioChildProcess import
 use std::collections::HashMap;
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
@@ -24,67 +24,15 @@ use std::process::Stdio;
 use std::sync::Arc; // Re-add top-level Arc import
 use tokio::sync::Mutex;
 use std::time::Duration;
-// Removed unused AsyncRead, AsyncWrite
-use tokio::process::{ChildStdin, ChildStdout}; // Added
-use rmcp::{TransportStream, TransportSink, TransportError}; // Corrected rmcp imports
-use bytes::Bytes; // Use bytes::Bytes directly for Frame type
-// Removed unused BytesMut
-use futures::{SinkExt, StreamExt}; // Added
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec}; // Added
+// Removed imports related to ManualTransport: ChildStdin, ChildStdout, rmcp::{TransportStream, TransportSink, TransportError}, bytes::Bytes, futures::{SinkExt, StreamExt}, tokio_util::codec
 
 
 // Removed unused Config import
 
 
-// --- Manual Transport Implementation ---
-// This struct manually handles reading/writing frames over process stdin/stdout
-#[derive(Debug)]
-struct ManualTransport {
-    reader: FramedRead<ChildStdout, LengthDelimitedCodec>,
-    writer: FramedWrite<ChildStdin, LengthDelimitedCodec>,
-}
-
-impl ManualTransport {
-    fn new(stdin: ChildStdin, stdout: ChildStdout) -> Self {
-        // Use standard length-delimited framing
-        let codec = LengthDelimitedCodec::builder()
-            .length_field_offset(0) // default
-            .length_field_length(4) // u32 length prefix
-            .length_adjustment(0)   // default
-            .num_skip(0)            // default
-            .new_codec();
-        Self {
-            reader: FramedRead::new(stdout, codec.clone()),
-            writer: FramedWrite::new(stdin, codec),
-        }
-    }
-}
-
-// Implement the stream trait for reading frames
-impl TransportStream for ManualTransport {
-    async fn read_frame(&mut self) -> Option<Result<Bytes, TransportError>> { // Use Bytes for Frame
-        match self.reader.next().await {
-            Some(Ok(bytes_mut)) => Some(Ok(bytes_mut.freeze())), // Convert BytesMut -> Bytes
-            Some(Err(e)) => Some(Err(TransportError::Read(format!("Codec error: {}", e)))),
-            None => None, // Stream ended
-        }
-    }
-}
-
-// Implement the sink trait for writing frames
-impl TransportSink for ManualTransport {
-    async fn send_frame(&mut self, frame: Bytes) -> Result<(), TransportError> { // Use Bytes for Frame
-        self.writer.send(frame).await.map_err(|e| TransportError::Write(format!("Codec error: {}", e)))
-    }
-
-    async fn close(&mut self) -> Result<(), TransportError> {
-        self.writer.close().await.map_err(|e| TransportError::Write(format!("Sink close error: {}", e)))
-    }
-}
-
-// Combine the traits into the main Transport trait required by serve_client
-impl rmcp::Transport for ManualTransport {} // Correct path for Transport trait
-// --- End Manual Transport ---
+// --- Manual Transport Implementation Removed ---
+// The ManualTransport struct and its impl blocks have been deleted.
+// We will use rmcp::transport::TokioChildProcess directly.
 
 
 // Add re-exports for dependent code
@@ -436,27 +384,69 @@ impl ServerManager {
             let process_id = child.id();
             info!("Single process spawned successfully for server '{}', PID: {:?}", name, process_id);
 
-            // --- Extract Stdin/Stdout BEFORE creating transport ---
-            let stdin = child.stdin.take()
-                .ok_or_else(|| anyhow!("Failed to get stdin for child process '{}'", name))?;
-            let stdout = child.stdout.take()
-                .ok_or_else(|| anyhow!("Failed to get stdout for child process '{}'", name))?;
-            // We might want to handle stderr later (e.g., log it)
-            let _stderr = child.stderr.take(); // Take ownership even if not used immediately
+            // --- Create TokioChildProcess Transport ---
+            // TokioChildProcess::new takes ownership of the Child process
+            debug!("Creating TokioChildProcess transport for server '{}'...", name);
+            let transport = TokioChildProcess::new(child) // Pass the child process directly
+                .map_err(|e| anyhow!("Failed to create TokioChildProcess transport for server '{}': {}", name, e))?;
+            info!("TokioChildProcess transport created for server '{}'.", name);
 
-            debug!("Stdin/Stdout handles obtained for server '{}'.", name);
-
-            // --- Create Manual Transport ---
-            let transport = ManualTransport::new(stdin, stdout);
-            info!("ManualTransport created for server '{}'.", name);
-
-            // --- Serve Client using Manual Transport ---
-            debug!("Serving client handler '()' with ManualTransport for server '{}'...", name);
-            let running_service = serve_client((), transport).await
-                .map_err(|e| anyhow!("Failed to serve client using ManualTransport for server '{}': {}", name, e))?;
-            info!("RunningService (including Peer) created using ManualTransport for server '{}'.", name);
+            // --- Serve Client using TokioChildProcess Transport ---
+            // serve_client takes anything implementing IntoTransport, which TokioChildProcess does.
+            debug!("Serving client handler '()' with TokioChildProcess for server '{}'...", name);
+            let running_service = serve_client((), transport).await // Pass the transport directly
+                .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess for server '{}': {}", name, e))?;
+            info!("RunningService (including Peer) created using TokioChildProcess for server '{}'.", name);
 
             // --- Extract Peer and Capabilities ---
+            // The Peer is part of the RunningService. We need the original child handle for ManagedServer.
+            // We need to re-spawn the command just to get a handle to store, which is awkward.
+            // Let's rethink: TokioChildProcess consumes the child. We need the handle *before* creating the transport.
+
+            // --- Re-approach: Spawn, get handle, THEN create transport ---
+            // Spawn the process first to keep the handle
+            debug!("Re-spawning command to get handle for server '{}' (temporary workaround)...", name);
+             let mut child_for_handle = command.spawn() // Spawn again just for the handle
+                 .map_err(|e| anyhow!("Failed to re-spawn process for handle for server '{}': {}", name, e))?;
+             let process_id_handle = child_for_handle.id();
+             info!("Process for handle spawned successfully for server '{}', PID: {:?}", name, process_id_handle);
+
+            // Now create the transport using a *new* command instance (this is the one serve_client will manage)
+            let mut transport_cmd = { // Create a new command instance identical to the first one
+                #[cfg(windows)]
+                {
+                    let mut cmd = TokioCommand::new("cmd");
+                    cmd.arg("/C");
+                    cmd.arg(program);
+                    cmd.args(args);
+                    cmd
+                }
+                #[cfg(not(windows))]
+                {
+                    let mut cmd = TokioCommand::new("sh");
+                    let command_string = format!("{} {}", program, args.join(" "));
+                    cmd.arg("-c");
+                    cmd.arg(command_string);
+                    cmd
+                }
+            };
+            transport_cmd.envs(envs)
+                         .stdin(Stdio::piped())
+                         .stdout(Stdio::piped())
+                         .stderr(Stdio::piped()); // Ensure stderr is piped for the transport's child
+
+            debug!("Creating TokioChildProcess transport with new command instance for server '{}'...", name);
+            let transport = TokioChildProcess::new_from_command(&mut transport_cmd) // Use new_from_command
+                .map_err(|e| anyhow!("Failed to create TokioChildProcess transport from command for server '{}': {}", name, e))?;
+            info!("TokioChildProcess transport created from command for server '{}'.", name);
+
+            // Serve the client using this transport
+            debug!("Serving client handler '()' with TokioChildProcess (from command) for server '{}'...", name);
+            let running_service = serve_client((), transport).await
+                .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess (from command) for server '{}': {}", name, e))?;
+            info!("RunningService (including Peer) created using TokioChildProcess (from command) for server '{}'.", name);
+
+            // Extract Peer and Capabilities from the running service
             let peer = running_service.peer().clone();
             let capabilities = running_service.peer_info().map(|info| info.capabilities.clone());
             if capabilities.is_some() {
@@ -469,8 +459,8 @@ impl ServerManager {
             let client = production::McpClient::new(peer);
             info!("McpClient created for server '{}'.", name);
 
-            // Return the original child process handle, the client, and capabilities
-            (child, client, capabilities)
+            // Return the handle from the *first* spawn, the client, and capabilities
+            (child_for_handle, client, capabilities) // Return the handle we kept
         };
 
         #[cfg(test)] // Keep test logic separate and simpler

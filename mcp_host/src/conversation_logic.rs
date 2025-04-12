@@ -364,9 +364,9 @@ pub async fn resolve_assistant_response(
                         state.add_assistant_message(&next_resp);
                         next_resp
                     }
-                    Err(e) => { // Use the error variable
-                        error!("Detailed error getting next AI response after tools: {:?}", e);
-                        let error_msg = format!("Failed to get AI response after tool execution: {}", e);
+                    Err(_e) => { // Use the error variable (prefixed with _)
+                        error!("Detailed error getting next AI response after tools: {:?}", _e);
+                        let error_msg = format!("Failed to get AI response after tool execution: {}", _e);
                         log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg));
                         return Err(anyhow!(error_msg));
                     }
