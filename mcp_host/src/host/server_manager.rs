@@ -45,7 +45,6 @@ pub mod production {
     // Removed unused ClientCapabilities, InitializeResult imports
 
     // Import shared protocol objects Transport for compatibility - KEEPING FOR NOW until fully migrated
-    // pub use shared_protocol_objects::rpc::Transport; // Comment out for now
 
     // Wrapper for McpClient to provide Debug and hold the Peer
     pub struct McpClient {
@@ -119,7 +118,6 @@ pub mod production {
     // ProcessTransport struct is no longer needed as we use TokioChildProcess directly
     // and pass it to serve_client.
 
-    // Remove the manual implementation of shared_protocol_objects::rpc::Transport
     // RoleClient handles the transport interaction internally.
     // The #[async_trait] and impl block are removed.
 }
@@ -245,7 +243,8 @@ impl ServerManager {
         info!("RunningService (including Peer) created for server '{}'.", name);
 
         let client = running_service.peer().clone(); // Get the Peer
-        let capabilities = running_service.peer_info().map(|init_result| init_result.capabilities.clone()); // Get capabilities from InitializeResult
+        let capabilities = running_service.peer_info()
+        .capabilities.clone();
 
         info!("Peer<RoleClient> obtained for server '{}'.", name);
 
@@ -254,7 +253,7 @@ impl ServerManager {
             name: name.to_string(),
             process: Arc::new(Mutex::new(process)), // Wrap process in Arc<Mutex>
             client, // Store the Peer
-            capabilities,
+            capabilities: Some(capabilities),
         };
 
         { // Scope for servers lock

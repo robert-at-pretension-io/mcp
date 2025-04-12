@@ -7,11 +7,11 @@ use crate::tool_parser::ToolParser;
 use anyhow::{anyhow, Context, Result};
 use console::style;
 use log::{debug, error, info, warn};
+use rmcp::model::Role;
 use serde::Deserialize;
 use serde_json;
 use std::sync::Arc;
 // Use the local Role definition consistently
-use crate::repl::Role;
 use tokio::sync::mpsc;
 
 /// Configuration for how the conversation logic should behave.
@@ -120,7 +120,6 @@ async fn verify_response(
                 match msg.role {
                     Role::User => crate::conversation_state::format_chat_message(&msg.role, &msg.content),
                     Role::Assistant => crate::conversation_state::format_assistant_response_with_tool_calls(&msg.content),
-                    Role::System => String::new(), // Skip system messages in this sequence
                     // Removed unreachable pattern
                 }
             })
@@ -332,7 +331,6 @@ pub async fn resolve_assistant_response(
                 // Add messages from state to the builder (using local Role)
                 for msg in &state.messages {
                     match msg.role {
-                        Role::System => builder = builder.system(msg.content.clone()), // Pass system messages too
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
                     }
@@ -398,7 +396,6 @@ pub async fn resolve_assistant_response(
                 let mut builder = client.raw_builder(system_prompt);
                 for msg in &state.messages {
                     match msg.role {
-                        Role::System => builder = builder.system(msg.content.clone()), // Pass system messages too
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
                     }
@@ -487,7 +484,6 @@ pub async fn resolve_assistant_response(
                                 let mut builder = client.raw_builder(system_prompt);
                                 for msg in &state.messages {
                                     match msg.role {
-                                        Role::System => builder = builder.system(msg.content.clone()), // Pass system messages too
                                         Role::User => builder = builder.user(msg.content.clone()),
                                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
                                     }
