@@ -229,11 +229,7 @@ impl ServerManager {
         // Provide client info and capabilities during the serve call
         let running_service = match serve_client(
             (), // Default client handler
-            transport,
-            self.client_info.clone(), // Provide client info
-            None, // Default client capabilities
-            None, // Default protocol version (latest)
-            self.request_timeout, // Use configured timeout
+            transport
         ).await {
             Ok(rs) => rs,
             Err(e) => {

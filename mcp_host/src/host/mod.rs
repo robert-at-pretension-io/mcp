@@ -841,7 +841,6 @@ impl MCPHostBuilder {
         // --- Update Host with Initial AI Client ---
         // (The host struct was already created, now update the AI fields)
         *host.ai_client.lock().await = initial_ai_client;
-        *host.ai_client.lock().await = initial_ai_client;
         *host.active_provider_name.lock().await = active_provider_name;
 
         // --- Start Initial Servers AFTER Host is Constructed ---

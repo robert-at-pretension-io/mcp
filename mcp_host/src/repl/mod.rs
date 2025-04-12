@@ -502,14 +502,6 @@ impl Repl {
         Ok(())
     }
 
-    // Removed load_config method. Config is loaded/reloaded via MCPHost.
-
-    /// This method is deprecated and will be removed
-    #[deprecated(note = "Use MCPHost.start_server instead")]
-    pub async fn start_server(&mut self, _name: &str, _command: TokioCommand) -> Result<()> {
-        println!("{}", style("Warning: Direct server start is deprecated. Use an MCPHost instance instead.").yellow());
-        Ok(())
-    }
 }
 
 /// Truncate a string to a maximum number of lines.
