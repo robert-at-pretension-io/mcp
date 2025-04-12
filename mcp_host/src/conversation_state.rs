@@ -1,8 +1,7 @@
 // Use local Role definition from repl/mod.rs or define here if needed standalone
 // Use the local Role definition consistently
-use crate::repl::Role;
 // Import rmcp Tool type
-use rmcp::model::Tool as RmcpTool;
+use rmcp::model::{Role, Tool as RmcpTool};
 use console::style;
 use serde_json;
 
@@ -74,7 +73,6 @@ pub fn format_tool_response(tool_name: &str, response: &str) -> String {
 /// Formats a chat message with role styling and dimmed content.
 pub fn format_chat_message(role: &Role, content: &str) -> String {
     let role_style = match role {
-        Role::System => style("System").blue().bold(),
         Role::User => style("User").magenta().bold(),
         Role::Assistant => style("Assistant").cyan().bold(),
         // Removed unreachable pattern
@@ -135,7 +133,7 @@ pub struct Message {
 #[derive(Debug, Clone)]
 pub struct ConversationState {
     pub messages: Vec<Message>,
-    // pub system_prompt: String,
+    pub system_prompt: String,
     // Use rmcp::model::Tool here
     pub tools: Vec<RmcpTool>, // Use aliased rmcp Tool
 }
@@ -144,6 +142,7 @@ impl ConversationState {
     // Update constructor signature
     pub fn new(system_prompt: String, tools: Vec<RmcpTool>) -> Self { // Use aliased rmcp Tool
         let mut state = Self {
+            system_prompt: system_prompt.clone(),
             messages: Vec::new(),
             tools: tools.clone(), // Store the tools
         };
@@ -151,17 +150,11 @@ impl ConversationState {
         // Add the original system prompt as the first system message
         // The tool instructions will be added separately by the caller if needed,
         // or handled by the AI client builder logic.
-        state.add_system_message(&system_prompt);
+        state.add_user_message(&system_prompt.clone());
         state
     }
 
-    // Use rllm::prompt::PromptMessageRole variants
-    pub fn add_system_message(&mut self, content: &str) {
-        self.messages.push(Message {
-            role: Role::System, // Already correct if Role is aliased to PromptMessageRole
-            content: content.to_string(),
-        });
-    }
+
 
     pub fn add_user_message(&mut self, content: &str) {
         self.messages.push(Message {
@@ -179,12 +172,8 @@ impl ConversationState {
 
     /// Get the initial system prompt (assumes it's the first message).
     pub fn get_system_prompt(&self) -> Option<&str> {
-        self.messages.first().and_then(|msg| {
-            if msg.role == Role::System {
-                Some(msg.content.as_str())
-            } else {
-                None // First message wasn't System
-            }
-        })
+        self.messages.first()
+            .map(|msg| msg.content.as_str())
     }
+    
 }
