@@ -61,10 +61,7 @@ impl MCPHost {
         MCPHostBuilder::new().build().await
     }
 
-    /// Load configuration from a file
-    pub async fn load_config(&self, config_path: &str) -> Result<()> {
-        self.server_manager().load_config(config_path).await
-    }
+    // Removed load_config method. Use reload_host_config or apply_config.
 
     /// Apply a new configuration, starting/stopping servers as needed.
     pub async fn apply_config(&self, new_config: HostConfig) -> Result<()> {
@@ -700,7 +697,7 @@ impl MCPHostBuilder {
 
     /// Build the MCPHost
     pub async fn build(self) -> Result<MCPHost> {
-        // Determine config path (use default if not specified)
+        // --- Configuration Loading ---
         let config_path = self.config_path.unwrap_or_else(|| {
             let default = dirs::config_dir()
                 .map(|p| p.join("mcp/mcp_host_config.json"))
@@ -734,13 +731,66 @@ impl MCPHostBuilder {
         // Load provider models config
         let provider_models_config = ProviderModelsConfig::load(&provider_models_path).await;
 
+        // --- Client Info ---
+        let client_info = self.client_info.unwrap_or_else(|| RmcpImplementation { // Use aliased type
+            name: "mcp-host".to_string().into(), // Convert to Cow
+            version: env!("CARGO_PKG_VERSION").to_string().into(), // Convert to Cow
+            ..Default::default()
+        });
 
-        // Determine initial AI provider based on loaded/default config
+        // --- Timeouts ---
+        let request_timeout = self.request_timeout.unwrap_or(Duration::from_secs(120));
+
+        // --- Initialize Core Host Structure (without servers started yet) ---
+        let host_servers_map = StdArc::new(Mutex::new(HashMap::new()));
+        let host = MCPHost {
+            servers: StdArc::clone(&host_servers_map),
+            client_info: client_info.clone(), // Clone for the host instance
+            request_timeout,
+            config: StdArc::new(Mutex::new(initial_config.clone())), // Store loaded config
+            config_path: StdArc::new(Mutex::new(Some(config_path))),
+            provider_models: StdArc::new(Mutex::new(provider_models_config.clone())), // Store loaded models
+            provider_models_path: StdArc::new(Mutex::new(provider_models_path)),
+            active_provider_name: StdArc::new(Mutex::new(None)), // Start with no active provider name
+            ai_client: StdArc::new(Mutex::new(None)), // Start with no active client
+        };
+
+        // --- Start Initial Servers Defined in Config ---
+        // Create a temporary ServerManager instance to use its start method
+        let server_manager = server_manager::ServerManager::new(
+            StdArc::clone(&host_servers_map),
+            client_info.clone(), // Use the same client info
+            request_timeout,
+        );
+
+        info!("Starting initial servers from configuration...");
+        let mut servers_started_successfully = 0;
+        for (name, server_config) in &initial_config.servers {
+            info!("Attempting initial start for server '{}'", name);
+            let program = &server_config.command;
+            let args = server_config.args.as_deref().unwrap_or(&[]); // Get args slice
+            let envs = &server_config.env;
+            match server_manager.start_server_with_components(name, program, args, envs).await {
+                Ok(_) => {
+                    info!("Successfully started initial server '{}'", name);
+                    servers_started_successfully += 1;
+                }
+                Err(e) => {
+                    // Log error but continue trying to start other servers
+                    error!("Failed to start initial server '{}': {}", name, e);
+                }
+            }
+        }
+        info!("Finished starting initial servers. {} started successfully out of {}.",
+              servers_started_successfully, initial_config.servers.len());
+
+
+        // --- Determine Initial AI Provider ---
+        // (This logic remains largely the same, but operates on the created host instance's fields)
         let mut initial_ai_client: Option<Arc<dyn AIClient>> = None;
         let mut active_provider_name: Option<String> = None;
-        let default_provider_name = initial_config.default_ai_provider.clone(); // Use loaded default
+        let default_provider_name = initial_config.default_ai_provider.clone();
 
-        // Try setting default provider first
         if let Some(ref name) = default_provider_name {
              if let Some(provider_config) = initial_config.ai_providers.get(name) {
                  match MCPHost::create_ai_client_internal(name, provider_config).await {
@@ -792,24 +842,12 @@ impl MCPHostBuilder {
             warn!("No AI provider could be activated. Check configurations and API key environment variables.");
         }
 
-        let request_timeout = self.request_timeout.unwrap_or(Duration::from_secs(120));
+        // --- Update Host with Initial AI Client ---
+        // (The host struct was already created, now update the AI fields)
+        *host.ai_client.lock().await = initial_ai_client;
+        *host.active_provider_name.lock().await = active_provider_name;
 
-        let client_info = self.client_info.unwrap_or_else(|| RmcpImplementation { // Use aliased type
-            name: "mcp-host".to_string().into(), // Convert to Cow
-            version: env!("CARGO_PKG_VERSION").to_string().into(), // Convert to Cow
-            ..Default::default()
-        });
-
-        Ok(MCPHost {
-            servers: StdArc::new(Mutex::new(HashMap::new())), // Use aliased Arc
-            client_info, // Type is now rmcp::model::Implementation
-            request_timeout,
-            config: StdArc::new(Mutex::new(initial_config)), // Use aliased Arc
-            config_path: StdArc::new(Mutex::new(Some(config_path))), // Use aliased Arc
-            provider_models: StdArc::new(Mutex::new(provider_models_config)), // Use aliased Arc
-            provider_models_path: StdArc::new(Mutex::new(provider_models_path)), // Use aliased Arc
-            active_provider_name: StdArc::new(Mutex::new(active_provider_name)), // Use aliased Arc
-            ai_client: StdArc::new(Mutex::new(initial_ai_client)), // Use aliased Arc
-        })
+        info!("MCPHost build complete.");
+        Ok(host) // Return the fully initialized host
     }
 }
