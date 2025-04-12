@@ -1,10 +1,10 @@
-use anyhow::{anyhow, Context, Result}; // Added Context import
+use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, warn};
 use serde_json::Value;
-use shared_protocol_objects::{
-    Implementation, ServerCapabilities, ToolInfo, CallToolResult, ClientCapabilities
+// Replace shared_protocol_objects imports with rmcp::model
+use rmcp::model::{
+    Implementation, ServerCapabilities, Tool as ToolInfo, CallToolResult, ClientCapabilities, Content // Added Content
 };
-// Removed unused async_trait
 use std::collections::HashMap;
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
@@ -28,27 +28,28 @@ pub mod testing {
         pub _transport: ProcessTransport,
     }
     
-    // Simple struct for testing
+    // Simple struct for testing - represents the transport mechanism
     #[derive(Debug)]
-    pub struct ProcessTransport;
-    
+    pub struct MockProcessTransport; // Renamed for clarity
+
     // Helper function to create instance
-    pub fn create_test_transport() -> ProcessTransport {
-        ProcessTransport
+    pub fn create_test_transport() -> MockProcessTransport { // Renamed
+        MockProcessTransport
     }
-    
+
     // Helper function to create a client with transport
     pub fn create_test_client() -> McpClient {
         McpClient { _transport: create_test_transport() }
     }
-    
+
     impl McpClient {
-        pub fn new(_transport: ProcessTransport) -> Self {
+        // Update constructor to accept the mock transport
+        pub fn new(_transport: MockProcessTransport) -> Self { // Renamed transport type
             Self { _transport }
         }
-    
+
         pub async fn list_tools(&self) -> anyhow::Result<Vec<ToolInfo>> {
-            // Test implementation
+            // Test implementation - returns rmcp::model::Tool
             Ok(vec![
                 ToolInfo {
                     name: "test_tool".to_string(),
@@ -63,9 +64,9 @@ pub mod testing {
                 }
             ])
         }
-        
+
+        // Test implementation - returns rmcp::model::CallToolResult
         pub async fn call_tool(&self, _name: &str, _args: serde_json::Value) -> anyhow::Result<CallToolResult> {
-            // Test implementation
             Ok(CallToolResult {
                 content: vec![
                     Content::Text {
@@ -73,10 +74,19 @@ pub mod testing {
                         annotations: None,
                     }
                 ],
-                is_error: None,
+                is_error: Some(false), // Explicitly set is_error
             })
         }
-        
+
+        // Add mock initialize method
+        pub async fn initialize(&mut self, _capabilities: ClientCapabilities) -> anyhow::Result<InitializeResult> {
+            Ok(InitializeResult {
+                protocol_version: rmcp::model::ProtocolVersion::LATEST,
+                capabilities: ServerCapabilities::default(),
+                server_info: Implementation { name: "mock-server".into(), version: "0.0.0".into() },
+            })
+        }
+
         pub async fn close(self) -> anyhow::Result<()> {
             Ok(())
         }
@@ -163,25 +173,28 @@ pub mod production {
             log::info!("Calling tool via rmcp call_tool method: {}", name);
             self.inner.call_tool(name, args).await
         }
-        
+
+        // Delegate close to RoleClient
         pub async fn close(self) -> anyhow::Result<()> {
             self.inner.close().await
         }
-        
+
+        // Delegate capabilities to RoleClient
         pub fn capabilities(&self) -> Option<&rmcp::model::ServerCapabilities> {
-            // Extract capabilities from the RoleClient
             self.inner.capabilities()
         }
 
+        // Delegate initialize to RoleClient
         pub async fn initialize(&mut self, capabilities: ClientCapabilities) -> anyhow::Result<InitializeResult> {
+            // Pass None for protocol_version, RoleClient will handle negotiation or default
             self.inner.initialize(capabilities, None).await
         }
     }
-    
-    // Use rmcp's built-in TokioChildProcess transport
+
+    // Use rmcp's built-in TokioChildProcess transport directly
     pub struct ProcessTransport(TokioChildProcess);
-    
-    // Manual Debug implementation
+
+    // Manual Debug implementation for the wrapper
     impl std::fmt::Debug for ProcessTransport {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.debug_struct("ProcessTransport").finish()
@@ -271,10 +284,13 @@ impl ManagedServer {
         
         #[cfg(test)]
         {
-            testing::create_test_client()
+            testing::create_test_client() // This now returns the testing::McpClient
         }
     }
 }
+
+// Define the concrete type for the servers map using the production McpClient
+type ServerMap = HashMap<String, ManagedServer>;
 
 /// Manager for MCP-compatible tool servers
 ///
@@ -409,14 +425,14 @@ impl ServerManager {
     }
 
     /// List all available tools on the specified server
-    pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<ToolInfo>> {
+    pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<ToolInfo>> { // Return type is already rmcp::model::Tool
         let servers = self.servers.lock().await;
         let server = servers.get(server_name)
             .ok_or_else(|| anyhow!("Server not found: {}", server_name))?;
-            
+
         info!("Sending tool list request to server {}", server_name);
 
-        // Use rmcp's list_tools
+        // Use the client's list_tools method (which delegates to rmcp's RoleClient)
         match server.client.list_tools().await {
             Ok(tools_vec) => {
                 info!("Successfully received tools list: {} tools", tools_vec.len());
@@ -436,39 +452,17 @@ impl ServerManager {
         debug!("Server: {}", server_name);
         debug!("Tool: {}", tool_name);
         debug!("Arguments: {}", serde_json::to_string_pretty(&args).unwrap_or_default());
-        
+
         let servers = self.servers.lock().await;
         let server = servers.get(server_name)
             .ok_or_else(|| anyhow!("Server not found: {}", server_name))?;
-            
-        // Special case for tools/list using rmcp's list_tools
-        if tool_name == "tools/list" {
-            info!("Using rmcp list_tools for tools/list call");
-            let list_tools_result = server.client.list_tools().await?;
 
-            // Create formatted tool result
-            let tools_json = format!("Found {} tools: {}", list_tools_result.len(),
-                list_tools_result.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", "));
+        // Use the client's call_tool method (which delegates to rmcp's RoleClient)
+        // The special handling for "tools/list" is removed as RoleClient::call_tool handles it.
+        let result = server.client.call_tool(tool_name, args).await
+            .map_err(|e| anyhow!("Failed to call tool '{}' on server '{}': {}", tool_name, server_name, e))?;
 
-            // Create a CallToolResult with rmcp's Content::Text
-            let call_result = rmcp::model::CallToolResult {
-                content: vec![
-                    rmcp::model::content::Content::Text {
-                        text: tools_json,
-                        annotations: None,
-                    }
-                ],
-                is_error: Some(false),
-            };
-            
-            let output = format_tool_result(&call_result);
-            return Ok(output);
-        }
-        
-        // For other tools, use rmcp's call_tool method
-        let result = server.client.call_tool(tool_name, args).await?;
-
-        // Format the tool response content with updated format_tool_result
+        // Format the tool response content using rmcp::model::CallToolResult
         let output = format_tool_result(&result);
         Ok(output)
     }
@@ -502,56 +496,53 @@ impl ServerManager {
 
         // --- Spawn Process and Initialize Client BEFORE acquiring the lock ---
         #[cfg(not(test))]
-        let (process, client, capabilities) = {
+        let (process, mut client, capabilities) = { // Make client mutable for initialize
             // Spawn the process first
             debug!("Spawning process for server '{}'...", name);
             let process = tokio_command_spawn.spawn()
                 .map_err(|e| anyhow!("Failed to spawn process for server '{}': {}", name, e))?;
-            info!("Process spawned successfully for server '{}', PID: {:?}", name, process.id());
+            let process_id = process.id(); // Get PID for logging
+            info!("Process spawned successfully for server '{}', PID: {:?}", name, process_id);
 
-            // Create the transport using the same command configuration
+            // Create the TokioChildProcess transport directly
             let mut transport_cmd = TokioCommand::new(program);
             transport_cmd.args(args);
             transport_cmd.envs(envs);
+            // TokioChildProcess needs stdin/stdout/stderr piped
+            transport_cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
-            debug!("Creating transport for server '{}'...", name);
-            let transport = ProcessTransport::new(transport_cmd).await
-                 .map_err(|e| anyhow!("Failed to create transport for server '{}': {}", name, e))?;
-            info!("Transport created for server '{}'.", name);
+            debug!("Creating TokioChildProcess transport for server '{}'...", name);
+            let transport = TokioChildProcess::new(transport_cmd).await
+                 .map_err(|e| anyhow!("Failed to create TokioChildProcess transport for server '{}': {}", name, e))?;
+            info!("TokioChildProcess transport created for server '{}'.", name);
 
-            // Create and initialize the client using rmcp's RoleClient
-            debug!("Creating MCP client for server '{}'...", name);
-            
-            // Create client info with builder pattern
-            let client_info = rmcp::model::Implementation {
-                name: self.client_info.name.clone(),
-                version: self.client_info.version.clone(),
-            };
-            
-            // Create RoleClient
-            let mut inner_client = rmcp::service::RoleClient::new(
-                transport,
-                client_info,
-                rmcp::service::AtomicU32RequestIdProvider::default(),
+            // Create RoleClient directly
+            debug!("Creating RoleClient for server '{}'...", name);
+            // Use the client_info passed to ServerManager::new
+            let inner_client = rmcp::service::RoleClient::new(
+                transport, // Pass the TokioChildProcess directly
+                self.client_info.clone(), // Clone the Implementation struct
+                rmcp::service::AtomicU32RequestIdProvider::default(), // Use default ID provider
             );
-            
-            let mut client = production::McpClient::new(inner_client);
-            info!("MCP client created, initializing server '{}'...", name);
 
-            // Use rmcp's client capabilities builder
-            let client_capabilities = rmcp::model::ClientCapabilitiesBuilder::new()
-                .with_experimental(serde_json::json!({}))
-                .with_sampling(serde_json::json!({}))
-                .with_roots(rmcp::model::RootsCapabilities::default())
-                .build();
-                
-            let init_timeout = Duration::from_secs(15);
-            
-            // Initialize the client with timeout
+            // Wrap RoleClient in our McpClient wrapper
+            let mut client = production::McpClient::new(inner_client);
+            info!("RoleClient created, initializing server '{}'...", name);
+
+            // Define client capabilities using rmcp::model::ClientCapabilities
+            // Keep it simple for now, assuming default capabilities are sufficient
+            let client_capabilities = rmcp::model::ClientCapabilities::default();
+            debug!("Using default client capabilities for initialization.");
+
+            let init_timeout = Duration::from_secs(15); // Keep timeout
+
+            // Initialize the client (which now calls RoleClient::initialize)
             match tokio::time::timeout(init_timeout, client.initialize(client_capabilities)).await {
                 Ok(Ok(init_result)) => {
-                    info!("Client '{}' initialized successfully.", name);
+                    info!("Server '{}' initialized successfully.", name);
+                    // Store the capabilities obtained from the server
                     let capabilities = Some(init_result.capabilities);
+                    // Return the original process handle, the wrapped client, and capabilities
                     (process, client, capabilities)
                 }
                 Ok(Err(e)) => {
@@ -640,19 +631,45 @@ impl ServerManager {
     }
 }
 
-/// Format a tool result into a string for display
-fn format_tool_result(result: &rmcp::model::CallToolResult) -> String {
+/// Format a tool result (rmcp::model::CallToolResult) into a string for display
+fn format_tool_result(result: &CallToolResult) -> String { // Type is already correct
     let mut output = String::new();
+    // Handle potential error state first
+    if result.is_error.unwrap_or(false) {
+        output.push_str("TOOL ERROR:\n");
+    }
+
     for content in &result.content {
         match content {
-            rmcp::model::Content::Text { text, .. } => {
+            // Handle Text content
+            Content::Text { text, annotations: _ } => { // Ignore annotations for now
                 output.push_str(text);
-                output.push('\n');
             }
-            _ => {
-                output.push_str("Content type not supported for display\n");
+            // Handle Json content - pretty print it
+            Content::Json { json, annotations: _ } => { // Ignore annotations
+                match serde_json::to_string_pretty(json) {
+                    Ok(pretty_json) => {
+                        output.push_str("```json\n");
+                        output.push_str(&pretty_json);
+                        output.push_str("\n```"); // Add closing fence
+                    }
+                    Err(_) => {
+                        // Fallback to debug print if pretty printing fails
+                        output.push_str(&format!("{:?}", json));
+                    }
+                }
             }
+             // Handle Image content - provide a placeholder
+             Content::Image { image: _, annotations: _ } => {
+                 output.push_str("[Image content - display not supported]");
+             }
+            // Handle other potential content types if added in the future
+             _ => {
+                 output.push_str("[Unsupported content type]");
+             }
         }
+        output.push('\n'); // Add newline between content parts
     }
-    output
+    // Trim trailing newline if present
+    output.trim_end().to_string()
 }
