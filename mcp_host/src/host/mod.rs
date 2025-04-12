@@ -19,7 +19,7 @@ use rmcp::model::Tool as RmcpTool; // Alias Tool
 use std::sync::Arc as StdArc; // Add alias import
 
 use crate::ai_client::{AIClient, AIClientFactory};
-use crate::host::config::{AIProviderConfig, Config as HostConfig, ProviderModelsConfig}; // Added ProviderModelsConfig
+use crate::host::config::{AIProviderConfig, Config as HostConfig, ProviderModelsConfig, ServerConfig}; // Added ServerConfig
 use std::path::PathBuf;
 pub struct MCPHost {
     pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
@@ -284,12 +284,14 @@ impl MCPHost {
         self.server_manager().call_tool(server_name, tool_name, args).await
     }
 
-    /// Start a server with the given command
-    pub async fn start_server(&self, name: &str, command: &str, args: &[String]) -> Result<()> {
-        self.server_manager().start_server(name, command, args).await
+    /// Start a server using a command string and optional extra arguments.
+    /// This is a convenience wrapper. For more control (e.g., environment variables),
+    /// modify the configuration and use `apply_config` or `reload_host_config`.
+    pub async fn start_server(&self, name: &str, command: &str, extra_args: &[String]) -> Result<()> {
+        self.server_manager().start_server(name, command, extra_args).await
     }
 
-    /// Stop a server
+    /// Stop a server by name.
     pub async fn stop_server(&self, name: &str) -> Result<()> {
         self.server_manager().stop_server(name).await
     }
@@ -770,33 +772,13 @@ impl MCPHostBuilder {
         };
 
         // --- Start Initial Servers Defined in Config ---
-        // Create a temporary ServerManager instance to use its start method
-        let server_manager = server_manager::ServerManager::new(
-            StdArc::clone(&host_servers_map),
-            client_info.clone(), // Use the same client info
-            request_timeout,
-        );
+        // --- Start Initial Servers Defined in Config ---
+        // We need to call start_server_with_components directly on the host instance
+        // after it's fully constructed but before returning it.
+        // We'll do this after initializing the AI client.
 
-        info!("Starting initial servers from configuration...");
-        let mut servers_started_successfully = 0;
-        for (name, server_config) in &initial_config.servers {
-            info!("Attempting initial start for server '{}'", name);
-            let program = &server_config.command;
-            let args = server_config.args.as_deref().unwrap_or(&[]); // Get args slice
-            let envs = &server_config.env;
-            match server_manager.start_server_with_components(name, program, args, envs).await {
-                Ok(_) => {
-                    info!("Successfully started initial server '{}'", name);
-                    servers_started_successfully += 1;
-                }
-                Err(e) => {
-                    // Log error but continue trying to start other servers
-                    error!("Failed to start initial server '{}': {}", name, e);
-                }
-            }
-        }
-        info!("Finished starting initial servers. {} started successfully out of {}.",
-              servers_started_successfully, initial_config.servers.len());
+        // --- Determine Initial AI Provider ---
+        // (This logic remains largely the same, but operates on the created host instance's fields)
 
 
         // --- Determine Initial AI Provider ---
@@ -859,7 +841,35 @@ impl MCPHostBuilder {
         // --- Update Host with Initial AI Client ---
         // (The host struct was already created, now update the AI fields)
         *host.ai_client.lock().await = initial_ai_client;
+        *host.ai_client.lock().await = initial_ai_client;
         *host.active_provider_name.lock().await = active_provider_name;
+
+        // --- Start Initial Servers AFTER Host is Constructed ---
+        // Now that the host object exists, we can call its methods.
+        // We need to clone the initial_config again or access it via host.config
+        let config_for_startup = host.config.lock().await.clone();
+        info!("Starting initial servers from configuration...");
+        let mut servers_started_successfully = 0;
+        for (name, server_config) in &config_for_startup.servers {
+            info!("Attempting initial start for server '{}'", name);
+            let program = &server_config.command;
+            let args = server_config.args.as_deref().unwrap_or(&[]); // Get args slice
+            let envs = &server_config.env;
+            // Call the method on the host instance itself
+            match host.server_manager().start_server_with_components(name, program, args, envs).await {
+                 Ok(_) => {
+                     info!("Successfully started initial server '{}'", name);
+                     servers_started_successfully += 1;
+                 }
+                 Err(e) => {
+                     // Log error but continue trying to start other servers
+                     error!("Failed to start initial server '{}': {}", name, e);
+                 }
+            }
+        }
+         info!("Finished starting initial servers. {} started successfully out of {}.",
+               servers_started_successfully, config_for_startup.servers.len());
+
 
         info!("MCPHost build complete.");
         Ok(host) // Return the fully initialized host

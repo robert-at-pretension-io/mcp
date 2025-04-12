@@ -14,8 +14,8 @@ use rmcp::model::{
     RawContent as RmcpRawContent, // Alias RawContent
     RawTextContent as RmcpRawTextContent, // Alias RawTextContent
 };
-use rmcp::service::serve_client; // Removed unused Peer, RoleClient imports
-use rmcp::transport::TokioChildProcess; // Add back TokioChildProcess import
+use rmcp::service::{serve_client, RoleClient as RmcpRoleClient}; // Import RoleClient alias
+use rmcp::transport::TokioChildProcess;
 use std::collections::HashMap;
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
@@ -132,8 +132,8 @@ pub use self::production::McpClient; // Only export McpClient for production
 #[derive(Debug)]
 pub struct ManagedServer {
     pub name: String,
-    pub process: TokioChild, // Keep the process handle for killing
-    pub client: RoleClient, // This now wraps Peer<RoleClient> (or is the test mock)
+    pub process: Arc<Mutex<TokioChild>>, // Wrap process in Arc<Mutex> for killing
+    pub client: RmcpRoleClient, // Use the aliased RoleClient type
     pub capabilities: Option<RmcpServerCapabilities>, // Use aliased type
 }
 
@@ -166,9 +166,162 @@ impl ServerManager {
             request_timeout,
         }
     }
-    
-    // Removed load_config and configure methods.
-    // Configuration loading and server startup orchestration are handled by MCPHost.
+
+    /// Start a server process using detailed components.
+    /// This is the core function for launching and connecting to a server.
+    pub async fn start_server_with_components(
+        &self,
+        name: &str,
+        program: &str,
+        args: &[String],
+        envs: &HashMap<String, String>,
+    ) -> Result<()> {
+        info!("Attempting to start server '{}' with program: {}, args: {:?}, envs: {:?}", name, program, args, envs.keys());
+
+        // Check if server already exists
+        {
+            let servers_guard = self.servers.lock().await;
+            if servers_guard.contains_key(name) {
+                warn!("Server '{}' is already running.", name);
+                return Ok(()); // Or return an error if preferred
+            }
+        } // Lock released
+
+        // --- Spawn Process ---
+        let mut tokio_command_spawn = TokioCommand::new(program);
+        tokio_command_spawn.args(args)
+                           .envs(envs)
+                           .stdin(Stdio::piped())
+                           .stdout(Stdio::piped())
+                           .stderr(Stdio::piped()); // Capture stderr
+
+        let process = match tokio_command_spawn.spawn() {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Failed to spawn process for server '{}': {}", name, e);
+                return Err(anyhow!("Failed to spawn process for server '{}': {}", name, e));
+            }
+        };
+        let process_id = process.id();
+        info!("Process spawned successfully for server '{}', PID: {:?}", name, process_id);
+
+        // --- Create Transport and Client using rmcp ---
+        // Create transport using the *original* command components
+        let mut transport_cmd = TokioCommand::new(program); // Use original program path
+        transport_cmd.args(args).envs(envs)
+                     .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+
+        let transport = match TokioChildProcess::new(&mut transport_cmd) {
+            Ok(t) => t,
+            Err(e) => {
+                error!("Failed to create TokioChildProcess transport for server '{}': {}", name, e);
+                // Attempt to kill the spawned process if transport creation fails
+                let mut process_guard = Arc::new(Mutex::new(process));
+                if let Err(kill_err) = process_guard.lock().await.kill().await {
+                     error!("Also failed to kill process for server '{}' after transport error: {}", name, kill_err);
+                }
+                return Err(anyhow!("Failed to create TokioChildProcess transport for server '{}': {}", name, e));
+            }
+        };
+        info!("TokioChildProcess transport created for server '{}'.", name);
+
+        // Serve the client handler (use `()` for default behavior)
+        // Provide client info and capabilities during the serve call
+        let running_service = match serve_client(
+            (), // Default client handler
+            transport,
+            self.client_info.clone(), // Provide client info
+            None, // Default client capabilities
+            None, // Default protocol version (latest)
+            self.request_timeout, // Use configured timeout
+        ).await {
+            Ok(rs) => rs,
+            Err(e) => {
+                error!("Failed to serve client and create Peer for server '{}': {}", name, e);
+                 // Attempt to kill the spawned process if serve_client fails
+                 let mut process_guard = Arc::new(Mutex::new(process));
+                 if let Err(kill_err) = process_guard.lock().await.kill().await {
+                      error!("Also failed to kill process for server '{}' after serve_client error: {}", name, kill_err);
+                 }
+                return Err(anyhow!("Failed to serve client and create Peer for server '{}': {}", name, e));
+            }
+        };
+        info!("RunningService (including Peer) created for server '{}'.", name);
+
+        let client = running_service.client(); // Get the RoleClient
+        let capabilities = running_service.peer_info().map(|info| info.capabilities.clone()); // Get capabilities
+
+        info!("McpClient (RoleClient) created for server '{}'.", name);
+
+        // --- Store Managed Server ---
+        let managed_server = ManagedServer {
+            name: name.to_string(),
+            process: Arc::new(Mutex::new(process)), // Wrap process in Arc<Mutex>
+            client, // Store the RoleClient directly
+            capabilities,
+        };
+
+        { // Scope for servers lock
+            let mut servers_guard = self.servers.lock().await;
+            servers_guard.insert(name.to_string(), managed_server);
+            info!("Server '{}' added to managed servers map.", name);
+        } // Lock released
+
+        Ok(())
+    }
+
+    /// Start a server process using a command string.
+    /// Parses the command string and calls `start_server_with_components`.
+    pub async fn start_server(&self, name: &str, command: &str, extra_args: &[String]) -> Result<()> {
+        info!("Attempting to start server '{}' with command string: '{}', extra args: {:?}", name, command, extra_args);
+
+        // Parse the command string
+        let parts = match shellwords::split(command) {
+            Ok(p) => p,
+            Err(e) => return Err(anyhow!("Failed to parse command string '{}': {}", command, e)),
+        };
+
+        if parts.is_empty() {
+            return Err(anyhow!("Command string cannot be empty for server '{}'", name));
+        }
+
+        let program = &parts[0];
+        let mut args = parts[1..].to_vec(); // Arguments from the command string
+        args.extend_from_slice(extra_args); // Append extra arguments
+
+        // Use empty environment map for now. Could inherit or load from config if needed.
+        let envs = HashMap::new();
+
+        self.start_server_with_components(name, program, &args, &envs).await
+    }
+
+    /// Stop a running server process and remove it from management.
+    pub async fn stop_server(&self, name: &str) -> Result<()> {
+        info!("Attempting to stop server '{}'", name);
+        let mut servers_guard = self.servers.lock().await;
+
+        if let Some(server) = servers_guard.remove(name) {
+            info!("Removed server '{}' from map. Attempting to kill process...", name);
+            let mut process_guard = server.process.lock().await; // Lock the Mutex around the Child
+            match process_guard.kill().await {
+                Ok(_) => {
+                    info!("Successfully killed process for server '{}'", name);
+                    // Optionally wait for the process to ensure it's fully terminated
+                    // let _ = process_guard.wait().await;
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Failed to kill process for server '{}': {}", name, e);
+                    // Even if killing fails, it's removed from the map.
+                    // Return an error to indicate the potential zombie process.
+                    Err(anyhow!("Failed to kill process for server '{}': {}", name, e))
+                }
+            }
+        } else {
+            warn!("Server '{}' not found or already stopped.", name);
+            Ok(()) // Not an error if it wasn't running
+        }
+    }
 
     /// List all available tools on the specified server
     pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<RmcpTool>> { // Use aliased type
@@ -205,7 +358,6 @@ impl ServerManager {
             .ok_or_else(|| anyhow!("Server not found: {}", server_name))?;
 
         // Use the client's call_tool method (which delegates to rmcp's RoleClient)
-        // The special handling for "tools/list" is removed as RoleClient::call_tool handles it.
         let result = server.client.call_tool(tool_name, args).await
             .map_err(|e| anyhow!("Failed to call tool '{}' on server '{}': {}", tool_name, server_name, e))?;
 
