@@ -1,8 +1,6 @@
-// Enhanced MCP Host REPL Implementation 
+// Enhanced MCP Host REPL Implementation
 // Merges REPL simplicity with CLI prompt enhancements
-// Keep connections module for tests, will remove later
-#[cfg(test)]
-mod connections;
+// connections module removed as MCPHost handles server management
 mod command;
 mod helper;
 #[cfg(test)]
