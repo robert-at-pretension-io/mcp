@@ -325,7 +325,9 @@ pub async fn resolve_assistant_response(
                 // --- Get Next AI Response After Tools ---
                 log("\n>>> Calling AI again after tool execution...".to_string());
                 debug!("All tools executed for iteration {}. Getting next AI response.", iterations);
-                let mut builder = client.raw_builder(&state.system_prompt);
+                // Get system prompt from state helper method
+                let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
+                let mut builder = client.raw_builder(system_prompt);
 
                 // Add messages from state to the builder (using local Role)
                 for msg in &state.messages {
@@ -391,7 +393,9 @@ pub async fn resolve_assistant_response(
                 // Call LLM again for correction
                 log("\n>>> Calling AI again for tool format correction...".to_string());
                 debug!("Calling AI again after invalid tool format detection.");
-                let mut builder = client.raw_builder(&state.system_prompt);
+                // Get system prompt from state helper method
+                let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
+                let mut builder = client.raw_builder(system_prompt);
                 for msg in &state.messages {
                     match msg.role {
                         Role::System => builder = builder.system(msg.content.clone()), // Pass system messages too
@@ -478,7 +482,9 @@ pub async fn resolve_assistant_response(
 
                                 log("\n>>> Calling AI again for revision...".to_string());
                                 debug!("Calling AI again after verification failure (feedback as user message).");
-                                let mut builder = client.raw_builder(&state.system_prompt);
+                                // Get system prompt from state helper method
+                                let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
+                                let mut builder = client.raw_builder(system_prompt);
                                 for msg in &state.messages {
                                     match msg.role {
                                         Role::System => builder = builder.system(msg.content.clone()), // Pass system messages too

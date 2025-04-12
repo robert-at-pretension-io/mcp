@@ -374,7 +374,8 @@ impl MCPHost {
             format!(
                 "- {}: {}\ninput schema: {}", // Use {} for schema display
                 tool.name.as_ref(),
-                tool.description.as_deref().unwrap_or(""), // Use as_deref
+                // Use as_ref().map() as suggested by compiler help for Option<Cow>
+                tool.description.as_ref().map(|cow| cow.as_ref()).unwrap_or(""),
                 serde_json::to_string_pretty(&tool.input_schema).unwrap_or_else(|_| "{}".to_string()) // Pretty print schema
             )
         }).collect::<Vec<_>>().join("\n"); // Join with newline

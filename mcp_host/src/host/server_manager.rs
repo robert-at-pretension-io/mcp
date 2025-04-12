@@ -13,7 +13,7 @@ use rmcp::model::{
     RawContent as RmcpRawContent, // Alias RawContent
     RawTextContent as RmcpRawTextContent, // Alias RawTextContent
 };
-use rmcp::service::{serve_client, Peer, RoleClient}; // Import Peer and RoleClient
+use rmcp::service::serve_client; // Removed unused Peer, RoleClient imports
 use rmcp::transport::child_process::TokioChildProcess;
 use std::collections::HashMap;
 // Use TokioCommand explicitly, remove unused StdCommand alias
@@ -66,14 +66,14 @@ pub mod testing {
             Self { _transport }
         }
 
-        pub async fn list_tools(&self) -> anyhow::Result<Vec<ToolInfo>> {
+        pub async fn list_tools(&self) -> anyhow::Result<Vec<RmcpTool>> { // Use aliased type
             // Test implementation - returns rmcp::model::Tool
             // Fix field types according to rmcp::model::Tool definition
             Ok(vec![
                 RmcpTool { // Use aliased type
                     name: Cow::Borrowed("test_tool"),
                     description: Some(Cow::Borrowed("A test tool")), // Description is Option<Cow>
-                    input_schema: StdArc::new(serde_json::json!({
+                    input_schema: StdArc::new(serde_json::json!({ // input_schema needs Arc<Map<String, Value>>
                         "type": "object",
                         "properties": {
                             "param1": {"type": "string"}
@@ -483,8 +483,8 @@ impl ServerManager {
             // Extract the peer from RunningService
             let peer = running_service.peer().clone(); // Clone the peer Arc
 
-            // Capabilities are available via the RunningService peer_info method
-            let capabilities = running_service.peer_info().map(|info| info.capabilities.clone());
+            // Capabilities are available via the RunningService peer_info method (which returns Option<InitializeResult>)
+            let capabilities = running_service.peer_info().map(|init_result| init_result.capabilities.clone()); // Use Option::map
             if capabilities.is_some() {
                 info!("Successfully obtained capabilities for server '{}'.", name);
             } else {
@@ -636,10 +636,10 @@ pub fn format_tool_result(result: &RmcpCallToolResult) -> String { // Make publi
             RmcpRawContent::Resource { .. } => { // Use aliased type
                 output.push_str("[Resource content - display not supported]");
             }
-            // Handle Audio content
-            RmcpRawContent::Audio { .. } => { // Use aliased type
-                output.push_str("[Audio content - display not supported]");
-            }
+            // Removed Audio variant match as it's not in rmcp 0.1.5 RawContent
+            // RmcpRawContent::Audio { .. } => { // Use aliased type
+            //     output.push_str("[Audio content - display not supported]");
+            // }
             // Handle other potential content types if added in the future
             // _ => { // This becomes unreachable if all variants are handled
             //     output.push_str("[Unsupported content type]");

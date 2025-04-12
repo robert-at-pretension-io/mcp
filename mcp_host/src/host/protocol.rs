@@ -1,9 +1,7 @@
 use serde_json::Value;
 use serde::Serialize;
-use shared_protocol_objects::{
-    JsonRpcRequest, JsonRpcResponse, 
-    success_response, error_response
-};
+// Removed shared_protocol_objects imports
+use rmcp::model::{JsonRpcRequest, JsonRpcResponse, JsonRpcError, JsonRpcVersion, NumberOrString}; // Import rmcp types if needed here
 use anyhow::Result;
 
 /// Mock IdGenerator for tests

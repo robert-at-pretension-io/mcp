@@ -426,8 +426,9 @@ impl Repl {
         let initial_response_result: Result<String> = crate::repl::with_progress( // Use with_progress for the *first* call
             "Getting initial response".to_string(),
             async {
-                // Pass system prompt when creating builder
-                let mut builder = client.raw_builder(&state.system_prompt);
+                // Get system prompt from state helper method
+                let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
+                let mut builder = client.raw_builder(system_prompt);
                 log::trace!("Building raw AI request for initial chat turn.");
                 // Add messages *up to this point* (excluding potential future tool results)
                 for msg in state.messages.iter() {

@@ -3,8 +3,10 @@ use async_trait::async_trait;
 use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+// Use the local Role definition from repl/mod.rs
+use crate::repl::Role;
 use crate::ai_client::{
-    AIClient, AIRequestBuilder, Content, GenerationConfig, Message, 
+    AIClient, AIRequestBuilder, Content, GenerationConfig, Message, // Message struct uses local Role
     ModelCapabilities
 };
 use std::path::Path;
