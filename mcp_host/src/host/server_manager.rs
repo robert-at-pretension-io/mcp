@@ -3,21 +3,22 @@ use log::{debug, error, info, warn};
 use serde_json::Value;
 // Replace shared_protocol_objects imports with rmcp::model
 use rmcp::model::{
-    Implementation, Tool as ToolInfo, CallToolResult, ClientCapabilities, Content, InitializeResult
-    // Removed unused ServerCapabilities
+    Implementation, Tool as ToolInfo, CallToolResult // Removed unused ClientCapabilities, Content, InitializeResult
 };
-use rmcp::service::{Peer, serve_client};
+use rmcp::service::{serve_client}; // Removed unused Peer
 use rmcp::transport::child_process::TokioChildProcess;
 // Correct path for NoopClientHandler
-use rmcp::handler::client::NoopClientHandler; // Corrected path
+use rmcp::handler::client::NoopClientHandler;
 use std::collections::HashMap;
-use std::sync::Arc as StdArc;
+// Removed unused StdArc alias
 use anyhow::anyhow; // Import the anyhow macro
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
 // Removed: use std::process::Command as StdCommand;
 use tokio::process::Child as TokioChild;
 use std::process::Stdio;
+// Import Arc directly as StdArc alias was removed
+use std::sync::Arc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use std::time::Duration;
