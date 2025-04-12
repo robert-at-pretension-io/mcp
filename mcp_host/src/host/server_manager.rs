@@ -486,11 +486,13 @@ impl ServerManager {
             let peer = running_service.peer().clone(); // Clone the peer Arc
 
             // Capabilities are available via the RunningService peer_info method (which returns Option<InitializeResult>)
-            // Add explicit type annotation to help the compiler
-            let capabilities = running_service.peer_info().map(|init_result: &RmcpInitializeResult| init_result.capabilities.clone());
-            if capabilities.is_some() {
+            // Refactor using if let to avoid .map()
+            let capabilities: Option<RmcpServerCapabilities>; // Declare variable type
+            if let Some(init_result) = running_service.peer_info() {
+                capabilities = Some(init_result.capabilities.clone());
                 info!("Successfully obtained capabilities for server '{}'.", name);
             } else {
+                capabilities = None;
                 warn!("Could not obtain capabilities for server '{}' after initialization.", name);
             }
 
