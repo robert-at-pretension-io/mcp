@@ -169,7 +169,7 @@ async fn main() {
         }
         
         // Aider tool implementation
-        #[tool(description = "AI pair programming tool for making targeted code changes. Requires VERY SPECIFIC instructions to perform well. Use for implementing new features, adding tests, fixing bugs, refactoring code, or making structural changes across multiple files.")]
+        #[tool(description = "AI pair programming tool for making targeted code changes. Requires VERY SPECIFIC instructions to perform well. It has NO CONTEXT from the conversation; all necessary details must be in the 'message'. Use for implementing new features, adding tests, fixing bugs, refactoring code, or making structural changes across multiple files.")]
         async fn aider(
             &self,
             #[tool(aggr)] params: AiderParams,
