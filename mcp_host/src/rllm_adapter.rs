@@ -593,69 +593,92 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             }
         };
 
-        // Build the chat messages
+        // Build the chat messages for the rllm library
         let mut chat_messages = Vec::new();
         let mut _has_image = false; // Keep track if images are involved
-        let mut image_text = String::new(); // Buffer for text associated with an image
 
-        // --- REMOVED Manual System Prompt Injection ---
-        // The system prompt should now be the first message in self.messages from ConversationState
-
-        for (i, (role, content)) in self.messages.iter().enumerate() {
-            // Check for special image markers
-            if content.starts_with("__IMAGE_PATH__:") || content.starts_with("__IMAGE_URL__:") {
-                _has_image = true; // Mark that an image is present
-                
-                // If previous message was the image text, skip adding it separately
-                if i > 0 && self.messages[i-1].0 == Role::User && !image_text.is_empty() {
-                    continue;
-                }
-                
-                // Otherwise, add the image reference with the content
-                let marker_type = if content.starts_with("__IMAGE_PATH__:") { "path" } else { "URL" };
-                let path_or_url = if content.starts_with("__IMAGE_PATH__:") {
-                    content.strip_prefix("__IMAGE_PATH__:").unwrap_or("")
-                } else {
-                    content.strip_prefix("__IMAGE_URL__:").unwrap_or("")
-                };
-                
-                log::debug!("Adding image {} as text in message: {}", marker_type, path_or_url);
-                
-                // Add a user message that includes the image reference as text
-                chat_messages.push(ChatMessage {
-                    role: ChatRole::User,
-                    content: format!("{}\n[Image {}: {}]", image_text, marker_type, path_or_url).into(),
-                    message_type: MessageType::Text,
-                });
-                
-                // Reset image text for next image
-                image_text = String::new();
-                continue;
-            }
-            
-            // Handle regular messages
-            if *role == Role::User && i + 1 < self.messages.len() {
-                // Check if this message is followed by an image marker
-                let next_content = &self.messages[i + 1].1;
-                if next_content.starts_with("__IMAGE_PATH__:") || next_content.starts_with("__IMAGE_URL__:") {
-                    // This text belongs with the image
-                    image_text = content.clone();
-                    continue; // Skip adding this text message now, it will be added with the image
-                }
-            }
-
-            // Regular message (including System messages from state)
-            let chat_role = RLLMClient::convert_role(role);
-            log::debug!("Adding message with role {:?}", chat_role);
+        // --- Add System Prompt First (if applicable) ---
+        // TODO: Check if the specific backend/model actually supports a system role.
+        // Most OpenAI models do. RLLM might handle this translation.
+        if !self.system_prompt.is_empty() {
+            log::debug!("Prepending system message to chat history.");
             chat_messages.push(ChatMessage {
-                role: chat_role,
-                content: content.clone().into(), // Use into() for potential future content types
-                message_type: MessageType::Text, // Assuming Text for now
+                role: ChatRole::System, // Use System role
+                content: self.system_prompt.clone().into(),
+                message_type: MessageType::Text,
             });
+        } else {
+            log::debug!("No system prompt provided.");
         }
 
-        // --- Log the final messages being sent (Manual Formatting) ---
-        log::debug!("Final RLLM Chat Messages Payload:");
+        // --- Process User/Assistant Messages ---
+        let mut current_user_message_parts: Vec<rllm::chat::MessageContent> = Vec::new();
+
+        for (role, content) in self.messages.iter() {
+            match role {
+                Role::User => {
+                    // Handle potential multi-part user messages (text + image)
+                    if content.starts_with("__IMAGE_PATH__:") {
+                        _has_image = true;
+                        let path_str = content.strip_prefix("__IMAGE_PATH__:").unwrap_or("");
+                        log::warn!("Image path handling not fully implemented in rllm_adapter. Sending path as text for now: {}", path_str);
+                        // TODO: Implement proper image path handling (read file, base64 encode)
+                        // This requires checking model capabilities and using rllm's MessageType::ImageBytes
+                        // For now, append as text part to potentially combine with previous text
+                        current_user_message_parts.push(format!("[Image Path: {}]", path_str).into());
+
+                    } else if content.starts_with("__IMAGE_URL__:") {
+                         _has_image = true;
+                         let url_str = content.strip_prefix("__IMAGE_URL__:").unwrap_or("");
+                         log::debug!("Adding image URL part: {}", url_str);
+                         // TODO: Check model capabilities for vision support before adding image URL.
+                         // Assuming rllm handles the structure for OpenAI vision:
+                         current_user_message_parts.push(rllm::chat::MessageContent::ImageUrl { url: url_str.to_string() });
+
+                    } else {
+                        // Regular text part
+                        log::debug!("Adding user text part: '{}...'", content.chars().take(50).collect::<String>());
+                        current_user_message_parts.push(content.clone().into());
+                    }
+                }
+                Role::Assistant => {
+                    // If we have pending user message parts, finalize and add them first
+                    if !current_user_message_parts.is_empty() {
+                        log::debug!("Finalizing user message with {} parts.", current_user_message_parts.len());
+                        chat_messages.push(ChatMessage {
+                            role: ChatRole::User,
+                            content: current_user_message_parts.clone().into(), // Use into() for Vec<MessageContent>
+                            message_type: if _has_image { MessageType::Multipart } else { MessageType::Text },
+                        });
+                        current_user_message_parts.clear(); // Clear parts for the next user message
+                        _has_image = false; // Reset image flag
+                    }
+
+                    // Add the assistant message
+                    log::debug!("Adding assistant message: '{}...'", content.chars().take(50).collect::<String>());
+                    chat_messages.push(ChatMessage {
+                        role: ChatRole::Assistant,
+                        content: content.clone().into(),
+                        message_type: MessageType::Text,
+                    });
+                }
+                // System role is handled at the beginning
+            }
+        }
+
+        // Add any remaining user message parts after the loop
+        if !current_user_message_parts.is_empty() {
+             log::debug!("Finalizing trailing user message with {} parts.", current_user_message_parts.len());
+             chat_messages.push(ChatMessage {
+                 role: ChatRole::User,
+                 content: current_user_message_parts.into(), // Use into() for Vec<MessageContent>
+                 message_type: if _has_image { MessageType::Multipart } else { MessageType::Text },
+             });
+        }
+
+
+        // --- Log the final messages being sent (using rllm Debug) ---
+        log::debug!("Final RLLM ChatMessages Payload ({} messages):", chat_messages.len());
         for msg in &chat_messages {
             // Access the content string directly and take a preview
             let content_preview = msg.content.lines().next().unwrap_or("").chars().take(100).collect::<String>();
