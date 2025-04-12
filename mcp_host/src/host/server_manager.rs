@@ -24,8 +24,67 @@ use std::process::Stdio;
 use std::sync::Arc; // Re-add top-level Arc import
 use tokio::sync::Mutex;
 use std::time::Duration;
+use tokio::io::{AsyncRead, AsyncWrite}; // Added
+use tokio::process::{ChildStdin, ChildStdout}; // Added
+use rmcp::transport::{TransportStream, TransportSink, TransportError, Frame}; // Added
+use bytes::BytesMut; // Added
+use futures::{SinkExt, StreamExt}; // Added
+use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec}; // Added
+
 
 use crate::host::config::Config;
+
+
+// --- Manual Transport Implementation ---
+// This struct manually handles reading/writing frames over process stdin/stdout
+#[derive(Debug)]
+struct ManualTransport {
+    reader: FramedRead<ChildStdout, LengthDelimitedCodec>,
+    writer: FramedWrite<ChildStdin, LengthDelimitedCodec>,
+}
+
+impl ManualTransport {
+    fn new(stdin: ChildStdin, stdout: ChildStdout) -> Self {
+        // Use standard length-delimited framing
+        let codec = LengthDelimitedCodec::builder()
+            .length_field_offset(0) // default
+            .length_field_length(4) // u32 length prefix
+            .length_adjustment(0)   // default
+            .num_skip(0)            // default
+            .new_codec();
+        Self {
+            reader: FramedRead::new(stdout, codec.clone()),
+            writer: FramedWrite::new(stdin, codec),
+        }
+    }
+}
+
+// Implement the stream trait for reading frames
+impl TransportStream for ManualTransport {
+    async fn read_frame(&mut self) -> Option<Result<Frame, TransportError>> {
+        match self.reader.next().await {
+            Some(Ok(bytes_mut)) => Some(Ok(bytes_mut.freeze())), // Convert BytesMut -> Bytes (Frame)
+            Some(Err(e)) => Some(Err(TransportError::Read(format!("Codec error: {}", e)))),
+            None => None, // Stream ended
+        }
+    }
+}
+
+// Implement the sink trait for writing frames
+impl TransportSink for ManualTransport {
+    async fn send_frame(&mut self, frame: Frame) -> Result<(), TransportError> {
+        self.writer.send(frame).await.map_err(|e| TransportError::Write(format!("Codec error: {}", e)))
+    }
+
+    async fn close(&mut self) -> Result<(), TransportError> {
+        self.writer.close().await.map_err(|e| TransportError::Write(format!("Sink close error: {}", e)))
+    }
+}
+
+// Combine the traits into the main Transport trait required by serve_client
+impl rmcp::transport::Transport for ManualTransport {}
+// --- End Manual Transport ---
+
 
 // Add re-exports for dependent code
 // No cfg attribute - make this available to tests
@@ -337,88 +396,83 @@ impl ServerManager {
         info!("Entered start_server_with_components for server: '{}'", name);
         info!("Starting server '{}' with program: {}, args: {:?}, envs: {:?}", name, program, args, envs.keys());
 
-        // --- Prepare Tokio Command for Spawning ---
-        let mut tokio_command_spawn = TokioCommand::new(program);
-        tokio_command_spawn.args(args)
-                           .envs(envs) // Set envs directly
-                           .stdin(Stdio::piped())
-                           .stdout(Stdio::piped())
-                           .stderr(Stdio::piped());
-        debug!("Tokio command prepared for spawning: {:?}", tokio_command_spawn);
-
-        // --- Spawn Process and Initialize Client BEFORE acquiring the lock ---
-        #[cfg(not(test))]
-        let (process, client, capabilities) = { // Client no longer needs to be mutable
-            // Spawn the process first
-            debug!("Spawning process for server '{}'...", name);
-            let process = tokio_command_spawn.spawn()
-                .map_err(|e| anyhow!("Failed to spawn process for server '{}': {}", name, e))?;
-            let process_id = process.id(); // Get PID for logging
-            info!("Process spawned successfully for server '{}', PID: {:?}", name, process_id);
-
-            // Create the TokioChildProcess transport directly
-            let mut transport_cmd = TokioCommand::new(program);
-            transport_cmd.args(args);
-            transport_cmd.envs(envs);
-            // TokioChildProcess needs stdin/stdout/stderr piped
-            transport_cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-
-            debug!("Creating TokioChildProcess transport for server '{}'...", name);
-            // Fix TokioChildProcess::new call: pass mutable ref, remove await
-            let transport = TokioChildProcess::new(&mut transport_cmd) // Pass &mut command
-                 .map_err(|e| anyhow!("Failed to create TokioChildProcess transport for server '{}': {}", name, e))?; // Remove .await
-            info!("TokioChildProcess transport created for server '{}'.", name);
-
-            // Create Peer by serving the client - use () as the handler
-            debug!("Serving client handler '()' to create Peer for server '{}'...", name);
-            // serve_client returns Result<RunningService<RoleClient, ()>, E>
-            // RunningService contains the peer and initialization result (implicitly)
-            let running_service = serve_client((), transport).await
-                .map_err(|e| anyhow!("Failed to serve client and create Peer for server '{}': {}", name, e))?;
-            info!("RunningService (including Peer) created for server '{}'.", name);
-
-            // Extract the peer from RunningService
-            let peer = running_service.peer().clone(); // Clone the peer Arc
-
-            // Capabilities are available via the RunningService peer_info method (which returns Option<&InitializeResult>)
-            // Use the reference directly within the if let block
-            let capabilities: Option<RmcpServerCapabilities>; // Declare variable type
-            if let init_result = running_service.peer_info() { // Remove .cloned()
-                // init_result is now a reference: &InitializeResult
-                capabilities = Some(init_result.capabilities.clone()); // Clone from the reference
-                info!("Successfully obtained capabilities for server '{}'.", name);
-            } else {
-                capabilities = None;
-                warn!("Could not obtain capabilities for server '{}' after initialization.", name);
+        // --- Prepare Tokio Command with Shell Wrapper ---
+        let mut command = {
+            #[cfg(windows)]
+            {
+                let mut cmd = TokioCommand::new("cmd");
+                cmd.arg("/C");
+                cmd.arg(program); // Add program first
+                cmd.args(args);   // Then add arguments
+                cmd
             }
-
-            // Wrap Peer in our McpClient wrapper
-            let client = production::McpClient::new(peer); // Client no longer needs to be mutable
-            info!("McpClient created for server '{}'.", name);
-
-            // Return the process handle, the wrapped client, and capabilities
-            (process, client, capabilities)
-            /* // Old explicit initialize logic removed:
-            let client_capabilities = rmcp::model::ClientCapabilities::default();
-            let init_timeout = Duration::from_secs(15);
-            match tokio::time::timeout(init_timeout, client.initialize(client_capabilities)).await {
-                 Ok(Ok(init_result)) => {
-                     info!("Server '{}' initialized successfully.", name);
-                     let capabilities = Some(init_result.capabilities);
-                     (process, client, capabilities)
-                 }
-                Ok(Err(e)) => {
-                    error!("Client '{}' initialization failed: {}", name, e);
-                    return Err(e);
-                }
-                Err(elapsed) => {
-                    error!("Client '{}' initialization timed out after {} seconds.", name, init_timeout.as_secs());
-                    return Err(anyhow!("Client '{}' initialization timed out after {}s", name, init_timeout.as_secs()).context(elapsed));
-                }
-            }*/
+            #[cfg(not(windows))]
+            {
+                let mut cmd = TokioCommand::new("sh");
+                let mut command_string = format!("{} {}", program, args.join(" ")); // Simple join, may need quoting improvements later
+                // Escape the command string for the shell if necessary, though simple cases might work.
+                // For robustness, consider libraries like `shell-escape` or `shlex`.
+                // command_string = shell_escape::escape(command_string.into()).into_owned();
+                cmd.arg("-c");
+                cmd.arg(command_string);
+                cmd
+            }
         };
 
-        #[cfg(test)]
+        command.envs(envs) // Set environment variables
+               .stdin(Stdio::piped())
+               .stdout(Stdio::piped())
+               .stderr(Stdio::piped()); // Capture stderr for potential debugging
+        debug!("Prepared Tokio command with shell wrapper: {:?}", command);
+
+
+        // --- Spawn the SINGLE Process ---
+        #[cfg(not(test))]
+        let (process, client, capabilities) = {
+            debug!("Spawning the single process for server '{}'...", name);
+            let mut child = command.spawn()
+                .map_err(|e| anyhow!("Failed to spawn process for server '{}': {}", name, e))?;
+            let process_id = child.id();
+            info!("Single process spawned successfully for server '{}', PID: {:?}", name, process_id);
+
+            // --- Extract Stdin/Stdout BEFORE creating transport ---
+            let stdin = child.stdin.take()
+                .ok_or_else(|| anyhow!("Failed to get stdin for child process '{}'", name))?;
+            let stdout = child.stdout.take()
+                .ok_or_else(|| anyhow!("Failed to get stdout for child process '{}'", name))?;
+            // We might want to handle stderr later (e.g., log it)
+            let _stderr = child.stderr.take(); // Take ownership even if not used immediately
+
+            debug!("Stdin/Stdout handles obtained for server '{}'.", name);
+
+            // --- Create Manual Transport ---
+            let transport = ManualTransport::new(stdin, stdout);
+            info!("ManualTransport created for server '{}'.", name);
+
+            // --- Serve Client using Manual Transport ---
+            debug!("Serving client handler '()' with ManualTransport for server '{}'...", name);
+            let running_service = serve_client((), transport).await
+                .map_err(|e| anyhow!("Failed to serve client using ManualTransport for server '{}': {}", name, e))?;
+            info!("RunningService (including Peer) created using ManualTransport for server '{}'.", name);
+
+            // --- Extract Peer and Capabilities ---
+            let peer = running_service.peer().clone();
+            let capabilities = running_service.peer_info().map(|info| info.capabilities.clone());
+            if capabilities.is_some() {
+                 info!("Successfully obtained capabilities for server '{}' via ManualTransport.", name);
+            } else {
+                 warn!("Could not obtain capabilities for server '{}' after initialization via ManualTransport.", name);
+            }
+
+            // --- Wrap Peer in McpClient ---
+            let client = production::McpClient::new(peer);
+            info!("McpClient created for server '{}'.", name);
+
+            // Return the original child process handle, the client, and capabilities
+            (child, client, capabilities)
+        };
+
+        #[cfg(test)] // Keep test logic separate and simpler
         let (process,client, capabilities) = { // Removed mut from client
             // For tests, create a dummy client and process
             debug!("Creating mock process and client for test server '{}'", name);
