@@ -74,7 +74,7 @@ pub mod testing {
                 RmcpTool {
                     name: Cow::Borrowed("test_tool"),
                     // Assign Some directly to the Option field
-                    description: Some(Cow::Borrowed("A test tool")),
+                    description: ("test tool".to_string()).into(),
                     input_schema: StdArc::new(serde_json::json!({ // input_schema needs Arc<Map<String, Value>>
                         "type": "object",
                         "properties": {
@@ -486,7 +486,7 @@ impl ServerManager {
             let peer = running_service.peer().clone(); // Clone the peer Arc
 
             // Capabilities are available via the RunningService peer_info method (which returns Option<InitializeResult>)
-            let capabilities = running_service.peer_info().map(|init_result| init_result.capabilities.clone()); // Use Option::map
+            let capabilities = running_service.peer_info().clone(); // Use Option::map
             if capabilities.is_some() {
                 info!("Successfully obtained capabilities for server '{}'.", name);
             } else {
