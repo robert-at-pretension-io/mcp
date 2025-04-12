@@ -230,8 +230,6 @@ impl ServerManager {
             (), // Default client handler
             transport
         ).await {
-            Ok(rs) => rs,
-            Err(e) => {
            Ok(rs) => rs,
            Err(e) => {
                error!("Failed to serve client and create Peer for server '{}': {}", name, e);
