@@ -328,14 +328,8 @@ pub async fn resolve_assistant_response(
                 let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
                 let mut builder = client.raw_builder(system_prompt);
 
-                // Add messages from state, skipping the first message if a system prompt was set via the builder
-                let messages_to_add = if !system_prompt.is_empty() && !state.messages.is_empty() {
-                    state.messages.iter().skip(1) // Skip the first message (assumed system prompt)
-                } else {
-                    state.messages.iter().skip(0) // Add all messages if no system prompt was set
-                };
-
-                for msg in messages_to_add {
+                // Add all messages from state. The system prompt is handled by the builder.
+                for msg in state.messages.iter() {
                     match msg.role {
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
@@ -401,13 +395,8 @@ pub async fn resolve_assistant_response(
                 let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
                 let mut builder = client.raw_builder(system_prompt);
 
-                // Add messages from state, skipping the first message if a system prompt was set via the builder
-                let messages_to_add = if !system_prompt.is_empty() && !state.messages.is_empty() {
-                    state.messages.iter().skip(1) // Skip the first message (assumed system prompt)
-                } else {
-                    state.messages.iter().skip(0) // Add all messages if no system prompt was set
-                };
-                for msg in messages_to_add {
+                // Add all messages from state. The system prompt is handled by the builder.
+                for msg in state.messages.iter() {
                     match msg.role {
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
@@ -496,13 +485,8 @@ pub async fn resolve_assistant_response(
                                 let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
                                 let mut builder = client.raw_builder(system_prompt);
 
-                                // Add messages from state, skipping the first message if a system prompt was set via the builder
-                                let messages_to_add = if !system_prompt.is_empty() && !state.messages.is_empty() {
-                                    state.messages.iter().skip(1) // Skip the first message (assumed system prompt)
-                                } else {
-                                    state.messages.iter().skip(0) // Add all messages if no system prompt was set
-                                };
-                                for msg in messages_to_add {
+                                // Add all messages from state. The system prompt is handled by the builder.
+                                for msg in state.messages.iter() {
                                     match msg.role {
                                         Role::User => builder = builder.user(msg.content.clone()),
                                         Role::Assistant => builder = builder.assistant(msg.content.clone()),

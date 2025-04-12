@@ -28,6 +28,7 @@ use crate::host::MCPHost;
 // Define Role locally if not directly available from rllm 1.1.7
 
 use crate::conversation_logic::generate_verification_criteria; // Import the function
+use crate::conversation_service::generate_tool_system_prompt; // Import tool prompt generator
 
 /// Main REPL implementation with enhanced CLI features
 pub struct Repl {
@@ -234,6 +235,17 @@ impl Repl {
                                         style(&active_model).green()
                                     )).italic()
                                 );
+                                // Generate and add tool instructions as the first user message
+                                let tool_instructions = generate_tool_system_prompt(&initial_state.tools);
+                                if !initial_state.tools.is_empty() {
+                                    let tool_msg = format!("Okay, I have access to the following tools on server '{}':\n{}", target_server, tool_instructions);
+                                    println!("{}", style(&tool_msg).dim()); // Print the tool list dimmed
+                                    initial_state.add_user_message(&tool_msg);
+                                } else {
+                                    let no_tool_msg = format!("No tools found on server '{}'.", target_server);
+                                     println!("{}", style(&no_tool_msg).dim());
+                                     initial_state.add_user_message(&no_tool_msg);
+                                }
                                 println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
                                 log::info!("Successfully entered single-server chat mode with '{}'", target_server);
                                 self.chat_state = Some((target_server.to_string(), initial_state));
@@ -258,6 +270,17 @@ impl Repl {
                                         style(&active_model).green()
                                     )).italic()
                                 );
+                                // Generate and add tool instructions as the first user message
+                                let tool_instructions = generate_tool_system_prompt(&initial_state.tools);
+                                if !initial_state.tools.is_empty() {
+                                    let tool_msg = format!("Okay, I have access to the following tools from all servers:\n{}", tool_instructions);
+                                    println!("{}", style(&tool_msg).dim()); // Print the tool list dimmed
+                                    initial_state.add_user_message(&tool_msg);
+                                } else {
+                                     let no_tool_msg = "No tools found on any active server.".to_string();
+                                     println!("{}", style(&no_tool_msg).dim());
+                                     initial_state.add_user_message(&no_tool_msg);
+                                }
                                 println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
                                 log::info!("Successfully entered multi-server chat mode.");
                                 self.chat_state = Some(("*all*".to_string(), initial_state)); // Use special marker
@@ -427,13 +450,8 @@ impl Repl {
                 let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
                 let mut builder = client.raw_builder(system_prompt);
                 log::trace!("Building raw AI request for initial chat turn.");
-                // Add messages *up to this point*, skipping the first if a system prompt was set
-                let messages_to_add = if !system_prompt.is_empty() && !state.messages.is_empty() {
-                    state.messages.iter().skip(1) // Skip the first message (assumed system prompt)
-                } else {
-                    state.messages.iter().skip(0) // Add all messages if no system prompt was set
-                };
-                for msg in messages_to_add {
+                // Add all messages *up to this point*. System prompt is handled by the builder.
+                for msg in state.messages.iter() {
                      match msg.role {
                          Role::User => builder = builder.user(msg.content.clone()),
                          Role::Assistant => builder = builder.assistant(msg.content.clone()),

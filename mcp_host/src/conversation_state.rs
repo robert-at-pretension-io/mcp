@@ -146,11 +146,8 @@ impl ConversationState {
             messages: Vec::new(),
             tools: tools.clone(), // Store the tools
         };
-
-        // Add the original system prompt as the first system message
-        // The tool instructions will be added separately by the caller if needed,
-        // or handled by the AI client builder logic.
-        state.add_user_message(&system_prompt.clone());
+        // The system prompt is stored but not added as a message here.
+        // The REPL will add the initial tool list as a user message.
         state
     }
 
@@ -170,10 +167,12 @@ impl ConversationState {
         });
     }
 
-    /// Get the initial system prompt (assumes it's the first message).
+    /// Get the stored system prompt string.
     pub fn get_system_prompt(&self) -> Option<&str> {
-        self.messages.first()
-            .map(|msg| msg.content.as_str())
+        if self.system_prompt.is_empty() {
+            None
+        } else {
+            Some(&self.system_prompt)
+        }
     }
-    
 }
