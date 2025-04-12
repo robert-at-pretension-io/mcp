@@ -3,7 +3,7 @@ use log::{debug, error, info, warn};
 use serde_json::Value;
 // Replace shared_protocol_objects imports with rmcp::model
 use rmcp::model::{
-    Implementation, Tool as ToolInfo, CallToolResult // Removed unused ClientCapabilities, Content, InitializeResult
+    Implementation, Tool as ToolInfo, CallToolResult
 };
 use rmcp::service::{serve_client};
 use rmcp::transport::child_process::TokioChildProcess;
@@ -15,8 +15,7 @@ use tokio::process::Command as TokioCommand;
 // Removed: use std::process::Command as StdCommand;
 use tokio::process::Child as TokioChild;
 use std::process::Stdio;
-// Import Arc directly as StdArc alias was removed
-use std::sync::Arc; // Removed duplicate Arc import
+// Removed unused Arc import at this level
 use tokio::sync::Mutex;
 use std::time::Duration;
 
