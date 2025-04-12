@@ -145,20 +145,13 @@ impl ConversationState {
     pub fn new(system_prompt: String, tools: Vec<RmcpTool>) -> Self { // Use aliased rmcp Tool
         let mut state = Self {
             messages: Vec::new(),
-            system_prompt: system_prompt.clone(), // Keep original system prompt separate
-            tools: tools.clone(),
+            tools: tools.clone(), // Store the tools
         };
 
-        // Generate a combined system prompt including the tool format instructions
-        let combined_prompt = format!(
-            "{}\n\n{}",
-            system_prompt,
-            crate::conversation_service::generate_tool_system_prompt(&tools) // Use new function name
-        );
-
-        // Add the combined system prompt as the first system message
-        state.add_system_message(&combined_prompt);
-        // REMOVED: state.add_user_message(&combined_prompt); // Do not add duplicate user message
+        // Add the original system prompt as the first system message
+        // The tool instructions will be added separately by the caller if needed,
+        // or handled by the AI client builder logic.
+        state.add_system_message(&system_prompt);
         state
     }
 
