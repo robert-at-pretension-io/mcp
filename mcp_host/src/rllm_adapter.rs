@@ -661,11 +661,10 @@ impl AIRequestBuilder for RLLMRequestBuilder {
 
         // Chat with the LLM
         match llm.chat(&chat_messages).await {
-            Ok(response) => {
+            Ok(response_box) => { // Renamed variable to avoid confusion
                 let elapsed = start_time.elapsed();
-                // The response from rllm.chat() is already a Result<String, LLMError>
-                // So, 'response' here *is* the String content.
-                // let response_str = response; // No need for this intermediate variable
+                // Convert the Box<dyn ChatResponse> to a String using Display trait
+                let response_str = response_box.to_string();
 
                 // Removed old extraction logic:
                 // choices.get(0)
@@ -678,9 +677,9 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                 log::info!(
                     "RLLM request completed in {:.2}s, received {} characters",
                     elapsed.as_secs_f64(),
-                    response.len() // Use response.len() directly
+                    response_str.len() // Use length of the converted string
                 );
-                Ok(response) // Return the response String directly
+                Ok(response_str) // Return the converted String
             },
             Err(e) => {
                 let elapsed = start_time.elapsed();
