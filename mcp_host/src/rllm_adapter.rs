@@ -1,9 +1,9 @@
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use rmcp::model::Role;
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities};
 use serde_json::Value;
 // Use the local Role definition from repl/mod.rs
-use crate::repl::Role;
 use rllm::builder::{LLMBackend, LLMBuilder};
 use rllm::chat::{ChatMessage, ChatRole, MessageType};
 use std::path::Path;
@@ -119,12 +119,7 @@ impl RLLMClient {
     fn convert_role(role: &Role) -> ChatRole {
         match role {
             Role::User => ChatRole::User,
-            Role::Assistant => ChatRole::Assistant,
-            Role::System => {
-                // System role doesn't exist in this version of rllm::ChatRole, use User role as fallback
-                log::warn!("Mapping Role::System to rllm::ChatRole::User as ChatRole::System is unavailable.");
-                ChatRole::User
-            }
+            Role::Assistant => ChatRole::Assistant
         }
     }
 }
