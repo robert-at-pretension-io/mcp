@@ -280,19 +280,15 @@ async fn main() {
         // Override get_info for custom server details
         fn get_info(&self) -> ServerInfo {
             // Create the ServerInfo struct with the correct fields
+            // Note: ServerInfo in rmcp 0.1.5 doesn't have protocol_version or capabilities fields directly.
+            // These are part of the InitializeResult. ServerInfo focuses on implementation details.
             ServerInfo {
-                // Set protocol_version to latest
-                protocol_version: rmcp::model::ProtocolVersion::LATEST,
-                // Use default capabilities
-                capabilities: rmcp::model::ServerCapabilities::default(),
-                // Set server_info with implementation details
-                server_info: rmcp::model::Implementation {
-                    name: "MCP Tools Server (SDK)".into(),
-                    version: env!("CARGO_PKG_VERSION").into(),
-                },
-                // Add instructions for using the tools
-                instructions: Some("Use 'call' with tool name and parameters.".into()),
-            }
+                 name: Some("MCP Tools Server (SDK)".into()),
+                 version: Some(env!("CARGO_PKG_VERSION").into()),
+                 description: Some("Provides various tools like bash execution and web scraping.".into()),
+                 instructions: Some("Use 'call' with tool name and parameters.".into()),
+                 ..Default::default() // Use defaults for other fields like icon, homepage_url
+             }
         }
     }
     // --- End New SDK Server Structure ---

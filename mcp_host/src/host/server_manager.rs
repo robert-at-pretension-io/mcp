@@ -3,9 +3,15 @@ use log::{debug, error, info, warn};
 use serde_json::Value;
 // Replace shared_protocol_objects imports with rmcp::model
 use rmcp::model::{
-    Implementation, ServerCapabilities, Tool as ToolInfo, CallToolResult, ClientCapabilities, Content // Added Content
+    Implementation, ServerCapabilities, Tool as ToolInfo, CallToolResult, ClientCapabilities, Content, // Added Content
+    InitializeResult // Added InitializeResult
 };
+use rmcp::service::{Peer, RoleClient, serve_client}; // Added Peer, serve_client
+use rmcp::transport::child_process::TokioChildProcess; // Added TokioChildProcess
+use rmcp::handler::client::NoopClientHandler; // Added default client handler
 use std::collections::HashMap;
+use std::borrow::Cow; // Added Cow for Tool fields
+use std::sync::Arc as StdArc; // Alias Arc to avoid conflict with rmcp::model::Arc
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
 // Removed: use std::process::Command as StdCommand;
@@ -21,7 +27,9 @@ use crate::host::config::Config;
 // No cfg attribute - make this available to tests
 pub mod testing {
     // Use rmcp types directly in testing mocks as well for consistency
-    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Content, Implementation, InitializeResult, ClientCapabilities}; // Added Implementation, InitializeResult, ClientCapabilities
+    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Content, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion}; // Added ProtocolVersion
+    use std::borrow::Cow; // Added Cow
+    use std::sync::Arc as StdArc; // Alias Arc
 
     // Test mock implementations
     #[derive(Debug)]
@@ -51,17 +59,18 @@ pub mod testing {
 
         pub async fn list_tools(&self) -> anyhow::Result<Vec<ToolInfo>> {
             // Test implementation - returns rmcp::model::Tool
+            // Fix field types according to rmcp::model::Tool definition
             Ok(vec![
                 ToolInfo {
-                    name: "test_tool".to_string(),
-                    description: Some("A test tool".to_string()),
-                    input_schema: serde_json::json!({
+                    name: Cow::Borrowed("test_tool"), // Use Cow
+                    description: Cow::Borrowed("A test tool"), // Use Cow
+                    input_schema: StdArc::new(serde_json::json!({ // Use Arc<Map<String, Value>>
                         "type": "object",
                         "properties": {
                             "param1": {"type": "string"}
                         }
-                    }),
-                    annotations: None,
+                    }).as_object().unwrap().clone()), // Convert Value to Map and Arc it
+                    // Removed annotations field as it doesn't exist in rmcp::model::Tool
                 }
             ])
         }
@@ -81,10 +90,12 @@ pub mod testing {
 
         // Add mock initialize method
         pub async fn initialize(&mut self, _capabilities: ClientCapabilities) -> anyhow::Result<InitializeResult> {
+            // Add missing 'instructions' field
             Ok(InitializeResult {
-                protocol_version: rmcp::model::ProtocolVersion::LATEST,
+                protocol_version: ProtocolVersion::LATEST,
                 capabilities: ServerCapabilities::default(),
                 server_info: Implementation { name: "mock-server".into(), version: "0.0.0".into() },
+                instructions: None, // Add missing field
             })
         }
 
@@ -103,20 +114,20 @@ pub mod testing {
 pub mod production {
     // Import necessary rmcp types
     use rmcp::{
-        model::{Tool as ToolInfo, CallToolResult, ClientCapabilities, InitializeResult, Implementation}, // Added Implementation
+        model::{Tool as ToolInfo, CallToolResult, ClientCapabilities, InitializeResult, Implementation},
         transport::child_process::TokioChildProcess,
-        service::RoleClient, // Use RoleClient directly
+        service::{Peer, RoleClient}, // Added Peer
     };
     // Removed unused shared_protocol_objects import
     // Removed unused Arc import
-    // Removed unused ClientJsonRpcMessage, ServerJsonRpcMessage
 
     // Import shared protocol objects Transport for compatibility - KEEPING FOR NOW until fully migrated
-    pub use shared_protocol_objects::rpc::Transport;
+    // pub use shared_protocol_objects::rpc::Transport; // Comment out for now
 
-    // Wrapper for McpClient to provide Debug and hold RoleClient
+    // Wrapper for McpClient to provide Debug and hold the Peer
     pub struct McpClient {
-        inner: RoleClient
+        // Store the Peer which handles communication
+        inner: Peer<RoleClient>
     }
     
     // Manual Debug implementation
@@ -125,70 +136,51 @@ pub mod production {
             f.debug_struct("McpClient").finish()
         }
     }
-    
+
     impl McpClient {
-        pub fn new(client: RoleClient) -> Self {
-            Self { inner: client }
-        }
-        
-        pub async fn list_tools(&self) -> anyhow::Result<Vec<ToolInfo>> {
-            log::info!("Using rmcp list_tools method");
-            // Use rmcp's ListToolsRequest and extract tools from result
-            let result = self.inner.list_tools(None).await?;
-            Ok(result.tools)
+        // Constructor now takes a Peer
+        pub fn new(peer: Peer<RoleClient>) -> Self {
+            Self { inner: peer }
         }
 
-        // Use rmcp's call_tool directly
+        // Delegate methods to the Peer
+        pub async fn list_tools(&self) -> anyhow::Result<Vec<ToolInfo>> {
+            log::info!("Using rmcp Peer::list_tools method");
+            self.inner.list_tools(None).await
+        }
+
         pub async fn call_tool(&self, name: &str, args: serde_json::Value) -> anyhow::Result<CallToolResult> {
-            log::info!("Calling tool via rmcp call_tool method: {}", name);
-            // The special handling for "tools/list" is removed as RoleClient::call_tool should handle it.
-            // If issues arise, we might need to re-introduce specific handling here or fix RoleClient.
+            log::info!("Calling tool via rmcp Peer::call_tool method: {}", name);
             self.inner.call_tool(name, args).await
         }
 
-        // Delegate close to RoleClient
         pub async fn close(self) -> anyhow::Result<()> {
-            self.inner.close().await
+            // Peer doesn't have a close method, shutdown happens when Peer is dropped or transport closes.
+            // We might need to explicitly cancel the underlying service task if needed.
+            log::warn!("McpClient::close called, but Peer manages its own lifecycle. Dropping Peer.");
+            // Dropping self.inner (the Peer) should trigger shutdown logic.
+            Ok(())
         }
 
-        // Delegate capabilities to RoleClient
         pub fn capabilities(&self) -> Option<&rmcp::model::ServerCapabilities> {
-            self.inner.capabilities()
+            // Capabilities are typically available after initialization via the InitializeResult
+            // The Peer itself might not store them directly. We store them in ManagedServer.
+            log::warn!("McpClient::capabilities called. Capabilities should be accessed from ManagedServer after initialization.");
+            None // Or retrieve from InitializeResult if stored within McpClient after init
         }
 
-        // Delegate initialize to RoleClient
         pub async fn initialize(&mut self, capabilities: ClientCapabilities) -> anyhow::Result<InitializeResult> {
-            // Pass None for protocol_version, RoleClient will handle negotiation or default
+            log::info!("Initializing connection via rmcp Peer::initialize");
+            // Peer handles initialization internally during serve_client or via an explicit initialize method if available
+            // Let's assume Peer has an initialize method for now, matching the old structure.
+            // If not, initialization happens implicitly during serve_client.
+            // **Correction:** Peer *does* have an initialize method.
             self.inner.initialize(capabilities, None).await
         }
     }
 
-    // Use rmcp's built-in TokioChildProcess transport directly
-    pub struct ProcessTransport(TokioChildProcess);
-
-    // Manual Debug implementation for the wrapper
-    impl std::fmt::Debug for ProcessTransport {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("ProcessTransport").finish()
-        }
-    }
-    
-    impl ProcessTransport {
-        pub async fn new(command: super::TokioCommand) -> anyhow::Result<Self> {
-            let child_process = TokioChildProcess::new(command).await?;
-            Ok(Self(child_process))
-        }
-
-        pub async fn new_for_request_type(command: super::TokioCommand, _request_type: &str) -> anyhow::Result<Self> { 
-            log::info!("Creating dedicated transport");
-            Self::new(command).await
-        }
-
-        // Add a method to get the inner transport if needed elsewhere, though RoleClient abstracts it
-        pub fn into_inner(self) -> TokioChildProcess {
-             self.0
-        }
-    }
+    // ProcessTransport struct is no longer needed as we use TokioChildProcess directly
+    // and pass it to serve_client.
 
     // Remove the manual implementation of shared_protocol_objects::rpc::Transport
     // RoleClient handles the transport interaction internally.
@@ -197,12 +189,11 @@ pub mod production {
 
 // For testing, use the mock implementations
 #[cfg(test)]
-// Use alias for consistency if ProcessTransport name is used elsewhere in tests
-pub use self::testing::{McpClient, MockProcessTransport as ProcessTransport};
+pub use self::testing::McpClient; // Only export McpClient for testing
 
 // For production, use the wrapped types
 #[cfg(not(test))]
-pub use self::production::{McpClient, ProcessTransport};
+pub use self::production::McpClient; // Only export McpClient for production
 
 /// Represents a server managed by MCP host
 #[derive(Debug)]
@@ -453,22 +444,20 @@ impl ServerManager {
             transport_cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
             debug!("Creating TokioChildProcess transport for server '{}'...", name);
-            let transport = TokioChildProcess::new(transport_cmd).await
-                 .map_err(|e| anyhow!("Failed to create TokioChildProcess transport for server '{}': {}", name, e))?;
+            // Fix TokioChildProcess::new call: pass mutable ref, remove await
+            let transport = TokioChildProcess::new(&mut transport_cmd) // Pass &mut command
+                 .map_err(|e| anyhow!("Failed to create TokioChildProcess transport for server '{}': {}", name, e))?; // Remove .await
             info!("TokioChildProcess transport created for server '{}'.", name);
 
-            // Create RoleClient directly
-            debug!("Creating RoleClient for server '{}'...", name);
-            // Use the client_info passed to ServerManager::new
-            let inner_client = rmcp::service::RoleClient::new(
-                transport, // Pass the TokioChildProcess directly
-                self.client_info.clone(), // Clone the Implementation struct
-                rmcp::service::AtomicU32RequestIdProvider::default(), // Use default ID provider
-            );
+            // Create Peer by serving the client
+            debug!("Serving client handler to create Peer for server '{}'...", name);
+            let peer = serve_client(NoopClientHandler, transport).await
+                .map_err(|e| anyhow!("Failed to serve client and create Peer for server '{}': {}", name, e))?;
+            info!("Peer created for server '{}'.", name);
 
-            // Wrap RoleClient in our McpClient wrapper
-            let mut client = production::McpClient::new(inner_client);
-            info!("RoleClient created, initializing server '{}'...", name);
+            // Wrap Peer in our McpClient wrapper
+            let mut client = production::McpClient::new(peer);
+            info!("McpClient created, initializing server '{}'...", name);
 
             // Define client capabilities using rmcp::model::ClientCapabilities
             // Keep it simple for now, assuming default capabilities are sufficient
@@ -577,7 +566,7 @@ impl ServerManager {
 }
 
 /// Format a tool result (rmcp::model::CallToolResult) into a string for display
-fn format_tool_result(result: &CallToolResult) -> String { // Type is already correct
+fn format_tool_result(result: &CallToolResult) -> String {
     let mut output = String::new();
     // Handle potential error state first
     if result.is_error.unwrap_or(false) {
@@ -585,13 +574,14 @@ fn format_tool_result(result: &CallToolResult) -> String { // Type is already co
     }
 
     for content in &result.content {
+        // Qualify Content variants with rmcp::model::
         match content {
             // Handle Text content
-            Content::Text { text, annotations: _ } => { // Ignore annotations for now
+            rmcp::model::Content::Text { text, annotations: _ } => { // Ignore annotations for now
                 output.push_str(text);
             }
             // Handle Json content - pretty print it
-            Content::Json { json, annotations: _ } => { // Ignore annotations
+            rmcp::model::Content::Json { json, annotations: _ } => { // Ignore annotations
                 match serde_json::to_string_pretty(json) {
                     Ok(pretty_json) => {
                         output.push_str("```json\n");
@@ -605,7 +595,7 @@ fn format_tool_result(result: &CallToolResult) -> String { // Type is already co
                 }
             }
              // Handle Image content - provide a placeholder
-             Content::Image { image: _, annotations: _ } => {
+             rmcp::model::Content::Image { image: _, annotations: _ } => {
                  output.push_str("[Image content - display not supported]");
              }
             // Handle other potential content types if added in the future

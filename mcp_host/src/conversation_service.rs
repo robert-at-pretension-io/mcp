@@ -16,7 +16,8 @@ pub fn generate_tool_system_prompt(tools: &[rmcp::model::Tool]) -> String {
         .map(|t| format!(
             "- Name: {}\n  Description: {}\n  Schema: {}",
             t.name,
-            t.description.as_ref().unwrap_or(&"No description".to_string()),
+            // Use as_deref() directly on Cow<_, str>
+            t.description.as_deref().unwrap_or("No description"),
             serde_json::to_string_pretty(&t.input_schema).unwrap_or_else(|_| "{}".to_string())
         ))
         .collect::<Vec<String>>()

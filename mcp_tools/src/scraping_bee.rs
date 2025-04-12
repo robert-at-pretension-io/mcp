@@ -138,7 +138,7 @@ impl ScrapingBeeTool {
     }
 }
 
-#[tool(tool_box)]
+// Remove #[tool(tool_box)] here as McpToolServer handles registration
 impl ScrapingBeeTool {
     // Make the method public so McpToolServer can call it
     #[tool(description = "Web scraping tool that extracts and processes content from websites. Use for extracting text from webpages, documentation, and articles.")]

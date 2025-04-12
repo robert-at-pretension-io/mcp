@@ -471,6 +471,7 @@ impl CommandProcessor {
 
         let tool_list = tools.iter()
             .map(|tool| {
+                // Use as_deref() directly on Cow<_, str>
                 let desc = tool.description.as_deref().unwrap_or("No description");
                 // Style tool name yellow, description dimmed
                 format!("  {} - {}", style(&tool.name).yellow(), style(desc).dim())
@@ -517,10 +518,8 @@ impl CommandProcessor {
             format!("{} Result from tool '{}' on server '{}':\n", style("Success:").green(), style(tool_name).yellow(), style(&server_name).green())
         };
 
-        for content in result.content {
-            raw_output.push_str(&content.text);
-            raw_output.push('\n');
-        }
+        // Use the shared formatter which handles different Content types
+        raw_output.push_str(&crate::host::server_manager::format_tool_result(&result));
 
         // Truncate the output before returning
         Ok(crate::repl::truncate_lines(&raw_output, 150))

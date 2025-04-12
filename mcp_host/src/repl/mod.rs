@@ -27,7 +27,8 @@ use tokio::time::Duration;
 
 // Removed unused import: use crate::conversation_service::handle_assistant_response;
 use crate::host::MCPHost;
-use shared_protocol_objects::Role;
+// Use rllm's Role directly
+use rllm::prompt::PromptMessageRole as Role;
 use crate::conversation_logic::generate_verification_criteria; // Import the function
 
 /// Main REPL implementation with enhanced CLI features
@@ -429,10 +430,12 @@ impl Repl {
                 log::trace!("Building raw AI request for initial chat turn.");
                 // Add messages *up to this point* (excluding potential future tool results)
                 for msg in state.messages.iter() {
-                     match msg.role {
+                     match msg.role { // Already using aliased Role
                          Role::System => builder = builder.system(msg.content.clone()),
                          Role::User => builder = builder.user(msg.content.clone()),
                          Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                         // Add default case if PromptMessageRole has more variants
+                         _ => {}
                      }
                 }
                 // Tool prompt is already included in state via ConversationState::new

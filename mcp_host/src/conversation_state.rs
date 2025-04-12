@@ -1,4 +1,7 @@
-use rmcp::model::{PromptMessageRole as Role, Tool as ToolInfo};
+// Use rllm's Role directly
+use rllm::prompt::PromptMessageRole as Role;
+// Use rmcp's Tool directly
+use rmcp::model::Tool as ToolInfo;
 use console::style;
 use serde_json;
 
@@ -132,11 +135,13 @@ pub struct Message {
 pub struct ConversationState {
     pub messages: Vec<Message>,
     pub system_prompt: String,
-    pub tools: Vec<ToolInfo>,
+    // Use rmcp::model::Tool here
+    pub tools: Vec<rmcp::model::Tool>,
 }
 
 impl ConversationState {
-    pub fn new(system_prompt: String, tools: Vec<ToolInfo>) -> Self {
+    // Update constructor signature
+    pub fn new(system_prompt: String, tools: Vec<rmcp::model::Tool>) -> Self {
         let mut state = Self {
             messages: Vec::new(),
             system_prompt: system_prompt.clone(),
@@ -156,23 +161,24 @@ impl ConversationState {
         state
     }
 
+    // Use rllm::prompt::PromptMessageRole variants
     pub fn add_system_message(&mut self, content: &str) {
         self.messages.push(Message {
-            role: Role::System,
+            role: Role::System, // Already correct if Role is aliased to PromptMessageRole
             content: content.to_string(),
         });
     }
 
     pub fn add_user_message(&mut self, content: &str) {
         self.messages.push(Message {
-            role: Role::User,
+            role: Role::User, // Already correct
             content: content.to_string(),
         });
     }
 
     pub fn add_assistant_message(&mut self, content: &str) {
         self.messages.push(Message {
-            role: Role::Assistant,
+            role: Role::Assistant, // Already correct
             content: content.to_string(),
         });
     }

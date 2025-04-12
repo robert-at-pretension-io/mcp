@@ -7,11 +7,12 @@ use crate::tool_parser::ToolParser; // Removed unused ToolCall
 use anyhow::{anyhow, Context, Result};
 use console::style;
 use log::{debug, error, info, warn};
-use serde::Deserialize; // Added Deserialize
-use serde_json; // Added serde_json
+use serde::Deserialize;
+use serde_json;
 use std::sync::Arc;
-use shared_protocol_objects::Role;
-use tokio::sync::mpsc; // Added for logger channel
+// Use rllm's Role directly
+use rllm::prompt::PromptMessageRole as Role;
+use tokio::sync::mpsc;
 
 /// Configuration for how the conversation logic should behave.
 #[derive(Clone)] // Removed Debug derive as Sender doesn't implement it
@@ -101,6 +102,7 @@ async fn verify_response(
         .ok_or_else(|| anyhow!("No AI client active for verification"))?;
 
     // Find the index of the last user message
+    // Use rllm::prompt::PromptMessageRole::User
     let last_user_message_index = state.messages.iter().rposition(|m| m.role == Role::User);
 
     // Extract the original user request (the last one found)
@@ -114,12 +116,14 @@ async fn verify_response(
             .iter()
             // .filter(|m| m.role == Role::Assistant) // Keep user feedback messages too
             .map(|msg| {
-                // Format based on role
+                // Format based on role (already using aliased Role)
                 match msg.role {
                     Role::User => crate::conversation_state::format_chat_message(&msg.role, &msg.content),
                     Role::Assistant => crate::conversation_state::format_assistant_response_with_tool_calls(&msg.content),
                     Role::System => String::new(), // Skip system messages in this sequence
-                } // The match expression is now the return value of the closure
+                    // Add default case if PromptMessageRole has more variants
+                    _ => String::new(),
+                }
             })
             .collect::<Vec<String>>()
             .join("\n\n---\n\n"), // Separate messages clearly
@@ -324,12 +328,14 @@ pub async fn resolve_assistant_response(
                 debug!("All tools executed for iteration {}. Getting next AI response.", iterations);
                 let mut builder = client.raw_builder(&state.system_prompt);
 
-                // Add messages from state to the builder
+                // Add messages from state to the builder (already using aliased Role)
                 for msg in &state.messages {
                     match msg.role {
                         Role::System => {} // System prompt is handled by raw_builder
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                        // Add default case if PromptMessageRole has more variants
+                        _ => {}
                     }
                 }
 
@@ -390,10 +396,12 @@ pub async fn resolve_assistant_response(
                 debug!("Calling AI again after invalid tool format detection.");
                 let mut builder = client.raw_builder(&state.system_prompt);
                 for msg in &state.messages {
-                    match msg.role {
+                    match msg.role { // Already using aliased Role
                         Role::System => {}
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                        // Add default case if PromptMessageRole has more variants
+                        _ => {}
                     }
                 }
 
@@ -477,10 +485,12 @@ pub async fn resolve_assistant_response(
                                 debug!("Calling AI again after verification failure (feedback as user message).");
                                 let mut builder = client.raw_builder(&state.system_prompt);
                                 for msg in &state.messages {
-                                    match msg.role {
+                                    match msg.role { // Already using aliased Role
                                         Role::System => {}
                                         Role::User => builder = builder.user(msg.content.clone()),
                                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                                        // Add default case if PromptMessageRole has more variants
+                                        _ => {}
                                     }
                                 }
 

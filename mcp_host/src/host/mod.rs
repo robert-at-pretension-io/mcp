@@ -12,11 +12,12 @@ use std::time::Duration; // Re-add Duration import
 
 // Removed duplicate imports below
 use anyhow::{anyhow}; // Keep anyhow, remove duplicate Result
-use log::{debug, error, info, warn}; // Added debug, warn
+use log::{debug, error, info, warn};
 use server_manager::ManagedServer;
-use shared_protocol_objects::Implementation;
-// Removed duplicate HashMap
-// Removed unused Arc, Duration, Mutex
+// Use rmcp's Implementation
+use rmcp::model::Implementation;
+// Use rmcp's Tool
+use rmcp::model::Tool as ToolInfo;
 // Removed duplicate Arc, Duration, Mutex below
     
 use crate::ai_client::{AIClient, AIClientFactory};
@@ -271,14 +272,15 @@ impl MCPHost {
     /// Get a reference to the server manager
     fn server_manager(&self) -> server_manager::ServerManager {
         server_manager::ServerManager::new(
-            Arc::clone(&self.servers),
-            self.client_info.clone(),
+            StdArc::clone(&self.servers), // Use aliased Arc
+            self.client_info.clone(), // Type is now rmcp::model::Implementation
             self.request_timeout,
         )
     }
 
     /// List the tools available on a server
-    pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<shared_protocol_objects::ToolInfo>> {
+    // Update return type to use rmcp::model::Tool
+    pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<ToolInfo>> {
         self.server_manager().list_server_tools(server_name).await
     }
 
@@ -298,7 +300,8 @@ impl MCPHost {
     }
 
     /// List tools from all currently running servers, removing duplicates by name.
-    pub async fn list_all_tools(&self) -> Result<Vec<shared_protocol_objects::ToolInfo>> {
+    // Update return type to use rmcp::model::Tool
+    pub async fn list_all_tools(&self) -> Result<Vec<ToolInfo>> {
         info!("Listing tools from all active servers...");
         let mut all_tools = HashMap::new(); // Use HashMap to deduplicate by name
         let server_names = { // Scope lock
@@ -356,7 +359,7 @@ impl MCPHost {
     /// Enter chat mode with a specific server
     pub async fn enter_chat_mode(&self, server_name: &str) -> Result<crate::conversation_state::ConversationState> {
         info!("Entering single-server chat mode for '{}'", server_name);
-        // Fetch tools from the specific server
+        // Fetch tools from the specific server (already returns Vec<rmcp::model::Tool>)
         let tool_info_list = self.list_server_tools(server_name).await?;
 
         // Convert our tool list to a JSON structure - we'll use this for debugging
@@ -387,8 +390,8 @@ impl MCPHost {
             tools_str
         );
 
-        // Create the conversation state (no longer needs to be mutable here)
-        let state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list.clone());
+        // Create the conversation state (passes Vec<rmcp::model::Tool>)
+        let state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list); // Pass directly, no clone needed if not used after
 
         // The ConversationState::new now incorporates the tool prompt generation,
         // so we don't need to add it separately here.
@@ -400,7 +403,7 @@ impl MCPHost {
     /// Enter chat mode using tools from all available servers.
     pub async fn enter_multi_server_chat_mode(&self) -> Result<crate::conversation_state::ConversationState> {
         info!("Entering multi-server chat mode.");
-        // Fetch tools from all servers
+        // Fetch tools from all servers (already returns Vec<rmcp::model::Tool>)
         let all_tools = self.list_all_tools().await?;
 
         // Generate system prompt using combined tool list
@@ -805,15 +808,15 @@ impl MCPHostBuilder {
         });
 
         Ok(MCPHost {
-            servers: Arc::new(Mutex::new(HashMap::new())), // Start with empty servers map
-            client_info,
+            servers: StdArc::new(Mutex::new(HashMap::new())), // Use aliased Arc
+            client_info, // Type is now rmcp::model::Implementation
             request_timeout,
-            config: Arc::new(Mutex::new(initial_config)),
-            config_path: Arc::new(Mutex::new(Some(config_path))),
-            provider_models: Arc::new(Mutex::new(provider_models_config)), // Store loaded models
-            provider_models_path: Arc::new(Mutex::new(provider_models_path)), // Store models path
-            active_provider_name: Arc::new(Mutex::new(active_provider_name)),
-            ai_client: Arc::new(Mutex::new(initial_ai_client)),
+            config: StdArc::new(Mutex::new(initial_config)), // Use aliased Arc
+            config_path: StdArc::new(Mutex::new(Some(config_path))), // Use aliased Arc
+            provider_models: StdArc::new(Mutex::new(provider_models_config)), // Use aliased Arc
+            provider_models_path: StdArc::new(Mutex::new(provider_models_path)), // Use aliased Arc
+            active_provider_name: StdArc::new(Mutex::new(active_provider_name)), // Use aliased Arc
+            ai_client: StdArc::new(Mutex::new(initial_ai_client)), // Use aliased Arc
         })
     }
 }
