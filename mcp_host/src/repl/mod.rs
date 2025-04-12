@@ -3,8 +3,7 @@
 // connections module removed as MCPHost handles server management
 mod command;
 mod helper;
-#[cfg(test)]
-mod test_utils;
+
 
 pub use command::CommandProcessor;
 pub use helper::ReplHelper;
