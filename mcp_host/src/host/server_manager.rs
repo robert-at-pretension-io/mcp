@@ -438,11 +438,16 @@ impl ServerManager {
 
             // Extract Peer and Capabilities from the running service
             let peer = running_service.peer().clone();
-            let capabilities = running_service.peer_info().map(|info| info.capabilities.clone());
-            if capabilities.is_some() {
-                 info!("Successfully obtained capabilities for server '{}' via ManualTransport.", name);
+            // Use if let for clarity and potentially avoid compiler issue
+            let capabilities = if let Some(info) = running_service.peer_info() {
+                Some(info.capabilities.clone())
             } else {
-                 warn!("Could not obtain capabilities for server '{}' after initialization via ManualTransport.", name);
+                None
+            };
+            if capabilities.is_some() {
+                 info!("Successfully obtained capabilities for server '{}' after initialization.", name); // Corrected log
+            } else {
+                 warn!("Could not obtain capabilities for server '{}' after initialization.", name); // Corrected log
             }
 
             // --- Wrap Peer in McpClient ---
