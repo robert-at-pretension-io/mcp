@@ -3,7 +3,8 @@ use async_trait::async_trait;
 // Removed duplicate imports below
 use serde_json::Value;
 use std::path::Path;
-use shared_protocol_objects::Role;
+// Use the local Role definition from repl/mod.rs
+use crate::repl::Role;
 // Removed unused import: use rllm::builder::LLMBackend;
 
 

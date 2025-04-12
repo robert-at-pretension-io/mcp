@@ -176,4 +176,15 @@ impl ConversationState {
             content: content.to_string(),
         });
     }
+
+    /// Get the initial system prompt (assumes it's the first message).
+    pub fn get_system_prompt(&self) -> Option<&str> {
+        self.messages.first().and_then(|msg| {
+            if msg.role == Role::System {
+                Some(msg.content.as_str())
+            } else {
+                None // First message wasn't System
+            }
+        })
+    }
 }

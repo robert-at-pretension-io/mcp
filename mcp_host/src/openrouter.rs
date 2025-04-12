@@ -96,12 +96,12 @@ impl OpenRouterClient {
         })
     }
 
-    // Convert our Message type to OpenRouter's ChatMessage type
+    // Convert our Message type (which uses local Role) to OpenRouter's ChatMessage type
     fn convert_message(message: &Message) -> ChatMessage {
         let role = match message.role {
-            shared_protocol_objects::Role::System => "system",
-            shared_protocol_objects::Role::User => "user",
-            shared_protocol_objects::Role::Assistant => "assistant",
+            Role::System => "system", // Use local Role enum
+            Role::User => "user",
+            Role::Assistant => "assistant",
         }.to_string();
 
         let content = match &message.content {
@@ -169,7 +169,7 @@ struct OpenRouterRequestBuilder {
 impl AIRequestBuilder for OpenRouterRequestBuilder {
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.messages.push(Message {
-            role: shared_protocol_objects::Role::System,
+            role: Role::System, // Use local Role enum
             content: Content::Text(content),
         });
         self
@@ -177,7 +177,7 @@ impl AIRequestBuilder for OpenRouterRequestBuilder {
 
     fn user(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.messages.push(Message {
-            role: shared_protocol_objects::Role::User,
+            role: Role::User, // Use local Role enum
             content: Content::Text(content),
         });
         self
@@ -187,7 +187,7 @@ impl AIRequestBuilder for OpenRouterRequestBuilder {
         // Basic implementation for now - just add text and ignore image
         let mut builder = *self;
         builder.messages.push(Message {
-            role: shared_protocol_objects::Role::User,
+            role: Role::User, // Use local Role enum
             content: Content::Text(text),
         });
         Ok(Box::new(builder))
@@ -196,7 +196,7 @@ impl AIRequestBuilder for OpenRouterRequestBuilder {
     fn user_with_image_url(mut self: Box<Self>, text: String, _image_url: String) -> Box<dyn AIRequestBuilder> {
         // Basic implementation for now - just add text and ignore image URL
         self.messages.push(Message {
-            role: shared_protocol_objects::Role::User,
+            role: Role::User, // Use local Role enum
             content: Content::Text(text),
         });
         self
@@ -204,7 +204,7 @@ impl AIRequestBuilder for OpenRouterRequestBuilder {
 
     fn assistant(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.messages.push(Message {
-            role: shared_protocol_objects::Role::Assistant,
+            role: Role::Assistant, // Use local Role enum
             content: Content::Text(content),
         });
         self
@@ -224,7 +224,7 @@ impl AIRequestBuilder for OpenRouterRequestBuilder {
 
         for message in &self.messages {
             // Inject system prompt before the first user message
-            if message.role == shared_protocol_objects::Role::User && !system_prompt_injected {
+            if message.role == Role::User && !system_prompt_injected { // Use local Role enum
                  if !self.system_prompt.is_empty() {
                      log::debug!("Injecting system prompt before first user message for OpenRouter");
                      final_api_messages.push(ChatMessage {

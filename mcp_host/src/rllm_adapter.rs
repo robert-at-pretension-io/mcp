@@ -2,7 +2,8 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities};
 use serde_json::Value;
-use shared_protocol_objects::Role;
+// Use the local Role definition from repl/mod.rs
+use crate::repl::Role;
 use rllm::builder::{LLMBackend, LLMBuilder};
 use rllm::chat::{ChatMessage, ChatRole, MessageType};
 use std::path::Path;

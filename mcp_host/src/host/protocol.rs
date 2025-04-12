@@ -34,17 +34,33 @@ impl IdGenerator {
 
 /// Helper functions to create standard responses
 pub fn create_success_response(id: Option<Value>, result: Value) -> JsonRpcResponse {
-    success_response(id, result)
+    // Reimplement using rmcp types
+    JsonRpcResponse {
+        jsonrpc: JsonRpcVersion::V2_0,
+        id: id.map(rmcp::model::NumberOrString::from_value).transpose().ok().flatten(), // Convert Value to Option<NumberOrString>
+        result: Some(result),
+        error: None,
+    }
 }
 
 pub fn create_error_response(id: Option<Value>, code: i64, message: &str) -> JsonRpcResponse {
-    error_response(id, code, message)
+    // Reimplement using rmcp types
+    JsonRpcResponse {
+        jsonrpc: JsonRpcVersion::V2_0,
+        id: id.map(rmcp::model::NumberOrString::from_value).transpose().ok().flatten(), // Convert Value to Option<NumberOrString>
+        result: None,
+        error: Some(JsonRpcError {
+            code: code.into(), // Convert i64 to ErrorCode
+            message: message.to_string(),
+            data: None,
+        }),
+    }
 }
 
 /// Create a JSON-RPC request using the shared library's structures
 pub fn create_request<P: Serialize>(method: &str, params: Option<P>, id_generator: &IdGenerator) -> Result<JsonRpcRequest> {
     let id = id_generator.next_id();
-    
+
     let params_value = match params {
         Some(p) => Some(serde_json::to_value(p)?),
         None => None,
