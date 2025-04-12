@@ -118,13 +118,7 @@ impl RLLMClient {
         }
     }
 
-    /// Convert MCP Role to rllm's ChatRole
-    fn convert_role(role: &Role) -> ChatRole {
-        match role {
-            Role::User => ChatRole::User,
-            Role::Assistant => ChatRole::Assistant
-        }
-    }
+    // Removed unused convert_role function
 }
 
 // Implement Debug
@@ -609,10 +603,25 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         let mut chat_messages = Vec::new();
         let mut _has_image = false; // Keep track if images are involved
 
-        // --- System Prompt is handled by the builder now, removed manual injection ---
+        // --- System Prompt is handled by the builder now ---
 
         // --- Process User/Assistant Messages ---
-        for (role, content) in self.messages.iter() {
+        // Skip the first message if a system prompt was set via the builder
+        let messages_to_add = if !self.system_prompt.is_empty() && !self.messages.is_empty() {
+            // Check if the first message content actually matches the system prompt
+            // This is a safety check in case the state management changes
+            if self.messages[0].1 == self.system_prompt {
+                 log::debug!("Skipping first message in adapter loop as it matches the system prompt.");
+                 self.messages.iter().skip(1)
+            } else {
+                 log::warn!("System prompt set, but first message content doesn't match. Adding all messages.");
+                 self.messages.iter().skip(0) // Add all if mismatch
+            }
+        } else {
+            self.messages.iter().skip(0) // Add all messages if no system prompt was set
+        };
+
+        for (role, content) in messages_to_add {
             let (rllm_role, message_type) = match role {
                 Role::User => {
                     // Determine message type based on content prefix
