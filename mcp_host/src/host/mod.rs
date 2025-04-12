@@ -19,6 +19,8 @@ use rmcp::model::Tool as RmcpTool; // Alias Tool
 use std::sync::Arc as StdArc; // Add alias import
 
 use crate::ai_client::{AIClient, AIClientFactory};
+// Import the tool prompt generator
+use crate::conversation_service::generate_tool_system_prompt;
 use crate::host::config::{AIProviderConfig, Config as HostConfig, ProviderModelsConfig}; // Removed unused ServerConfig
 use std::path::PathBuf;
 pub struct MCPHost {
@@ -393,15 +395,19 @@ impl MCPHost {
             )
         }).collect::<Vec<_>>().join("\n"); // Join with newline
 
-        log::debug!("tool_str is {:?}", &tools_str);
+        log::debug!("tool_str is {:?}", &tools_str); // Keep this debug log
 
-        // Generate simplified system prompt
+        // Generate the tool instructions part of the prompt
+        let tool_instructions = generate_tool_system_prompt(&tool_info_list);
+
+        // Combine base prompt with tool instructions
         let system_prompt = format!(
-            "You are a helpful assistant with access to tools. Use tools EXACTLY according to their descriptions.", // Base prompt
-            // Tool instructions are now generated separately if needed
+            "You are a helpful assistant. You have access to the following tools. Use them when appropriate, following their specified input schema precisely.\n\n{}",
+            tool_instructions
         );
+        log::debug!("Generated full system prompt for single-server chat (length: {})", system_prompt.len());
 
-        // Create the conversation state (passes Vec<rmcp::model::Tool>)
+        // Create the conversation state with the full system prompt
         let state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list);
 
         // The ConversationState::new only adds the base system prompt.
@@ -417,13 +423,17 @@ impl MCPHost {
         // Fetch tools from all servers (already returns Vec<rmcp::model::Tool>)
         let all_tools = self.list_all_tools().await?;
 
-        // Generate system prompt using combined tool list
-        let system_prompt = format!(
-            "You are a helpful assistant with access to tools from multiple servers. Use tools EXACTLY according to their descriptions.", // Base prompt
-            // Tool instructions are now generated separately if needed
-        );
+        // Generate the tool instructions part of the prompt using the combined list
+        let tool_instructions = generate_tool_system_prompt(&all_tools);
 
-        // Create the conversation state
+        // Combine base prompt with tool instructions
+        let system_prompt = format!(
+            "You are a helpful assistant. You have access to the following tools from multiple servers. Use them when appropriate, following their specified input schema precisely.\n\n{}",
+            tool_instructions
+        );
+        log::debug!("Generated full system prompt for multi-server chat (length: {})", system_prompt.len());
+
+        // Create the conversation state with the full system prompt
         let state = crate::conversation_state::ConversationState::new(system_prompt, all_tools);
         Ok(state)
     }
