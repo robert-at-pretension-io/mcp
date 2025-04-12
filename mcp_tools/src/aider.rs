@@ -113,8 +113,8 @@ impl AiderExecutor {
                         Some("openai/o3-mini".to_string())
                     },
                     "gemini" => {
-                        debug!("Using default Gemini model: gemini/gemini-1.5-pro-latest");
-                        Some("gemini/gemini-1.5-pro-latest".to_string())
+                        debug!("Using default Gemini model: gemini/gemini-2.5-pro-preview-03-25");
+                        Some("gemini/gemini-2.5-pro-preview-03-25".to_string())
                     }
                     _ => {
                         error!("Cannot determine default model for unknown provider: {}", provider);
@@ -179,24 +179,24 @@ impl AiderExecutor {
     }
     
     /// Detects the provider based on available API keys in the environment.
-    /// Prioritizes Anthropic > OpenAI > Gemini if multiple keys are present.
+    /// Prioritizes Gemini > Anthropic > OpenAI if multiple keys are present. Defaults to Gemini.
     fn detect_provider() -> String {
+        let has_gemini = std::env::var("GEMINI_API_KEY").is_ok();
         let has_anthropic = std::env::var("ANTHROPIC_API_KEY").is_ok();
         let has_openai = std::env::var("OPENAI_API_KEY").is_ok();
-        let has_gemini = std::env::var("GEMINI_API_KEY").is_ok();
 
-        if has_anthropic {
+        if has_gemini {
+            debug!("Detected GEMINI_API_KEY, selecting 'gemini' provider.");
+            "gemini".to_string()
+        } else if has_anthropic {
             debug!("Detected ANTHROPIC_API_KEY, selecting 'anthropic' provider.");
             "anthropic".to_string()
         } else if has_openai {
             debug!("Detected OPENAI_API_KEY, selecting 'openai' provider.");
             "openai".to_string()
-        } else if has_gemini {
-            debug!("Detected GEMINI_API_KEY, selecting 'gemini' provider.");
-            "gemini".to_string()
         } else {
-            debug!("No specific provider API key found. Defaulting to 'anthropic'.");
-            "anthropic".to_string() // Default if no keys are found
+            debug!("No specific provider API key found. Defaulting to 'gemini'.");
+            "gemini".to_string() // Default if no keys are found
         }
     }
 
@@ -236,7 +236,7 @@ impl AiderExecutor {
                 match provider.as_str() {
                     "anthropic" => Some("anthropic/claude-3-7-sonnet-20250219".to_string()),
                     "openai" => Some("openai/o3-mini".to_string()),
-                    "gemini" => Some("gemini/gemini-1.5-pro-latest".to_string()),
+                    "gemini" => Some("gemini/gemini-2.5-pro-preview-03-25".to_string()), // Updated default model
                     _ => None,
                 }
             });
@@ -405,51 +405,56 @@ mod tests {
     // Test provider detection logic
     #[test]
     fn test_provider_detection() {
-        // Test priority: Anthropic > OpenAI > Gemini > Default (Anthropic)
+        // Test priority: Gemini > Anthropic > OpenAI > Default (Gemini)
         
-        // Case 1: Only Anthropic key
-        env::set_var("ANTHROPIC_API_KEY", "test_key");
-        env::remove_var("OPENAI_API_KEY");
-        env::remove_var("GEMINI_API_KEY");
-        assert_eq!(AiderExecutor::detect_provider(), "anthropic");
-
-        // Case 2: Only OpenAI key
-        env::remove_var("ANTHROPIC_API_KEY");
-        env::set_var("OPENAI_API_KEY", "test_key");
-        env::remove_var("GEMINI_API_KEY");
-        assert_eq!(AiderExecutor::detect_provider(), "openai");
-
-        // Case 3: Only Gemini key
+        // Case 1: Only Gemini key
         env::remove_var("ANTHROPIC_API_KEY");
         env::remove_var("OPENAI_API_KEY");
         env::set_var("GEMINI_API_KEY", "test_key");
         assert_eq!(AiderExecutor::detect_provider(), "gemini");
 
-        // Case 4: Anthropic and OpenAI keys (Anthropic priority)
+        // Case 2: Only Anthropic key
         env::set_var("ANTHROPIC_API_KEY", "test_key");
-        env::set_var("OPENAI_API_KEY", "test_key");
-        env::remove_var("GEMINI_API_KEY");
-        assert_eq!(AiderExecutor::detect_provider(), "anthropic");
-
-        // Case 5: OpenAI and Gemini keys (OpenAI priority)
-        env::remove_var("ANTHROPIC_API_KEY");
-        env::set_var("OPENAI_API_KEY", "test_key");
-        env::set_var("GEMINI_API_KEY", "test_key");
-        assert_eq!(AiderExecutor::detect_provider(), "openai");
-        
-        // Case 6: All keys (Anthropic priority)
+        env::remove_var("OPENAI_API_KEY");
         env::set_var("ANTHROPIC_API_KEY", "test_key");
-        env::set_var("OPENAI_API_KEY", "test_key");
-        env::set_var("GEMINI_API_KEY", "test_key");
-        assert_eq!(AiderExecutor::detect_provider(), "anthropic");
-
-        // Case 7: No keys (Default to Anthropic)
-        env::remove_var("ANTHROPIC_API_KEY");
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("GEMINI_API_KEY");
         assert_eq!(AiderExecutor::detect_provider(), "anthropic");
 
+        // Case 3: Only OpenAI key
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        env::remove_var("GEMINI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "openai");
+
+        // Case 4: Gemini and Anthropic keys (Gemini priority)
+        env::set_var("GEMINI_API_KEY", "test_key");
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::remove_var("OPENAI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "gemini");
+
+        // Case 5: Anthropic and OpenAI keys (Anthropic priority)
+        env::remove_var("GEMINI_API_KEY");
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        assert_eq!(AiderExecutor::detect_provider(), "anthropic");
+
+        // Case 6: All keys (Gemini priority)
+        env::set_var("GEMINI_API_KEY", "test_key");
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        assert_eq!(AiderExecutor::detect_provider(), "gemini");
+
+        // Case 7: No keys (Default to Gemini)
+        env::remove_var("GEMINI_API_KEY");
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::remove_var("OPENAI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "gemini");
+
         // Clean up env vars
+        env::remove_var("GEMINI_API_KEY");
         env::remove_var("ANTHROPIC_API_KEY");
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("GEMINI_API_KEY");
@@ -510,7 +515,7 @@ mod tests {
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
-            assert_eq!(cmd_args[model_index + 1], "gemini/gemini-1.5-pro-latest");
+            assert_eq!(cmd_args[model_index + 1], "gemini/gemini-2.5-pro-preview-03-25"); // Updated default model
             
             // Test custom model overrides default
             let params = AiderParams {
