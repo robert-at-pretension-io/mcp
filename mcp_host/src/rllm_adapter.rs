@@ -1,6 +1,8 @@
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use rmcp::model::Role;
+// Import LLMError for detailed error matching
+use rllm::error::LLMError;
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities};
 use serde_json::Value;
 // Use the local Role definition from repl/mod.rs
@@ -683,15 +685,30 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             },
             Err(e) => {
                 let elapsed = start_time.elapsed();
-                // Log the detailed error from rllm crate
-                log::error!("Underlying RLLM chat error: {:?}", e);
-                let error_msg = format!(
+                // Log more detailed error information
+                log::error!("RLLM chat request failed after {:.2}s.", elapsed.as_secs_f64());
+                log::error!("Underlying RLLM Error (Debug): {:?}", e); // Log Debug representation
+                log::error!("Underlying RLLM Error (Display): {}", e); // Log Display representation
+
+                // Extract more details if it's an HttpError
+                let detailed_error_msg = if let LLMError::HttpError(http_err_str) = &e {
+                    // The HttpError variant often contains the response body or more specific details
+                    format!("HTTP Error Details: {}", http_err_str)
+                } else {
+                    // For other error types, just use the standard display format
+                    format!("Error: {}", e)
+                };
+
+                log::error!("Formatted Error for Reporting: {}", detailed_error_msg);
+
+                // Construct the final error message for anyhow, including the detailed info if available
+                let final_error_msg = format!(
                     "RLLM chat request failed after {:.2}s: {}",
                     elapsed.as_secs_f64(),
-                    e // Keep the original error message for the final anyhow error
+                    detailed_error_msg // Use the potentially more detailed message
                 );
-                log::error!("{}", error_msg); // Log the formatted message too
-                Err(anyhow!(error_msg))
+
+                Err(anyhow!(final_error_msg)) // Return the final error
             }
         }
     }
