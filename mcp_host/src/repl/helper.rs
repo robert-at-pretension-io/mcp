@@ -6,7 +6,7 @@ use rustyline::Context;
 use std::borrow::Cow;
 
 // Use rmcp's Tool type directly
-use rmcp::model::Tool as ToolInfo;
+use rmcp::model::Tool as ToolInfo; // Keep alias for clarity in this file
 
 /// Helper for rustyline with command completion
 pub struct ReplHelper {

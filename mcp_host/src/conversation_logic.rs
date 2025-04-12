@@ -1,17 +1,17 @@
 
 // Keep only one set of imports
-use crate::ai_client::AIClient; // Removed unused AIRequestBuilder
+use crate::ai_client::AIClient;
 use crate::conversation_state::ConversationState;
 use crate::host::MCPHost;
-use crate::tool_parser::ToolParser; // Removed unused ToolCall
+use crate::tool_parser::ToolParser;
 use anyhow::{anyhow, Context, Result};
 use console::style;
 use log::{debug, error, info, warn};
 use serde::Deserialize;
 use serde_json;
 use std::sync::Arc;
-// Use local Role definition from repl/mod.rs or define here if needed standalone
-use crate::repl::Role; // Adjust path if Role is defined elsewhere
+// Use the local Role definition consistently
+use crate::repl::Role;
 use tokio::sync::mpsc;
 
 /// Configuration for how the conversation logic should behave.
@@ -102,7 +102,7 @@ async fn verify_response(
         .ok_or_else(|| anyhow!("No AI client active for verification"))?;
 
     // Find the index of the last user message
-    // Use rllm::prompt::PromptMessageRole::User
+    // Use the local Role enum
     let last_user_message_index = state.messages.iter().rposition(|m| m.role == Role::User);
 
     // Extract the original user request (the last one found)
@@ -327,13 +327,12 @@ pub async fn resolve_assistant_response(
                 debug!("All tools executed for iteration {}. Getting next AI response.", iterations);
                 let mut builder = client.raw_builder(&state.system_prompt);
 
-                // Add messages from state to the builder (already using aliased Role)
+                // Add messages from state to the builder (using local Role)
                 for msg in &state.messages {
                     match msg.role {
-                        Role::System => {} // System prompt is handled by raw_builder
+                        Role::System => builder = builder.system(msg.content.clone()), // Pass system messages too
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                        // Removed unreachable pattern: _ => {}
                     }
                 }
 
@@ -395,10 +394,9 @@ pub async fn resolve_assistant_response(
                 let mut builder = client.raw_builder(&state.system_prompt);
                 for msg in &state.messages {
                     match msg.role {
-                        Role::System => {}
+                        Role::System => builder = builder.system(msg.content.clone()), // Pass system messages too
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                        // Removed unreachable pattern
                     }
                 }
 
@@ -483,10 +481,9 @@ pub async fn resolve_assistant_response(
                                 let mut builder = client.raw_builder(&state.system_prompt);
                                 for msg in &state.messages {
                                     match msg.role {
-                                        Role::System => {}
+                                        Role::System => builder = builder.system(msg.content.clone()), // Pass system messages too
                                         Role::User => builder = builder.user(msg.content.clone()),
                                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
-                                        // Removed unreachable pattern
                                     }
                                 }
 

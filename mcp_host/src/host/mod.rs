@@ -14,16 +14,16 @@ use std::time::Duration; // Re-add Duration import
 use anyhow::{anyhow}; // Keep anyhow, remove duplicate Result
 use log::{debug, error, info, warn};
 use server_manager::ManagedServer;
-use rmcp::model::Implementation;
-use rmcp::model::Tool as ToolInfo; // Keep alias for now
+use rmcp::model::Implementation as RmcpImplementation; // Alias Implementation
+use rmcp::model::Tool as RmcpTool; // Alias Tool
 use std::sync::Arc as StdArc; // Add alias import
-    
+
 use crate::ai_client::{AIClient, AIClientFactory};
 use crate::host::config::{AIProviderConfig, Config as HostConfig, ProviderModelsConfig}; // Added ProviderModelsConfig
 use std::path::PathBuf;
 pub struct MCPHost {
     pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
-    pub client_info: Implementation,
+    pub client_info: RmcpImplementation, // Use aliased type
     pub request_timeout: Duration,
     pub config: Arc<Mutex<HostConfig>>, // Store the whole config
     pub config_path: Arc<Mutex<Option<PathBuf>>>, // Store the config path
@@ -38,7 +38,7 @@ impl Clone for MCPHost {
     fn clone(&self) -> Self {
         Self {
             servers: Arc::clone(&self.servers),
-            client_info: self.client_info.clone(),
+            client_info: self.client_info.clone(), // Use aliased type
             request_timeout: self.request_timeout,
             config: Arc::clone(&self.config), // Clone Arc for config
             config_path: Arc::clone(&self.config_path), // Clone Arc for path
@@ -271,14 +271,14 @@ impl MCPHost {
     fn server_manager(&self) -> server_manager::ServerManager {
         server_manager::ServerManager::new(
             StdArc::clone(&self.servers), // Use aliased Arc
-            self.client_info.clone(), // Type is now rmcp::model::Implementation
+            self.client_info.clone(), // Use aliased type
             self.request_timeout,
         )
     }
 
     /// List the tools available on a server
     // Update return type to use rmcp::model::Tool
-    pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<ToolInfo>> {
+    pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<RmcpTool>> { // Use aliased type
         self.server_manager().list_server_tools(server_name).await
     }
 
@@ -299,7 +299,7 @@ impl MCPHost {
 
     /// List tools from all currently running servers, removing duplicates by name.
     // Update return type to use rmcp::model::Tool
-    pub async fn list_all_tools(&self) -> Result<Vec<ToolInfo>> {
+    pub async fn list_all_tools(&self) -> Result<Vec<RmcpTool>> { // Use aliased type
         info!("Listing tools from all active servers...");
         let mut all_tools = HashMap::new(); // Use HashMap to deduplicate by name
         let server_names = { // Scope lock
@@ -372,27 +372,26 @@ impl MCPHost {
         // Create the tools string first
         let tools_str = tool_info_list.iter().map(|tool| {
             format!(
-                "- {}: {}\ninput schema: {:?}",
+                "- {}: {}\ninput schema: {}", // Use {} for schema display
                 tool.name.as_ref(),
-                tool.description.parse::<String>().unwrap_or("".to_string()),
-                tool.input_schema
+                tool.description.as_deref().unwrap_or(""), // Use as_deref
+                serde_json::to_string_pretty(&tool.input_schema).unwrap_or_else(|_| "{}".to_string()) // Pretty print schema
             )
-        }).collect::<Vec<_>>().join("");
+        }).collect::<Vec<_>>().join("\n"); // Join with newline
 
         log::debug!("tool_str is {:?}", &tools_str);
 
         // Generate simplified system prompt
         let system_prompt = format!(
-            "You are a helpful assistant with access to tools. Use tools EXACTLY according to their descriptions.\n\
-            TOOLS:\n{}",
-            tools_str
+            "You are a helpful assistant with access to tools. Use tools EXACTLY according to their descriptions.", // Base prompt
+            // Tool instructions are now generated separately if needed
         );
 
         // Create the conversation state (passes Vec<rmcp::model::Tool>)
-        let state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list); // Pass directly, no clone needed if not used after
+        let state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list);
 
-        // The ConversationState::new now incorporates the tool prompt generation,
-        // so we don't need to add it separately here.
+        // The ConversationState::new only adds the base system prompt.
+        // The tool instructions might be added later or handled by the AI client builder.
         // The generate_tool_system_prompt function is called within ConversationState::new.
 
         Ok(state)
@@ -406,16 +405,8 @@ impl MCPHost {
 
         // Generate system prompt using combined tool list
         let system_prompt = format!(
-            "You are a helpful assistant with access to tools from multiple servers. Use tools EXACTLY according to their descriptions.\n\
-            TOOLS:\n{}",
-            all_tools.iter().map(|tool| {
-                format!(
-                    "- {}: {}\n  input schema: {:?}",
-                    tool.name.as_ref(),
-                    tool.description.parse::<String>().unwrap_or("".to_string()),
-                    tool.input_schema
-                )
-            }).collect::<Vec<_>>().join("\n")
+            "You are a helpful assistant with access to tools from multiple servers. Use tools EXACTLY according to their descriptions.", // Base prompt
+            // Tool instructions are now generated separately if needed
         );
 
         // Create the conversation state
@@ -661,7 +652,7 @@ pub struct MCPHostBuilder {
     provider_models_path: Option<PathBuf>, // Added path for provider models config
     // Removed ai_provider_configs and default_ai_provider
     request_timeout: Option<Duration>,
-    client_info: Option<Implementation>,
+    client_info: Option<RmcpImplementation>, // Use aliased type
 }
 
 impl MCPHostBuilder {
@@ -697,9 +688,11 @@ impl MCPHostBuilder {
 
     /// Set the client info
     pub fn client_info(mut self, name: &str, version: &str) -> Self {
-        self.client_info = Some(Implementation {
-            name: name.to_string(),
-            version: version.to_string(),
+        self.client_info = Some(RmcpImplementation { // Use aliased type
+            name: name.to_string().into(), // Convert to Cow<'static, str>
+            version: version.to_string().into(), // Convert to Cow<'static, str>
+            // Add other fields if needed, using Default::default()
+            ..Default::default()
         });
         self
     }
@@ -800,9 +793,10 @@ impl MCPHostBuilder {
 
         let request_timeout = self.request_timeout.unwrap_or(Duration::from_secs(120));
 
-        let client_info = self.client_info.unwrap_or_else(|| Implementation {
-            name: "mcp-host".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
+        let client_info = self.client_info.unwrap_or_else(|| RmcpImplementation { // Use aliased type
+            name: "mcp-host".to_string().into(), // Convert to Cow
+            version: env!("CARGO_PKG_VERSION").to_string().into(), // Convert to Cow
+            ..Default::default()
         });
 
         Ok(MCPHost {

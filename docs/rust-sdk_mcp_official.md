@@ -1,70 +1,35 @@
-Model Context Protocol (MCP) Client Implementation Guide
-1. Protocol Specifications
+Model Context Protocol (`rmcp`) Client Implementation Guide
+1. Protocol Specifications (`rmcp::model`)
 Core Protocol Definitions
-The Model Context Protocol uses JSON-RPC 2.0 as its base protocol with specific message types and structures. The core protocol is defined in the following key components:
-Protocol Versions
-rustpub const V_2025_03_26: Self = Self(Cow::Borrowed("2025-03-26"));
+The Model Context Protocol uses JSON-RPC 2.0 as its base protocol. Key `rmcp` components include:
+Protocol Versions (`rmcp::model::ProtocolVersion`)
+```rust
+pub const V_2025_03_26: Self = Self(Cow::Borrowed("2025-03-26"));
 pub const V_2024_11_05: Self = Self(Cow::Borrowed("2024-11-05"));
 pub const LATEST: Self = Self::V_2025_03_26;
-Message Structure
-All messages follow the JSON-RPC 2.0 format with these primary types:
+```
+Message Structure (`rmcp::model::JsonRpc*`)
+All messages follow the JSON-RPC 2.0 format:
 
-JsonRpcRequest: For client requests
-JsonRpcResponse: For server responses
-JsonRpcNotification: For notifications (events without responses)
-JsonRpcError: For error responses
+*   `JsonRpcRequest`: For client/server requests.
+*   `JsonRpcResponse`: For server/client responses.
+*   `JsonRpcNotification`: For notifications.
+*   `JsonRpcError`: For error responses.
 
-Request and Response Identifiers
-Requests and responses are correlated using RequestId, which can be either:
-
-A number (NumberOrString::Number(u32))
-A string (NumberOrString::String(Arc<str>))
-
+Request and Response Identifiers (`rmcp::model::RequestId`)
+Requests and responses are correlated using `RequestId`, which wraps `rmcp::model::NumberOrString`.
 Message Types and Schemas
-The protocol supports several message types, organized as client/server requests, responses, and notifications:
-Client Requests:
-rustexport type ClientRequest =
-    | PingRequest
-    | InitializeRequest
-    | CompleteRequest
-    | SetLevelRequest
-    | GetPromptRequest
-    | ListPromptsRequest
-    | ListResourcesRequest
-    | ListResourceTemplatesRequest
-    | ReadResourceRequest
-    | SubscribeRequest
-    | UnsubscribeRequest
-    | CallToolRequest
-    | ListToolsRequest;
-Server Requests:
-rustexport type ServerRequest =
-    | PingRequest
-    | CreateMessageRequest
-    | ListRootsRequest;
-Client Notifications:
-rustexport type ClientNotification =
-    | CancelledNotification
-    | ProgressNotification
-    | InitializedNotification
-    | RootsListChangedNotification;
-Server Notifications:
-rustexport type ServerNotification =
-    | CancelledNotification
-    | ProgressNotification
-    | LoggingMessageNotification
-    | ResourceUpdatedNotification
-    | ResourceListChangedNotification
-    | ToolListChangedNotification
-    | PromptListChangedNotification;
-Protocol Negotiation
-Protocol version negotiation occurs during initialization:
+The SDK defines specific request, response, and notification types (e.g., `InitializeRequest`, `InitializeResult`, `CallToolRequest`, `CallToolResult`, `CancelledNotification`). These are typically used internally by the `Peer` but can be referenced.
+Protocol Negotiation (`InitializeRequest`, `InitializeResult`)
+Protocol version negotiation occurs during the initialization handled by `serve_client`/`serve_server`.
 
-Client sends an InitializeRequest with its supported protocol version and capabilities
-Server responds with an InitializeResult containing its protocol version and capabilities
-Client confirms with an InitializedNotification
+*   Client sends `InitializeRequest` (handled by `serve_client`).
+*   Server responds with `InitializeResult` (handled by `serve_server`).
+*   Client confirms with `InitializedNotification` (handled by `serve_client`).
 
-rust#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+```rust
+// Relevant structs (usually handled internally by serve_*)
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeRequestParam {
     pub protocol_version: ProtocolVersion,
@@ -81,113 +46,99 @@ pub struct InitializeResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
 }
-2. Client Implementation Details
+```
+2. Client Implementation Details (`rmcp::service`, `rmcp::handler::client`)
 Initialization Sequence
-Client initialization follows these steps:
+Client initialization is simplified using `serve_client`:
 
-Create a transport layer (WebSockets, stdio, etc.)
-Create a client handler that implements the ClientHandler trait
-Send an InitializeRequest to establish capabilities
-Wait for the server's InitializeResult
-Send InitializedNotification to confirm readiness
+1.  Create a transport (e.g., `TokioChildProcess`).
+2.  Create a client handler (can be `()` for default behavior, or implement `ClientHandler` for custom notification handling).
+3.  Call `serve_client(handler, transport).await`. This handles the handshake.
+4.  The result is a `RunningService`, from which you get the `Peer` for interaction.
 
 Example:
-rustlet service = ()
-    .serve(TokioChildProcess::new(Command::new("uvx").arg("mcp-server-git"))?)
-    .await?;
+```rust
+use rmcp::{
+    service::{serve_client, RoleClient},
+    transport::child_process::TokioChildProcess,
+    ServiceExt, // Required for .serve() if using that pattern
+};
+use tokio::process::Command;
 
-// Server info is available after initialization
-let server_info = service.peer_info();
+let mut cmd = Command::new("mcp-server-executable");
+let transport = TokioChildProcess::new(&mut cmd)?;
+let client_handler = (); // Use default handler
+
+// Initialize and get the running service
+let running_service = serve_client(client_handler, transport).await?;
+
+// Get the peer for communication
+let peer = running_service.peer();
+
+// Get server info (available after initialization)
+if let Some(server_info) = running_service.peer_info() {
+    println!("Connected to: {} {}", server_info.server_info.name, server_info.server_info.version);
+}
+
+// Use the peer to make requests
+let tools = peer.list_tools(None).await?;
+```
 Required Parameters
-The client must provide these parameters during initialization:
-
-protocol_version: The MCP version to use (e.g., "2025-03-26")
-capabilities: What features the client supports
-client_info: Client name and version
-
-rust// Example of setting up client capabilities
-let capabilities = ClientCapabilities::builder()
-    .enable_experimental()
-    .enable_roots()
-    .enable_roots_list_changed()
-    .build();
+Client information (`client_info: rmcp::model::Implementation`) and capabilities (`capabilities: rmcp::model::ClientCapabilities`) are provided during the `serve_client` call implicitly or explicitly depending on the handler. The default `()` handler uses default capabilities.
 Authentication
-The protocol itself doesn't specify authentication methods, but implementations typically use:
+The protocol itself doesn't specify authentication. Implementations typically use:
 
-API keys in HTTP headers for HTTP/WebSocket transports
-Environment variables for process-based transports
-Standard OS security for local socket transports
+*   API keys in HTTP headers (for HTTP/SSE/WebSocket transports).
+*   Environment variables (for child process transports).
+*   OS security (for local sockets).
 
-Error Handling
-Errors follow JSON-RPC standard error codes with additional MCP-specific codes:
-rustpub const RESOURCE_NOT_FOUND: Self = Self(-32002);
-pub const INVALID_REQUEST: Self = Self(-32600);
-pub const METHOD_NOT_FOUND: Self = Self(-32601);
-pub const INVALID_PARAMS: Self = Self(-32602);
-pub const INTERNAL_ERROR: Self = Self(-32603);
-pub const PARSE_ERROR: Self = Self(-32700);
-Error responses include:
+Error Handling (`rmcp::Error`, `rmcp::ServiceError`)
+Errors generally conform to JSON-RPC standards. The SDK uses:
 
-code: Numeric error code
-message: Human-readable error message
-data: Optional additional error details
+*   `rmcp::Error`: For general SDK errors.
+*   `rmcp::ServiceError`: For errors during service operation (returned by `Peer` methods).
 
-3. Transport Layer
+Error responses include `code`, `message`, and optional `data`.
+3. Transport Layer (`rmcp::transport`)
 Supported Transports
-The SDK supports multiple transport mechanisms:
+The SDK provides several transport implementations:
 
-Standard I/O:
-
-Uses tokio::io::stdin/stdout for process-based communication
-Suitable for child processes and embedding
-
-
-Child Process:
-
-TokioChildProcess for spawning and communicating with external processes
-Handles standard I/O communication with spawned processes
-
-
-HTTP/SSE (Server-Sent Events):
-
-SseTransport for client-side connections
-SseServer for server-side implementations
-Uses HTTP-based event streaming
-
-
-WebSockets (referenced in code but implementation details not fully examined)
+*   **Standard I/O:** `rmcp::transport::stdio()` - For communication via stdin/stdout.
+*   **Child Process:** `rmcp::transport::child_process::TokioChildProcess` - Spawns and communicates with an external process via stdio.
+*   **HTTP/SSE:** `rmcp::transport::sse::SseTransport` (client), `rmcp::transport::sse::SseServer` (server).
+*   **WebSockets:** (May require external crates like `tokio-tungstenite` and implementing `IntoTransport`).
 
 Message Framing
-Messages are encoded as newline-delimited JSON. The transport layer handles:
-
-Serializing messages to JSON
-Adding newline delimiters
-Parsing incoming messages from JSON-RPC format
-
-The IntoTransport trait defines how different transports can be used:
-rustpub trait IntoTransport<R, E, A>: Send + 'static
+Transports handle JSON serialization/deserialization and newline delimiting. The core abstraction is the `IntoTransport` trait:
+```rust
+pub trait IntoTransport<R, E, A>: Send + 'static
 where
-    R: ServiceRole,
+    R: ServiceRole, // RoleClient or RoleServer
     E: std::error::Error + Send + 'static,
 {
     fn into_transport(
         self,
     ) -> (
+        // Sink for sending messages
         impl Sink<TxJsonRpcMessage<R>, Error = E> + Send + 'static,
+        // Stream for receiving messages
         impl Stream<Item = RxJsonRpcMessage<R>> + Send + 'static,
     );
 }
+```
 Reconnection Strategies
-The SDK doesn't explicitly handle reconnection. Clients are expected to:
+The SDK itself doesn't automatically handle reconnection. Client applications need to:
 
-Detect transport failures through errors
-Close the existing connection
-Re-establish a new connection and re-initialize
+1.  Detect transport failures (e.g., errors from `Peer` methods or the `running_service.waiting().await` future).
+2.  Potentially cancel the `RunningService` task.
+3.  Re-establish the transport.
+4.  Call `serve_client` again to re-initialize the connection.
 
-4. Message Types
-Content Types
-Messages can contain different content types:
-rust#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+4. Message Types (`rmcp::model`)
+Content Types (`RawContent`, `Content`)
+Messages can contain different content types, defined in the `RawContent` enum and wrapped by `Content`:
+```rust
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum RawContent {
     Text(RawTextContent),
@@ -195,174 +146,123 @@ pub enum RawContent {
     Resource(RawEmbeddedResource),
     Audio(AudioContent),
 }
+```
 Request/Response Pairs
-Key request/response pairs include:
+Key interactions are handled via `Peer` methods:
 
-Initialization:
-
-Request: InitializeRequest
-Response: InitializeResult
-
-
-Tool Invocation:
-
-Request: CallToolRequest
-Response: CallToolResult
-
-
-Resource Management:
-
-Request: ListResourcesRequest
-Response: ListResourcesResult
-Request: ReadResourceRequest
-Response: ReadResourceResult
-
-
-Message Generation:
-
-Request: CreateMessageRequest
-Response: CreateMessageResult
-
-
+*   **Initialization:** Handled by `serve_client`/`serve_server`.
+*   **Tool Invocation:** `peer.call_tool(CallToolRequestParam) -> Result<CallToolResult, ServiceError>`
+*   **Resource Management:** `peer.list_resources(...)`, `peer.read_resource(...)`
+*   **Message Generation:** `peer.create_message(...)` (Server-side)
 
 Notification Types
-Notifications are used for asynchronous events:
+Notifications are used for asynchronous events. Clients might receive:
 
-Cancellation: CancelledNotification - For stopping in-progress requests
-Progress: ProgressNotification - For reporting progress on long-running operations
-Resource Updates: ResourceUpdatedNotification, ResourceListChangedNotification - For resource changes
-Tool Updates: ToolListChangedNotification - When available tools change
+*   `CancelledNotification`: A request was cancelled by the server.
+*   `ProgressNotification`: Progress update for a server operation.
+*   `ResourceUpdatedNotification`, `ResourceListChangedNotification`: Resource changes.
+*   `ToolListChangedNotification`: Available tools changed.
 
-Progress Reporting
-Progress is reported through ProgressNotification:
-rust#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+Clients handle these by implementing the `ClientHandler` trait.
+Progress Reporting (`ProgressNotificationParam`)
+Servers send `ProgressNotification` to report progress on long-running tasks initiated by the client.
+```rust
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressNotificationParam {
-    pub progress_token: ProgressToken,
+    pub progress_token: ProgressToken, // Provided by client in original request
     pub progress: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
+    // ... other fields (total, message)
 }
-Cancellation Protocol
-Cancellation is handled through CancelledNotification:
-rust#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+```
+Cancellation Protocol (`CancelledNotificationParam`)
+Either side can send a `CancelledNotification` to cancel an ongoing request. The `Peer` handles sending cancellations for client-initiated requests via the `RequestHandle`.
+```rust
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelledNotificationParam {
     pub request_id: RequestId,
     pub reason: Option<String>,
 }
-5. Tool Integration
-Tool Definition
-Tools are defined with:
-
-Name
-Description
-Input schema (JSON Schema)
-Optional annotations about behavior
-
-rust#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+```
+5. Tool Integration (`rmcp::model::Tool`, `rmcp::handler::server`)
+Tool Definition (`rmcp::model::Tool`)
+Tools are defined by the server and listed via `peer.list_tools()`. The client receives `rmcp::model::Tool` structs:
+```rust
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Tool {
     pub name: Cow<'static, str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<Cow<'static, str>>,
-    pub input_schema: Arc<JsonObject>,
+    // Schema for the 'arguments' object in CallToolRequestParam
+    pub input_schema: Arc<JsonObject>, // JsonObject = Map<String, Value>
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub annotations: Option<ToolAnnotations>,
 }
-Tool Registration
-Tools can be registered using macros:
-rust#[tool(tool_box)]
-impl Calculator {
-    #[tool(description = "Calculate the sum of two numbers")]
-    async fn sum(&self, #[tool(aggr)] SumRequest { a, b }: SumRequest) -> String {
-        (a + b).to_string()
-    }
+```
+Tool Invocation (`CallToolRequestParam`, `CallToolResult`)
+Clients invoke tools using `peer.call_tool()`:
+```rust
+use rmcp::{
+    model::{CallToolRequestParam, CallToolResult},
+    service::{Peer, RoleClient, ServiceError},
+};
+use serde_json::json;
+
+async fn invoke_my_tool(peer: &Peer<RoleClient>) -> Result<CallToolResult, ServiceError> {
+    let params = CallToolRequestParam {
+        name: "my_tool_name".into(),
+        // Arguments must be a JSON object (or None)
+        arguments: Some(json!({ "arg1": "value1", "arg2": 123 }).as_object().unwrap().clone()),
+    };
+    peer.call_tool(params).await
 }
-Tool Invocation
-Tools are invoked using the CallToolRequest:
-rustlet tool_result = service
-    .call_tool(CallToolRequestParam {
-        name: "git_status".into(),
-        arguments: serde_json::json!({ "repo_path": "." }).as_object().cloned(),
-    })
-    .await?;
-Tool Response Format
-Tool responses are returned in CallToolResult:
-rust#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+```
+Tool Response Format (`CallToolResult`)
+The response contains the tool's output:
+```rust
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CallToolResult {
+    // Vector of content parts (text, image, etc.)
     pub content: Vec<Content>,
+    // Optional flag indicating if the result represents an error from the tool's perspective
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_error: Option<bool>,
 }
-Practical Implementation Steps
-To implement an MCP client with your own transport layer:
+```
+Practical Implementation Steps (Client)
+1.  **Choose Transport:** Select an appropriate transport (e.g., `TokioChildProcess` for a local server).
+2.  **Define Handler:** Use `()` for default behavior or implement `ClientHandler` for custom notification handling.
+    ```rust
+    use rmcp::{handler::client::ClientHandler, service::{Peer, RoleClient}};
+    use std::future::Future;
 
-Set up the transport:
-rust// For a custom transport, implement the IntoTransport trait
-struct MyTransport { /* ... */ }
+    struct MyClientHandler; // Your custom handler state
 
-impl IntoTransport<RoleClient, MyError, ()> for MyTransport {
-    fn into_transport(self) -> (
-        impl Sink<ClientJsonRpcMessage, Error = MyError> + Send + 'static,
-        impl Stream<Item = ServerJsonRpcMessage> + Send + 'static,
-    ) {
-        // Split your transport into message sink and stream
-    }
-}
-
-Create a client handler:
-ruststruct MyClient {
-    peer: Option<Peer<RoleClient>>,
-}
-
-impl ClientHandler for MyClient {
-    fn get_peer(&self) -> Option<Peer<RoleClient>> {
-        self.peer.clone()
-    }
-    
-    fn set_peer(&mut self, peer: Peer<RoleClient>) {
-        self.peer = Some(peer);
-    }
-    
-    // Implement handlers for server requests if needed
-}
-
-Initialize the connection:
-rustlet my_transport = MyTransport::new(/* ... */);
-let client = MyClient { peer: None };
-let service = client.serve(my_transport).await?;
-
-// Now you can use service to interact with the server
-let tools = service.list_tools(Default::default()).await?;
-
-Invoke tools:
-rustlet result = service.call_tool(CallToolRequestParam {
-    name: "tool_name".into(),
-    arguments: Some(serde_json::json!({ 
-        "param1": "value1",
-        "param2": 42
-    }).as_object().unwrap().clone()),
-}).await?;
-
-Handle server notifications:
-rustimpl ClientHandler for MyClient {
-    // ...
-    
-    fn on_tool_list_changed(&self) -> impl Future<Output = ()> + Send + '_ {
-        async move {
-            // Tool list changed, may want to refresh your tool cache
-            if let Some(peer) = &self.peer {
-                let tools = peer.list_tools(Default::default()).await.unwrap();
-                // Update your tools
+    impl ClientHandler for MyClientHandler {
+        // Implement methods like on_tool_list_changed, on_progress, etc.
+        fn on_tool_list_changed(&self) -> impl Future<Output = ()> + Send + '_ {
+            async move {
+                println!("Server tool list changed!");
+                // Potentially call peer.list_tools() to refresh
             }
         }
+        // ... other handlers
     }
-}
-
+    ```
+3.  **Initialize:** Call `serve_client(handler, transport).await`.
+    ```rust
+    let running_service = serve_client(MyClientHandler, transport).await?;
+    let peer = running_service.peer();
+    ```
+4.  **Interact:** Use the `peer` object to call methods like `list_tools`, `call_tool`.
+    ```rust
+    let tools = peer.list_tools(None).await?;
+    let result = peer.call_tool(/* ... */).await?;
+    ```
+5.  **Handle Lifecycle:** Monitor `running_service.waiting().await` for completion or errors. Cancel the task if needed.
 
 Conclusion
-The Model Context Protocol provides a standardized way for AI systems to interact with external tools and resources. By implementing an MCP client, you can connect your application to any MCP-compatible server, enabling tool usage, resource access, and message generation in a consistent manner.
-The protocol's flexibility in transport mechanisms means you can implement it over various communication channels, while the structured message formats ensure compatibility across different implementations.RetryClaude does not have the ability to run the code it generates yet.Claude can make mistakes. Please double-check responses.7 3.7 Sonnet
+The `rmcp` SDK provides the necessary components to build robust MCP clients. By leveraging `serve_client`, `Peer`, and the defined model types, developers can interact with MCP servers over various transports, invoke tools, and handle server-sent notifications in a standardized way.

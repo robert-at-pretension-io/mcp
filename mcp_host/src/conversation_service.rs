@@ -5,12 +5,14 @@
 // Removed parse_json_response function
 // Removed handle_assistant_response function
 // Removed execute_single_tool function
-// Removed execute_tool_and_continue function
 // Removed continue_conversation_after_tools function
+
+// Import rmcp Tool type
+use rmcp::model::Tool as RmcpTool;
 
 
 /// Generate a system prompt instructing the AI about tool usage with text delimiters
-pub fn generate_tool_system_prompt(tools: &[rmcp::model::Tool]) -> String {
+pub fn generate_tool_system_prompt(tools: &[RmcpTool]) -> String { // Use aliased rmcp Tool
     // Format tools information
     let tools_info = tools.iter()
         .map(|t| format!(

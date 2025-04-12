@@ -1,12 +1,20 @@
-use anyhow::{anyhow, Context, Result}; // Import Context trait
+use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, warn};
 use serde_json::Value;
 use rmcp::model::{
-    Implementation, Tool as ToolInfo, CallToolResult
+    Implementation as RmcpImplementation, // Alias Implementation
+    Tool as RmcpTool, // Alias Tool
+    CallToolResult as RmcpCallToolResult, // Alias CallToolResult
+    ServerCapabilities as RmcpServerCapabilities, // Alias ServerCapabilities
+    ClientCapabilities as RmcpClientCapabilities, // Alias ClientCapabilities
+    InitializeResult as RmcpInitializeResult, // Alias InitializeResult
+    CallToolRequestParam as RmcpCallToolRequestParam, // Alias CallToolRequestParam
+    Content as RmcpContent, // Alias Content
+    RawContent as RmcpRawContent, // Alias RawContent
+    RawTextContent as RmcpRawTextContent, // Alias RawTextContent
 };
-use rmcp::service::{serve_client};
+use rmcp::service::{serve_client, Peer, RoleClient}; // Import Peer and RoleClient
 use rmcp::transport::child_process::TokioChildProcess;
-// Removed incorrect NoopClientHandler import - will use () instead
 use std::collections::HashMap;
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
@@ -22,13 +30,17 @@ use crate::host::config::Config;
 // Add re-exports for dependent code
 // No cfg attribute - make this available to tests
 pub mod testing {
-    // Use rmcp types directly in testing mocks as well for consistency
-    // Removed unused Content import
-    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion};
+    // Use aliased rmcp types in testing mocks
+    use crate::host::server_manager::{
+        RmcpTool, RmcpCallToolResult, RmcpServerCapabilities, RmcpImplementation,
+        RmcpInitializeResult, RmcpClientCapabilities, RmcpContent, RmcpRawContent,
+        RmcpRawTextContent,
+    };
+    use rmcp::model::ProtocolVersion; // Keep ProtocolVersion direct
     use std::borrow::Cow;
     use std::sync::Arc as StdArc;
 
-    // Test mock implementations
+    // Test mock implementations (McpClient remains a simple struct for tests)
     #[derive(Debug)]
     pub struct McpClient {
         pub _transport: MockProcessTransport, // Use MockProcessTransport
@@ -58,10 +70,10 @@ pub mod testing {
             // Test implementation - returns rmcp::model::Tool
             // Fix field types according to rmcp::model::Tool definition
             Ok(vec![
-                ToolInfo {
-                    name: Cow::Borrowed("test_tool"), // Use Cow
-                    description: Cow::Borrowed("A test tool"), // Use Cow
-                    input_schema: StdArc::new(serde_json::json!({ // Use Arc<Map<String, Value>>
+                RmcpTool { // Use aliased type
+                    name: Cow::Borrowed("test_tool"),
+                    description: Some(Cow::Borrowed("A test tool")), // Description is Option<Cow>
+                    input_schema: StdArc::new(serde_json::json!({
                         "type": "object",
                         "properties": {
                             "param1": {"type": "string"}
@@ -73,20 +85,17 @@ pub mod testing {
         }
 
         // Test implementation - returns rmcp::model::CallToolResult
-        pub async fn call_tool(&self, _name: &str, _args: serde_json::Value) -> anyhow::Result<CallToolResult> {
-            // Use rmcp::model::RawContent for variants
-            Ok(CallToolResult {
+        pub async fn call_tool(&self, _name: &str, _args: serde_json::Value) -> anyhow::Result<RmcpCallToolResult> { // Use aliased type
+            // Use aliased rmcp types
+            Ok(RmcpCallToolResult {
                 content: vec![
-                    // Provide None for the annotations argument to Content::new
-                    // Remove annotations field from RawTextContent constructor
-                    rmcp::model::Content::new(
-                        rmcp::model::RawContent::Text(
-                            rmcp::model::RawTextContent {
+                    RmcpContent::new( // Use aliased type
+                        RmcpRawContent::Text( // Use aliased type
+                            RmcpRawTextContent { // Use aliased type
                                 text: "Tool executed successfully".to_string(),
-                                // annotations: None, // Field does not exist here
                             }
                         ),
-                        None // Provide None for annotations argument
+                        None // Annotations are Option<Vec<Annotation>>
                     )
                 ],
                 is_error: Some(false),
@@ -94,21 +103,20 @@ pub mod testing {
         }
 
         // Add mock initialize method
-        pub async fn initialize(&mut self, _capabilities: ClientCapabilities) -> anyhow::Result<InitializeResult> {
-            // Add missing 'instructions' field
-            Ok(InitializeResult {
+        pub async fn initialize(&mut self, _capabilities: RmcpClientCapabilities) -> anyhow::Result<RmcpInitializeResult> { // Use aliased types
+            Ok(RmcpInitializeResult { // Use aliased type
                 protocol_version: ProtocolVersion::LATEST,
-                capabilities: ServerCapabilities::default(),
-                server_info: Implementation { name: "mock-server".into(), version: "0.0.0".into() },
-                instructions: None, // Add missing field
+                capabilities: RmcpServerCapabilities::default(), // Use aliased type
+                server_info: RmcpImplementation { name: "mock-server".into(), version: "0.0.0".into(), ..Default::default() }, // Use aliased type
+                instructions: None,
             })
         }
 
         pub async fn close(self) -> anyhow::Result<()> {
             Ok(())
         }
-        
-        pub fn capabilities(&self) -> Option<&ServerCapabilities> {
+
+        pub fn capabilities(&self) -> Option<&RmcpServerCapabilities> { // Use aliased type
             None
         }
     }
@@ -117,11 +125,11 @@ pub mod testing {
 // In production code, use rmcp types directly
 #[cfg(not(test))]
 pub mod production {
-    // Import necessary rmcp types
-    use rmcp::{
-        model::{Tool as ToolInfo, CallToolResult},
-        service::{Peer, RoleClient},
+    // Import necessary rmcp types using aliases from parent scope
+    use crate::host::server_manager::{
+        RmcpTool, RmcpCallToolResult, RmcpCallToolRequestParam, RmcpServerCapabilities,
     };
+    use rmcp::service::{Peer, RoleClient};
     use serde_json::Value;
     use anyhow::anyhow;
     // Removed unused ClientCapabilities, InitializeResult imports
@@ -149,26 +157,23 @@ pub mod production {
         }
 
         // Delegate methods to the Peer
-        pub async fn list_tools(&self) -> anyhow::Result<Vec<ToolInfo>> {
+        pub async fn list_tools(&self) -> anyhow::Result<Vec<RmcpTool>> { // Use aliased type
             log::info!("Using rmcp Peer::list_tools method");
-            // Peer::list_tools returns Result<ListToolsResult, ServiceError>
-            // We need to map the error and extract the tools vector
             self.inner.list_tools(None).await
                 .map(|result| result.tools) // Extract the Vec<Tool>
-                .map_err(|e| anyhow!("Failed to list tools via Peer: {}", e)) // Map ServiceError to anyhow::Error
+                .map_err(|e| anyhow!("Failed to list tools via Peer: {}", e))
         }
 
-        pub async fn call_tool(&self, name: &str, args: serde_json::Value) -> anyhow::Result<CallToolResult> {
+        pub async fn call_tool(&self, name: &str, args: serde_json::Value) -> anyhow::Result<RmcpCallToolResult> { // Use aliased type
             log::info!("Calling tool via rmcp Peer::call_tool method: {}", name);
-            // Convert Value to Option<Map<String, Value>> for arguments
             let arguments_map = match args {
                 Value::Object(map) => Some(map),
                 Value::Null => None,
                 _ => return Err(anyhow!("Tool arguments must be a JSON object or null")),
             };
 
-            let params = rmcp::model::CallToolRequestParam {
-                name: name.to_string().into(), // Convert &str to String first, then to Cow
+            let params = RmcpCallToolRequestParam { // Use aliased type
+                name: name.to_string().into(),
                 arguments: arguments_map,
             };
             self.inner.call_tool(params).await
@@ -183,9 +188,7 @@ pub mod production {
             Ok(())
         }
 
-        pub fn capabilities(&self) -> Option<&rmcp::model::ServerCapabilities> {
-            // Capabilities are typically available after initialization via the InitializeResult
-            // The Peer itself might not store them directly. We store them in ManagedServer.
+        pub fn capabilities(&self) -> Option<&RmcpServerCapabilities> { // Use aliased type
             log::warn!("McpClient::capabilities called. Capabilities should be accessed from ManagedServer after initialization.");
             None // Or retrieve from InitializeResult if stored within McpClient after init
         }
@@ -219,8 +222,8 @@ pub use self::production::McpClient; // Only export McpClient for production
 pub struct ManagedServer {
     pub name: String,
     pub process: TokioChild, // Keep the process handle for killing
-    pub client: McpClient, // This now wraps RoleClient (or is the test mock)
-    pub capabilities: Option<rmcp::model::ServerCapabilities>, // Type is already correct
+    pub client: McpClient, // This now wraps Peer<RoleClient> (or is the test mock)
+    pub capabilities: Option<RmcpServerCapabilities>, // Use aliased type
 }
 
 // Add a helper method for testing
@@ -249,7 +252,7 @@ type ServerMap = HashMap<String, ManagedServer>;
 pub struct ServerManager {
     // Use the concrete ServerMap type here
     pub servers: Arc<Mutex<ServerMap>>,
-    pub client_info: Implementation, // This should be rmcp::model::Implementation
+    pub client_info: RmcpImplementation, // Use aliased type
     pub request_timeout: Duration,
 }
 
@@ -257,7 +260,7 @@ impl ServerManager {
     /// Create a new ServerManager with the given parameters
     pub fn new(
         servers: Arc<Mutex<ServerMap>>, // Use ServerMap
-        client_info: Implementation, // Use rmcp::model::Implementation
+        client_info: RmcpImplementation, // Use aliased type
         request_timeout: Duration,
     ) -> Self {
         Self {
@@ -376,14 +379,14 @@ impl ServerManager {
     }
 
     /// List all available tools on the specified server
-    pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<ToolInfo>> { // Return type is already rmcp::model::Tool
+    pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<RmcpTool>> { // Use aliased type
         let servers = self.servers.lock().await;
         let server = servers.get(server_name)
             .ok_or_else(|| anyhow!("Server not found: {}", server_name))?;
 
         info!("Sending tool list request to server {}", server_name);
 
-        // Use the client's list_tools method (which delegates to rmcp's RoleClient)
+        // Use the client's list_tools method (which delegates to rmcp's Peer)
         match server.client.list_tools().await {
             Ok(tools_vec) => {
                 info!("Successfully received tools list: {} tools", tools_vec.len());
@@ -415,10 +418,10 @@ impl ServerManager {
             .map_err(|e| anyhow!("Failed to call tool '{}' on server '{}': {}", tool_name, server_name, e))?;
 
         // Format the tool response content using rmcp::model::CallToolResult
-        let output = format_tool_result(&result);
+        let output = format_tool_result(&result); // Use aliased type
         Ok(output)
     }
-    
+
     /// Start a server with the given name, command and arguments
     pub async fn start_server(&self, name: &str, program: &str, args: &[String]) -> Result<()> {
         // Use start_server_with_components, assuming empty envs if not provided
@@ -480,12 +483,13 @@ impl ServerManager {
             // Extract the peer from RunningService
             let peer = running_service.peer().clone(); // Clone the peer Arc
 
-            // Capabilities *should* be available after serve_client completes successfully.
-            // However, RunningService in rmcp 0.1.5 doesn't directly expose InitializeResult.
-            // We might need to infer capabilities later or assume defaults for now.
-            let capabilities = None; // Assume None for now, needs further investigation if capabilities are crucial here.
-            warn!("Capabilities are not directly accessible from RunningService in rmcp 0.1.5. Assuming None.");
-
+            // Capabilities are available via the RunningService peer_info method
+            let capabilities = running_service.peer_info().map(|info| info.capabilities.clone());
+            if capabilities.is_some() {
+                info!("Successfully obtained capabilities for server '{}'.", name);
+            } else {
+                warn!("Could not obtain capabilities for server '{}' after initialization.", name);
+            }
 
             // Wrap Peer in our McpClient wrapper
             let client = production::McpClient::new(peer); // Client no longer needs to be mutable
@@ -524,7 +528,7 @@ impl ServerManager {
             // Use the testing McpClient and MockProcessTransport
             let mut client = testing::McpClient::new(testing::create_test_transport()); // Removed mut
             // Mock initialization returns InitializeResult which contains capabilities
-            let init_result = client.initialize(rmcp::model::ClientCapabilities::default()).await?; // Call mock initialize
+            let init_result = client.initialize(RmcpClientCapabilities::default()).await?; // Call mock initialize, use aliased type
             let capabilities = Some(init_result.capabilities);
             info!("Mock process and client created for test server '{}'", name);
             (process, client, capabilities)
@@ -593,18 +597,18 @@ impl ServerManager {
 }
 
 /// Format a tool result (rmcp::model::CallToolResult) into a string for display
-pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
+pub fn format_tool_result(result: &RmcpCallToolResult) -> String { // Make public, use aliased type
     let mut output = String::new();
     // Handle potential error state first
     if result.is_error.unwrap_or(false) {
         output.push_str("TOOL ERROR:\n");
     }
 
-    for content in &result.content {
+    for content in &result.content { // content is RmcpContent
         // Match on the inner RawContent via content.raw
         match &content.raw { // Access the inner RawContent enum via .raw
             // Handle Text content - check if it's JSON
-            rmcp::model::RawContent::Text(text_content) => {
+            RmcpRawContent::Text(text_content) => { // Use aliased type
                 let text = &text_content.text;
                 // Try to parse as JSON for pretty printing
                 if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(text) {
@@ -624,28 +628,22 @@ pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
                     output.push_str(text);
                 }
             }
-            // Remove Json variant match as it doesn't exist in RawContent
-            // rmcp::model::RawContent::Json(json_content) => { ... }
-
             // Handle Image content - provide a placeholder
-            rmcp::model::RawContent::Image { .. } => { // Match Image variant
+            RmcpRawContent::Image { .. } => { // Use aliased type
                 output.push_str("[Image content - display not supported]");
             }
-            // Remove Audio variant match based on compiler error E0599
-            // rmcp::model::RawContent::Audio { .. } => { ... }
-
             // Handle Resource content
-            rmcp::model::RawContent::Resource { .. } => { // Match Resource variant
+            RmcpRawContent::Resource { .. } => { // Use aliased type
                 output.push_str("[Resource content - display not supported]");
             }
-            // Handle Audio variant (if it *does* exist despite error E0599, keep it commented out)
-            // rmcp::model::RawContent::Audio { .. } => {
-            //     output.push_str("[Audio content - display not supported]");
-            // }
+            // Handle Audio content
+            RmcpRawContent::Audio { .. } => { // Use aliased type
+                output.push_str("[Audio content - display not supported]");
+            }
             // Handle other potential content types if added in the future
-             // _ => { // This becomes unreachable if all variants are handled
-             //     output.push_str("[Unsupported content type]");
-             // }
+            // _ => { // This becomes unreachable if all variants are handled
+            //     output.push_str("[Unsupported content type]");
+            // }
         }
         output.push('\n');
     }

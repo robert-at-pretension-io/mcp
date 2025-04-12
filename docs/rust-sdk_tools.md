@@ -1,236 +1,120 @@
-How the Tool Marker System Works in the RMCP SDK
-The RMCP (Rust Model Context Protocol) SDK employs a sophisticated macro-based system to define, register, and execute tools. This system automates much of the boilerplate code needed to handle JSON-RPC tool calls while providing type safety and schema generation.
+How the Tool Marker System Works in the `rmcp` SDK
+The `rmcp` (Rust Model Context Protocol) SDK employs a sophisticated macro-based system (`#[tool]`, `#[tool(tool_box)]`) to define, register, and execute tools. This system automates much of the boilerplate code needed to handle JSON-RPC tool calls while providing type safety and schema generation.
 1. Core Components
 The tool marking system consists of several key components:
-The #[tool] Attribute Macro
+The `#[tool]` Attribute Macro
 This is the primary mechanism used to mark methods as tools. It can be applied to:
 
-Individual methods within an implementation block
-The entire implementation block itself (with the tool_box option)
+*   Individual methods within an implementation block.
+*   The entire implementation block itself (with the `tool_box` option, typically used on the `ServerHandler` implementation).
 
-The tool_box! Macro
-This macro creates a static registry of tools for a type, handling:
+The `tool_box!` Macro (Internal)
+This macro (used internally by `#[tool(tool_box)]`) creates a static registry of tools for a type, handling:
 
-Tool registration
-Schema generation
-Dispatching calls to the appropriate handler
+*   Tool registration (collecting metadata from `#[tool]` attributes).
+*   Schema generation (using `schemars`).
+*   Dispatching `call_tool` requests to the appropriate handler function.
 
 2. How Tool Methods Are Defined
-Tool methods can be defined in two main ways:
-Method 1: Using #[tool] on Individual Methods
-rust#[derive(Debug, Clone)]
-pub struct MyTool;
-
-impl MyTool {
-    #[tool(description = "A description of what this tool does")]
-    async fn my_tool_method(
-        &self, 
-        #[tool(param)] parameter1: String,
-        #[tool(param)] parameter2: i32
-    ) -> String {
-        // Tool implementation
-        format!("Result: {} {}", parameter1, parameter2)
-    }
-}
-Method 2: Using an Aggregated Parameter Object
-rust#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct MyToolParams {
-    #[schemars(description = "Description of parameter1")]
-    pub parameter1: String,
-    pub parameter2: i32,
-}
-
-impl MyTool {
-    #[tool(description = "A description of what this tool does")]
-    async fn my_tool_method(&self, #[tool(aggr)] params: MyToolParams) -> String {
-        // Tool implementation
-        format!("Result: {} {}", params.parameter1, params.parameter2)
-    }
-}
-3. Parameter Marking
-Parameters for tools can be marked in two ways:
-#[tool(param)] - Individual Parameters
-This marks individual parameters that should be extracted from the tool call JSON. Each parameter becomes a field in a generated request struct.
-rust#[tool(description = "Add two numbers")]
-fn add(
-    &self,
-    #[tool(param)] 
-    #[schemars(description = "First number")]
-    a: i32,
-    #[tool(param)]
-    #[schemars(description = "Second number")]
-    b: i32,
-) -> String {
-    (a + b).to_string()
-}
-#[tool(aggr)] - Aggregated Parameter
-This marks a single struct that contains all parameters. The struct must implement serde::Deserialize and schemars::JsonSchema.
-rust#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct AddParams {
-    #[schemars(description = "First number")]
-    pub a: i32,
-    #[schemars(description = "Second number")]
-    pub b: i32,
-}
-
-#[tool(description = "Add two numbers")]
-fn add(&self, #[tool(aggr)] params: AddParams) -> String {
-    (params.a + params.b).to_string()
-}
-4. Behind the Scenes: What the Macros Generate
-When you apply the #[tool] attribute to a method, the macro expands to generate several functions:
-1. Tool Attribute Function
-For a method named foo, a corresponding foo_tool_attr() function is generated that returns the tool's metadata:
-rustfn foo_tool_attr() -> rmcp::model::Tool {
-    rmcp::model::Tool {
-        name: "foo".into(),
-        description: Some("Description of foo tool".into()),
-        input_schema: cached_schema_for_type::<FooParams>().into(),
-        annotations: None
-    }
-}
-2. Tool Call Handler Function
-A foo_tool_call function is generated that:
-
-Extracts parameters from the JSON-RPC request
-Validates them against the schema
-Calls the original method with the extracted parameters
-Converts the result to a CallToolResult
-
-rustasync fn foo_tool_call(
-    context: rmcp::handler::server::tool::ToolCallContext<'_, Self>
-) -> std::result::Result<rmcp::model::CallToolResult, rmcp::Error> {
-    use rmcp::handler::server::tool::*;
-    
-    // Extract the receiver (self)
-    let (__rmcp_tool_receiver, context) = 
-        <&Self>::from_tool_call_context_part(context)?;
-        
-    // For aggregated parameters
-    let (Parameters(params), context) = 
-        <Parameters<FooParams>>::from_tool_call_context_part(context)?;
-        
-    // Call the original method and convert the result
-    Self::foo(__rmcp_tool_receiver, params).await.into_call_tool_result()
-}
-3. Tool Box Registry
-When applying #[tool(tool_box)] to an impl block, a static tool_box() function is generated that creates and populates a registry of all tools:
-rustfn tool_box() -> &'static rmcp::handler::server::tool::ToolBox<Self> {
-    static TOOL_BOX: std::sync::OnceLock<ToolBox<Self>> = 
-        std::sync::OnceLock::new();
-        
-    TOOL_BOX.get_or_init(|| {
-        let mut tool_box = ToolBox::new();
-        
-        // Add each tool method to the registry
-        tool_box.add(ToolBoxItem::new(
-            Self::foo_tool_attr(), 
-            Self::foo_tool_call
-        ));
-        
-        // Add more tools...
-        
-        tool_box
-    })
-}
-5. Integration with ServerHandler Trait
-The #[tool(tool_box)] can be applied to an implementation of the ServerHandler trait to automatically implement the required methods:
-rust#[tool(tool_box)]
-impl ServerHandler for MyTool {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some("Tool instructions".into()),
-            ..Default::default()
-        }
-    }
-}
-This expands to:
-rustimpl ServerHandler for MyTool {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some("Tool instructions".into()),
-            ..Default::default()
-        }
-    }
-    
-    async fn list_tools(
-        &self,
-        _: Option<rmcp::model::PaginatedRequestParam>,
-        _: rmcp::service::RequestContext<rmcp::service::RoleServer>,
-    ) -> Result<rmcp::model::ListToolsResult, rmcp::Error> {
-        Ok(rmcp::model::ListToolsResult {
-            next_cursor: None,
-            tools: Self::tool_box().list(),
-        })
-    }
-
-    async fn call_tool(
-        &self,
-        call_tool_request_param: rmcp::model::CallToolRequestParam,
-        context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
-    ) -> Result<rmcp::model::CallToolResult, rmcp::Error> {
-        let context = rmcp::handler::server::tool::ToolCallContext::new(
-            self, 
-            call_tool_request_param, 
-            context
-        );
-        Self::tool_box().call(context).await
-    }
-}
-6. Return Value Conversion
-The tool system also handles converting various return types to CallToolResult through the IntoCallToolResult trait:
-
-String → Returns success with text content
-Result<T, E> → Returns success or error based on the Result
-Custom types implementing IntoContents → Returns success with custom content
-
-7. Complete Example
-Here's how it all comes together in a complete example:
-rust#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct SumRequest {
-    #[schemars(description = "First number")]
-    pub a: i32,
-    #[schemars(description = "Second number")]
-    pub b: i32,
-}
+Tool methods are typically defined within an `impl` block for your server struct.
+```rust
+use rmcp::{tool, ServerHandler, model::ServerInfo};
+use serde::Deserialize;
+use schemars::JsonSchema;
 
 #[derive(Debug, Clone)]
-pub struct Calculator;
+pub struct MyToolServer;
 
-#[tool(tool_box)]
-impl Calculator {
-    #[tool(description = "Calculate the sum of two numbers")]
-    async fn sum(&self, #[tool(aggr)] params: SumRequest) -> String {
+// Define parameter structs using serde and schemars
+#[derive(Deserialize, JsonSchema)]
+pub struct AddParams {
+    #[schemars(description = "First number")]
+    a: i32,
+    #[schemars(description = "Second number")]
+    b: i32,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GreetParams {
+    #[schemars(description = "Name to greet")]
+    name: String,
+}
+
+// Implement the tool methods within the server struct's impl block
+#[tool(tool_box)] // Apply tool_box here to register methods below
+impl MyToolServer {
+    #[tool(description = "Adds two numbers")]
+    async fn add(&self, #[tool(aggr)] params: AddParams) -> String {
         (params.a + params.b).to_string()
     }
 
-    #[tool(description = "Calculate the difference of two numbers")]
-    fn sub(
+    #[tool(description = "Greets someone")]
+    async fn greet(&self, #[tool(aggr)] params: GreetParams) -> String {
+        format!("Hello, {}!", params.name)
+    }
+
+    // Example with individual parameters (less common for complex tools)
+    #[tool(description = "Subtracts two numbers")]
+    fn subtract(
         &self,
-        #[tool(param)] a: i32,
-        #[tool(param)] b: i32,
+        #[tool(param)] #[schemars(description = "Number to subtract from")] x: i32,
+        #[tool(param)] #[schemars(description = "Number to subtract")] y: i32,
     ) -> String {
-        (a - b).to_string()
+        (x - y).to_string()
     }
 }
 
-#[tool(tool_box)]
-impl ServerHandler for Calculator {
+// Implement ServerHandler for the server struct
+#[tool(tool_box)] // Apply tool_box here to auto-implement list_tools/call_tool
+impl ServerHandler for MyToolServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some("A simple calculator".into()),
+            name: Some("My Tool Server".into()),
+            // ... other info
             ..Default::default()
         }
     }
 }
-8. Key Technical Details
+```
+3. Parameter Marking
+Parameters for tools are typically defined using a single struct marked with `#[tool(aggr)]`.
+`#[tool(aggr)]` - Aggregated Parameter Struct
+*   Marks a single struct argument that contains all parameters.
+*   The struct **must** implement `serde::Deserialize` and `schemars::JsonSchema`.
+*   The SDK automatically deserializes the JSON `arguments` object into this struct.
+*   Use `#[schemars(description = "...")]` on struct fields for schema documentation.
+`#[tool(param)]` - Individual Parameters (Less Common)
+*   Marks individual function parameters.
+*   The SDK generates an internal struct to hold these parameters.
+*   Use `#[schemars(description = "...")]` directly on the parameters.
 
-Compile-Time Validation: The macros validate tool definitions at compile time.
-Schema Generation: JSON schemas are automatically generated from Rust types using the schemars crate.
-Parameter Extraction: The system provides type-safe parameter extraction from JSON-RPC requests.
-Type Safety: The entire process is type-checked, ensuring that tool implementations match their declarations.
-Caching: Schemas are cached using thread-local storage for performance.
-Error Handling: The system provides structured error handling that conforms to the MCP specification.
-Zero-Copy Operations: Where possible, data is passed without unnecessary copying or cloning.
+4. Behind the Scenes: What the Macros Generate
+When you apply `#[tool]` and `#[tool(tool_box)]`, the macros generate code similar to this:
+1.  **Tool Metadata:** For each `#[tool]` method, metadata (`rmcp::model::Tool`) is generated, including name, description, and the JSON schema derived from the parameter struct (using `schemars`).
+2.  **Call Handler:** A wrapper function is generated for each tool method that handles:
+    *   Deserializing and validating the incoming JSON arguments against the schema.
+    *   Calling your original tool method (`add`, `greet`, etc.) with the deserialized parameters.
+    *   Converting the return value of your method into an `rmcp::model::CallToolResult`.
+3.  **Tool Registry (`ToolBox`):** The `#[tool(tool_box)]` on the `impl` block creates a static `ToolBox` instance. This registry stores the metadata and call handlers for all `#[tool]` methods within that block.
+4.  **`ServerHandler` Implementation:** Applying `#[tool(tool_box)]` to the `impl ServerHandler for ...` block automatically generates the `list_tools` and `call_tool` methods:
+    *   `list_tools`: Returns the list of `rmcp::model::Tool` metadata collected in the `ToolBox`.
+    *   `call_tool`: Looks up the requested tool name in the `ToolBox` and dispatches the call to the corresponding generated handler function.
 
-The tool marker system in RMCP provides a declarative, type-safe way to define tools that conform to the Model Context Protocol, significantly reducing boilerplate code while ensuring that all tools are properly registered and documented with accurate JSON schemas.RetryClaude does not have the ability to run the code it generates yet.Claude can make mistakes. Please double-check responses.
+5. Return Value Conversion
+The tool system automatically converts the return value of your tool methods into the required `rmcp::model::CallToolResult` using the `IntoCallToolResult` trait. Common return types and their conversions:
+
+*   `String` -> Success result with `RawContent::Text`.
+*   `Result<String, E>` (where `E: Into<rmcp::Error>`) -> Success with text or an error result.
+*   `rmcp::model::Content` -> Success result with the provided content.
+*   `Result<rmcp::model::Content, E>` -> Success with content or an error result.
+*   `serde_json::Value` -> Success result with `RawContent::Text` containing the serialized JSON.
+*   Custom types implementing `rmcp::model::IntoContents` -> Success result wrapping the custom content.
+
+6. Key Technical Details
+
+*   **Compile-Time Generation:** Macros generate code during compilation.
+*   **Schema Generation:** `schemars` is used to create JSON schemas from Rust types.
+*   **Type Safety:** Parameter extraction and return value conversion are type-checked.
+*   **Error Handling:** The system provides structured error handling conforming to MCP (`rmcp::Error`).
+
+The tool marker system in `rmcp` provides a declarative, type-safe way to define tools that conform to the Model Context Protocol, significantly reducing boilerplate code while ensuring proper registration and schema generation.

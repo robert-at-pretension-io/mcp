@@ -1,7 +1,8 @@
 // Use local Role definition from repl/mod.rs or define here if needed standalone
-// Assuming Role is defined in the crate root or repl module now
+// Use the local Role definition consistently
 use crate::repl::Role;
-// Removed unused Tool import
+// Import rmcp Tool type
+use rmcp::model::Tool as RmcpTool;
 use console::style;
 use serde_json;
 
@@ -136,15 +137,15 @@ pub struct ConversationState {
     pub messages: Vec<Message>,
     pub system_prompt: String,
     // Use rmcp::model::Tool here
-    pub tools: Vec<rmcp::model::Tool>,
+    pub tools: Vec<RmcpTool>, // Use aliased rmcp Tool
 }
 
 impl ConversationState {
     // Update constructor signature
-    pub fn new(system_prompt: String, tools: Vec<rmcp::model::Tool>) -> Self {
+    pub fn new(system_prompt: String, tools: Vec<RmcpTool>) -> Self { // Use aliased rmcp Tool
         let mut state = Self {
             messages: Vec::new(),
-            system_prompt: system_prompt.clone(),
+            system_prompt: system_prompt.clone(), // Keep original system prompt separate
             tools: tools.clone(),
         };
 
