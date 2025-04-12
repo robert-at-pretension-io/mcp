@@ -345,107 +345,74 @@ impl ServerManager {
         info!("Entered start_server_with_components for server: '{}'", name);
         info!("Starting server '{}' with program: {}, args: {:?}, envs: {:?}", name, program, args, envs.keys());
 
-        // --- Prepare Tokio Command with Shell Wrapper ---
-        let mut command = {
-            #[cfg(windows)]
-            {
-                let mut cmd = TokioCommand::new("cmd");
-                cmd.arg("/C");
-                cmd.arg(program); // Add program first
-                cmd.args(args);   // Then add arguments
-                cmd
-            }
-            #[cfg(not(windows))]
-            {
-                let mut cmd = TokioCommand::new("sh");
-                let mut command_string = format!("{} {}", program, args.join(" ")); // Simple join, may need quoting improvements later
-                // Escape the command string for the shell if necessary, though simple cases might work.
-                // For robustness, consider libraries like `shell-escape` or `shlex`.
-                // command_string = shell_escape::escape(command_string.into()).into_owned();
-                cmd.arg("-c");
-                cmd.arg(command_string);
-                cmd
-            }
-        };
-
+        // --- Prepare Tokio Command Directly (No Shell Wrapper) ---
+        let mut command = TokioCommand::new(program);
+        command.args(args); // Add arguments directly
         command.envs(envs) // Set environment variables
                .stdin(Stdio::piped())
                .stdout(Stdio::piped())
                .stderr(Stdio::piped()); // Capture stderr for potential debugging
-        debug!("Prepared Tokio command with shell wrapper: {:?}", command);
-
+        debug!("Prepared direct Tokio command: {:?}", command);
 
         // --- Spawn the SINGLE Process ---
         #[cfg(not(test))]
         let (process, client, capabilities) = {
-            debug!("Spawning the single process for server '{}'...", name);
-            let mut child = command.spawn()
-                .map_err(|e| anyhow!("Failed to spawn process for server '{}': {}", name, e))?;
+            debug!("Spawning the single process directly for server '{}'...", name);
+            let mut child = command.spawn() // Spawn ONCE
+                .map_err(|e| anyhow!("Failed to spawn direct process for server '{}': {}", name, e))?;
             let process_id = child.id();
             info!("Single process spawned successfully for server '{}', PID: {:?}", name, process_id);
 
-            // --- Re-approach: Spawn, get handle, THEN create transport ---
-            // Spawn the process first to keep the handle
-            debug!("Spawning command to get handle for server '{}'...", name);
-             let mut child_for_handle = command.spawn() // Spawn once just for the handle
-                 .map_err(|e| anyhow!("Failed to spawn process for handle for server '{}': {}", name, e))?;
-             let process_id_handle = child_for_handle.id();
-             info!("Process for handle spawned successfully for server '{}', PID: {:?}", name, process_id_handle);
+            // --- Create TokioChildProcess Transport from the spawned child ---
+            debug!("Creating TokioChildProcess transport from spawned child for server '{}'...", name);
+            // Use from_child, consuming the child process handle
+            let transport = TokioChildProcess::from_child(child)
+                .map_err(|e| anyhow!("Failed to create TokioChildProcess transport from child for server '{}': {}", name, e))?;
+            info!("TokioChildProcess transport created from child for server '{}'.", name);
 
-            // Now create the transport using a *new* command instance (this is the one serve_client will manage)
-            let mut transport_cmd = { // Create a new command instance identical to the first one
-                #[cfg(windows)]
-                {
-                    let mut cmd = TokioCommand::new("cmd");
-                    cmd.arg("/C");
-                    cmd.arg(program);
-                    cmd.args(args);
-                    cmd
-                }
-                #[cfg(not(windows))]
-                {
-                    let mut cmd = TokioCommand::new("sh");
-                    let command_string = format!("{} {}", program, args.join(" "));
-                    cmd.arg("-c");
-                    cmd.arg(command_string);
-                    cmd
-                }
-            };
-            transport_cmd.envs(envs)
-                         .stdin(Stdio::piped())
-                         .stdout(Stdio::piped())
-                         .stderr(Stdio::piped()); // Ensure stderr is piped for the transport's child
+            // --- Serve Client using the Transport ---
+            debug!("Serving client handler '()' with transport from child for server '{}'...", name);
+            let running_service = serve_client((), transport).await // Pass the transport created from child
+                .map_err(|e| anyhow!("Failed to serve client using transport from child for server '{}': {}", name, e))?;
+            info!("RunningService (including Peer) created using transport from child for server '{}'.", name);
 
-            // --- Create TokioChildProcess Transport using the command ---
-            // TokioChildProcess::new takes &mut Command and spawns internally
-            debug!("Creating TokioChildProcess transport with new command instance for server '{}'...", name);
-            let transport = TokioChildProcess::new(&mut transport_cmd) // Use ::new(&mut command)
-                .map_err(|e| anyhow!("Failed to create TokioChildProcess transport from command for server '{}': {}", name, e))?;
-            info!("TokioChildProcess transport created from command for server '{}'.", name);
-
-            // --- Serve Client using TokioChildProcess Transport ---
-            // serve_client takes anything implementing IntoTransport, which TokioChildProcess does.
-            debug!("Serving client handler '()' with TokioChildProcess for server '{}'...", name);
-            let running_service = serve_client((), transport).await // Pass the transport directly
-                .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess for server '{}': {}", name, e))?;
-            info!("RunningService (including Peer) created using TokioChildProcess for server '{}'.", name);
-
-            // Extract Peer and Capabilities from the running service
+            // Extract Peer and Capabilities
             let peer = running_service.peer().clone();
-            // Use if let for clarity and potentially avoid compiler issue
             let capabilities = Some(running_service.peer_info().capabilities.clone());
-
 
             // --- Wrap Peer in McpClient ---
             let client = production::McpClient::new(peer);
             info!("McpClient created for server '{}'.", name);
 
-            // Return the handle from the *first* spawn, the client, and capabilities
-            (child_for_handle, client, capabilities) // Return the handle we kept
+            // --- Get the Process Handle from the Transport ---
+            // We need the handle to store in ManagedServer for killing later.
+            // TokioChildProcess provides a way to get the underlying child handle *back*
+            // if needed, or we can manage the lifetime differently.
+            // For now, let's assume we need the handle. TokioChildProcess doesn't directly
+            // expose the Child after `from_child`. A potential issue.
+            // WORKAROUND: We might need to re-spawn just for the handle if `rmcp` doesn't expose it.
+            // Let's try *without* storing the handle first and see if `Peer::close` is sufficient.
+            // If not, we'll need to revisit getting the handle.
+
+            // Re-creating the command to spawn *again* just for the handle.
+            // This is unfortunate but necessary if the transport consumes the only handle.
+            let mut handle_command = TokioCommand::new(program);
+            handle_command.args(args);
+            handle_command.envs(envs)
+                          .stdin(Stdio::null()) // Don't need I/O for the handle
+                          .stdout(Stdio::null())
+                          .stderr(Stdio::null());
+            let process_handle = handle_command.spawn()
+                 .map_err(|e| anyhow!("Failed to spawn process *again* just for handle for server '{}': {}", name, e))?;
+             info!("Spawned process *again* just to get handle for server '{}', PID: {:?}", name, process_handle.id());
+
+
+            // Return the handle from the *second* spawn, the client, and capabilities
+            (process_handle, client, capabilities)
         };
 
         #[cfg(test)] // Keep test logic separate and simpler
-        let (process,client, capabilities) = { // Removed mut from client
+        let (process, client, capabilities) = { // Removed mut from client
             // For tests, create a dummy client and process
             debug!("Creating mock process and client for test server '{}'", name);
             let process = tokio::process::Command::new("echo") // Keep dummy process
