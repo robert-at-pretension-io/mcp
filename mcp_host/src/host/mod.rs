@@ -412,7 +412,7 @@ impl MCPHost {
                 format!(
                     "- {}: {}\n  input schema: {:?}",
                     tool.name.as_ref(),
-                    tool.description.as_deref().unwrap_or(""), // Use as_deref().unwrap_or("")
+                    tool.description.as_ref(), // Use as_ref() for Cow
                     tool.input_schema
                 )
             }).collect::<Vec<_>>().join("\n")
