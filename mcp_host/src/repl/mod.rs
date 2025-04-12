@@ -223,7 +223,7 @@ impl Repl {
                         log::info!("'chat' command detected for specific server: '{}'", target_server);
                         log::debug!("Attempting to enter single-server chat mode with '{}'", target_server);
                         match self.host.enter_chat_mode(target_server).await {
-                            Ok(initial_state) => {
+                            Ok(mut initial_state) => { // Add mut here
                                 let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
                                 let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
                                 println!(
@@ -259,7 +259,7 @@ impl Repl {
                         // --- Multi-Server Chat ---
                         log::info!("'chat' command detected with no server specified. Entering multi-server mode.");
                         match self.host.enter_multi_server_chat_mode().await {
-                            Ok(initial_state) => {
+                            Ok(mut initial_state) => { // Add mut here
                                 let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
                                 let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
                                 println!(

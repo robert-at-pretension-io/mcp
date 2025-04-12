@@ -141,7 +141,7 @@ pub struct ConversationState {
 impl ConversationState {
     // Update constructor signature
     pub fn new(system_prompt: String, tools: Vec<RmcpTool>) -> Self { // Use aliased rmcp Tool
-        let mut state = Self {
+        let state = Self { // Remove 'mut'
             system_prompt: system_prompt.clone(),
             messages: Vec::new(),
             tools: tools.clone(), // Store the tools

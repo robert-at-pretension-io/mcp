@@ -642,7 +642,7 @@ async fn execute_single_tool_internal(
                     style("Error").red(),
                     style(tool_name).yellow(),
                     style(&target_server_name).green(), // Include server name in error
-                    e // Include the error details
+                    _e // Include the error details
                 );
                  // Print the formatted message
                  println!("\n{}", formatted_error);
@@ -650,7 +650,7 @@ async fn execute_single_tool_internal(
             // Return the error message itself as the "result" string to be added to the conversation
             // This allows the AI to potentially react to the tool failure.
             // Include the error details in the returned message for the AI
-            Ok(format!("{}: {}", error_msg, e)) // Use 'e' here too
+            Ok(format!("{}: {}", error_msg, _e)) // Use '_e' here too
         }
     }
 }
