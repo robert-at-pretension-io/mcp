@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Context, Result}; // Import Context trait
 use log::{debug, error, info, warn};
 use serde_json::Value;
-// Replace shared_protocol_objects imports with rmcp::model
 use rmcp::model::{
     Implementation, Tool as ToolInfo, CallToolResult
 };

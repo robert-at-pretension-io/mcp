@@ -643,7 +643,7 @@ async fn execute_single_tool_internal(
                     // _error // Removed usage of ignored variable
                 );
                  // Print the formatted message and the error details separately
-                 println!("\n{}: {:?}", formatted_error, _error);
+                 println!("\n{}", formatted_error);
             }
             // Return the error message itself as the "result" string to be added to the conversation
             // This allows the AI to potentially react to the tool failure.

@@ -364,7 +364,7 @@ impl MCPHost {
         let _tools_json: Vec<serde_json::Value> = tool_info_list.iter().map(|t| {
             serde_json::json!({
                 "name": t.name,
-                "description": t.description.as_ref().unwrap_or(&"".to_string()),
+                "description": t.description.parse::<String>().unwrap_or("".to_string()),
                 "inputSchema": t.input_schema
             })
         }).collect();
@@ -374,7 +374,7 @@ impl MCPHost {
             format!(
                 "- {}: {}\ninput schema: {:?}",
                 tool.name.as_ref(),
-                tool.description.as_deref().unwrap_or(""), // Use as_deref().unwrap_or("")
+                tool.description.parse::<String>().unwrap_or("".to_string()),
                 tool.input_schema
             )
         }).collect::<Vec<_>>().join("");
@@ -412,7 +412,7 @@ impl MCPHost {
                 format!(
                     "- {}: {}\n  input schema: {:?}",
                     tool.name.as_ref(),
-                    tool.description.as_deref().unwrap_or(""), // Use as_deref().unwrap_or("")
+                    tool.description.parse::<String>().unwrap_or("".to_string()),
                     tool.input_schema
                 )
             }).collect::<Vec<_>>().join("\n")
