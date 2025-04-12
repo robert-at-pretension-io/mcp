@@ -8,7 +8,7 @@ use tokio::{fs, sync::Mutex};
 use tokio::process::Command;
 use futures::StreamExt;
 use tokio_util::codec::{FramedRead, LinesCodec};
-use tracing::{debug, info, error};
+use tracing::{debug, info, error, warn}; // Added warn here
 use schemars::JsonSchema;
 
 // Import SDK components
