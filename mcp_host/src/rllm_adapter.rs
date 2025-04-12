@@ -5,7 +5,9 @@ use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabi
 use serde_json::Value;
 // Use the local Role definition from repl/mod.rs
 use rllm::builder::{LLMBackend, LLMBuilder};
-use rllm::chat::{ChatMessage, ChatRole, MessageType};
+// Import ContentPart and ChatContent if they exist, or adjust based on rllm's actual API
+// Assuming ChatMessage content field takes something convertible from Vec<ContentPart>
+use rllm::chat::{ChatMessage, ChatRole, MessageType, ChatContent, ContentPart};
 use std::path::Path;
 use log;
 
@@ -579,10 +581,15 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             builder = builder.max_tokens(50000);
        }
 
-        // System message is now handled by injecting into the message list below
-        // if let Some(sys) = &self.system {
-        //     builder = builder.system(sys);
-        // }
+        // --- Apply System Prompt using Builder ---
+        if !self.system_prompt.is_empty() {
+            log::debug!("Applying system prompt via LLMBuilder: '{}...'", self.system_prompt.chars().take(50).collect::<String>());
+            builder = builder.system(&self.system_prompt);
+        } else {
+            log::debug!("No system prompt to apply via LLMBuilder.");
+        }
+        // --- End System Prompt ---
+
         // Build the client
         let llm = match builder.build() {
             Ok(provider) => provider,
@@ -597,22 +604,11 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         let mut chat_messages = Vec::new();
         let mut _has_image = false; // Keep track if images are involved
 
-        // --- Add System Prompt First (if applicable) ---
-        // TODO: Check if the specific backend/model actually supports a system role.
-        // Most OpenAI models do. RLLM might handle this translation.
-        if !self.system_prompt.is_empty() {
-            log::debug!("Prepending system message to chat history.");
-            chat_messages.push(ChatMessage {
-                role: ChatRole::System, // Use System role
-                content: self.system_prompt.clone().into(),
-                message_type: MessageType::Text,
-            });
-        } else {
-            log::debug!("No system prompt provided.");
-        }
+        // --- System Prompt is handled by the builder now, removed manual injection ---
 
         // --- Process User/Assistant Messages ---
-        let mut current_user_message_parts: Vec<rllm::chat::MessageContent> = Vec::new();
+        // Use the appropriate type for content parts, assuming ContentPart enum exists
+        let mut current_user_message_parts: Vec<ContentPart> = Vec::new();
 
         for (role, content) in self.messages.iter() {
             match role {
@@ -632,34 +628,39 @@ impl AIRequestBuilder for RLLMRequestBuilder {
                          let url_str = content.strip_prefix("__IMAGE_URL__:").unwrap_or("");
                          log::debug!("Adding image URL part: {}", url_str);
                          // TODO: Check model capabilities for vision support before adding image URL.
-                         // Assuming rllm handles the structure for OpenAI vision:
-                         current_user_message_parts.push(rllm::chat::MessageContent::ImageUrl { url: url_str.to_string() });
+                         // Assuming rllm handles the structure for OpenAI vision via ContentPart::ImageUrl
+                         current_user_message_parts.push(ContentPart::ImageUrl { url: url_str.to_string() });
 
                     } else {
                         // Regular text part
                         log::debug!("Adding user text part: '{}...'", content.chars().take(50).collect::<String>());
-                        current_user_message_parts.push(content.clone().into());
+                        // Assume ContentPart::Text exists
+                        current_user_message_parts.push(ContentPart::Text(content.clone()));
                     }
                 }
                 Role::Assistant => {
                     // If we have pending user message parts, finalize and add them first
+                    // If we have pending user message parts, finalize and add them first
                     if !current_user_message_parts.is_empty() {
                         log::debug!("Finalizing user message with {} parts.", current_user_message_parts.len());
+                        // Create ChatContent from the Vec<ContentPart>
+                        let user_content: ChatContent = current_user_message_parts.clone().into();
                         chat_messages.push(ChatMessage {
                             role: ChatRole::User,
-                            content: current_user_message_parts.clone().into(), // Use into() for Vec<MessageContent>
-                            message_type: if _has_image { MessageType::Multipart } else { MessageType::Text },
+                            content: user_content,
+                            // Remove message_type, let rllm infer or handle it
                         });
                         current_user_message_parts.clear(); // Clear parts for the next user message
                         _has_image = false; // Reset image flag
                     }
 
-                    // Add the assistant message
+                    // Add the assistant message (assuming content is always text for assistant)
                     log::debug!("Adding assistant message: '{}...'", content.chars().take(50).collect::<String>());
+                    let assistant_content: ChatContent = content.clone().into();
                     chat_messages.push(ChatMessage {
                         role: ChatRole::Assistant,
-                        content: content.clone().into(),
-                        message_type: MessageType::Text,
+                        content: assistant_content,
+                        // Remove message_type
                     });
                 }
                 // System role is handled at the beginning
@@ -667,12 +668,14 @@ impl AIRequestBuilder for RLLMRequestBuilder {
         }
 
         // Add any remaining user message parts after the loop
+        // Add any remaining user message parts after the loop
         if !current_user_message_parts.is_empty() {
              log::debug!("Finalizing trailing user message with {} parts.", current_user_message_parts.len());
+             let trailing_user_content: ChatContent = current_user_message_parts.into();
              chat_messages.push(ChatMessage {
                  role: ChatRole::User,
-                 content: current_user_message_parts.into(), // Use into() for Vec<MessageContent>
-                 message_type: if _has_image { MessageType::Multipart } else { MessageType::Text },
+                 content: trailing_user_content,
+                 // Remove message_type
              });
         }
 

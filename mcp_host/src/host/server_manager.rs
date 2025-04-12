@@ -211,10 +211,11 @@ impl ServerManager {
 
         let transport = match TokioChildProcess::new(&mut transport_cmd) {
             Ok(t) => t,
+            Ok(t) => t,
             Err(e) => {
                 error!("Failed to create TokioChildProcess transport for server '{}': {}", name, e);
                 // Attempt to kill the spawned process if transport creation fails
-                let mut process_guard = Arc::new(Mutex::new(process));
+                let process_guard = Arc::new(Mutex::new(process)); // Removed mut
                 if let Err(kill_err) = process_guard.lock().await.kill().await {
                      error!("Also failed to kill process for server '{}' after transport error: {}", name, kill_err);
                 }
@@ -231,12 +232,14 @@ impl ServerManager {
         ).await {
             Ok(rs) => rs,
             Err(e) => {
-                error!("Failed to serve client and create Peer for server '{}': {}", name, e);
-                 // Attempt to kill the spawned process if serve_client fails
-                 let mut process_guard = Arc::new(Mutex::new(process));
-                 if let Err(kill_err) = process_guard.lock().await.kill().await {
-                      error!("Also failed to kill process for server '{}' after serve_client error: {}", name, kill_err);
-                 }
+           Ok(rs) => rs,
+           Err(e) => {
+               error!("Failed to serve client and create Peer for server '{}': {}", name, e);
+                // Attempt to kill the spawned process if serve_client fails
+                let process_guard = Arc::new(Mutex::new(process)); // Removed mut
+                if let Err(kill_err) = process_guard.lock().await.kill().await {
+                     error!("Also failed to kill process for server '{}' after serve_client error: {}", name, kill_err);
+                }
                 return Err(anyhow!("Failed to serve client and create Peer for server '{}': {}", name, e));
             }
         };
