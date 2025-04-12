@@ -449,7 +449,7 @@ impl ServerManager {
 
         // --- Spawn Process and Initialize Client BEFORE acquiring the lock ---
         #[cfg(not(test))]
-        let (process, mut client, capabilities) = { // Make client mutable for initialize
+        let (process, client, capabilities) = { // Client no longer needs to be mutable
             // Spawn the process first
             debug!("Spawning process for server '{}'...", name);
             let process = tokio_command_spawn.spawn()
