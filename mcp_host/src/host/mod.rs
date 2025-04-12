@@ -14,11 +14,9 @@ use std::time::Duration; // Re-add Duration import
 use anyhow::{anyhow}; // Keep anyhow, remove duplicate Result
 use log::{debug, error, info, warn};
 use server_manager::ManagedServer;
-// Use rmcp's Implementation
 use rmcp::model::Implementation;
-// Use rmcp's Tool
-use rmcp::model::Tool as ToolInfo;
-// Removed duplicate Arc, Duration, Mutex below
+use rmcp::model::Tool as ToolInfo; // Keep alias for now
+use std::sync::Arc as StdArc; // Add alias import
     
 use crate::ai_client::{AIClient, AIClientFactory};
 use crate::host::config::{AIProviderConfig, Config as HostConfig, ProviderModelsConfig}; // Added ProviderModelsConfig
@@ -376,7 +374,8 @@ impl MCPHost {
             format!(
                 "- {}: {}\ninput schema: {:?}",
                 tool.name,
-                tool.description.as_ref().unwrap_or(&"".to_string()),
+                // Use .as_ref().map().unwrap_or() for Option<Cow>
+                tool.description.as_ref().map(|cow| cow.as_ref()).unwrap_or(""),
                 tool.input_schema
             )
         }).collect::<Vec<_>>().join("");
@@ -414,7 +413,8 @@ impl MCPHost {
                 format!(
                     "- {}: {}\n  input schema: {:?}",
                     tool.name,
-                    tool.description.as_ref().unwrap_or(&"".to_string()),
+                    // Use .as_ref().map().unwrap_or() for Option<Cow>
+                    tool.description.as_ref().map(|cow| cow.as_ref()).unwrap_or(""),
                     tool.input_schema
                 )
             }).collect::<Vec<_>>().join("\n")

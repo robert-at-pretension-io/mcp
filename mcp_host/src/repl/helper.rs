@@ -5,7 +5,8 @@ use rustyline::validate::Validator;
 use rustyline::Context;
 use std::borrow::Cow;
 
-use shared_protocol_objects::ToolInfo; // Import ToolInfo
+// Use rmcp's Tool type directly
+use rmcp::model::Tool as ToolInfo;
 
 /// Helper for rustyline with command completion
 pub struct ReplHelper {

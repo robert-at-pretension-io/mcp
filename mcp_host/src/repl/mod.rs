@@ -27,8 +27,11 @@ use tokio::time::Duration;
 
 // Removed unused import: use crate::conversation_service::handle_assistant_response;
 use crate::host::MCPHost;
-// Use rllm's Role directly
-use rllm::prompt::PromptMessageRole as Role;
+// Correct rllm import path
+use rllm::config::ModelConfig; // Placeholder, might need specific Role import if available, otherwise define locally
+// Define Role locally if not directly available from rllm 1.1.7
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum Role { System, User, Assistant } // Local definition matching usage
 use crate::conversation_logic::generate_verification_criteria; // Import the function
 
 /// Main REPL implementation with enhanced CLI features

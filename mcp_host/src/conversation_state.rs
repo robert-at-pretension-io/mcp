@@ -1,7 +1,8 @@
-// Use rllm's Role directly
-use rllm::prompt::PromptMessageRole as Role;
+// Use local Role definition from repl/mod.rs or define here if needed standalone
+// Assuming Role is defined in the crate root or repl module now
+use crate::repl::Role; // Adjust path if Role is defined elsewhere
 // Use rmcp's Tool directly
-use rmcp::model::Tool as ToolInfo;
+use rmcp::model::Tool as ToolInfo; // Keep ToolInfo alias for now
 use console::style;
 use serde_json;
 

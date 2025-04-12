@@ -10,11 +10,12 @@ use log::{error, info, warn}; // Removed unused debug import
 // Removed unused io imports
 
 use crate::host::server_manager::ManagedServer;
-use crate::host::MCPHost; // Import MCPHost
-use crate::host::config::{ServerConfig}; // Removed AIProviderConfig
+use crate::host::MCPHost;
+use crate::host::config::{ServerConfig};
 use rustyline::Editor;
-use rustyline::history::DefaultHistory; // Import DefaultHistory
-use crate::repl::helper::ReplHelper; // Import ReplHelper
+use rustyline::history::DefaultHistory;
+use crate::repl::helper::ReplHelper;
+use rmcp::model::Tool as ToolInfo; // Add import for ToolInfo alias
 
 /// Command processor for the REPL
 pub struct CommandProcessor {
@@ -471,8 +472,8 @@ impl CommandProcessor {
 
         let tool_list = tools.iter()
             .map(|tool| {
-                // Use as_deref() directly on Cow<_, str>
-                let desc = tool.description.as_deref().unwrap_or("No description");
+                // Use .as_ref() on Cow<_, str> to get Option<&str>, then unwrap_or
+                let desc = tool.description.as_ref().map(|cow| cow.as_ref()).unwrap_or("No description");
                 // Style tool name yellow, description dimmed
                 format!("  {} - {}", style(&tool.name).yellow(), style(desc).dim())
             })
@@ -519,6 +520,7 @@ impl CommandProcessor {
         };
 
         // Use the shared formatter which handles different Content types
+        // Ensure format_tool_result is public or move it
         raw_output.push_str(&crate::host::server_manager::format_tool_result(&result));
 
         // Truncate the output before returning

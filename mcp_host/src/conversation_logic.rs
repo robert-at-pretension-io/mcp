@@ -10,8 +10,8 @@ use log::{debug, error, info, warn};
 use serde::Deserialize;
 use serde_json;
 use std::sync::Arc;
-// Use rllm's Role directly
-use rllm::prompt::PromptMessageRole as Role;
+// Use local Role definition from repl/mod.rs or define here if needed standalone
+use crate::repl::Role; // Adjust path if Role is defined elsewhere
 use tokio::sync::mpsc;
 
 /// Configuration for how the conversation logic should behave.
@@ -365,10 +365,10 @@ pub async fn resolve_assistant_response(
                         state.add_assistant_message(&next_resp);
                         next_resp
                     }
-                    Err(_e) => { // Prefix unused variable with underscore
-                        error!("Detailed error getting next AI response after tools: {:?}", _e);
-                        let error_msg = format!("Failed to get AI response after tool execution: {}", _e);
-                        log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg)); // Use error_msg here
+                    Err(e) => { // Use the error variable
+                        error!("Detailed error getting next AI response after tools: {:?}", e);
+                        let error_msg = format!("Failed to get AI response after tool execution: {}", e);
+                        log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg));
                         return Err(anyhow!(error_msg));
                     }
                 };
@@ -510,8 +510,8 @@ pub async fn resolve_assistant_response(
                                         // Loop continues to re-evaluate the revised response
                                         continue; // Go to next loop iteration
                                     }
-                                    Err(_e) => { // Prefixed unused variable
-                                        error!("Error getting revised AI response after verification failure: {:?}", _e);
+                                    Err(e) => { // Use the error variable
+                                        error!("Error getting revised AI response after verification failure: {:?}", e);
                                         warn!("Returning unverified response due to error during revision.");
                                         let outcome = VerificationOutcome {
                                             final_response: current_response, // Return the response *before* the failed revision attempt
@@ -519,8 +519,7 @@ pub async fn resolve_assistant_response(
                                             verification_passed: Some(false),
                                             verification_feedback: feedback_opt,
                                         };
-                                        // Remove duplicate log lines and use _e
-                                        log(format!("\n--- Error During Revision Attempt: {} ---", _e)); 
+                                        log(format!("\n--- Error During Revision Attempt: {} ---", e)); // Use e here
                                         log(format!("Returning previous (failed verification) response:\n```\n{}\n```", outcome.final_response));
                                         return Ok(outcome); // Return the last known response before the error
                                     }
@@ -540,17 +539,17 @@ pub async fn resolve_assistant_response(
                             }
                         }
                     }
-                    Err(_e) => { // Prefix unused variable
+                    Err(e) => { // Use the error variable
                         // Verification call itself failed
-                        error!("Error during verification call for server '{}': {}", server_name, _e);
+                        error!("Error during verification call for server '{}': {}", server_name, e);
                         warn!("Returning unverified response due to verification error.");
                         let outcome = VerificationOutcome {
                             final_response: current_response,
                             criteria: Some(criteria.to_string()),
                             verification_passed: None,
-                            verification_feedback: Some(format!("Verification Error: {}", _e)),
+                            verification_feedback: Some(format!("Verification Error: {}", e)),
                         };
-                        log(format!("\n--- Verification Call Error: {} ---", _e));
+                        log(format!("\n--- Verification Call Error: {} ---", e)); // Use e here
                         log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
                         return Ok(outcome); // Return the unverified response
                     }

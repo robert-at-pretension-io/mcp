@@ -6,12 +6,14 @@ use rmcp::model::{
     Implementation, ServerCapabilities, Tool as ToolInfo, CallToolResult, ClientCapabilities, Content, // Added Content
     InitializeResult // Added InitializeResult
 };
-use rmcp::service::{Peer, RoleClient, serve_client}; // Added Peer, serve_client
-use rmcp::transport::child_process::TokioChildProcess; // Added TokioChildProcess
-use rmcp::handler::client::NoopClientHandler; // Added default client handler
+use rmcp::service::{Peer, RoleClient, serve_client};
+use rmcp::transport::child_process::TokioChildProcess;
+// Correct path for NoopClientHandler if it exists, or use a different default handler
+// Assuming NoopClientHandler might be directly under rmcp::handler or rmcp::client
+use rmcp::handler::NoopClientHandler; // Try this path, adjust if needed based on rmcp structure
 use std::collections::HashMap;
-use std::borrow::Cow; // Added Cow for Tool fields
-use std::sync::Arc as StdArc; // Alias Arc to avoid conflict with rmcp::model::Arc
+use std::borrow::Cow;
+use std::sync::Arc as StdArc;
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
 // Removed: use std::process::Command as StdCommand;
@@ -27,9 +29,9 @@ use crate::host::config::Config;
 // No cfg attribute - make this available to tests
 pub mod testing {
     // Use rmcp types directly in testing mocks as well for consistency
-    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Content, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion}; // Added ProtocolVersion
-    use std::borrow::Cow; // Added Cow
-    use std::sync::Arc as StdArc; // Alias Arc
+    use rmcp::model::{Tool as ToolInfo, CallToolResult, ServerCapabilities, Content, Implementation, InitializeResult, ClientCapabilities, ProtocolVersion};
+    use std::borrow::Cow;
+    use std::sync::Arc as StdArc;
 
     // Test mock implementations
     #[derive(Debug)]
@@ -114,12 +116,10 @@ pub mod testing {
 pub mod production {
     // Import necessary rmcp types
     use rmcp::{
-        model::{Tool as ToolInfo, CallToolResult, ClientCapabilities, InitializeResult, Implementation},
-        transport::child_process::TokioChildProcess,
-        service::{Peer, RoleClient}, // Added Peer
+        model::{Tool as ToolInfo, CallToolResult, ClientCapabilities, InitializeResult}, // Removed unused Implementation
+        // Removed unused TokioChildProcess import
+        service::{Peer, RoleClient},
     };
-    // Removed unused shared_protocol_objects import
-    // Removed unused Arc import
 
     // Import shared protocol objects Transport for compatibility - KEEPING FOR NOW until fully migrated
     // pub use shared_protocol_objects::rpc::Transport; // Comment out for now
@@ -146,12 +146,22 @@ pub mod production {
         // Delegate methods to the Peer
         pub async fn list_tools(&self) -> anyhow::Result<Vec<ToolInfo>> {
             log::info!("Using rmcp Peer::list_tools method");
+            // Peer::list_tools returns Result<ListToolsResult, ServiceError>
+            // We need to map the error and extract the tools vector
             self.inner.list_tools(None).await
+                .map(|result| result.tools) // Extract the Vec<Tool>
+                .map_err(|e| anyhow!("Failed to list tools via Peer: {}", e)) // Map ServiceError to anyhow::Error
         }
 
         pub async fn call_tool(&self, name: &str, args: serde_json::Value) -> anyhow::Result<CallToolResult> {
             log::info!("Calling tool via rmcp Peer::call_tool method: {}", name);
-            self.inner.call_tool(name, args).await
+            // Peer::call_tool takes CallToolRequestParam
+            let params = rmcp::model::CallToolRequestParam {
+                name: name.to_string(),
+                arguments: args,
+            };
+            self.inner.call_tool(params).await // Pass the correct param type
+                .map_err(|e| anyhow!("Failed to call tool via Peer: {}", e)) // Map ServiceError to anyhow::Error
         }
 
         pub async fn close(self) -> anyhow::Result<()> {
@@ -176,6 +186,7 @@ pub mod production {
             // If not, initialization happens implicitly during serve_client.
             // **Correction:** Peer *does* have an initialize method.
             self.inner.initialize(capabilities, None).await
+                .map_err(|e| anyhow!("Failed to initialize Peer: {}", e)) // Map ServiceError to anyhow::Error
         }
     }
 
@@ -566,7 +577,7 @@ impl ServerManager {
 }
 
 /// Format a tool result (rmcp::model::CallToolResult) into a string for display
-fn format_tool_result(result: &CallToolResult) -> String {
+pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
     let mut output = String::new();
     // Handle potential error state first
     if result.is_error.unwrap_or(false) {
