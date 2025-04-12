@@ -166,6 +166,11 @@ pub mod production {
             Self { inner: peer }
         }
 
+        // Add a method to access the inner peer
+        pub fn peer(&self) -> &Peer<RoleClient> {
+            &self.inner
+        }
+
         // Delegate methods to the Peer
         pub async fn list_tools(&self) -> anyhow::Result<Vec<RmcpTool>> { // Use aliased type
             log::info!("Using rmcp Peer::list_tools method");

@@ -298,30 +298,44 @@ impl MCPHost {
     // Update return type to use rmcp::model::Tool
     pub async fn list_all_tools(&self) -> Result<Vec<RmcpTool>> { // Use aliased type
         info!("Listing tools from all active servers...");
-        let mut all_tools = HashMap::new(); // Use HashMap to deduplicate by name
-        let server_names = { // Scope lock
-            let servers_guard = self.servers.lock().await;
-            servers_guard.keys().cloned().collect::<Vec<_>>()
-        }; // Lock released
+        let mut all_tools_map = HashMap::new(); // Use HashMap to deduplicate by name
 
-        for server_name in server_names {
-            match self.list_server_tools(&server_name).await {
-                Ok(tools) => {
+        // --- Step 1: Collect Peers ---
+        let peers_to_query: Vec<(String, rmcp::service::Peer<rmcp::service::RoleClient>)> = {
+            let servers_guard = self.servers.lock().await;
+            servers_guard.iter()
+                .map(|(name, server)| (name.clone(), server.client.peer().clone())) // Clone the Peer
+                .collect()
+        }; // Lock released here
+        debug!("Collected {} peers to query.", peers_to_query.len());
+
+        // --- Step 2: Query Peers Concurrently (or sequentially) ---
+        // Using sequential iteration for simplicity first. Can optimize with futures::join_all later if needed.
+        for (server_name, peer) in peers_to_query {
+            debug!("Querying tools for server '{}'...", server_name);
+            // Directly call list_tools on the cloned Peer
+            match peer.list_tools(None).await {
+                Ok(list_tools_result) => {
+                    let tools = list_tools_result.tools;
                     debug!("Found {} tools on server '{}'", tools.len(), server_name);
                     for tool in tools {
                         // Insert into HashMap, replacing duplicates (last one wins if names collide)
-                        all_tools.insert(tool.name.clone(), tool);
+                        all_tools_map.insert(tool.name.clone(), tool);
                     }
                 }
                 Err(e) => {
+                    // Log error using server_name obtained during peer collection
                     warn!("Failed to list tools for server '{}': {}. Skipping.", server_name, e);
                 }
             }
         }
-        let unique_tools: Vec<_> = all_tools.into_values().collect();
+
+        // --- Step 3: Collect Unique Tools ---
+        let unique_tools: Vec<_> = all_tools_map.into_values().collect();
         info!("Found {} unique tools across all servers.", unique_tools.len());
         Ok(unique_tools)
     }
+
 
     /// Find the name of the server that provides a specific tool.
     pub async fn get_server_for_tool(&self, tool_name: &str) -> Result<String> {
