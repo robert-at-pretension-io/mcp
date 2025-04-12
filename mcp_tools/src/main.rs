@@ -17,7 +17,7 @@ use mcp_tools::bash::{BashParams, BashTool}; // Import BashParams too
 use mcp_tools::scraping_bee::{ScrapingBeeTool, ScrapingBeeParams};
 use mcp_tools::brave_search::{BraveSearchTool, BraveSearchParams};
 use mcp_tools::long_running_task::{
-    LongRunningTaskTool, StartTaskParams, GetStatusParams, ListTasksParams, StopTaskParams // Added StopTaskParams
+    LongRunningTaskTool, StartTaskParams, GetStatusParams, ListTasksParams, StopTaskParams, ClearTasksParams // Added ClearTasksParams
 };
 use mcp_tools::aider::{AiderTool, AiderParams};
 use mcp_tools::mermaid_chart::{MermaidChartTool, MermaidChartParams};
@@ -177,6 +177,15 @@ async fn main() {
         ) -> String {
             // Delegate to LongRunningTaskTool's implementation
             self.long_running_task_tool.stop_task(params).await
+        }
+
+        #[tool(description = "Stops all currently running tasks and removes ALL tasks (running, completed, errored, etc.) from the manager's memory and persistence file. Use with caution, as this permanently deletes task history.")]
+        async fn clear_tasks(
+            &self,
+            #[tool(aggr)] params: ClearTasksParams,
+        ) -> String {
+            // Delegate to LongRunningTaskTool's implementation
+            self.long_running_task_tool.clear_tasks(params).await
         }
 
         // Aider tool implementation

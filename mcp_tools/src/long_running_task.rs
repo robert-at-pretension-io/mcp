@@ -317,6 +317,11 @@ pub struct StopTaskParams {
     pub task_id: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ClearTasksParams {
+    // No parameters needed for this action
+}
+
 
 #[derive(Debug, Clone)]
 pub struct LongRunningTaskTool {
@@ -441,6 +446,73 @@ impl LongRunningTaskTool {
             None => Err(anyhow!("Task not found: {}", task_id)),
         }
     }
+
+    // Helper method to clear all tasks
+    async fn clear_tasks_internal(&self) -> Result<String> {
+        let manager = self.manager.lock().await;
+        let task_ids: Vec<String> = { // Collect task IDs to avoid borrowing issues while iterating and modifying
+            let tasks_guard = manager.tasks_in_memory.lock().await;
+            tasks_guard.keys().cloned().collect()
+        };
+
+        let mut stopped_count = 0;
+        let mut failed_to_stop = Vec::new();
+        let total_tasks = task_ids.len();
+
+        info!("Attempting to clear {} tasks.", total_tasks);
+
+        // Drop the manager lock before calling stop_task_internal which acquires it
+        drop(manager);
+
+        for task_id in &task_ids {
+            // Check if task is running before attempting to stop
+            let is_running = {
+                let mgr = self.manager.lock().await;
+                let tasks = mgr.tasks_in_memory.lock().await;
+                tasks.get(task_id).map_or(false, |t| t.status == TaskStatus::Running)
+            };
+
+            if is_running {
+                match self.stop_task_internal(task_id).await {
+                    Ok(_) => {
+                        stopped_count += 1;
+                    }
+                    Err(e) => {
+                        error!("Failed to stop task {} during clear: {}", task_id, e);
+                        failed_to_stop.push(task_id.clone());
+                        // Continue trying to clear other tasks
+                    }
+                }
+            }
+        }
+
+        // Re-acquire lock to clear the map and save
+        let manager = self.manager.lock().await;
+        {
+            let mut tasks_guard = manager.tasks_in_memory.lock().await;
+            tasks_guard.clear();
+            info!("Cleared tasks map in memory.");
+        } // Drop lock before saving
+
+        match manager.save().await {
+            Ok(_) => info!("Saved empty task state to persistence."),
+            Err(e) => {
+                error!("Failed to save cleared task state: {}", e);
+                // Return error, but tasks are cleared from memory at least
+                return Err(anyhow!("Failed to save cleared task state: {}", e));
+            }
+        }
+
+        let mut result_message = format!("Cleared {} tasks from memory and persistence.", total_tasks);
+        if stopped_count > 0 {
+            result_message.push_str(&format!(" Stopped {} running tasks.", stopped_count));
+        }
+        if !failed_to_stop.is_empty() {
+            result_message.push_str(&format!(" Failed to stop tasks: {:?}", failed_to_stop));
+        }
+
+        Ok(result_message)
+    }
 }
 
 #[tool(tool_box)]
@@ -537,6 +609,25 @@ impl LongRunningTaskTool {
             Err(e) => {
                 error!("Failed to stop task {}: {}", params.task_id, e);
                 format!("Error stopping task {}: {}", params.task_id, e)
+            }
+        }
+    }
+
+    #[tool(description = "Stops all currently running tasks and removes ALL tasks (running, completed, errored, etc.) from the manager's memory and persistence file. Use with caution, as this permanently deletes task history.")]
+    pub async fn clear_tasks(
+        &self,
+        #[tool(aggr)] _params: ClearTasksParams // Params struct is empty but required by macro
+    ) -> String {
+        info!("Attempting to clear all tasks.");
+
+        match self.clear_tasks_internal().await {
+            Ok(message) => {
+                info!("Clear tasks result: {}", message);
+                message
+            }
+            Err(e) => {
+                error!("Failed to clear tasks: {}", e);
+                format!("Error clearing tasks: {}", e)
             }
         }
     }
