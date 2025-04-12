@@ -21,7 +21,7 @@ pub struct AiderParams {
     pub options: Vec<String>,
     
     #[serde(default)]
-    #[schemars(description = "The provider to use (e.g., 'anthropic', 'openai'). Defaults to 'anthropic' if not specified.")]
+    #[schemars(description = "The provider to use (e.g., 'anthropic', 'openai', 'gemini'). Defaults based on available API keys if not specified.")]
     pub provider: Option<String>,
     
     #[serde(default)]
@@ -51,9 +51,9 @@ pub struct AiderResult {
     pub directory: String,
     /// The message that was sent to aider
     pub message: String,
-    /// The provider that was used (e.g., "anthropic", "openai")
+    /// The provider that was used (e.g., "anthropic", "openai", "gemini")
     pub provider: String,
-    /// The model that was used (e.g., "claude-3-opus-20240229")
+    /// The model that was used (e.g., "claude-3-opus-20240229", "gemini/gemini-1.5-pro-latest")
     pub model: Option<String>,
 }
 
@@ -69,26 +69,17 @@ impl AiderExecutor {
         // Determine provider: first use explicit parameter, otherwise detect available API keys
         let provider = if let Some(p) = params.provider.clone() {
             let p_l = p.to_lowercase();
-            if p_l != "anthropic" && p_l != "openai" {
-                error!("Unsupported provider '{}'. Defaulting to 'anthropic'", p);
-                "anthropic".to_string()
+            // Validate provider name
+            if !["anthropic", "openai", "gemini"].contains(&p_l.as_str()) {
+                error!("Unsupported provider '{}'. Attempting auto-detection.", p);
+                // Fall through to auto-detection if specified provider is invalid
+                Self::detect_provider()
             } else {
-                p_l
+                p_l // Use the valid specified provider
             }
         } else {
-            let has_anthropic = std::env::var("ANTHROPIC_API_KEY").is_ok();
-            let has_openai = std::env::var("OPENAI_API_KEY").is_ok();
-            if has_anthropic && !has_openai {
-                "anthropic".to_string()
-            } else if has_openai && !has_anthropic {
-                "openai".to_string()
-            } else if has_anthropic && has_openai {
-                // If both providers have keys, maintain current default preference
-                "anthropic".to_string()
-            } else {
-                // Default to anthropic if no API keys are found
-                "anthropic".to_string()
-            }
+            // Auto-detect provider based on available API keys
+            Self::detect_provider()
         };
         
         // Check for provider-specific API key first, then fall back to AIDER_API_KEY
@@ -118,10 +109,17 @@ impl AiderExecutor {
                         Some("anthropic/claude-3-7-sonnet-20250219".to_string())
                     },
                     "openai" => {
-                        debug!("Using default OpenAI model: openai/o1");
+                        debug!("Using default OpenAI model: openai/o3-mini");
                         Some("openai/o3-mini".to_string())
                     },
-                    _ => None
+                    "gemini" => {
+                        debug!("Using default Gemini model: gemini/gemini-1.5-pro-latest");
+                        Some("gemini/gemini-1.5-pro-latest".to_string())
+                    }
+                    _ => {
+                        error!("Cannot determine default model for unknown provider: {}", provider);
+                        None
+                    }
                 }
             });
 
@@ -179,6 +177,28 @@ impl AiderExecutor {
         
         cmd_args
     }
+    
+    /// Detects the provider based on available API keys in the environment.
+    /// Prioritizes Anthropic > OpenAI > Gemini if multiple keys are present.
+    fn detect_provider() -> String {
+        let has_anthropic = std::env::var("ANTHROPIC_API_KEY").is_ok();
+        let has_openai = std::env::var("OPENAI_API_KEY").is_ok();
+        let has_gemini = std::env::var("GEMINI_API_KEY").is_ok();
+
+        if has_anthropic {
+            debug!("Detected ANTHROPIC_API_KEY, selecting 'anthropic' provider.");
+            "anthropic".to_string()
+        } else if has_openai {
+            debug!("Detected OPENAI_API_KEY, selecting 'openai' provider.");
+            "openai".to_string()
+        } else if has_gemini {
+            debug!("Detected GEMINI_API_KEY, selecting 'gemini' provider.");
+            "gemini".to_string()
+        } else {
+            debug!("No specific provider API key found. Defaulting to 'anthropic'.");
+            "anthropic".to_string() // Default if no keys are found
+        }
+    }
 
     pub async fn execute(&self, params: AiderParams) -> Result<AiderResult> {
         // Validate directory exists
@@ -195,10 +215,31 @@ impl AiderExecutor {
             return Err(anyhow!("Message cannot be empty"));
         }
 
-        // Build command arguments
+        // Build command arguments (this also determines the provider)
         let cmd_args = self.build_command_args(&params);
-        let provider = params.provider.clone().unwrap_or_else(|| "anthropic".to_string());
-        let model = params.model.clone();
+        
+        // Extract provider and model used (determined during arg building)
+        // This is a bit indirect, ideally build_command_args would return them too.
+        // We re-determine provider here for the result struct.
+        let provider = if let Some(p) = params.provider.clone() {
+             let p_l = p.to_lowercase();
+             if ["anthropic", "openai", "gemini"].contains(&p_l.as_str()) { p_l } else { Self::detect_provider() }
+        } else {
+            Self::detect_provider()
+        };
+        
+        // Re-determine model used for the result struct
+        let model = params.model
+            .clone()
+            .or_else(|| std::env::var("AIDER_MODEL").ok())
+            .or_else(|| {
+                match provider.as_str() {
+                    "anthropic" => Some("anthropic/claude-3-7-sonnet-20250219".to_string()),
+                    "openai" => Some("openai/o3-mini".to_string()),
+                    "gemini" => Some("gemini/gemini-1.5-pro-latest".to_string()),
+                    _ => None,
+                }
+            });
 
         debug!("Running aider with args: {:?}", cmd_args);
         info!("Executing aider in directory: {}", params.directory);
@@ -232,8 +273,8 @@ impl AiderExecutor {
             stderr,
             directory: params.directory,
             message: params.message,
-            provider: provider.clone(),
-            model: model.clone(),
+            provider, // Use the determined provider
+            model,    // Use the determined model
         })
     }
 }
@@ -360,6 +401,59 @@ mod tests {
             let _ = fs::remove_dir_all(temp_dir).await;
         });
     }
+
+    // Test provider detection logic
+    #[test]
+    fn test_provider_detection() {
+        // Test priority: Anthropic > OpenAI > Gemini > Default (Anthropic)
+        
+        // Case 1: Only Anthropic key
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::remove_var("OPENAI_API_KEY");
+        env::remove_var("GEMINI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "anthropic");
+
+        // Case 2: Only OpenAI key
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        env::remove_var("GEMINI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "openai");
+
+        // Case 3: Only Gemini key
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::remove_var("OPENAI_API_KEY");
+        env::set_var("GEMINI_API_KEY", "test_key");
+        assert_eq!(AiderExecutor::detect_provider(), "gemini");
+
+        // Case 4: Anthropic and OpenAI keys (Anthropic priority)
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        env::remove_var("GEMINI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "anthropic");
+
+        // Case 5: OpenAI and Gemini keys (OpenAI priority)
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        env::set_var("GEMINI_API_KEY", "test_key");
+        assert_eq!(AiderExecutor::detect_provider(), "openai");
+        
+        // Case 6: All keys (Anthropic priority)
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        env::set_var("GEMINI_API_KEY", "test_key");
+        assert_eq!(AiderExecutor::detect_provider(), "anthropic");
+
+        // Case 7: No keys (Default to Anthropic)
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::remove_var("OPENAI_API_KEY");
+        env::remove_var("GEMINI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "anthropic");
+
+        // Clean up env vars
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::remove_var("OPENAI_API_KEY");
+        env::remove_var("GEMINI_API_KEY");
+    }
     
     // Test default model selection logic
     #[test]
@@ -401,6 +495,22 @@ mod tests {
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
             assert_eq!(cmd_args[model_index + 1], "openai/o3-mini");
+
+            // Test default model for gemini
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("gemini".to_string()),
+                model: None,
+                thinking_tokens: None,
+                reasoning_effort: None,
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--model".to_string()));
+            let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
+            assert_eq!(cmd_args[model_index + 1], "gemini/gemini-1.5-pro-latest");
             
             // Test custom model overrides default
             let params = AiderParams {
@@ -477,6 +587,94 @@ mod tests {
             
             let cmd_args = executor.build_command_args(&params);
             assert!(!cmd_args.contains(&"--reasoning-effort".to_string()));
+
+            // Test reasoning_effort with Gemini - should be ignored
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("gemini".to_string()),
+                model: None,
+                thinking_tokens: None,
+                reasoning_effort: Some("high".to_string()),
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(!cmd_args.contains(&"--reasoning-effort".to_string()));
+            
+            // Handle cleanup gracefully
+            let _ = fs::remove_dir_all(temp_dir).await;
+        });
+    }
+
+    // Test thinking_tokens validation
+    #[test]
+    fn test_thinking_tokens_validation() {
+        let rt = Runtime::new().unwrap();
+        
+        rt.block_on(async {
+            let temp_dir = create_temp_dir().await.unwrap();
+            let executor = AiderExecutor::new();
+            
+            // Test valid thinking_tokens with Anthropic
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("anthropic".to_string()),
+                model: None,
+                thinking_tokens: Some(16000),
+                reasoning_effort: None,
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--thinking-tokens".to_string()));
+            let tokens_index = cmd_args.iter().position(|arg| arg == "--thinking-tokens").unwrap();
+            assert_eq!(cmd_args[tokens_index + 1], "16000");
+            
+            // Test default thinking_tokens with Anthropic
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("anthropic".to_string()),
+                model: None,
+                thinking_tokens: None, // Use default
+                reasoning_effort: None,
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--thinking-tokens".to_string()));
+            let tokens_index = cmd_args.iter().position(|arg| arg == "--thinking-tokens").unwrap();
+            assert_eq!(cmd_args[tokens_index + 1], "32000"); // Default value
+
+            // Test thinking_tokens with OpenAI - should be ignored
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("openai".to_string()),
+                model: None,
+                thinking_tokens: Some(16000),
+                reasoning_effort: None,
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(!cmd_args.contains(&"--thinking-tokens".to_string()));
+
+            // Test thinking_tokens with Gemini - should be ignored
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: vec![],
+                provider: Some("gemini".to_string()),
+                model: None,
+                thinking_tokens: Some(16000),
+                reasoning_effort: None,
+            };
+            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(!cmd_args.contains(&"--thinking-tokens".to_string()));
             
             // Handle cleanup gracefully
             let _ = fs::remove_dir_all(temp_dir).await;
