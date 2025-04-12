@@ -357,24 +357,38 @@ impl ServerManager {
         // --- Spawn the SINGLE Process ---
         #[cfg(not(test))]
         let (process, client, capabilities) = {
-            debug!("Spawning the single process directly for server '{}'...", name);
-            let mut child = command.spawn() // Spawn ONCE
-                .map_err(|e| anyhow!("Failed to spawn direct process for server '{}': {}", name, e))?;
-            let process_id = child.id();
-            info!("Single process spawned successfully for server '{}', PID: {:?}", name, process_id);
+            // --- Spawn ONCE just for the handle ---
+            debug!("Spawning command to get handle for server '{}'...", name);
+            // Create a mutable command instance for the first spawn
+            let mut handle_command = TokioCommand::new(program);
+            handle_command.args(args).envs(envs)
+                          .stdin(Stdio::piped()) // Keep stdio piped for the handle process too? Or null? Let's keep piped for now.
+                          .stdout(Stdio::piped())
+                          .stderr(Stdio::piped());
+             let child_for_handle = handle_command.spawn() // Spawn once just for the handle
+                 .map_err(|e| anyhow!("Failed to spawn process for handle for server '{}': {}", name, e))?;
+             let process_id_handle = child_for_handle.id();
+             info!("Process for handle spawned successfully for server '{}', PID: {:?}", name, process_id_handle);
 
-            // --- Create TokioChildProcess Transport from the spawned child ---
-            debug!("Creating TokioChildProcess transport from spawned child for server '{}'...", name);
-            // Use from_child, consuming the child process handle
-            let transport = TokioChildProcess::from_child(child)
-                .map_err(|e| anyhow!("Failed to create TokioChildProcess transport from child for server '{}': {}", name, e))?;
-            info!("TokioChildProcess transport created from child for server '{}'.", name);
+            // --- Create Transport using TokioChildProcess::new ---
+            // Create an identical command instance for the transport
+            let mut transport_cmd = TokioCommand::new(program);
+            transport_cmd.args(args).envs(envs)
+                         .stdin(Stdio::piped())
+                         .stdout(Stdio::piped())
+                         .stderr(Stdio::piped()); // Ensure stderr is piped for the transport's child
+
+            // TokioChildProcess::new takes &mut Command and spawns internally
+            debug!("Creating TokioChildProcess transport with new command instance for server '{}'...", name);
+            let transport = TokioChildProcess::new(&mut transport_cmd) // Use ::new(&mut command)
+                .map_err(|e| anyhow!("Failed to create TokioChildProcess transport from command for server '{}': {}", name, e))?;
+            info!("TokioChildProcess transport created from command for server '{}'.", name);
 
             // --- Serve Client using the Transport ---
-            debug!("Serving client handler '()' with transport from child for server '{}'...", name);
-            let running_service = serve_client((), transport).await // Pass the transport created from child
-                .map_err(|e| anyhow!("Failed to serve client using transport from child for server '{}': {}", name, e))?;
-            info!("RunningService (including Peer) created using transport from child for server '{}'.", name);
+            debug!("Serving client handler '()' with TokioChildProcess for server '{}'...", name);
+            let running_service = serve_client((), transport).await // Pass the transport directly
+                .map_err(|e| anyhow!("Failed to serve client using TokioChildProcess for server '{}': {}", name, e))?;
+            info!("RunningService (including Peer) created using TokioChildProcess for server '{}'.", name);
 
             // Extract Peer and Capabilities
             let peer = running_service.peer().clone();
@@ -384,31 +398,8 @@ impl ServerManager {
             let client = production::McpClient::new(peer);
             info!("McpClient created for server '{}'.", name);
 
-            // --- Get the Process Handle from the Transport ---
-            // We need the handle to store in ManagedServer for killing later.
-            // TokioChildProcess provides a way to get the underlying child handle *back*
-            // if needed, or we can manage the lifetime differently.
-            // For now, let's assume we need the handle. TokioChildProcess doesn't directly
-            // expose the Child after `from_child`. A potential issue.
-            // WORKAROUND: We might need to re-spawn just for the handle if `rmcp` doesn't expose it.
-            // Let's try *without* storing the handle first and see if `Peer::close` is sufficient.
-            // If not, we'll need to revisit getting the handle.
-
-            // Re-creating the command to spawn *again* just for the handle.
-            // This is unfortunate but necessary if the transport consumes the only handle.
-            let mut handle_command = TokioCommand::new(program);
-            handle_command.args(args);
-            handle_command.envs(envs)
-                          .stdin(Stdio::null()) // Don't need I/O for the handle
-                          .stdout(Stdio::null())
-                          .stderr(Stdio::null());
-            let process_handle = handle_command.spawn()
-                 .map_err(|e| anyhow!("Failed to spawn process *again* just for handle for server '{}': {}", name, e))?;
-             info!("Spawned process *again* just to get handle for server '{}', PID: {:?}", name, process_handle.id());
-
-
-            // Return the handle from the *second* spawn, the client, and capabilities
-            (process_handle, client, capabilities)
+            // Return the handle from the *first* spawn, the client, and capabilities
+            (child_for_handle, client, capabilities) // Return the handle we kept
         };
 
         #[cfg(test)] // Keep test logic separate and simpler
