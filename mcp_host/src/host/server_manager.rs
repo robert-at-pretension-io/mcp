@@ -78,12 +78,17 @@ pub mod testing {
             // Use rmcp::model::RawContent for variants
             Ok(CallToolResult {
                 content: vec![
-                    rmcp::model::Content::new(rmcp::model::RawContent::Text(
-                        rmcp::model::RawTextContent {
-                            text: "Tool executed successfully".to_string(),
-                            annotations: None,
-                        }
-                    ))
+                    // Provide None for the annotations argument to Content::new
+                    // Remove annotations field from RawTextContent constructor
+                    rmcp::model::Content::new(
+                        rmcp::model::RawContent::Text(
+                            rmcp::model::RawTextContent {
+                                text: "Tool executed successfully".to_string(),
+                                // annotations: None, // Field does not exist here
+                            }
+                        ),
+                        None // Provide None for annotations argument
+                    )
                 ],
                 is_error: Some(false),
             })
@@ -597,22 +602,63 @@ pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
     }
 
     for content in &result.content {
-        // Match on the inner RawContent
-        match &content.content { // Access the inner RawContent enum
-            // Handle Text content
+        // Match on the inner RawContent via content.raw
+        match &content.raw { // Access the inner RawContent enum via .raw
+            // Handle Text content - check if it's JSON
             rmcp::model::RawContent::Text(text_content) => {
-                output.push_str(&text_content.text); // Access text field
+                let text = &text_content.text;
+                // Try to parse as JSON for pretty printing
+                if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(text) {
+                     match serde_json::to_string_pretty(&json_value) {
+                        Ok(pretty_json) => {
+                            output.push_str("```json\n");
+                            output.push_str(&pretty_json);
+                            output.push_str("\n```");
+                        }
+                        Err(_) => {
+                            // Fallback to raw text if pretty printing fails
+                            output.push_str(text);
+                        }
+                    }
+                } else {
+                    // Not JSON, just append the text
+                    output.push_str(text);
+                }
             }
-            // Handle Json content - pretty print it
-            rmcp::model::RawContent::Json(json_content) => {
-                match serde_json::to_string_pretty(&json_content.json) { // Access json field
-                    Ok(pretty_json) => {
-                        output.push_str("```json\n");
+            // Remove Json variant match as it doesn't exist in RawContent
+            // rmcp::model::RawContent::Json(json_content) => { ... }
+
+            // Handle Image content - provide a placeholder
+            rmcp::model::RawContent::Image { .. } => { // Match Image variant
+                output.push_str("[Image content - display not supported]");
+            }
+            // Remove Audio variant match based on compiler error E0599
+            // rmcp::model::RawContent::Audio { .. } => { ... }
+
+            // Handle Resource content
+            rmcp::model::RawContent::Resource { .. } => { // Match Resource variant
+                output.push_str("[Resource content - display not supported]");
+            }
+            // Handle Audio variant (if it *does* exist despite error E0599, keep it commented out)
+            // rmcp::model::RawContent::Audio { .. } => {
+            //     output.push_str("[Audio content - display not supported]");
+            // }
+            // Handle other potential content types if added in the future
+             // _ => { // This becomes unreachable if all variants are handled
+             //     output.push_str("[Unsupported content type]");
+             // }
+        }
+        output.push('\n');
+    }
+    // Trim trailing newline if present
+    output.trim_end().to_string()
+}
                         output.push_str(&pretty_json);
                         output.push_str("\n```");
                     }
                     Err(_) => {
-                        output.push_str(&format!("{:?}", json));
+                        // Use json_content.json here as json is not in scope
+                        output.push_str(&format!("{:?}", json_content.json));
                     }
                 }
             }

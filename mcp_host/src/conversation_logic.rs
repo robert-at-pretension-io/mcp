@@ -638,7 +638,7 @@ async fn execute_single_tool_internal(
                     style("Error").red(),
                     style(tool_name).yellow(),
                     style(&target_server_name).green(), // Include server name in error
-                    error // Use the original error for detail
+                    _error // Use the original error variable _error
                 );
                 println!("\n{}", formatted_error);
             }

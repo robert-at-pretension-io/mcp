@@ -275,11 +275,9 @@ impl ProcessTransport {
                 }
             }
         }
-        
-        // This should be unreachable due to the early returns above,
-        // but added as a fallback
-        error!("Reached end of read_matching_response without finding matching response");
-        Err(anyhow!("Failed to find matching response for method {}", method))
+        // The loop above only exits via return statements, so the code below is unreachable.
+        // error!("Reached end of read_matching_response without finding matching response");
+        // Err(anyhow!("Failed to find matching response for method {}", method))
     }
 
     /// Start a background task to listen for and handle JSON-RPC notifications
