@@ -630,10 +630,10 @@ async fn execute_single_tool_internal(
             debug!("Tool '{}' executed successfully on server '{}'.", tool_name, target_server_name);
             Ok(truncated_output) // Return the truncated output
         }
-        Err(_e) => { // Prefix with underscore to mark as unused
+        Err(e) => { // Use the error variable 'e'
             // Remove _error from the format string as it's ignored
             let error_msg = format!("Error executing tool '{}' on server '{}'", tool_name, target_server_name);
-            error!("{}: {:?}", error_msg, _e); // Log the actual error separately
+            error!("{}: {:?}", error_msg, e); // Log the actual error 'e'
 
             // Format error for printing if interactive
             if config.interactive_output {

@@ -1,8 +1,12 @@
 use serde_json::Value;
 use serde::Serialize;
 // Removed shared_protocol_objects imports
-use rmcp::model::{JsonRpcRequest, JsonRpcResponse, JsonRpcError, JsonRpcVersion, NumberOrString}; // Import rmcp types if needed here
+use rmcp::model::{
+    JsonRpcRequest, JsonRpcResponse, JsonRpcError, JsonRpcVersion2_0, NumberOrString,
+    ErrorCode, WithMeta,
+}; // Import correct rmcp types
 use anyhow::Result;
+use std::collections::BTreeMap; // For WithMeta metadata
 
 /// Mock IdGenerator for tests
 pub struct IdGenerator {
@@ -30,44 +34,48 @@ impl IdGenerator {
 
 /// This file provides wrappers for JSON-RPC functionality
 
-/// Helper functions to create standard responses
+// Helper to convert serde_json::Value ID to Option<NumberOrString>
+fn value_to_id(id_value: Option<Value>) -> Option<NumberOrString> {
+    match id_value {
+        Some(Value::Number(n)) => n.as_i64().map(NumberOrString::Number),
+        Some(Value::String(s)) => Some(NumberOrString::String(s.into())),
+        _ => None,
+    }
+}
+
+/// Helper functions to create standard responses using rmcp structure
 pub fn create_success_response(id: Option<Value>, result: Value) -> JsonRpcResponse {
-    // Reimplement using rmcp types
+    // rmcp::JsonRpcResponse uses a Result for success/error
+    // We need to wrap the result Value in WithMeta
+    // Assuming the result Value is the payload (e.g., a Map<String, Value>)
+    let response_payload = WithMeta::new(result, BTreeMap::new()); // Use empty metadata
     JsonRpcResponse {
-        jsonrpc: JsonRpcVersion::V2_0,
-        id: id.map(rmcp::model::NumberOrString::from_value).transpose().ok().flatten(), // Convert Value to Option<NumberOrString>
-        result: Some(result),
-        error: None,
+        jsonrpc: JsonRpcVersion2_0, // Use the unit struct
+        id: value_to_id(id),
+        response: Ok(response_payload), // Wrap success payload in Ok
     }
 }
 
 pub fn create_error_response(id: Option<Value>, code: i64, message: &str) -> JsonRpcResponse {
-    // Reimplement using rmcp types
+    // Construct the rmcp::ErrorCode
+    let error_code = ErrorCode::Known {
+        code: code.into(), // Convert i64 to rmcp::model::ErrorCodeValue
+        message: message.to_string(),
+        data: None, // No additional data for now
+    };
+    // Wrap the error in WithMeta
+    let error_payload = WithMeta::new(JsonRpcError { error: error_code }, BTreeMap::new()); // Use empty metadata
     JsonRpcResponse {
-        jsonrpc: JsonRpcVersion::V2_0,
-        id: id.map(rmcp::model::NumberOrString::from_value).transpose().ok().flatten(), // Convert Value to Option<NumberOrString>
-        result: None,
-        error: Some(JsonRpcError {
-            code: code.into(), // Convert i64 to ErrorCode
-            message: message.to_string(),
-            data: None,
-        }),
+        jsonrpc: JsonRpcVersion2_0, // Use the unit struct
+        id: value_to_id(id),
+        response: Err(error_payload), // Wrap error payload in Err
     }
 }
 
-/// Create a JSON-RPC request using the shared library's structures
+// Remove the generic create_request function as it's incompatible with rmcp's typed requests.
+// Tests needing requests should construct specific rmcp request types directly.
+/*
 pub fn create_request<P: Serialize>(method: &str, params: Option<P>, id_generator: &IdGenerator) -> Result<JsonRpcRequest> {
-    let id = id_generator.next_id();
-
-    let params_value = match params {
-        Some(p) => Some(serde_json::to_value(p)?),
-        None => None,
-    };
-    
-    Ok(JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id,
-        method: method.to_string(),
-        params: params_value,
-    })
+    // ... implementation removed ...
 }
+*/
