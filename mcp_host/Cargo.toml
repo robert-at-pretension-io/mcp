@@ -7,10 +7,6 @@ edition = "2021"
 name = "direct_supabase_test"
 path = "examples/direct_supabase_test.rs"
 
-[[example]]
-name = "smiley_delimiter_example"
-path = "examples/smiley_delimiter_example.rs"
-
 [[bin]]
 name = "mcp_eval"
 path = "src/bin/mcp_eval.rs"
@@ -24,7 +20,6 @@ tokio = { version = "1.42.0", features = ["full"] }
 uuid = {version ="1.11.0", features = ["v4", "serde"] }
 regex = "1.9.5"
 lazy_static = "1.4.0"
-shared_protocol_objects = { path = "../shared_protocol_objects" }
 schemars = "0.8"
 base64 = "0.22.1"
 image = "0.25.5"
@@ -56,6 +51,7 @@ shellexpand = "3.1" # Added for eval config path expansion
 # RLLM is now a standard dependency
 rllm = { workspace = true }
 toml = "0.8" # Added for provider models config and eval config
+rmcp.workspace = true
 
 [dev-dependencies]
 tokio-test = "0.4"
