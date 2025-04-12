@@ -239,11 +239,11 @@ impl Repl {
                                 let tool_instructions = generate_tool_system_prompt(&initial_state.tools);
                                 if !initial_state.tools.is_empty() {
                                     let tool_msg = format!("Okay, I have access to the following tools on server '{}':\n{}", target_server, tool_instructions);
-                                    println!("{}", style(&tool_msg).dim()); // Print the tool list dimmed
+                                    // REMOVED: println!("{}", style(&tool_msg).dim()); // Print the tool list dimmed
                                     initial_state.add_user_message(&tool_msg);
                                 } else {
                                     let no_tool_msg = format!("No tools found on server '{}'.", target_server);
-                                     println!("{}", style(&no_tool_msg).dim());
+                                     // REMOVED: println!("{}", style(&no_tool_msg).dim());
                                      initial_state.add_user_message(&no_tool_msg);
                                 }
                                 println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
@@ -274,11 +274,11 @@ impl Repl {
                                 let tool_instructions = generate_tool_system_prompt(&initial_state.tools);
                                 if !initial_state.tools.is_empty() {
                                     let tool_msg = format!("Okay, I have access to the following tools from all servers:\n{}", tool_instructions);
-                                    println!("{}", style(&tool_msg).dim()); // Print the tool list dimmed
+                                    // REMOVED: println!("{}", style(&tool_msg).dim()); // Print the tool list dimmed
                                     initial_state.add_user_message(&tool_msg);
                                 } else {
                                      let no_tool_msg = "No tools found on any active server.".to_string();
-                                     println!("{}", style(&no_tool_msg).dim());
+                                     // REMOVED: println!("{}", style(&no_tool_msg).dim());
                                      initial_state.add_user_message(&no_tool_msg);
                                 }
                                 println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
