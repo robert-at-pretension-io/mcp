@@ -515,7 +515,7 @@ impl ServerManager {
         };
 
         #[cfg(test)]
-        let (process, client, capabilities) = { // Removed mut from client
+        let (process,client, capabilities) = { // Removed mut from client
             // For tests, create a dummy client and process
             debug!("Creating mock process and client for test server '{}'", name);
             let process = tokio::process::Command::new("echo") // Keep dummy process
@@ -523,7 +523,7 @@ impl ServerManager {
                 .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()) // Add pipes for consistency
                 .spawn()?;
             // Use the testing McpClient and MockProcessTransport
-            let client = testing::McpClient::new(testing::create_test_transport()); // Removed mut
+            let mut client = testing::McpClient::new(testing::create_test_transport()); // Removed mut
             // Mock initialization returns InitializeResult which contains capabilities
             let init_result = client.initialize(rmcp::model::ClientCapabilities::default()).await?; // Call mock initialize
             let capabilities = Some(init_result.capabilities);
@@ -653,34 +653,4 @@ pub fn format_tool_result(result: &CallToolResult) -> String { // Make public
     // Trim trailing newline if present
     output.trim_end().to_string()
 }
-                        output.push_str(&pretty_json);
-                        output.push_str("\n```");
-                    }
-                    Err(_) => {
-                        // Use json_content.json here as json is not in scope
-                        output.push_str(&format!("{:?}", json_content.json));
-                    }
-                }
-            }
-             // Handle Image content - provide a placeholder
-             rmcp::model::RawContent::Image { .. } => { // Match Image variant
-                 output.push_str("[Image content - display not supported]");
-             }
-             // Handle Audio content
-             rmcp::model::RawContent::Audio { .. } => { // Match Audio variant
-                 output.push_str("[Audio content - display not supported]");
-             }
-             // Handle Resource content
-             rmcp::model::RawContent::Resource { .. } => { // Match Resource variant
-                 output.push_str("[Resource content - display not supported]");
-             }
-            // Handle other potential content types if added in the future
-             // _ => { // This becomes unreachable if all variants are handled
-             //     output.push_str("[Unsupported content type]");
-             // }
-        }
-        output.push('\n');
-    }
-    // Trim trailing newline if present
-    output.trim_end().to_string()
-}
+
