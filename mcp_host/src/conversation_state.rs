@@ -2,7 +2,7 @@
 // Assuming Role is defined in the crate root or repl module now
 use crate::repl::Role; // Adjust path if Role is defined elsewhere
 // Use rmcp's Tool directly
-use rmcp::model::Tool as ToolInfo; // Keep ToolInfo alias for now
+use rmcp::model::Tool; // Remove ToolInfo alias
 use console::style;
 use serde_json;
 

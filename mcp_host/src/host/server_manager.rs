@@ -3,16 +3,15 @@ use log::{debug, error, info, warn};
 use serde_json::Value;
 // Replace shared_protocol_objects imports with rmcp::model
 use rmcp::model::{
-    Implementation, ServerCapabilities, Tool as ToolInfo, CallToolResult, ClientCapabilities, Content, // Added Content
-    InitializeResult // Added InitializeResult
+    Implementation, Tool as ToolInfo, CallToolResult, ClientCapabilities, Content, InitializeResult
+    // Removed unused ServerCapabilities
 };
-use rmcp::service::{Peer, RoleClient, serve_client};
+use rmcp::service::{Peer, serve_client}; // Removed unused RoleClient
 use rmcp::transport::child_process::TokioChildProcess;
 // Correct path for NoopClientHandler if it exists, or use a different default handler
-// Assuming NoopClientHandler might be directly under rmcp::handler or rmcp::client
-use rmcp::handler::NoopClientHandler; // Try this path, adjust if needed based on rmcp structure
+use rmcp::handler::NoopClientHandler;
 use std::collections::HashMap;
-use std::borrow::Cow;
+// Removed unused Cow import here (used in testing module)
 use std::sync::Arc as StdArc;
 // Use TokioCommand explicitly, remove unused StdCommand alias
 use tokio::process::Command as TokioCommand;
