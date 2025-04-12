@@ -486,11 +486,11 @@ impl ServerManager {
             let peer = running_service.peer().clone(); // Clone the peer Arc
 
             // Capabilities are available via the RunningService peer_info method (which returns Option<&InitializeResult>)
-            // Use .cloned() to convert Option<&T> to Option<T> before the if let
+            // Use the reference directly within the if let block
             let capabilities: Option<RmcpServerCapabilities>; // Declare variable type
-            if let Some(init_result) = running_service.peer_info().cloned() { // Add .cloned() here
-                // init_result is now an owned InitializeResult
-                capabilities = Some(init_result.capabilities.clone());
+            if let Some(init_result) = running_service.peer_info() { // Remove .cloned()
+                // init_result is now a reference: &InitializeResult
+                capabilities = Some(init_result.capabilities.clone()); // Clone from the reference
                 info!("Successfully obtained capabilities for server '{}'.", name);
             } else {
                 capabilities = None;
