@@ -4,7 +4,7 @@ use serde_json::Value;
 use rmcp::model::{
     ErrorCode, ErrorCodeValue, ErrorData, JsonRpcError, JsonRpcResponse, JsonRpcVersion2_0, NumberOrString, WithMeta // Added ErrorCodeValue
 }; // Import correct rmcp types
-use rmcp::Error::ErrorCodeValue;
+use rmcp
 // Removed unused anyhow::Result import
 use std::collections::BTreeMap; // For WithMeta metadata
 
