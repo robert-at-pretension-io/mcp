@@ -141,7 +141,7 @@ async fn main() {
         }
         
         // Long-running task tools
-        #[tool(description = "Start a new long-running task. The task will continue running even after this conversation ends and can be monitored later.")]
+        #[tool(description = "Start a new long-running shell task. Use this for any shell command that might take longer than 1 minute to complete. The task runs in the background, continues after this conversation ends, and its status/output can be checked later using 'get_status' or 'list_tasks'.")]
         async fn start_task(
             &self,
             #[tool(aggr)] params: StartTaskParams,
