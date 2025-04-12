@@ -6,7 +6,6 @@ edition = "2021"
 [workspace]
 
 [dependencies]
-shared_protocol_objects = { path = "../shared_protocol_objects" }
 tokio = { version = "1.42.0", features = ["full"] }
 anyhow = "1.0.94"
 log = "0.4.22"

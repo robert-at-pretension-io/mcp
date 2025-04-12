@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use log::info;
+use rmcp::model::Role;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 // Use the local Role definition from repl/mod.rs
-use crate::repl::Role;
 use crate::ai_client::{
     AIClient, AIRequestBuilder, Content, GenerationConfig, Message, // Message struct uses local Role
     ModelCapabilities
@@ -101,7 +101,6 @@ impl OpenRouterClient {
     // Convert our Message type (which uses local Role) to OpenRouter's ChatMessage type
     fn convert_message(message: &Message) -> ChatMessage {
         let role = match message.role {
-            Role::System => "system", // Use local Role enum
             Role::User => "user",
             Role::Assistant => "assistant",
         }.to_string();
@@ -171,7 +170,7 @@ struct OpenRouterRequestBuilder {
 impl AIRequestBuilder for OpenRouterRequestBuilder {
     fn system(mut self: Box<Self>, content: String) -> Box<dyn AIRequestBuilder> {
         self.messages.push(Message {
-            role: Role::System, // Use local Role enum
+            role: Role::User, // Use local Role enum
             content: Content::Text(content),
         });
         self

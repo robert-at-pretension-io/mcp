@@ -1,4 +1,3 @@
-pub mod regex_replace;
 pub mod process_html;
 pub mod bash;
 pub mod brave_search;

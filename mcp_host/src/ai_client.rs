@@ -1,10 +1,10 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use rmcp::model::Role;
 // Removed duplicate imports below
 use serde_json::Value;
 use std::path::Path;
 // Use the local Role definition from repl/mod.rs
-use crate::repl::Role;
 // Removed unused import: use rllm::builder::LLMBackend;
 
 
@@ -105,7 +105,6 @@ impl AIClientFactory {
 /// Helper function to format messages for models that don't support all roles
 pub fn format_message_for_basic_model(role: &Role, content: &str) -> String {
     match role {
-        Role::System => format!("System: {}", content),
         Role::User => content.to_string(),
         Role::Assistant => format!("Assistant: {}", content),
     }

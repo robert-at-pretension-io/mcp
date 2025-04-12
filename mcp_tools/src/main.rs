@@ -19,12 +19,12 @@ use mcp_tools::brave_search::{BraveSearchTool, BraveSearchParams};
 use mcp_tools::long_running_task::{LongRunningTaskTool, StartTaskParams, GetStatusParams, ListTasksParams};
 use mcp_tools::aider::{AiderTool, AiderParams};
 use mcp_tools::mermaid_chart::{MermaidChartTool, MermaidChartParams};
-use mcp_tools::planner::{PlannerTool, PlannerParams};
-use mcp_tools::gmail_integration::{
-    GmailTool, AuthInitParams, AuthExchangeParams, SendMessageParams,
-    ListMessagesParams, ReadMessageParams, SearchMessagesParams, ModifyMessageParams
-};
-use mcp_tools::email_validator::{EmailValidatorTool, NeverBounceParams};
+// use mcp_tools::planner::{PlannerTool, PlannerParams};
+// use mcp_tools::gmail_integration::{
+//     GmailTool, AuthInitParams, AuthExchangeParams, SendMessageParams,
+//     ListMessagesParams, ReadMessageParams, SearchMessagesParams, ModifyMessageParams
+// };
+// use mcp_tools::email_validator::{EmailValidatorTool, NeverBounceParams};
 
 #[tokio::main]
 async fn main() {
@@ -75,9 +75,9 @@ async fn main() {
         long_running_task_tool: LongRunningTaskTool,
         aider_tool: AiderTool,
         mermaid_chart_tool: MermaidChartTool,
-        planner_tool: PlannerTool,
-        gmail_tool: GmailTool,
-        email_validator_tool: EmailValidatorTool,
+        // planner_tool: PlannerTool,
+        // gmail_tool: GmailTool,
+        // email_validator_tool: EmailValidatorTool,
     }
 
     impl McpToolServer {
@@ -100,9 +100,9 @@ async fn main() {
                 long_running_task_tool: task_tool,
                 aider_tool: AiderTool::new(),
                 mermaid_chart_tool: MermaidChartTool::new(),
-                planner_tool: PlannerTool::new(),
-                gmail_tool: GmailTool::new(),
-                email_validator_tool: EmailValidatorTool::new(),
+                // planner_tool: PlannerTool::new(),
+                // gmail_tool: GmailTool::new(),
+                // email_validator_tool: EmailValidatorTool::new(),
             }
         }
     }
@@ -188,89 +188,89 @@ async fn main() {
             self.mermaid_chart_tool.mermaid_chart(params).await
         }
         
-        // Planner tool implementation
-        #[tool(description = "Generates a multi-step plan using available tools to fulfill a user request. Provide the original user request, the AI's interpretation of that request, and a list of all available tools (including their descriptions and parameters). The tool will call a powerful LLM (Gemini) to devise a plan, including potential contingencies and points for reflection or waiting for results.")]
-        async fn planning_tool(
-            &self,
-            #[tool(aggr)] params: PlannerParams,
-        ) -> String {
-            // Delegate to PlannerTool's implementation
-            self.planner_tool.planning_tool(params).await
-        }
+        // // Planner tool implementation
+        // #[tool(description = "Generates a multi-step plan using available tools to fulfill a user request. Provide the original user request, the AI's interpretation of that request, and a list of all available tools (including their descriptions and parameters). The tool will call a powerful LLM (Gemini) to devise a plan, including potential contingencies and points for reflection or waiting for results.")]
+        // async fn planning_tool(
+        //     &self,
+        //     #[tool(aggr)] params: PlannerParams,
+        // ) -> String {
+        //     // Delegate to PlannerTool's implementation
+        //     self.planner_tool.planning_tool(params).await
+        // }
         
-        // Gmail integration tools
-        #[tool(description = "Initiates OAuth authentication flow for Gmail. Provides a URL for user to authorize access.")]
-        async fn auth_init(
-            &self,
-            #[tool(aggr)] params: AuthInitParams,
-        ) -> String {
-            // Delegate to GmailTool's implementation
-            self.gmail_tool.auth_init(params).await
-        }
+        // // Gmail integration tools
+        // #[tool(description = "Initiates OAuth authentication flow for Gmail. Provides a URL for user to authorize access.")]
+        // async fn auth_init(
+        //     &self,
+        //     #[tool(aggr)] params: AuthInitParams,
+        // ) -> String {
+        //     // Delegate to GmailTool's implementation
+        //     self.gmail_tool.auth_init(params).await
+        // }
         
-        #[tool(description = "Exchanges OAuth authorization code for access token. Use after completing the auth_init step.")]
-        async fn auth_exchange(
-            &self,
-            #[tool(aggr)] params: AuthExchangeParams,
-        ) -> String {
-            // Delegate to GmailTool's implementation
-            self.gmail_tool.auth_exchange(params).await
-        }
+        // #[tool(description = "Exchanges OAuth authorization code for access token. Use after completing the auth_init step.")]
+        // async fn auth_exchange(
+        //     &self,
+        //     #[tool(aggr)] params: AuthExchangeParams,
+        // ) -> String {
+        //     // Delegate to GmailTool's implementation
+        //     self.gmail_tool.auth_exchange(params).await
+        // }
         
-        #[tool(description = "Sends an email message from your Gmail account. Requires prior authorization.")]
-        async fn send_message(
-            &self,
-            #[tool(aggr)] params: SendMessageParams,
-        ) -> String {
-            // Delegate to GmailTool's implementation
-            self.gmail_tool.send_message(params).await
-        }
+        // #[tool(description = "Sends an email message from your Gmail account. Requires prior authorization.")]
+        // async fn send_message(
+        //     &self,
+        //     #[tool(aggr)] params: SendMessageParams,
+        // ) -> String {
+        //     // Delegate to GmailTool's implementation
+        //     self.gmail_tool.send_message(params).await
+        // }
         
-        #[tool(description = "Lists recent messages from your Gmail inbox. Requires prior authorization.")]
-        async fn list_messages(
-            &self,
-            #[tool(aggr)] params: ListMessagesParams,
-        ) -> String {
-            // Delegate to GmailTool's implementation
-            self.gmail_tool.list_messages(params).await
-        }
+        // #[tool(description = "Lists recent messages from your Gmail inbox. Requires prior authorization.")]
+        // async fn list_messages(
+        //     &self,
+        //     #[tool(aggr)] params: ListMessagesParams,
+        // ) -> String {
+        //     // Delegate to GmailTool's implementation
+        //     self.gmail_tool.list_messages(params).await
+        // }
         
-        #[tool(description = "Reads the content of a specific Gmail message. Requires message ID and prior authorization.")]
-        async fn read_message(
-            &self,
-            #[tool(aggr)] params: ReadMessageParams,
-        ) -> String {
-            // Delegate to GmailTool's implementation
-            self.gmail_tool.read_message(params).await
-        }
+        // #[tool(description = "Reads the content of a specific Gmail message. Requires message ID and prior authorization.")]
+        // async fn read_message(
+        //     &self,
+        //     #[tool(aggr)] params: ReadMessageParams,
+        // ) -> String {
+        //     // Delegate to GmailTool's implementation
+        //     self.gmail_tool.read_message(params).await
+        // }
         
-        #[tool(description = "Searches Gmail messages using Gmail search syntax. Requires prior authorization.")]
-        async fn search_messages(
-            &self,
-            #[tool(aggr)] params: SearchMessagesParams,
-        ) -> String {
-            // Delegate to GmailTool's implementation
-            self.gmail_tool.search_messages(params).await
-        }
+        // #[tool(description = "Searches Gmail messages using Gmail search syntax. Requires prior authorization.")]
+        // async fn search_messages(
+        //     &self,
+        //     #[tool(aggr)] params: SearchMessagesParams,
+        // ) -> String {
+        //     // Delegate to GmailTool's implementation
+        //     self.gmail_tool.search_messages(params).await
+        // }
         
-        #[tool(description = "Modifies Gmail message labels (archive, mark read/unread, star). Requires prior authorization.")]
-        async fn modify_message(
-            &self,
-            #[tool(aggr)] params: ModifyMessageParams,
-        ) -> String {
-            // Delegate to GmailTool's implementation
-            self.gmail_tool.modify_message(params).await
-        }
+        // #[tool(description = "Modifies Gmail message labels (archive, mark read/unread, star). Requires prior authorization.")]
+        // async fn modify_message(
+        //     &self,
+        //     #[tool(aggr)] params: ModifyMessageParams,
+        // ) -> String {
+        //     // Delegate to GmailTool's implementation
+        //     self.gmail_tool.modify_message(params).await
+        // }
         
-        // Email validator tool
-        #[tool(description = "Validates email addresses using the NeverBounce API.")]
-        async fn never_bounce(
-            &self,
-            #[tool(aggr)] params: NeverBounceParams,
-        ) -> String {
-            // Delegate to EmailValidatorTool's implementation
-            self.email_validator_tool.never_bounce(params).await
-        }
+        // // Email validator tool
+        // #[tool(description = "Validates email addresses using the NeverBounce API.")]
+        // async fn never_bounce(
+        //     &self,
+        //     #[tool(aggr)] params: NeverBounceParams,
+        // ) -> String {
+        //     // Delegate to EmailValidatorTool's implementation
+        //     self.email_validator_tool.never_bounce(params).await
+        // }
     }
 
     // Implement ServerHandler for the server struct
@@ -283,9 +283,6 @@ async fn main() {
             // Note: ServerInfo in rmcp 0.1.5 doesn't have protocol_version or capabilities fields directly.
             // These are part of the InitializeResult. ServerInfo focuses on implementation details.
             ServerInfo {
-                 name: Some("MCP Tools Server (SDK)".into()),
-                 version: Some(env!("CARGO_PKG_VERSION").into()),
-                 description: Some("Provides various tools like bash execution and web scraping.".into()),
                  instructions: Some("Use 'call' with tool name and parameters.".into()),
                  ..Default::default() // Use defaults for other fields like icon, homepage_url
              }
