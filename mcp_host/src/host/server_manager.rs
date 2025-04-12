@@ -488,6 +488,7 @@ impl ServerManager {
             // Capabilities are available via the RunningService peer_info method (which returns Option<InitializeResult>)
             // Refactor using if let to avoid .map()
             let capabilities: Option<RmcpServerCapabilities>; // Declare variable type
+            // Correctly destructure the Option<&InitializeResult> returned by peer_info()
             if let Some(init_result) = running_service.peer_info() {
                 capabilities = Some(init_result.capabilities.clone());
                 info!("Successfully obtained capabilities for server '{}'.", name);
