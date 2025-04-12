@@ -2,8 +2,9 @@ use serde_json::Value;
 // Removed unused serde::Serialize import
 // Removed shared_protocol_objects imports
 use rmcp::model::{
-    ErrorCode, ErrorData, JsonRpcError, JsonRpcResponse, JsonRpcVersion2_0, NumberOrString, WithMeta // Added ErrorCodeValue
+    ErrorCode, ErrorCodeValue, ErrorData, JsonRpcError, JsonRpcResponse, JsonRpcVersion2_0, NumberOrString, WithMeta // Added ErrorCodeValue
 }; // Import correct rmcp types
+use rmcp::Error::ErrorCodeValue;
 // Removed unused anyhow::Result import
 use std::collections::BTreeMap; // For WithMeta metadata
 
