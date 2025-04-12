@@ -552,7 +552,6 @@ pub async fn resolve_assistant_response(
                         log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
                         return Ok(outcome); // Return the unverified response
                     }
-                    // Removed unreachable Err(_e) pattern here
                 }
             } // End of if/else for tool_calls.is_empty()
         } // End loop
