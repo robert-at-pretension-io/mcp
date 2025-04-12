@@ -150,10 +150,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for Google Gemini provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Google Gemini API key not provided (GEMINI_API_KEY)"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
-                .filter(|s| !s.is_empty()) // Ensure model is not empty string
-                .unwrap_or("gemini-1.5-flash"); // Default Gemini model
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'google/gemini'"))?;
             // Use new_with_base_url, passing None for base_url
             let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::Google, None)?;
             Ok(Box::new(client))
@@ -161,10 +161,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
         "anthropic" => {
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Anthropic API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("claude-3-haiku-20240307"); // Default Anthropic model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'anthropic'"))?;
 
             log::info!("Using RLLM adapter for Anthropic provider");
             // Explicitly set the base URL for Anthropic
@@ -179,10 +179,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
         "openai" => {
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("OpenAI API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("gpt-4o-mini"); // Default OpenAI model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'openai'"))?;
 
             log::info!("Using RLLM adapter for OpenAI provider");
             // Use new_with_base_url, passing None for base_url
@@ -195,10 +195,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             let base_url = config["endpoint"].as_str()
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string()); // Store as Option<String>
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("llama3"); // Default Ollama model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'ollama'"))?;
 
             // Ollama doesn't typically require an API key, pass an empty string
             // Use new_with_base_url, passing the optional base_url
@@ -209,10 +209,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for DeepSeek provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("DeepSeek API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("deepseek-chat"); // Default DeepSeek model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'deepseek'"))?;
 
             // Use new_with_base_url, passing None for base_url
             let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::DeepSeek, None)?;
@@ -222,10 +222,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for XAI/Grok provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("XAI API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("grok-1"); // Default XAI model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'xai'"))?;
 
             // Use new_with_base_url, passing None for base_url
             let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::XAI, None)?;
@@ -235,10 +235,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for Phind provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Phind API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("Phind-70B"); // Default Phind model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'phind'"))?;
 
             // Use new_with_base_url, passing None for base_url
             let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::Phind, None)?;
@@ -248,10 +248,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for Groq provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Groq API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("llama3-8b-8192"); // Default Groq model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'groq'"))?;
 
             // Use new_with_base_url, passing None for base_url
             let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::Groq, None)?;

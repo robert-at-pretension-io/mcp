@@ -473,17 +473,36 @@ impl MCPHost {
                 .cloned() // Clone the Option<&AIProviderConfig> into Option<AIProviderConfig>
         }; // config lock released here
 
-        // Get the default model using the new logic if config wasn't found
-        let final_provider_config = provider_config.unwrap_or_else(|| { // Use provider_config here
-            warn!("Provider '{}' not found in main config, determining default model...", provider_name);
-            // Need to acquire provider_models lock here
-            let default_model = { // Scope for provider_models lock
-                let models_guard = futures::executor::block_on(self.provider_models.lock()); // Block briefly for sync access
-                Self::get_default_model_for_provider(provider_name, &models_guard)
-            };
-            debug!("Using determined default model '{}' for provider '{}'", default_model, provider_name);
-            AIProviderConfig { model: default_model }
-        });
+        // Determine the final config, prioritizing main config, then provider_models.toml, then hardcoded defaults
+        let final_provider_config = match provider_config {
+            Some(config) => {
+                debug!("Using provider config found in main config file for '{}'.", provider_name);
+                config // Use the config directly from the main file
+            }
+            None => {
+                warn!("Provider '{}' not found in main config, checking provider_models.toml...", provider_name);
+                // Lock provider_models to get the default
+                let models_guard = self.provider_models.lock().await;
+                let provider_key = provider_name.to_lowercase();
+                let model_from_toml = models_guard.providers
+                    .get(&provider_key)
+                    .and_then(|list| list.models.first()) // Get the first model if list exists
+                    .filter(|s| !s.is_empty()); // Ensure it's not empty
+
+                let determined_model = match model_from_toml {
+                    Some(model) => {
+                        debug!("Using default model '{}' from provider_models.toml for provider '{}'", model, provider_name);
+                        model.clone()
+                    }
+                    None => {
+                        // If not in TOML or list is empty, use the hardcoded fallback logic
+                        warn!("Provider '{}' not found or has no models listed in provider_models.toml. Using hardcoded default.", provider_name);
+                        Self::get_default_model_for_provider(provider_name, &models_guard) // Pass the locked guard
+                    }
+                };
+                AIProviderConfig { model: determined_model }
+            }
+        };
 
         // Try to create the client for this provider using the final config
         match Self::create_ai_client_internal(provider_name, &final_provider_config).await {
