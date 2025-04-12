@@ -70,8 +70,8 @@ pub mod testing {
             // Test implementation - returns rmcp::model::Tool
             // Fix field types according to rmcp::model::Tool definition
             Ok(vec![
-                // Fully qualify rmcp::model::Tool here as a workaround for E0308
-                rmcp::model::Tool {
+                // Explicitly type the struct literal as RmcpTool
+                RmcpTool {
                     name: Cow::Borrowed("test_tool"),
                     description: Some(Cow::Borrowed("A test tool")), // Description is Option<Cow>
                     input_schema: StdArc::new(serde_json::json!({ // input_schema needs Arc<Map<String, Value>>
