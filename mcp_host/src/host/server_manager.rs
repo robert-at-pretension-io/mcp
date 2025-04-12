@@ -73,7 +73,8 @@ pub mod testing {
                 // Explicitly type the struct literal as RmcpTool
                 RmcpTool {
                     name: Cow::Borrowed("test_tool"),
-                    description: Some(Cow::Borrowed("A test tool")), // Description is Option<Cow>
+                    // Assign Some directly to the Option field
+                    description: Some(Cow::Borrowed("A test tool")),
                     input_schema: StdArc::new(serde_json::json!({ // input_schema needs Arc<Map<String, Value>>
                         "type": "object",
                         "properties": {
