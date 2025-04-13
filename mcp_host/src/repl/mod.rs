@@ -287,7 +287,7 @@ impl Repl {
                 } else {
                     // --- Normal Chat Turn ---
                     // Execute chat turn logic using the helper function
-                    match self.execute_chat_turn(server_context, &mut state, line).await {
+                    match self.execute_chat_turn(&server_context, &mut state, line).await {
                         Ok(_) => {
                             log::debug!("Chat turn executed successfully for context '{}'. Putting state back into chat_state.", server_context);
                             // Put the potentially modified state back into chat_state
@@ -420,7 +420,7 @@ impl Repl {
                      // This is a bit tricky with the current loop structure.
                      // Let's call execute_chat_turn directly here.
                      let mut current_state = self.chat_state.take().unwrap().1; // Get the state back
-                     match self.execute_chat_turn(server_context.clone(), &mut current_state, line).await {
+                     match self.execute_chat_turn(&server_context.clone(), &mut current_state, line).await {
                          Ok(_) => {
                              // Put the updated state back into active chat
                              self.chat_state = Some((server_context, current_state));
@@ -447,6 +447,7 @@ impl Repl {
                 // This is a bit awkward, maybe refactor CommandProcessor later
                 // to not require mutable editor directly for non-interactive commands.
                 // Pass the current verification state and the mutable editor.
+                */
                 let process_result = self.command_processor.process(
                     line,
                     self.verify_responses, // Pass current state
