@@ -21,8 +21,9 @@ pub struct SupabaseParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SupabaseHelpParams {
-    #[schemars(description = "Optional Supabase command to get specific help for (e.g., 'functions', 'db push')")]
-    pub command: Option<String>,
+    #[serde(default)] // Default to empty string if omitted
+    #[schemars(description = "Optional Supabase command to get specific help for (e.g., 'functions', 'db push'). Leave empty for general help.")]
+    pub command: String, // Changed from Option<String>
     #[serde(default = "default_cwd")]
     #[schemars(description = "The working directory for the command (defaults to current dir)")]
     pub cwd: String,
@@ -153,10 +154,11 @@ impl SupabaseTool {
     ) -> String {
         debug!("Executing supabase_help tool with params: {:?}", params);
 
-        // Handle None or empty string for command by defaulting to general help
-        let command_to_run = match params.command {
-            Some(cmd) if !cmd.is_empty() => format!("{} --help", cmd), // Specific command help
-            _ => "--help".to_string(), // General help if command is None or ""
+        // Handle empty string for command by defaulting to general help
+        let command_to_run = if params.command.trim().is_empty() {
+            "--help".to_string() // General help if command is empty
+        } else {
+            format!("{} --help", params.command.trim()) // Specific command help
         };
 
         // Execute without using auth token (pass false to use_auth_token)
