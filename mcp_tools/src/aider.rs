@@ -257,6 +257,7 @@ impl AiderExecutor {
                     _ => None,
                 }
             })
+        }; // <-- Add missing semicolon here
 
         debug!("Running aider with args: {:?}", cmd_args);
         info!("Executing aider in directory: {}", params.directory);
