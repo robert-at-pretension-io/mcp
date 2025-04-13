@@ -121,7 +121,7 @@ impl NetlifyTool {
 
     // --- Tool Methods ---
 
-    #[tool(description = "Executes Netlify CLI commands. Requires NETLIFY_AUTH_TOKEN env var. Provide the command arguments *after* 'netlify' (e.g., 'sites:list', 'deploy --prod').")] // Use tool macro
+    #[tool(description = "Executes authenticated Netlify CLI commands. Provide the command arguments *after* 'netlify' (e.g., 'sites:list', 'deploy --prod'). Authentication is handled automatically.")] // Use tool macro
     pub async fn netlify(
         &self,
         #[tool(aggr)] params: NetlifyParams, // Correct attribute syntax
@@ -143,7 +143,7 @@ impl NetlifyTool {
         }
     }
 
-    #[tool(description = "Gets help for the Netlify CLI or a specific command. Does not require auth token.")] // Use tool macro
+    #[tool(description = "Gets help for the Netlify CLI or a specific command.")] // Use tool macro
     pub async fn netlify_help(
         &self,
         #[tool(aggr)] params: NetlifyHelpParams, // Correct attribute syntax

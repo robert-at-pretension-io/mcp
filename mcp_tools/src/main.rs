@@ -212,7 +212,7 @@ async fn main() {
         }
 
         // Netlify tool implementations
-        #[tool(description = "Executes Netlify CLI commands. Requires NETLIFY_AUTH_TOKEN env var. Provide the command arguments *after* 'netlify' (e.g., 'sites:list', 'deploy --prod').")]
+        #[tool(description = "Executes authenticated Netlify CLI commands. Provide the command arguments *after* 'netlify' (e.g., 'sites:list', 'deploy --prod'). Authentication is handled automatically.")]
         pub async fn netlify( // Added pub
             &self,
             #[tool(aggr)] params: NetlifyParams,
@@ -221,7 +221,7 @@ async fn main() {
             self.netlify_tool.netlify(params).await
         }
 
-        #[tool(description = "Gets help for the Netlify CLI or a specific command. Does not require auth token.")]
+        #[tool(description = "Gets help for the Netlify CLI or a specific command.")]
         pub async fn netlify_help( // Added pub
             &self,
             #[tool(aggr)] params: NetlifyHelpParams,
