@@ -377,12 +377,25 @@ impl InteractiveTerminalTool {
                      }).await;
 
                      match kill_result {
+                         // spawn_blocking succeeded, kill succeeded
                          Ok(Ok(_)) => info!("Session {}: Sent SIGKILL to process {}.", session_id, pid_val),
-                         Ok(Err(nix::Error::Sys(errno)) ) if errno == nix::errno::Errno::ESRCH => {
-                             // ESRCH means "No such process", which is fine if SIGTERM worked or it exited already
-                             info!("Session {}: SIGKILL unnecessary for process {} (already exited).", session_id, pid_val);
+                         // spawn_blocking succeeded, kill failed
+                         Ok(Err(nix_error)) => {
+                             // Check the specific nix::Error variant
+                             if let nix::Error::Sys(errno) = nix_error {
+                                 if errno == nix::errno::Errno::ESRCH {
+                                     // ESRCH means "No such process", which is fine if SIGTERM worked or it exited already
+                                     info!("Session {}: SIGKILL unnecessary for process {} (already exited).", session_id, pid_val);
+                                 } else {
+                                     // Other nix::Error::Sys error
+                                     warn!("Session {}: Failed to send SIGKILL to process {} (Nix Sys Error {}): {}", session_id, pid_val, errno, nix_error);
+                                 }
+                             } else {
+                                 // Other nix::Error variant (e.g., InvalidPath, InvalidArgument)
+                                 warn!("Session {}: Failed to send SIGKILL to process {} (Nix Error): {}", session_id, pid_val, nix_error);
+                             }
                          }
-                         Ok(Err(e)) => warn!("Session {}: Failed to send SIGKILL to process {}: {}", session_id, pid_val, e),
+                         // spawn_blocking itself failed
                          Err(e) => error!("Session {}: Spawn_blocking failed for SIGKILL on process {}: {}", session_id, pid_val, e), // JoinError
                      }
 
