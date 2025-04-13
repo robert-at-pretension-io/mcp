@@ -21,8 +21,9 @@ pub struct NetlifyParams {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct NetlifyHelpParams {
-    #[schemars(description = "Optional Netlify command to get specific help for (e.g., 'deploy', 'sites:create')")]
-    pub command: Option<String>,
+    #[serde(default)] // Default to empty string if omitted
+    #[schemars(description = "Optional Netlify command to get specific help for (e.g., 'deploy', 'sites:create'). Leave empty for general help.")]
+    pub command: String, // Changed from Option<String>
     #[serde(default = "default_cwd")]
     #[schemars(description = "The working directory for the command (defaults to current dir)")]
     pub cwd: String,
@@ -150,10 +151,11 @@ impl NetlifyTool {
     ) -> String {
         debug!("Executing netlify_help tool with params: {:?}", params);
 
-        // Handle None or empty string for command by defaulting to general help
-        let command_to_run = match params.command {
-            Some(cmd) if !cmd.is_empty() => format!("{} --help", cmd), // Specific command help
-            _ => "--help".to_string(), // General help if command is None or ""
+        // Handle empty string for command by defaulting to general help
+        let command_to_run = if params.command.trim().is_empty() {
+             "--help".to_string() // General help if command is empty
+        } else {
+            format!("{} --help", params.command.trim()) // Specific command help
         };
 
         // Execute without appending auth token
