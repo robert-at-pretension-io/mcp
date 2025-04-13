@@ -266,18 +266,28 @@ impl InteractiveTerminalTool {
             format!("{}\n", command)
         };
 
-        { // Scope for writer lock
-            let mut writer_guard = state.pty_master.lock().await;
-            writer_guard.write_all(command_with_newline.as_bytes()).await?;
-            // Flush might be necessary depending on the PTY implementation and shell buffering
-            // Let's remove it to see if it resolves the blocking issue.
-            // writer_guard.flush().await?;
-            debug!("Session {}: Sent command: {}", session_id, command.trim());
-            // writer_guard is dropped here, which might implicitly flush.
-        }
+        // Clone necessary data for the spawned task
+        let pty_master_arc = Arc::clone(&state.pty_master);
+        let session_id_clone = session_id.to_string();
+        let command_log_clone = command.trim().to_string(); // Clone for logging within task
 
-        // Return immediately after sending the command
-        Ok(format!("Command sent to session {}. Use 'get_terminal_output' to see results later.", session_id))
+        // Spawn the write operation into a separate task
+        tokio::spawn(async move {
+            match pty_master_arc.lock().await.write_all(command_with_newline.as_bytes()).await {
+                Ok(_) => {
+                    debug!("Session {}: Successfully sent command: {}", session_id_clone, command_log_clone);
+                    // Implicit flush might happen when the lock guard is dropped here.
+                }
+                Err(e) => {
+                    // Log the error if writing fails in the background task
+                    error!("Session {}: Failed to write command '{}': {}", session_id_clone, command_log_clone, e);
+                    // Consider updating task status to Error here if possible/needed
+                }
+            }
+        });
+
+        // Return immediately, indicating the command was dispatched asynchronously
+        Ok(format!("Command sent asynchronously to session {}. Use 'get_terminal_output' to see results later.", session_id))
     }
 
      async fn get_output_internal(&self, session_id: &str, lines: Option<usize>) -> Result<String> {
