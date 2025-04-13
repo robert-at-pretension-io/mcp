@@ -234,7 +234,7 @@ async fn main() {
         }
 
         // Supabase tool implementations
-        #[tool(description = "Executes authenticated Supabase CLI commands. Provide the command arguments *after* 'supabase' (e.g., 'projects list', 'functions deploy my-func'). Authentication is handled automatically via SUPABASE_ACCESS_TOKEN.")]
+        #[tool(description = "Executes authenticated Supabase CLI commands. Provide the command arguments *after* 'supabase' (e.g., 'projects list', 'functions deploy my-func'). Authentication is handled automatically via SUPABASE_ACCESS_TOKEN environment variable.")] // Updated description slightly
         pub async fn supabase(
             &self,
             #[tool(aggr)] params: SupabaseParams,

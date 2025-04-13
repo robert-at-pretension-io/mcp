@@ -60,27 +60,25 @@ impl SupabaseTool {
         &self,
         command_str: &str, // The full command string including subcommands and flags
         cwd: &str,
-        append_token: bool, // Flag to control appending --token
+        use_auth_token: bool, // Flag to control using the auth token env var
     ) -> Result<SupabaseExecutionResult> {
-        let token = if append_token {
+        let token = if use_auth_token {
             // Use SUPABASE_ACCESS_TOKEN, the standard env var for the CLI
             env::var("SUPABASE_ACCESS_TOKEN").map_err(|_| {
                 anyhow!("SUPABASE_ACCESS_TOKEN environment variable not set. Cannot authenticate.")
             })?
         } else {
-            String::new() // No token needed if not appending auth
+            String::new() // No token needed if not using auth
         };
 
-        // Construct the full command with token if needed
-        // Note: Supabase CLI uses --token <token>
-        let full_command = if append_token && !token.is_empty() {
-            format!("{} --token {}", command_str, token)
-        } else {
-            command_str.to_string()
-        };
+        // The command string remains unchanged, we pass the token via env var
+        let full_command_for_shell = format!("supabase {}", command_str);
 
-        debug!("Executing Supabase command: supabase {}", full_command);
+        debug!("Executing Supabase command: {}", full_command_for_shell);
         debug!("Working directory: {}", cwd);
+        if use_auth_token {
+            debug!("Using SUPABASE_ACCESS_TOKEN from environment.");
+        }
 
         let cwd_path = std::path::PathBuf::from(cwd);
         if !cwd_path.exists() {
@@ -91,11 +89,20 @@ impl SupabaseTool {
         }
 
         // Use sh -c for robustness with complex args/quotes
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg(format!("supabase {}", full_command)) // Prepend supabase here
-            .current_dir(&cwd_path)
-            .output()?;
+        let mut command_builder = Command::new("sh");
+        command_builder.arg("-c")
+            .arg(&full_command_for_shell) // Pass the command string directly
+            .current_dir(&cwd_path);
+
+        // Set the environment variable for the child process if needed
+        if use_auth_token && !token.is_empty() {
+            command_builder.env("SUPABASE_ACCESS_TOKEN", token);
+        } else {
+            // Explicitly remove it if not using auth, in case it's set in the parent env
+            command_builder.env_remove("SUPABASE_ACCESS_TOKEN");
+        }
+
+        let output = command_builder.output()?;
 
         let result = SupabaseExecutionResult {
             success: output.status.success(),
@@ -116,13 +123,14 @@ impl SupabaseTool {
 
     // --- Tool Methods ---
 
-    #[tool(description = "Executes authenticated Supabase CLI commands. Provide the command arguments *after* 'supabase' (e.g., 'projects list', 'functions deploy my-func'). Authentication is handled automatically via SUPABASE_ACCESS_TOKEN.")]
+    #[tool(description = "Executes authenticated Supabase CLI commands. Provide the command arguments *after* 'supabase' (e.g., 'projects list', 'functions deploy my-func'). Authentication is handled automatically via SUPABASE_ACCESS_TOKEN environment variable.")] // Updated description slightly
     pub async fn supabase(
         &self,
         #[tool(aggr)] params: SupabaseParams,
     ) -> String {
         debug!("Executing supabase tool with params: {:?}", params);
 
+        // Pass true to use_auth_token
         match self.execute_supabase_command(&params.command_args, &params.cwd, true).await {
             Ok(result) => {
                 format!(
@@ -150,7 +158,7 @@ impl SupabaseTool {
             None => "--help".to_string(),
         };
 
-        // Execute without appending token
+        // Execute without using auth token (pass false to use_auth_token)
         match self.execute_supabase_command(&command_to_run, &params.cwd, false).await {
              Ok(result) => {
                 // Help usually goes to stdout
