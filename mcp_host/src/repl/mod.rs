@@ -256,17 +256,19 @@ impl Repl {
                     // --- Process REPL Command While in Chat Mode ---
                     let command_line = line[1..].trim(); // Remove leading '/'
                     log::info!("Processing REPL command from within chat: '{}'", command_line);
-                    // Put the state back temporarily so CommandProcessor can potentially access it via the repl argument
+                    // Put the state back temporarily so CommandProcessor can potentially access it via arguments
                     self.chat_state = Some((server_context.clone(), state));
-                    // Process the command, passing self (as &mut Repl)
+                    // Process the command, passing mutable state fields instead of self
                     let process_result = self.command_processor.process(
-                        self, // Pass mutable reference to self (Repl)
+                        &mut self.chat_state, // Pass mutable chat_state
+                        &mut self.loaded_conversation, // Pass mutable loaded_conversation
+                        &mut self.current_conversation_path, // Pass mutable path
                         command_line,
                         self.verify_responses,
                         &mut self.editor
                     ).await;
-                    // Take the state back after processing
-                    let (server_context, state) = self.chat_state.take().unwrap(); // Remove mut state here
+                    // Take the state back after processing (it might have been modified by process)
+                    let (server_context, state) = self.chat_state.take().unwrap();
 
                     match process_result {
                         Ok((output_string, new_verify_state)) => {
@@ -337,9 +339,11 @@ impl Repl {
                         line
                     };
                     log::debug!("Processing command: '{}'", command_line);
-                    // Pass the current verification state, the mutable editor, and self (as &mut Repl).
+                    // Pass the current verification state, the mutable editor, and mutable state fields.
                     let process_result = self.command_processor.process(
-                        self, // Pass mutable reference to self (Repl)
+                        &mut self.chat_state, // Pass mutable chat_state
+                        &mut self.loaded_conversation, // Pass mutable loaded_conversation
+                        &mut self.current_conversation_path, // Pass mutable path
                         command_line,
                         self.verify_responses, // Pass current state
                         &mut self.editor
@@ -470,8 +474,11 @@ impl Repl {
                 // to not require mutable editor directly for non-interactive commands.
                 // Pass the current verification state and the mutable editor.
                 */
+                // Update the call inside the commented block as well
                 let process_result = self.command_processor.process(
-                    self, // Add missing 'self' argument
+                    &mut self.chat_state, // Pass mutable chat_state
+                    &mut self.loaded_conversation, // Pass mutable loaded_conversation
+                    &mut self.current_conversation_path, // Pass mutable path
                     line,
                     self.verify_responses, // Pass current state
                     &mut self.editor

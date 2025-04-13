@@ -58,10 +58,13 @@ impl CommandProcessor {
     /// Process a command string.
     /// Takes the current verification state and returns the output message
     /// and an optional new verification state if it was changed by the command.
-    // Add repl: &mut Repl as an argument
+    // Remove repl: &mut Repl argument, add mutable state fields needed by commands
     pub async fn process(
         &mut self,
-        repl: &mut Repl, // Remove anonymous lifetime <'_>
+        // Pass mutable references to the parts of Repl state needed by commands
+        chat_state: &mut Option<(String, crate::conversation_state::ConversationState)>,
+        loaded_conversation: &mut Option<crate::conversation_state::ConversationState>,
+        current_conversation_path: &mut Option<PathBuf>,
         command: &str,
         current_verify_state: bool,
         editor: &mut Editor<ReplHelper, DefaultHistory>
@@ -98,10 +101,10 @@ impl CommandProcessor {
             "reload_config" => self.cmd_reload_config(editor).await.map(|s| (s, None)), // Pass editor
             "show_config" => self.cmd_show_config(args).await.map(|s| (s, None)),
             "verify" => self.cmd_verify(args, current_verify_state).await,
-            // Pass repl to commands that need it
-            "save_chat" => self.cmd_save_chat(repl, args).await.map(|s| (s, None)),
-            "load_chat" => self.cmd_load_chat(repl, args).await.map(|s| (s, None)),
-            "new_chat" => self.cmd_new_chat(repl).await.map(|s| (s, None)),
+            // Pass mutable state fields to commands that need them
+            "save_chat" => self.cmd_save_chat(chat_state, loaded_conversation, current_conversation_path, args).await.map(|s| (s, None)),
+            "load_chat" => self.cmd_load_chat(chat_state, loaded_conversation, current_conversation_path, args).await.map(|s| (s, None)),
+            "new_chat" => self.cmd_new_chat(chat_state, loaded_conversation, current_conversation_path).await.map(|s| (s, None)),
             _ => {
                  // Check if it looks like a chat command before declaring unknown
                  // 'chat' command is handled in the main REPL loop now
@@ -381,11 +384,17 @@ impl CommandProcessor {
     }
 
     // --- Save Chat ---
-    // Add repl: &mut Repl argument
-    async fn cmd_save_chat(&mut self, repl: &mut Repl, args: &[String]) -> Result<String> { // Remove <'_>
-        // Access repl fields directly via the argument
-        let state_to_save = repl.chat_state.as_ref().map(|(_, s)| s.clone())
-            .or_else(|| repl.loaded_conversation.clone());
+    // Remove repl: &mut Repl, add state fields
+    async fn cmd_save_chat(
+        &mut self,
+        chat_state: &mut Option<(String, crate::conversation_state::ConversationState)>,
+        loaded_conversation: &mut Option<crate::conversation_state::ConversationState>,
+        current_conversation_path: &mut Option<PathBuf>,
+        args: &[String]
+    ) -> Result<String> {
+        // Access state fields directly via arguments
+        let state_to_save = chat_state.as_ref().map(|(_, s)| s.clone())
+            .or_else(|| loaded_conversation.clone());
 
         let state = match state_to_save {
             Some(s) => s,
@@ -401,14 +410,20 @@ impl CommandProcessor {
             if name.ends_with(".json") { name } else { format!("{}.json", name) }
         };
 
-        // Use repl argument
-        let conversations_dir = repl.get_conversations_dir()?;
+        // Calculate conversations dir (needs helper or config access)
+        // Let's assume a helper function `get_conversations_dir_path()` exists or is added.
+        // For now, hardcoding the logic here. Ideally, move this to a shared place.
+        let conversations_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("Could not determine config directory"))?
+            .join("mcp/conversations");
+        std::fs::create_dir_all(&conversations_dir)?; // Ensure it exists
+
         let path = conversations_dir.join(&filename);
 
         match state.save_to_json(&path).await {
             Ok(_) => {
-                // Update the current conversation path in Repl via the argument
-                repl.set_current_conversation_path(Some(path.clone()));
+                // Update the current conversation path via the argument
+                *current_conversation_path = Some(path.clone());
                 Ok(format!("Conversation saved to: {}", style(path.display()).green()))
             }
             Err(e) => Err(anyhow!("Failed to save conversation: {}", e)),
@@ -416,16 +431,26 @@ impl CommandProcessor {
     }
 
     // --- Load Chat ---
-    // Add repl: &mut Repl argument
-    async fn cmd_load_chat(&mut self, repl: &mut Repl, args: &[String]) -> Result<String> { // Remove <'_>
+    // Remove repl: &mut Repl, add state fields
+    async fn cmd_load_chat(
+        &mut self,
+        chat_state: &mut Option<(String, crate::conversation_state::ConversationState)>,
+        loaded_conversation: &mut Option<crate::conversation_state::ConversationState>,
+        current_conversation_path: &mut Option<PathBuf>,
+        args: &[String]
+    ) -> Result<String> {
         if args.is_empty() {
             return Err(anyhow!("Usage: load_chat <filename>"));
         }
         let filename = args[0].clone();
         let filename_with_ext = if filename.ends_with(".json") { filename } else { format!("{}.json", filename) };
 
-        // Use repl argument
-        let conversations_dir = repl.get_conversations_dir()?;
+        // Calculate conversations dir
+        let conversations_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("Could not determine config directory"))?
+            .join("mcp/conversations");
+        // No need to create dir on load
+
         let path = conversations_dir.join(&filename_with_ext);
 
         if !path.exists() {
@@ -434,10 +459,10 @@ impl CommandProcessor {
 
         match crate::conversation_state::ConversationState::load_from_json(&path).await {
             Ok(loaded_state) => {
-                // Use repl argument
-                repl.chat_state = None; // Clear active chat
-                repl.loaded_conversation = Some(loaded_state); // Set loaded state
-                repl.set_current_conversation_path(Some(path.clone())); // Update path
+                // Use arguments to update state
+                *chat_state = None; // Clear active chat
+                *loaded_conversation = Some(loaded_state); // Set loaded state
+                *current_conversation_path = Some(path.clone()); // Update path
                 Ok(format!("Conversation loaded from: {}", style(path.display()).green()))
             }
             Err(e) => Err(anyhow!("Failed to load conversation: {}", e)),
@@ -445,12 +470,17 @@ impl CommandProcessor {
     }
 
     // --- New Chat ---
-    // Add repl: &mut Repl argument
-    async fn cmd_new_chat(&mut self, repl: &mut Repl) -> Result<String> { // Remove <'_>
-        // Use repl argument
-        repl.chat_state = None;
-        repl.loaded_conversation = None;
-        repl.set_current_conversation_path(None);
+    // Remove repl: &mut Repl, add state fields
+    async fn cmd_new_chat(
+        &mut self,
+        chat_state: &mut Option<(String, crate::conversation_state::ConversationState)>,
+        loaded_conversation: &mut Option<crate::conversation_state::ConversationState>,
+        current_conversation_path: &mut Option<PathBuf>
+    ) -> Result<String> {
+        // Use arguments to update state
+        *chat_state = None;
+        *loaded_conversation = None;
+        *current_conversation_path = None;
         Ok(style("Cleared current conversation.").yellow().to_string())
     }
 
