@@ -27,8 +27,9 @@ use tokio::time::Duration;
 use crate::host::MCPHost;
 // Define Role locally if not directly available from rllm 1.1.7
 
-use crate::conversation_logic::generate_verification_criteria; // Import the function
+use crate::conversation_logic::{generate_verification_criteria, VerificationOutcome}; // Import VerificationOutcome
 use crate::conversation_service::generate_tool_system_prompt; // Import tool prompt generator
+use crate::conversation_state::ConversationState; // Import ConversationState
 
 /// Main REPL implementation with enhanced CLI features
 pub struct Repl {
@@ -195,7 +196,26 @@ impl Repl {
                     println!("{}", style("Exiting chat mode.").yellow());
                     log::debug!("User requested exit from chat mode.");
                     // self.chat_state remains None because we took it
+                } else if line.eq_ignore_ascii_case("compact") {
+                    // --- Handle Compact Command ---
+                    log::info!("Compact command received in chat mode.");
+                    println!("{}", style("Compacting conversation history...").dim());
+                    match self.execute_compact_conversation(&server_context, &state).await {
+                        Ok(new_state) => {
+                            println!("{}", style("Conversation compacted successfully.").green());
+                            log::info!("Conversation compacted. New state has {} messages.", new_state.messages.len());
+                            // Put the new compacted state back
+                            self.chat_state = Some((server_context.clone(), new_state));
+                        }
+                        Err(e) => {
+                            log::error!("Error during conversation compaction: {}", e);
+                            println!("{}: {}", style("Compaction Error").red().bold(), e);
+                            // Put the *original* state back if compaction fails
+                            self.chat_state = Some((server_context.clone(), state));
+                        }
+                    }
                 } else {
+                    // --- Normal Chat Turn ---
                     // Execute chat turn logic using the new helper function
                     // Pass the server_context (which might be "*all*")
                     match self.execute_chat_turn(server_context, &mut state, line).await {
@@ -414,6 +434,80 @@ impl Repl {
 
         Ok(())
     }
+
+    /// Compacts the current conversation history using an LLM.
+    async fn execute_compact_conversation(
+        &self,
+        _server_context: &str, // Keep for potential future use, but not needed now
+        state: &ConversationState,
+    ) -> Result<ConversationState> {
+        log::debug!("Executing conversation compaction.");
+
+        // 1. Get AI client
+        let client = self.host.ai_client().await
+            .ok_or_else(|| anyhow!("No AI client is active for compaction."))?;
+        let model_name = client.model_name();
+        log::debug!("Using AI client for model: {}", model_name);
+        println!("{}", style(format!("Using AI model for compaction: {}", model_name)).dim());
+
+        // 2. Format history for summarization prompt
+        let history_string = state.messages.iter()
+            .map(|msg| crate::conversation_state::format_chat_message(&msg.role, &msg.content))
+            .collect::<Vec<String>>()
+            .join("\n\n---\n\n");
+
+        if history_string.is_empty() {
+            return Err(anyhow!("Cannot compact an empty conversation history."));
+        }
+
+        // 3. Define summarization prompt
+        let summarization_prompt = format!(
+            "You are an expert conversation summarizer. Analyze the following conversation history and provide a concise summary. Focus on:\n\
+            - Key user requests and goals.\n\
+            - Important information discovered or generated.\n\
+            - Decisions made.\n\
+            - Final outcomes or current status.\n\
+            - Any critical unresolved questions or next steps mentioned.\n\n\
+            Keep the summary factual and brief, retaining essential context for the conversation to continue.\n\n\
+            Conversation History:\n\
+            ```\n\
+            {}\n\
+            ```\n\n\
+            Concise Summary:",
+            history_string
+        );
+
+        // 4. Call AI for summarization (use raw_builder, no tools needed)
+        // Pass empty system prompt as it's not relevant for summarization itself
+        let summary = crate::repl::with_progress(
+            "Generating summary".to_string(),
+            async {
+                client.raw_builder("")
+                    .user(summarization_prompt)
+                    .execute()
+                    .await
+                    .map_err(|e| anyhow!("Summarization AI request failed: {}", e))
+            }
+        ).await?;
+
+        log::debug!("Received summary (length: {})", summary.len());
+
+        // 5. Create new state with original system prompt and tools
+        // Use the *original* system prompt and tools from the *input* state
+        let mut new_state = ConversationState::new(state.system_prompt.clone(), state.tools.clone());
+
+        // 6. Add summary message to the new state
+        let summary_message = format!(
+            "Conversation history compacted. Key points from previous discussion:\n\n{}",
+            summary.trim()
+        );
+        // Add as an assistant message to indicate it's a system action summary
+        new_state.add_assistant_message(&summary_message);
+        log::debug!("Added summary message to new state.");
+
+        Ok(new_state)
+    }
+
 
     /// Executes one turn of the chat interaction.
     /// Takes user input, calls the AI, and handles the response (including tool calls).

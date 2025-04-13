@@ -58,7 +58,8 @@ impl ReplHelper {
                 "save_config".to_string(),
                 "reload_config".to_string(),
                 "show_config".to_string(),
-                "verify".to_string(), // Added verify command
+                "verify".to_string(),
+                "compact".to_string(), // Added compact command (chat mode only)
                 "exit".to_string(),
                 "quit".to_string(),
             ],
