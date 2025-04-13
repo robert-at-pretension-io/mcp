@@ -103,12 +103,12 @@ pub struct MermaidChartParams {
     pub files: String,
 
     #[serde(default)]
-    #[schemars(description = "Optional. The type of chart to generate (e.g., 'flowchart', 'class', 'sequence', etc.). Defaults to 'flowchart' if not specified.")]
-    pub chart_type: Option<String>,
-    
+    #[schemars(description = "Optional: The type of chart to generate (e.g., 'flowchart', 'class', 'sequence'). Leave empty to default to 'flowchart'.")]
+    pub chart_type: String, // Changed from Option<String>
+
     #[serde(default)]
-    #[schemars(description = "Optional. Additional instructions for the chart generation")]
-    pub prompt: Option<String>,
+    #[schemars(description = "Optional: Additional instructions for the chart generation. Leave empty for none.")]
+    pub prompt: String, // Changed from Option<String>
 }
 
 #[derive(Debug, Clone)]
@@ -175,9 +175,13 @@ impl MermaidChartTool {
         }
 
         // Build the prompt for chart generation
-        let chart_type = params.chart_type.unwrap_or_else(|| "flowchart".to_string());
-        let additional_instructions = params.prompt.unwrap_or_else(|| "".to_string());
-        
+        let chart_type = if params.chart_type.trim().is_empty() {
+            "flowchart".to_string() // Default if empty
+        } else {
+            params.chart_type.trim().to_string()
+        };
+        let additional_instructions = params.prompt.trim(); // Use directly, empty if no instructions
+
         let prompt = format!(
             "Based on the code files below, generate a clean, well-structured Mermaid {} diagram that visualizes the relationships between components.\n\n\
              {}\n\n\
@@ -186,9 +190,10 @@ impl MermaidChartTool {
              - Focus only on the important components and their relationships\n\
              - Include {} specific classes, methods, and relationships\n\
              - Keep the diagram easy to read and understand\n\
-             - {}\n\n\
+             {}\n\n\
              IMPORTANT: Return only the diagram code with no code block formatting, explanations, or other text.",
-            chart_type, file_contents, chart_type, chart_type, additional_instructions
+            chart_type, file_contents, chart_type, chart_type,
+            if additional_instructions.is_empty() { "" } else { &format!("- {}", additional_instructions) } // Conditionally add instruction prefix
         );
 
         // Call Gemini API to generate the diagram
@@ -205,8 +210,9 @@ impl MermaidChartTool {
     ) -> String {
         // Log the number of files based on splitting the input string
         let file_count = params.files.split_whitespace().count();
-        info!("Generating Mermaid chart for {} files (from input string '{}') with chart type: {:?}",
-              file_count, params.files, params.chart_type);
+        // Log the chart type string directly
+        info!("Generating Mermaid chart for {} files (from input string '{}') with chart type: '{}'",
+              file_count, params.files, if params.chart_type.is_empty() { "flowchart (default)" } else { &params.chart_type });
 
         match self.generate_chart(params).await {
             Ok(diagram) => {
