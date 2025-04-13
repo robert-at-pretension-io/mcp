@@ -99,9 +99,9 @@ async fn call_gemini_api(prompt: &str) -> Result<String> {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct MermaidChartParams {
-    #[schemars(description = "List of file paths to include in the chart generation")]
-    pub files: Vec<String>,
-    
+    #[schemars(description = "A space-separated string of file paths to include in the chart generation")]
+    pub files: String,
+
     #[serde(default)]
     #[schemars(description = "Optional. The type of chart to generate (e.g., 'flowchart', 'class', 'sequence', etc.). Defaults to 'flowchart' if not specified.")]
     pub chart_type: Option<String>,
@@ -126,9 +126,15 @@ impl MermaidChartTool {
             error!("GEMINI_API_KEY environment variable is not set");
             return Err(anyhow!("GEMINI_API_KEY environment variable must be set to use the mermaid_chart tool."));
         }
-        
+
+        // Split the files string into individual paths
+        let file_paths: Vec<&str> = params.files.split_whitespace().collect();
+        if file_paths.is_empty() {
+            return Err(anyhow!("No file paths provided in the 'files' string."));
+        }
+
         // Validate file paths
-        for file_path in &params.files {
+        for file_path in &file_paths {
             if !Path::new(file_path).exists() {
                 return Err(anyhow!("File not found: {}", file_path));
             }
@@ -136,9 +142,9 @@ impl MermaidChartTool {
 
         // Read file contents
         let mut file_contents = String::new();
-        for file_path in &params.files {
-            let path = Path::new(file_path);
-            
+        for file_path in &file_paths {
+            let path = Path::new(*file_path); // Dereference file_path since it's &str
+
             // Skip very large files, binary files, etc.
             let metadata = std::fs::metadata(path)?;
             if metadata.len() > 1_000_000 {  // Skip files larger than 1MB
@@ -192,14 +198,16 @@ impl MermaidChartTool {
 
 #[tool(tool_box)]
 impl MermaidChartTool {
-    #[tool(description = "Generate a Mermaid chart from a collection of files. Provide a list of file paths, and this tool will create a string with their contents and generate a Mermaid diagram visualization.")]
+    #[tool(description = "Generate a Mermaid chart from a collection of files. Provide a space-separated string of file paths, and this tool will create a string with their contents and generate a Mermaid diagram visualization.")]
     pub async fn mermaid_chart(
         &self,
         #[tool(aggr)] params: MermaidChartParams
     ) -> String {
-        info!("Generating Mermaid chart for {} files with chart type: {:?}", 
-              params.files.len(), params.chart_type);
-        
+        // Log the number of files based on splitting the input string
+        let file_count = params.files.split_whitespace().count();
+        info!("Generating Mermaid chart for {} files (from input string '{}') with chart type: {:?}",
+              file_count, params.files, params.chart_type);
+
         match self.generate_chart(params).await {
             Ok(diagram) => {
                 // Format the diagram with a Mermaid code block
