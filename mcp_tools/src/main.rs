@@ -21,6 +21,7 @@ use mcp_tools::long_running_task::{
 };
 use mcp_tools::aider::{AiderTool, AiderParams};
 use mcp_tools::mermaid_chart::{MermaidChartTool, MermaidChartParams};
+use mcp_tools::netlify::{NetlifyTool, NetlifyParams, NetlifyHelpParams}; // Added Netlify imports
 // use mcp_tools::planner::{PlannerTool, PlannerParams};
 // use mcp_tools::gmail_integration::{
 //     GmailTool, AuthInitParams, AuthExchangeParams, SendMessageParams,
@@ -77,6 +78,7 @@ async fn main() {
         long_running_task_tool: LongRunningTaskTool,
         aider_tool: AiderTool,
         mermaid_chart_tool: MermaidChartTool,
+        netlify_tool: NetlifyTool, // Added NetlifyTool field
         // planner_tool: PlannerTool,
         // gmail_tool: GmailTool,
         // email_validator_tool: EmailValidatorTool,
@@ -102,6 +104,7 @@ async fn main() {
                 long_running_task_tool: task_tool,
                 aider_tool: AiderTool::new(),
                 mermaid_chart_tool: MermaidChartTool::new(),
+                netlify_tool: NetlifyTool::new(), // Instantiate NetlifyTool
                 // planner_tool: PlannerTool::new(),
                 // gmail_tool: GmailTool::new(),
                 // email_validator_tool: EmailValidatorTool::new(),
@@ -207,7 +210,26 @@ async fn main() {
             // Delegate to MermaidChartTool's implementation
             self.mermaid_chart_tool.mermaid_chart(params).await
         }
-        
+
+        // Netlify tool implementations
+        #[tool(description = "Executes Netlify CLI commands. Requires NETLIFY_AUTH_TOKEN env var. Provide the command arguments *after* 'netlify' (e.g., 'sites:list', 'deploy --prod').")]
+        async fn netlify(
+            &self,
+            #[tool(aggr)] params: NetlifyParams,
+        ) -> String {
+            // Delegate to NetlifyTool's implementation
+            self.netlify_tool.netlify(params).await
+        }
+
+        #[tool(description = "Gets help for the Netlify CLI or a specific command. Does not require auth token.")]
+        async fn netlify_help(
+            &self,
+            #[tool(aggr)] params: NetlifyHelpParams,
+        ) -> String {
+            // Delegate to NetlifyTool's implementation
+            self.netlify_tool.netlify_help(params).await
+        }
+
         // // Planner tool implementation
         // #[tool(description = "Generates a multi-step plan using available tools to fulfill a user request. Provide the original user request, the AI's interpretation of that request, and a list of all available tools (including their descriptions and parameters). The tool will call a powerful LLM (Gemini) to devise a plan, including potential contingencies and points for reflection or waiting for results.")]
         // async fn planning_tool(
