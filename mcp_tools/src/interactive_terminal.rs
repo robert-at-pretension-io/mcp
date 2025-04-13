@@ -378,20 +378,16 @@ impl InteractiveTerminalTool {
 
                      match kill_result {
                          // spawn_blocking succeeded, kill succeeded
+                         // spawn_blocking succeeded, kill succeeded
                          Ok(Ok(_)) => info!("Session {}: Sent SIGKILL to process {}.", session_id, pid_val),
                          // spawn_blocking succeeded, kill failed
                          Ok(Err(nix_error)) => {
-                             // Check the specific nix::Error variant
-                             if let nix::Error::Sys(errno) = nix_error {
-                                 if errno == nix::errno::Errno::ESRCH {
-                                     // ESRCH means "No such process", which is fine if SIGTERM worked or it exited already
-                                     info!("Session {}: SIGKILL unnecessary for process {} (already exited).", session_id, pid_val);
-                                 } else {
-                                     // Other nix::Error::Sys error
-                                     warn!("Session {}: Failed to send SIGKILL to process {} (Nix Sys Error {}): {}", session_id, pid_val, errno, nix_error);
-                                 }
+                             // Check if the nix::Error is specifically ESRCH (No such process)
+                             if nix_error == nix::errno::Errno::ESRCH {
+                                 // ESRCH means "No such process", which is fine if SIGTERM worked or it exited already
+                                 info!("Session {}: SIGKILL unnecessary for process {} (already exited).", session_id, pid_val);
                              } else {
-                                 // Other nix::Error variant (e.g., InvalidPath, InvalidArgument)
+                                 // Other nix::Error (could be Sys(other_errno), InvalidPath, etc.)
                                  warn!("Session {}: Failed to send SIGKILL to process {} (Nix Error): {}", session_id, pid_val, nix_error);
                              }
                          }
