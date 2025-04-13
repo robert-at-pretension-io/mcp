@@ -337,9 +337,9 @@ fn default_lines() -> usize {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ListTasksParams {
-    #[serde(default)]
-    #[schemars(description = "Optional filter for tasks (created, running, ended, error, stopped)")]
-    pub status: Option<String>,
+    #[serde(default)] // Default to empty string if omitted
+    #[schemars(description = "Optional filter for tasks (created, running, ended, error, stopped). Leave empty to list all.")]
+    pub status: String, // Changed from Option<String>
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -394,10 +394,26 @@ impl LongRunningTaskTool {
     }
     
     // Helper method to list tasks
-    async fn list_tasks_internal(&self, status_filter: Option<String>) -> Vec<TaskState> {
+    async fn list_tasks_internal(&self, status_filter_str: String) -> Vec<TaskState> { // Parameter is now String
         let manager = self.manager.lock().await;
-        
+
         // Convert status_str => Option<TaskStatus>
+        let filter_status = if status_filter_str.trim().is_empty() {
+            None // Empty string means no filter
+        } else {
+            match status_filter_str.trim().to_lowercase().as_str() {
+                "created" => Some(TaskStatus::Created),
+                "running" => Some(TaskStatus::Running),
+                "ended" => Some(TaskStatus::Ended),
+                "error" => Some(TaskStatus::Error),
+                "stopped" => Some(TaskStatus::Stopped),
+                _ => {
+                    warn!("Unrecognized status filter '{}'. Listing all tasks.", status_filter_str);
+                    None // Unrecognized filter means no filter (or could return error/empty)
+                }
+            }
+        };
+/* Original match logic:
         let filter_status = match status_filter.as_deref() {
             Some("created") => Some(TaskStatus::Created),
             Some("running") => Some(TaskStatus::Running),
@@ -603,10 +619,12 @@ impl LongRunningTaskTool {
         &self,
         #[tool(aggr)] params: ListTasksParams
     ) -> String {
-        info!("Listing tasks with filter: {:?}", params.status);
-        
+        // Log the filter string directly from params
+        info!("Listing tasks with filter: '{}'", params.status);
+
+        // Pass the String directly to the internal helper
         let tasks = self.list_tasks_internal(params.status).await;
-        
+
         if tasks.is_empty() {
             return "No tasks found.".to_string();
         }
