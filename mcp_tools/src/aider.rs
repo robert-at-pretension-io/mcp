@@ -17,8 +17,8 @@ pub struct AiderParams {
     pub message: String,
     
     #[serde(default)]
-    #[schemars(description = "Optional: A space-separated string of additional command-line options to pass to aider (e.g., '--show-diff --verbose')")]
-    pub options: Option<String>,
+    #[schemars(description = "Optional: A space-separated string of additional command-line options to pass to aider (e.g., '--show-diff --verbose'). Leave empty for none.")]
+    pub options: String, // Changed back from Option<String>
 
     #[serde(default)]
     #[schemars(description = "Optional: The provider to use (e.g., 'anthropic', 'openai', 'gemini'). Leave empty to auto-detect based on available API keys.")]
@@ -176,12 +176,22 @@ impl AiderExecutor {
             debug!("Using reasoning_effort: {}", validated_effort);
         }
 
-        // Add any additional options from the optional string
-        if let Some(options_str) = &params.options {
-            if !options_str.trim().is_empty() {
-                match shellwords::split(options_str) {
-                    Ok(split_options) => {
-                        debug!("Adding additional aider options: {:?}", split_options);
+        // Add any additional options from the options string if it's not empty
+        if !params.options.trim().is_empty() {
+            match shellwords::split(&params.options) { // Use params.options directly
+                Ok(split_options) => {
+                    debug!("Adding additional aider options: {:?}", split_options);
+                    cmd_args.extend(split_options);
+                }
+                Err(e) => {
+                    error!("Failed to parse additional aider options string '{}': {}. Options ignored.", params.options, e);
+                    // Optionally, you could add the error to the stderr of the result later
+                }
+            }
+        }
+
+        cmd_args
+    }
                         cmd_args.extend(split_options);
                     }
                     Err(e) => {
@@ -374,9 +384,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "anthropic".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "anthropic".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "".to_string(), // Changed from None
             };
@@ -390,9 +400,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "openai".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "openai".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "".to_string(), // Changed from None
             };
@@ -404,9 +414,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "invalid_provider".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "invalid_provider".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "".to_string(), // Changed from None
             };
@@ -491,9 +501,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "anthropic".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "anthropic".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "".to_string(), // Changed from None
             };
@@ -507,9 +517,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "openai".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "openai".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "".to_string(), // Changed from None
             };
@@ -523,9 +533,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "gemini".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "gemini".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "".to_string(), // Changed from None
             };
@@ -539,9 +549,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "anthropic".to_string(), // Changed from Some(...)
-                model: "claude-3-opus-20240229".to_string(), // Changed from Some(...)
+                options: "".to_string(), // Changed back from None
+                provider: "anthropic".to_string(),
+                model: "claude-3-opus-20240229".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "".to_string(), // Changed from None
             };
@@ -569,9 +579,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "openai".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "openai".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "high".to_string(), // Changed from Some(...)
             };
@@ -585,9 +595,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "openai".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "openai".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "invalid_effort".to_string(), // Changed from Some(...)
             };
@@ -601,9 +611,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "anthropic".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "anthropic".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "high".to_string(), // Changed from Some(...)
             };
@@ -615,9 +625,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "gemini".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "gemini".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None,
                 reasoning_effort: "high".to_string(), // Changed from Some(...)
             };
@@ -643,9 +653,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "anthropic".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "anthropic".to_string(),
+                model: "".to_string(),
                 thinking_tokens: Some(16000),
                 reasoning_effort: "".to_string(), // Changed from None
             };
@@ -659,9 +669,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "anthropic".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "anthropic".to_string(),
+                model: "".to_string(),
                 thinking_tokens: None, // Use default
                 reasoning_effort: "".to_string(), // Changed from None
             };
@@ -675,9 +685,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "openai".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "openai".to_string(),
+                model: "".to_string(),
                 thinking_tokens: Some(16000),
                 reasoning_effort: "".to_string(), // Changed from None
             };
@@ -689,9 +699,9 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None,
-                provider: "gemini".to_string(), // Changed from Some(...)
-                model: "".to_string(), // Changed from None
+                options: "".to_string(), // Changed back from None
+                provider: "gemini".to_string(),
+                model: "".to_string(),
                 thinking_tokens: Some(16000),
                 reasoning_effort: "".to_string(), // Changed from None
             };
