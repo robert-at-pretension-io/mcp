@@ -9,7 +9,9 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 use schemars::JsonSchema;
 use uuid::Uuid;
-use pty_process::{Command as PtyCommand, Pty, PtyMaster}; // Removed WaitStatus
+// Updated imports for pty-process 0.5.1 with async feature
+use pty_process::{Command as PtyCommand, Pty, Pts};
+use pty_process::asyncio::PtyMaster; // PtyMaster is now here
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use nix::errno::Errno; // Import Errno for EIO comparison
@@ -105,19 +107,22 @@ impl InteractiveTerminalTool {
     async fn start_session_internal(&self, shell_path: &str) -> Result<SessionId> {
         info!("Starting new interactive terminal session with shell: {}", shell_path);
 
-        let pty = Pty::new()?;
+        // Use Pty::open() instead of Pty::new()
+        let pty = Pty::open()?;
         let pts = pty.pts()?; // Get slave PTY device
 
         // Configure the command to run in the PTY
-        let mut cmd = PtyCommand::new(shell_path);
-        cmd.pty(pts); // Assign the PTY slave
+        let cmd = PtyCommand::new(shell_path);
+        // cmd.pty(pts); // This method is removed
 
-        // Spawn the command
-        let child = cmd.spawn()?;
-        let pid = child.pid(); // Get PID if possible
+        // Spawn the command, passing pts directly to spawn
+        let child = cmd.spawn(pts)?;
+        // Use child.id() to get the PID (returns Option<u32>)
+        let pid = child.id();
         info!("Spawned shell process with PID: {:?}", pid);
 
-        let master = pty.master()?; // Get the master handle
+        // Get the async master handle using into_async_master
+        let master = pty.into_async_master()?;
 
         let session_id = Uuid::new_v4().to_string();
         let output_buffer = Arc::new(Mutex::new(String::new()));
@@ -208,7 +213,7 @@ impl InteractiveTerminalTool {
             output_buffer: Arc::clone(&output_buffer),
             status: Arc::clone(&status),
             reader_handle,
-            process_pid: pid,
+            process_pid: pid.map(|id| id as i32), // Convert Option<u32> to Option<i32>
             shell_path: shell_path.to_string(),
         });
 
