@@ -111,12 +111,11 @@ impl<'a> CommandProcessor<'a> { // Add lifetime parameter
                      // Using the original "Unknown command" error works for now,
                      // as the REPL loop checks for this specific error.
                      Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
-                 } else {
-                     Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
                  }
-            }
-        };
+                };
+        
         result // Return the final result
+                
     }
 
     /// Get available commands

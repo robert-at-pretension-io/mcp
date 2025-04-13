@@ -89,18 +89,7 @@ impl<'a> Repl<'a> {
         repl_instance.command_processor = command_processor;
 
         Ok(repl_instance) // Return the fully constructed instance
-        /* Old code:
-        Ok(Self {
-            editor, // Repl owns the editor with its helper
-            command_processor, // This was the issue
-            // helper field removed
-            history_path,
-            host, // Store the host
-            chat_state: None, // Initialize active chat state
-            loaded_conversation: None, // Initialize loaded conversation state
-            current_conversation_path: None, // Initialize conversation path
-            verify_responses: false, // Default verification to off
-        })
+
     }
 
     /// Sets the path for the current conversation file.
@@ -273,7 +262,7 @@ impl<'a> Repl<'a> {
                         &mut self.editor
                     ).await;
                     // Take the state back after processing
-                    let (server_context, mut state) = self.chat_state.take().unwrap(); // Should always exist here
+                    let (server_context, state) = self.chat_state.take().unwrap(); // Should always exist here
 
                     match process_result {
                         Ok((output_string, new_verify_state)) => {
