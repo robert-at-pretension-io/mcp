@@ -32,9 +32,11 @@ use crate::conversation_service::generate_tool_system_prompt; // Import tool pro
 use crate::conversation_state::ConversationState; // Import ConversationState
 
 /// Main REPL implementation with enhanced CLI features
-pub struct Repl<'a> { // Add lifetime 'a
+// Remove lifetime 'a from Repl struct definition
+pub struct Repl {
     editor: Editor<ReplHelper, DefaultHistory>, // Specify History type
-    command_processor: CommandProcessor<'a>, // Use lifetime 'a
+    // Remove lifetime 'a from CommandProcessor field type
+    command_processor: CommandProcessor,
     // helper field removed, it's now owned by the Editor
     history_path: PathBuf,
     host: MCPHost, // Store host directly, not Option
