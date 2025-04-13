@@ -191,18 +191,7 @@ impl AiderExecutor {
         }
 
         cmd_args
-    }
-                        cmd_args.extend(split_options);
-                    }
-                    Err(e) => {
-                        error!("Failed to parse additional aider options string '{}': {}. Options ignored.", options_str, e);
-                        // Optionally, you could add the error to the stderr of the result later
-                    }
-                }
-            }
-        }
-
-        cmd_args
+    
     }
     
     /// Detects the provider based on available API keys in the environment.
