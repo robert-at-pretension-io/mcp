@@ -256,7 +256,7 @@ impl AiderExecutor {
                     "gemini" => Some("gemini/gemini-2.5-pro-preview-03-25".to_string()), // Updated default model
                     _ => None,
                 }
-            });
+            })
 
         debug!("Running aider with args: {:?}", cmd_args);
         info!("Executing aider in directory: {}", params.directory);
