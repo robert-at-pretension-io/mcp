@@ -207,10 +207,8 @@ impl InteractiveTerminalTool {
                             info!("Session {}: PTY master closed (EIO), likely due to session stop.", session_id_clone);
                         } else {
                             error!("Error reading from PTY master for session {}: {} (Kind: {:?}, OS Error: {:?})", session_id_clone, e, e.kind(), e.raw_os_error());
-                            }
-                        } else {
-                             error!("Non-IO error reading from PTY master for session {}: {}", session_id_clone, e);
                         }
+                        // Removed incorrect 'else' block here, as 'e' is guaranteed to be std::io::Error
 
                         let mut status_guard = reader_status_clone.lock().await;
                         // Only transition to Error if not already Stopped
