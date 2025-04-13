@@ -153,9 +153,10 @@ impl SupabaseTool {
     ) -> String {
         debug!("Executing supabase_help tool with params: {:?}", params);
 
+        // Handle None or empty string for command by defaulting to general help
         let command_to_run = match params.command {
-            Some(cmd) => format!("{} --help", cmd),
-            None => "--help".to_string(),
+            Some(cmd) if !cmd.is_empty() => format!("{} --help", cmd), // Specific command help
+            _ => "--help".to_string(), // General help if command is None or ""
         };
 
         // Execute without using auth token (pass false to use_auth_token)
