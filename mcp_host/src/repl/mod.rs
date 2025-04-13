@@ -38,7 +38,9 @@ pub struct Repl {
     // helper field removed, it's now owned by the Editor
     history_path: PathBuf,
     host: MCPHost, // Store host directly, not Option
-    chat_state: Option<(String, crate::conversation_state::ConversationState)>, // (server_name, state)
+    chat_state: Option<(String, ConversationState)>, // (server_name, state) - Active chat session
+    loaded_conversation: Option<ConversationState>, // Holds state when not actively chatting
+    current_conversation_path: Option<PathBuf>, // Path for save/load
     verify_responses: bool, // Added flag for verification
 }
 
@@ -66,9 +68,32 @@ impl Repl {
             // helper field removed
             history_path,
             host, // Store the host
-            chat_state: None, // Initialize chat state
+            chat_state: None, // Initialize active chat state
+            loaded_conversation: None, // Initialize loaded conversation state
+            current_conversation_path: None, // Initialize conversation path
             verify_responses: false, // Default verification to off
         })
+    }
+
+    /// Sets the path for the current conversation file.
+    pub fn set_current_conversation_path(&mut self, path: Option<PathBuf>) {
+        self.current_conversation_path = path;
+        if let Some(p) = &self.current_conversation_path {
+            log::info!("Current conversation file path set to: {:?}", p);
+        } else {
+            log::info!("Current conversation file path cleared.");
+        }
+    }
+
+    /// Gets the directory where conversations should be stored.
+    fn get_conversations_dir(&self) -> Result<PathBuf> {
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("Could not determine config directory"))?
+            .join("mcp");
+        let conversations_dir = config_dir.join("conversations");
+        // Ensure the directory exists (create if not)
+        std::fs::create_dir_all(&conversations_dir)?;
+        Ok(conversations_dir)
     }
 
     // with_host method removed as host is now required in new()
@@ -119,19 +144,25 @@ impl Repl {
 
             // --- Prompt Generation ---
             let prompt = if let Some((server_context, _)) = &self.chat_state {
-                // Chat mode prompt
+                // --- Active Chat Mode Prompt ---
                 let context_display = if server_context == "*all*" {
                     style("(all servers)").dim().to_string()
                 } else {
                     style(server_context).green().to_string()
                 };
-                log::debug!("Generating chat prompt for context: {}", server_context);
+                log::debug!("Generating active chat prompt for context: {}", server_context);
                 format!("{} {}❯ ", style("Chat").magenta(), context_display)
             } else {
-                // Normal command mode prompt
-                log::debug!("Generating normal command prompt. Current server: {:?}, Provider: {}",
-                            self.command_processor.current_server_name(), provider_part);
-                format!("{} {}❯ ", server_part, ai_info_part)
+                // --- Normal Command Mode Prompt ---
+                let conversation_indicator = if self.loaded_conversation.is_some() {
+                    // Indicate a conversation is loaded but not active
+                    style("[chat loaded]").dim().to_string()
+                } else {
+                    "".to_string()
+                };
+                log::debug!("Generating normal command prompt. Current server: {:?}, Provider: {}, Loaded Conv: {}",
+                            self.command_processor.current_server_name(), provider_part, self.loaded_conversation.is_some());
+                format!("{} {} {}❯ ", server_part, ai_info_part, conversation_indicator).trim_end().to_string() + " " // Ensure space before cursor
             };
 
             // The helper is now part of the editor, no need to set it here.
@@ -143,26 +174,28 @@ impl Repl {
             // --- Handle Readline Result ---
             let line = match readline_result {
                 Ok(l) => l, // Successfully read line
-                Err(ReadlineError::Interrupted) => {
-                    if self.chat_state.is_some() {
-                        log::debug!("Ctrl+C detected in chat mode, exiting chat.");
-                        println!("{}", style("Exiting chat mode (Ctrl+C).").yellow());
-                        self.chat_state = None; // Exit chat mode
+                Err(ReadlineError::Interrupted) => { // Ctrl+C
+                    if let Some((server_context, state)) = self.chat_state.take() {
+                        log::debug!("Ctrl+C detected in chat mode, moving state to loaded_conversation.");
+                        println!("\n{}", style("Exited chat input. Conversation loaded. Type 'chat' to resume or '/<command>'. Use 'new_chat' to clear.").yellow());
+                        self.loaded_conversation = Some(state); // Keep the state
+                        // Keep self.current_conversation_path as is
                     } else {
                         log::debug!("Ctrl+C detected in normal mode.");
-                        println!("{}", style("^C").yellow()); // Style ^C
+                        println!("\n{}", style("^C").yellow()); // Style ^C, add newline
                     }
                     continue; // Continue to next REPL iteration
                 }
-                Err(ReadlineError::Eof) => {
-                    if self.chat_state.is_some() {
-                        log::debug!("Ctrl+D detected in chat mode, exiting chat.");
-                        println!("{}", style("Exiting chat mode (Ctrl+D).").yellow());
-                        self.chat_state = None; // Exit chat mode
-                        continue; // Continue to next REPL iteration (now outside chat)
+                Err(ReadlineError::Eof) => { // Ctrl+D
+                    if let Some((_server_context, state)) = self.chat_state.take() {
+                        log::debug!("Ctrl+D detected in chat mode, moving state to loaded_conversation.");
+                        println!("{}", style("\nExited chat input. Conversation loaded. Type 'chat' to resume or '/<command>'. Use 'new_chat' to clear.").yellow());
+                        self.loaded_conversation = Some(state); // Keep the state
+                        // Keep self.current_conversation_path as is
+                        continue; // Continue REPL loop (now outside chat input)
                     } else {
                         log::debug!("Ctrl+D detected in normal mode, exiting REPL.");
-                        println!("{}", style("^D").yellow()); // Style ^D
+                        println!("{}", style("\n^D").yellow()); // Style ^D, add newline
                         break; // Exit REPL
                     }
                 }
@@ -189,16 +222,53 @@ impl Repl {
             }
 
             // --- Process based on State (Chat or Command) ---
-            if let Some((ref server_context, mut state)) = self.chat_state.take() { // Take ownership to modify state
-                // --- In Chat Mode ---
-                log::debug!("Processing input in chat mode for context '{}': '{}'", server_context, line);
+            if let Some((server_context, mut state)) = self.chat_state.take() { // Take ownership to modify state
+                // --- In Active Chat Mode ---
+                log::debug!("Processing input in active chat mode for context '{}': '{}'", server_context, line);
+
+                // Check for chat-specific commands first
                 if line.eq_ignore_ascii_case("exit") || line.eq_ignore_ascii_case("quit") {
-                    println!("{}", style("Exiting chat mode.").yellow());
-                    log::debug!("User requested exit from chat mode.");
-                    // self.chat_state remains None because we took it
-                } else if line.eq_ignore_ascii_case("compact") {
+                    println!("{}", style("\nExited chat input. Conversation loaded. Type 'chat' to resume or '/<command>'. Use 'new_chat' to clear.").yellow());
+                    log::debug!("User requested exit from chat mode, moving state to loaded_conversation.");
+                    self.loaded_conversation = Some(state); // Keep the state
+                    // Keep self.current_conversation_path as is
+                } else if line.starts_with('/') {
+                    // --- Process REPL Command While in Chat Mode ---
+                    let command_line = line[1..].trim(); // Remove leading '/'
+                    log::info!("Processing REPL command from within chat: '{}'", command_line);
+                    // Put the state back temporarily so CommandProcessor can potentially access it (e.g., for save_chat)
+                    self.chat_state = Some((server_context.clone(), state));
+                    // Process the command
+                    let process_result = self.command_processor.process(
+                        command_line,
+                        self.verify_responses,
+                        &mut self.editor
+                    ).await;
+                    // Take the state back after processing
+                    let (server_context, mut state) = self.chat_state.take().unwrap(); // Should always exist here
+
+                    match process_result {
+                        Ok((output_string, new_verify_state)) => {
+                            if let Some(new_state) = new_verify_state { self.verify_responses = new_state; }
+                            if output_string == "exit" { // Handle exit command from within chat
+                                log::info!("'exit' command received from within chat, breaking REPL loop.");
+                                self.loaded_conversation = Some(state); // Save state before exiting
+                                break;
+                            }
+                            if !output_string.is_empty() { println!("{}", output_string); }
+                            // Put state back to continue chat
+                            self.chat_state = Some((server_context, state));
+                        }
+                        Err(e) => {
+                            log::error!("Error processing command '{}' from within chat: {}", command_line, e);
+                            println!("{}: {}", style("Error").red().bold(), e);
+                            // Put state back to continue chat despite command error
+                            self.chat_state = Some((server_context, state));
+                        }
+                    }
+                } else if line.eq_ignore_ascii_case("compact") { // Keep compact as a chat-specific keyword for now
                     // --- Handle Compact Command ---
-                    log::info!("Compact command received in chat mode.");
+                    log::info!("Compact command received in active chat mode.");
                     println!("{}", style("Compacting conversation history...").dim());
                     match self.execute_compact_conversation(&server_context, &state).await {
                         Ok(new_state) => {
@@ -210,32 +280,168 @@ impl Repl {
                         Err(e) => {
                             log::error!("Error during conversation compaction: {}", e);
                             println!("{}: {}", style("Compaction Error").red().bold(), e);
-                            // Put the *original* state back if compaction fails
+                            // Put the *original* state back into chat_state if compaction fails
                             self.chat_state = Some((server_context.clone(), state));
                         }
                     }
                 } else {
                     // --- Normal Chat Turn ---
-                    // Execute chat turn logic using the new helper function
-                    // Pass the server_context (which might be "*all*")
+                    // Execute chat turn logic using the helper function
                     match self.execute_chat_turn(server_context, &mut state, line).await {
                         Ok(_) => {
-                            log::debug!("Chat turn executed successfully for context '{}'. Putting state back.", server_context);
-                            // Put the potentially modified state back
+                            log::debug!("Chat turn executed successfully for context '{}'. Putting state back into chat_state.", server_context);
+                            // Put the potentially modified state back into chat_state
                             self.chat_state = Some((server_context.clone(), state)); // Clone server_context
                         }
                         Err(e) => {
                             log::error!("Error during chat turn for context '{}': {}", server_context, e);
                             println!("{}: {}", style("Chat Error").red().bold(), e);
-                            println!("{}", style("Exiting chat mode due to error.").yellow());
-                            // self.chat_state remains None, exiting chat mode
+                            println!("{}", style("Exiting chat input due to error. Conversation loaded.").yellow());
+                            // Move the potentially modified state to loaded_conversation on error
+                            self.loaded_conversation = Some(state);
+                            // Keep self.current_conversation_path as is
                         }
                     }
                 }
             } else {
-                // --- Not In Chat Mode (Normal Command Processing) ---
+                // --- Not In Active Chat Mode ---
                 log::debug!("Processing input in command mode: '{}'", line);
 
+                // Check if it's a command or potentially a chat message to resume
+                if line.starts_with('/') || self.command_processor.is_known_command(line) {
+                    // --- Process REPL Command ---
+                    let command_line = if line.starts_with('/') {
+                        line[1..].trim()
+                    } else {
+                        line
+                    };
+                    log::debug!("Processing command: '{}'", command_line);
+                    // Pass the current verification state and the mutable editor.
+                    let process_result = self.command_processor.process(
+                        command_line,
+                        self.verify_responses, // Pass current state
+                        &mut self.editor
+                    ).await;
+
+                    // Handle command result
+                    match process_result {
+                        Ok((output_string, new_verify_state)) => {
+                            log::debug!("CommandProcessor result: '{}', New verify state: {:?}", output_string, new_verify_state);
+
+                            // Update verify state if the command changed it
+                            if let Some(new_state) = new_verify_state {
+                                self.verify_responses = new_state;
+                                log::info!("Updated verify_responses to: {}", new_state);
+                            }
+
+                            // Handle exit command
+                            if output_string == "exit" {
+                                log::info!("'exit' command received, breaking REPL loop.");
+                                break; // Exit REPL
+                            }
+                            // Print command output if not empty
+                            if !output_string.is_empty() {
+                                println!("{}", output_string);
+                            }
+                        }
+                        Err(e) => {
+                            // The error is now wrapped in the Result from process
+                            log::error!("Command processing error: {}", e);
+                            println!("{}: {}", style("Error").red().bold(), e);
+                        }
+                    }
+                } else if line.eq_ignore_ascii_case("chat") {
+                    // --- Enter/Resume Chat Mode Command ---
+                    log::debug!("'chat' command received.");
+                    if let Some(state) = self.loaded_conversation.take() {
+                        // --- Resume Loaded Conversation ---
+                        log::info!("Resuming loaded conversation.");
+                        // Determine server context (might need adjustment if loaded state doesn't store it)
+                        // For now, assume multi-server context if loaded without active chat
+                        let server_context = "*all*".to_string(); // Or retrieve from state if stored
+                        let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
+                        let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
+                        println!(
+                            "\n{}",
+                            style(format!(
+                                "Resuming chat using provider '{}' (model: {}).",
+                                style(&active_provider).cyan(),
+                                style(&active_model).green()
+                            )).italic()
+                        );
+                        println!("{}", style("Type '/exit' or press Ctrl+C/D to leave chat input.").dim());
+                        self.chat_state = Some((server_context, state));
+                    } else {
+                        // --- Start New Chat (Multi-server default) ---
+                        log::info!("Starting new multi-server chat session.");
+                        match self.host.enter_multi_server_chat_mode().await {
+                            Ok(mut initial_state) => { // Add mut here
+                                let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
+                                let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
+                                println!(
+                                    "\n{}",
+                                    style(format!(
+                                        "Entering multi-server chat mode using provider '{}' (model: {}). Tools from all servers available.",
+                                        style(&active_provider).cyan(),
+                                        style(&active_model).green()
+                                    )).italic()
+                                );
+                                // Generate and add tool instructions as the first user message
+                                let tool_instructions = generate_tool_system_prompt(&initial_state.tools);
+                                if !initial_state.tools.is_empty() {
+                                    let tool_msg = format!("Okay, I have access to the following tools from all servers:\n{}", tool_instructions);
+                                    initial_state.add_user_message(&tool_msg);
+                                } else {
+                                     let no_tool_msg = "No tools found on any active server.".to_string();
+                                     initial_state.add_user_message(&no_tool_msg);
+                                }
+                                println!("{}", style("Type '/exit' or press Ctrl+C/D to leave chat input.").dim());
+                                log::info!("Successfully entered multi-server chat mode.");
+                                self.chat_state = Some(("*all*".to_string(), initial_state)); // Use special marker
+                                self.current_conversation_path = None; // Clear path for new chat
+                            }
+                            Err(e) => {
+                                log::error!("Failed to enter multi-server chat mode: {}", e);
+                                println!("{}: Error entering multi-server chat mode: {}", style("Error").red().bold(), e);
+                            }
+                        }
+                    }
+                } else if self.loaded_conversation.is_some() {
+                     // --- Implicitly Resume Chat ---
+                     // Treat non-command input as a chat message if a conversation is loaded
+                     log::debug!("Non-command input received while conversation loaded. Resuming chat.");
+                     let state = self.loaded_conversation.take().unwrap(); // Take the loaded state
+                     // Determine server context (default to *all* for now)
+                     let server_context = "*all*".to_string();
+                     println!("{}", style("(Resuming chat...)").dim()); // Indicate resumption
+                     self.chat_state = Some((server_context.clone(), state)); // Put it into active chat_state
+                     // Re-process the line as a chat turn
+                     // Need to re-enter the chat processing logic block for this line
+                     // This is a bit tricky with the current loop structure.
+                     // Let's call execute_chat_turn directly here.
+                     let mut current_state = self.chat_state.take().unwrap().1; // Get the state back
+                     match self.execute_chat_turn(server_context.clone(), &mut current_state, line).await {
+                         Ok(_) => {
+                             // Put the updated state back into active chat
+                             self.chat_state = Some((server_context, current_state));
+                         }
+                         Err(e) => {
+                             log::error!("Error during implicit chat resumption for context '{}': {}", server_context, e);
+                             println!("{}: {}", style("Chat Error").red().bold(), e);
+                             println!("{}", style("Exiting chat input due to error. Conversation loaded.").yellow());
+                             // Move state to loaded on error
+                             self.loaded_conversation = Some(current_state);
+                         }
+                     }
+
+                } else {
+                    // --- Unknown Command/Input ---
+                    println!("{}: Unknown command or input '{}'. Type '/help' or 'chat'.", style("Error").red(), line);
+                }
+
+
+                // --- Old 'chat' command handling removed from here ---
+                /*
                 // --- Pass self (Repl) to command processor ---
                 // We clone the editor temporarily because process needs mutable access
                 // This is a bit awkward, maybe refactor CommandProcessor later

@@ -59,6 +59,9 @@ impl ReplHelper {
                 "reload_config".to_string(),
                 "show_config".to_string(),
                 "verify".to_string(),
+                "save_chat".to_string(), // Added
+                "load_chat".to_string(), // Added
+                "new_chat".to_string(), // Added
                 "compact".to_string(), // Added compact command (chat mode only)
                 "exit".to_string(),
                 "quit".to_string(),
@@ -195,7 +198,10 @@ impl Hinter for ReplHelper {
             "edit_server" if line_parts.len() == 1 => Some(" <server_name>".to_string()),
             "remove_server" if line_parts.len() == 1 => Some(" <server_name>".to_string()),
             "show_config" if line_parts.len() == 1 => Some(" [server_name]".to_string()),
-            "verify" if line_parts.len() == 1 => Some(" [on|off]".to_string()), // Added hint for verify
+            "verify" if line_parts.len() == 1 => Some(" [on|off]".to_string()),
+            "save_chat" if line_parts.len() == 1 => Some(" [filename]".to_string()), // Added hint
+            "load_chat" if line_parts.len() == 1 => Some(" <filename>".to_string()), // Added hint
+            // "new_chat" needs no arguments
             _ => None,
         }
     }

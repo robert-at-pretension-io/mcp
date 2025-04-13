@@ -3,7 +3,11 @@
 // Import rmcp Tool type
 use rmcp::model::{Role, Tool as RmcpTool};
 use console::style;
+use serde::{Deserialize, Serialize}; // Import Serialize and Deserialize
 use serde_json;
+use anyhow::{Context, Result}; // Import Result and Context
+use std::path::Path; // Import Path
+use tokio::fs; // Import tokio::fs
 
 /// Formats JSON nicely within a code block.
 pub fn format_json_output(json_str: &str) -> String {
@@ -124,13 +128,13 @@ pub fn format_assistant_response_with_tool_calls(raw_response: &str) -> String {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)] // Add Serialize, Deserialize
 pub struct Message {
     pub role: Role,
     pub content: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)] // Add Serialize, Deserialize
 pub struct ConversationState {
     pub messages: Vec<Message>,
     pub system_prompt: String,
@@ -151,7 +155,34 @@ impl ConversationState {
         state
     }
 
+    /// Saves the conversation state to a JSON file.
+    pub async fn save_to_json(&self, path: &Path) -> Result<()> {
+        log::info!("Saving conversation state to: {:?}", path);
+        let json_string = serde_json::to_string_pretty(self)
+            .context("Failed to serialize conversation state")?;
 
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).await
+                .with_context(|| format!("Failed to create conversation directory {:?}", parent))?;
+        }
+
+        fs::write(path, json_string).await
+            .with_context(|| format!("Failed to write conversation file {:?}", path))?;
+        log::info!("Conversation state saved successfully.");
+        Ok(())
+    }
+
+    /// Loads conversation state from a JSON file.
+    pub async fn load_from_json(path: &Path) -> Result<Self> {
+        log::info!("Loading conversation state from: {:?}", path);
+        let json_string = fs::read_to_string(path).await
+            .with_context(|| format!("Failed to read conversation file {:?}", path))?;
+        let state: Self = serde_json::from_str(&json_string)
+            .context("Failed to deserialize conversation state")?;
+        log::info!("Conversation state loaded successfully ({} messages).", state.messages.len());
+        Ok(state)
+    }
 
     pub fn add_user_message(&mut self, content: &str) {
         self.messages.push(Message {

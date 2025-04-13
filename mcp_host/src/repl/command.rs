@@ -15,28 +15,42 @@ use crate::host::config::{ServerConfig};
 use rustyline::Editor;
 use rustyline::history::DefaultHistory;
 use crate::repl::helper::ReplHelper;
-// Removed unused import: use crate::repl::Repl;
+use crate::repl::Repl; // Import Repl struct
 
 /// Command processor for the REPL
-pub struct CommandProcessor {
+pub struct CommandProcessor<'a> { // Add lifetime parameter
     host: MCPHost, // Store the host instance
     servers: Arc<Mutex<HashMap<String, ManagedServer>>>, // Keep servers for direct access if needed
     current_server: Option<String>,
     config_path: Option<PathBuf>,
-    // Removed editor field
+    repl: &'a mut Repl, // Add mutable reference to Repl
 }
 
-impl CommandProcessor {
-    // Modify constructor to take MCPHost only
-    pub fn new(host: MCPHost) -> Self {
+impl<'a> CommandProcessor<'a> { // Add lifetime parameter
+    // Modify constructor to take MCPHost and mutable reference to Repl
+    pub fn new(host: MCPHost, repl: &'a mut Repl) -> Self {
         Self {
             servers: Arc::clone(&host.servers), // Get servers from host
             host,
             current_server: None,
             config_path: None,
-            // Removed editor initialization
+            repl, // Store the mutable reference
         }
     }
+
+    /// Check if a string corresponds to a known command.
+    pub fn is_known_command(&self, line: &str) -> bool {
+        let command = line.split_whitespace().next().unwrap_or("");
+        // Add new commands here
+        matches!(command,
+            "help" | "exit" | "quit" | "servers" | "use" | "tools" | "call" |
+            "provider" | "providers" | "model" | "add_server" | "edit_server" |
+            "remove_server" | "save_config" | "reload_config" | "show_config" |
+            "verify" | "save_chat" | "load_chat" | "new_chat"
+            // Note: 'chat' is handled specially in the REPL loop
+        )
+    }
+
 
     /// Process a command string.
     /// Takes the current verification state and returns the output message
@@ -79,9 +93,19 @@ impl CommandProcessor {
             "reload_config" => self.cmd_reload_config(editor).await.map(|s| (s, None)), // Pass editor
             "show_config" => self.cmd_show_config(args).await.map(|s| (s, None)), // New command
             "verify" => self.cmd_verify(args, current_verify_state).await, // Pass current state, returns tuple directly
+            "save_chat" => self.cmd_save_chat(args).await.map(|s| (s, None)), // Added
+            "load_chat" => self.cmd_load_chat(args).await.map(|s| (s, None)), // Added
+            "new_chat" => self.cmd_new_chat().await.map(|s| (s, None)), // Added
             _ => {
                  // Check if it looks like a chat command before declaring unknown
-                 if cmd == "chat" {
+                 // 'chat' command is handled in the main REPL loop now
+                 // if cmd == "chat" {
+                 //     // Let the main REPL loop handle 'chat' if it wasn't explicitly overridden
+                 //     // Return a specific error or signal to indicate this.
+                 //     // Using the original "Unknown command" error works for now,
+                 //     // as the REPL loop checks for this specific error.
+                 //     Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
+                 // } else {
                      // Let the main REPL loop handle 'chat' if it wasn't explicitly overridden
                      // Return a specific error or signal to indicate this.
                      // Using the original "Unknown command" error works for now,
@@ -117,7 +141,10 @@ impl CommandProcessor {
             ("show_config [server_name]", "Display the current configuration (all or a specific server)."),
             ("save_config", "Save server configuration changes to the file."),
             ("reload_config", "Reload server and provider model configs from files (discards unsaved changes)."),
-            ("verify [on|off]", "Enable or disable AI response verification during chat (default: off)."), // Added verify help
+            ("verify [on|off]", "Enable or disable AI response verification during chat (default: off)."),
+            ("save_chat [filename]", "Save the current conversation to a JSON file (default: conversations/chat_<timestamp>.json)."),
+            ("load_chat <filename>", "Load a conversation from a JSON file."),
+            ("new_chat", "Clear the current loaded conversation."),
             ("exit, quit", "Exit the REPL."),
         ];
 
@@ -346,6 +373,72 @@ impl CommandProcessor {
                 ))
             }
         }
+    }
+
+    // --- Save Chat ---
+    async fn cmd_save_chat(&mut self, args: &[String]) -> Result<String> {
+        let state_to_save = self.repl.chat_state.as_ref().map(|(_, s)| s.clone())
+            .or_else(|| self.repl.loaded_conversation.clone());
+
+        let state = match state_to_save {
+            Some(s) => s,
+            None => return Ok(style("No active or loaded conversation to save.").yellow().to_string()),
+        };
+
+        let filename = if args.is_empty() {
+            // Generate default filename with timestamp
+            let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+            format!("chat_{}.json", timestamp)
+        } else {
+            let name = args[0].clone();
+            if name.ends_with(".json") { name } else { format!("{}.json", name) }
+        };
+
+        let conversations_dir = self.repl.get_conversations_dir()?;
+        let path = conversations_dir.join(&filename);
+
+        match state.save_to_json(&path).await {
+            Ok(_) => {
+                // Update the current conversation path in Repl
+                self.repl.set_current_conversation_path(Some(path.clone()));
+                Ok(format!("Conversation saved to: {}", style(path.display()).green()))
+            }
+            Err(e) => Err(anyhow!("Failed to save conversation: {}", e)),
+        }
+    }
+
+    // --- Load Chat ---
+    async fn cmd_load_chat(&mut self, args: &[String]) -> Result<String> {
+        if args.is_empty() {
+            return Err(anyhow!("Usage: load_chat <filename>"));
+        }
+        let filename = args[0].clone();
+        let filename_with_ext = if filename.ends_with(".json") { filename } else { format!("{}.json", filename) };
+
+        let conversations_dir = self.repl.get_conversations_dir()?;
+        let path = conversations_dir.join(&filename_with_ext);
+
+        if !path.exists() {
+            return Err(anyhow!("Conversation file not found: {}", path.display()));
+        }
+
+        match crate::conversation_state::ConversationState::load_from_json(&path).await {
+            Ok(loaded_state) => {
+                self.repl.chat_state = None; // Clear active chat
+                self.repl.loaded_conversation = Some(loaded_state); // Set loaded state
+                self.repl.set_current_conversation_path(Some(path.clone())); // Update path
+                Ok(format!("Conversation loaded from: {}", style(path.display()).green()))
+            }
+            Err(e) => Err(anyhow!("Failed to load conversation: {}", e)),
+        }
+    }
+
+    // --- New Chat ---
+    async fn cmd_new_chat(&mut self) -> Result<String> {
+        self.repl.chat_state = None;
+        self.repl.loaded_conversation = None;
+        self.repl.set_current_conversation_path(None);
+        Ok(style("Cleared current conversation.").yellow().to_string())
     }
 
 
