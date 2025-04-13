@@ -15,6 +15,7 @@ use crate::host::config::{ServerConfig};
 use rustyline::Editor;
 use rustyline::history::DefaultHistory;
 use crate::repl::helper::ReplHelper;
+use crate::repl::Repl; // Import Repl struct
 
 /// Command processor for the REPL
 pub struct CommandProcessor {
