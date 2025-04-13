@@ -213,7 +213,7 @@ async fn main() {
 
         // Netlify tool implementations
         #[tool(description = "Executes Netlify CLI commands. Requires NETLIFY_AUTH_TOKEN env var. Provide the command arguments *after* 'netlify' (e.g., 'sites:list', 'deploy --prod').")]
-        async fn netlify(
+        pub async fn netlify( // Added pub
             &self,
             #[tool(aggr)] params: NetlifyParams,
         ) -> String {
@@ -222,7 +222,7 @@ async fn main() {
         }
 
         #[tool(description = "Gets help for the Netlify CLI or a specific command. Does not require auth token.")]
-        async fn netlify_help(
+        pub async fn netlify_help( // Added pub
             &self,
             #[tool(aggr)] params: NetlifyHelpParams,
         ) -> String {
