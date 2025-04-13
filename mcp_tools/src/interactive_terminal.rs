@@ -78,7 +78,7 @@ enum SessionStatus {
 }
 
 // Represents an active terminal session state
-#[derive(Debug)] // Add Debug derive
+// #[derive(Debug)] // Cannot derive Debug because pty_process::Pty doesn't implement it
 struct TerminalSessionState {
     pty_master: Arc<Mutex<Pty>>, // Use pty_process::Pty for the master handle
     output_buffer: Arc<Mutex<String>>,
@@ -87,6 +87,22 @@ struct TerminalSessionState {
     process_pid: Option<i32>, // Store the PID for potential killing
     shell_path: String,
 }
+
+// Manual Debug implementation, skipping pty_master
+impl std::fmt::Debug for TerminalSessionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TerminalSessionState")
+            // Skip pty_master as it doesn't implement Debug
+            // .field("pty_master", &self.pty_master)
+            .field("output_buffer", &self.output_buffer)
+            .field("status", &self.status)
+            .field("reader_handle", &self.reader_handle)
+            .field("process_pid", &self.process_pid)
+            .field("shell_path", &self.shell_path)
+            .finish_non_exhaustive() // Use non_exhaustive if skipping fields
+    }
+}
+
 
 // --- Tool Implementation ---
 
@@ -185,12 +201,12 @@ impl InteractiveTerminalTool {
                     }
                     Err(e) => {
                         // Check if the error is expected on close (e.g., EIO)
-                        if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-                            // Use nix::errno::Errno::EIO for comparison
-                            if io_err.kind() == std::io::ErrorKind::Other && io_err.raw_os_error() == Some(Errno::EIO as i32) {
-                                info!("Session {}: PTY master closed (EIO), likely due to session stop.", session_id_clone);
-                            } else {
-                                error!("Error reading from PTY master for session {}: {} (Kind: {:?}, OS Error: {:?})", session_id_clone, e, io_err.kind(), io_err.raw_os_error());
+                        // Assuming 'e' is already std::io::Error as returned by AsyncRead::read
+                        // Use nix::errno::Errno::EIO for comparison
+                        if e.kind() == std::io::ErrorKind::Other && e.raw_os_error() == Some(Errno::EIO as i32) {
+                            info!("Session {}: PTY master closed (EIO), likely due to session stop.", session_id_clone);
+                        } else {
+                            error!("Error reading from PTY master for session {}: {} (Kind: {:?}, OS Error: {:?})", session_id_clone, e, e.kind(), e.raw_os_error());
                             }
                         } else {
                              error!("Non-IO error reading from PTY master for session {}: {}", session_id_clone, e);
@@ -235,7 +251,8 @@ impl InteractiveTerminalTool {
         };
 
         // Check status - allow running commands even if 'Starting'
-        let current_status = *state.status.lock().await;
+        // Clone the status after locking to avoid moving out of the guard
+        let current_status = state.status.lock().await.clone();
         if current_status == SessionStatus::Stopped || current_status == SessionStatus::Error {
              return Err(anyhow!("Session {} is not running (status: {:?}).", session_id, current_status));
         }
@@ -268,7 +285,7 @@ impl InteractiveTerminalTool {
 
 
         // Record buffer state *before* writing
-        let (initial_buffer_len, initial_buffer_snapshot) = {
+        let (initial_buffer_len, _initial_buffer_snapshot) = { // Prefix unused var with _
             let buffer_guard = state.output_buffer.lock().await;
             (buffer_guard.len(), buffer_guard.clone())
         };
@@ -382,10 +399,10 @@ impl InteractiveTerminalTool {
 
                  // Close the PTY master handle. This should signal EOF to the reader task
                  // and potentially cause the shell process to exit (or receive SIGHUP).
-                 info!("Session {}: Closing PTY master.", session_id);
+                 info!("Session {}: Dropping PTY master handle (should close FD).", session_id);
                  let master_guard = state.pty_master.lock().await;
-                 master_guard.close()?; // Close the master FD
-                 drop(master_guard);
+                 // master_guard.close()?; // Pty doesn't have close, dropping should handle it
+                 drop(master_guard); // Explicitly drop the guard to release the lock and the Pty
 
                  // Wait a short time for the reader task to finish due to EOF
                  tokio::time::sleep(Duration::from_millis(100)).await;
