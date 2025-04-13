@@ -37,8 +37,13 @@ impl CommandProcessor {
         }
     }
 
-    /// Process a command string, requires mutable access to the editor
-    pub async fn process(&mut self, command: &str, editor: &mut Editor<ReplHelper, DefaultHistory>) -> Result<String> { // Added History type
+    /// Process a command string, requires mutable access to the Repl and editor
+    pub async fn process(
+        &mut self,
+        command: &str,
+        repl: &mut Repl, // Accept mutable Repl reference
+        editor: &mut Editor<ReplHelper, DefaultHistory>
+    ) -> Result<String> {
         // Split the command into parts, respecting quotes
         let parts = match shellwords::split(command) {
             Ok(parts) => parts,
@@ -69,7 +74,19 @@ impl CommandProcessor {
             "save_config" => self.cmd_save_config().await, // New command
             "reload_config" => self.cmd_reload_config(editor).await, // Pass editor
             "show_config" => self.cmd_show_config(args).await, // New command
-            _ => Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
+            "verify" => self.cmd_verify(args, repl).await, // Added verify command, pass repl
+            _ => {
+                 // Check if it looks like a chat command before declaring unknown
+                 if cmd == "chat" {
+                     // Let the main REPL loop handle 'chat' if it wasn't explicitly overridden
+                     // Return a specific error or signal to indicate this.
+                     // Using the original "Unknown command" error works for now,
+                     // as the REPL loop checks for this specific error.
+                     Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
+                 } else {
+                     Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
+                 }
+            }
         }
     }
 
@@ -95,6 +112,7 @@ impl CommandProcessor {
             ("show_config [server_name]", "Display the current configuration (all or a specific server)."),
             ("save_config", "Save server configuration changes to the file."),
             ("reload_config", "Reload server and provider model configs from files (discards unsaved changes)."),
+            ("verify [on|off]", "Enable or disable AI response verification during chat (default: off)."), // Added verify help
             ("exit, quit", "Exit the REPL."),
         ];
 
@@ -171,6 +189,29 @@ impl CommandProcessor {
             }
         }
     }
+
+
+    // --- Verify Command ---
+    async fn cmd_verify(&mut self, args: &[String], repl: &mut Repl) -> Result<String> {
+        if args.is_empty() {
+            // Show current status
+            let status = if repl.verify_responses { style("on").green() } else { style("off").yellow() };
+            Ok(format!("Response verification is currently {}.", status))
+        } else {
+            match args[0].to_lowercase().as_str() {
+                "on" | "true" | "yes" | "enable" => {
+                    repl.verify_responses = true;
+                    Ok(style("Response verification enabled.").green().to_string())
+                }
+                "off" | "false" | "no" | "disable" => {
+                    repl.verify_responses = false;
+                    Ok(style("Response verification disabled.").yellow().to_string())
+                }
+                _ => Err(anyhow!("Invalid argument '{}'. Use 'on' or 'off'.", args[0])),
+            }
+        }
+    }
+
 
     // --- Edit Server ---
     async fn cmd_edit_server(&mut self, args: &[String], editor: &mut Editor<ReplHelper, DefaultHistory>) -> Result<String> { // Added History type

@@ -58,6 +58,7 @@ impl ReplHelper {
                 "save_config".to_string(),
                 "reload_config".to_string(),
                 "show_config".to_string(),
+                "verify".to_string(), // Added verify command
                 "exit".to_string(),
                 "quit".to_string(),
             ],
@@ -144,6 +145,13 @@ impl Completer for ReplHelper {
                      .map(|name| Pair { display: name.clone(), replacement: name.clone() })
                      .collect();
                  return Ok((start, matches));
+            } else if command == "verify" { // Add completion for verify arguments
+                let options = ["on", "off"];
+                let matches: Vec<Pair> = options.iter()
+                    .filter(|opt| opt.starts_with(word))
+                    .map(|opt| Pair { display: (*opt).to_string(), replacement: (*opt).to_string() })
+                    .collect();
+                return Ok((start, matches));
             }
         } else if line_parts.len() == 3 && line_parts[0] == "call" {
              // Complete server names after the tool name for 'call' command
@@ -186,6 +194,7 @@ impl Hinter for ReplHelper {
             "edit_server" if line_parts.len() == 1 => Some(" <server_name>".to_string()),
             "remove_server" if line_parts.len() == 1 => Some(" <server_name>".to_string()),
             "show_config" if line_parts.len() == 1 => Some(" [server_name]".to_string()),
+            "verify" if line_parts.len() == 1 => Some(" [on|off]".to_string()), // Added hint for verify
             _ => None,
         }
     }

@@ -38,6 +38,7 @@ pub struct Repl {
     history_path: PathBuf,
     host: MCPHost, // Store host directly, not Option
     chat_state: Option<(String, crate::conversation_state::ConversationState)>, // (server_name, state)
+    verify_responses: bool, // Added flag for verification
 }
 
 impl Repl {
@@ -65,6 +66,7 @@ impl Repl {
             history_path,
             host, // Store the host
             chat_state: None, // Initialize chat state
+            verify_responses: false, // Default verification to off
         })
     }
 
@@ -213,9 +215,23 @@ impl Repl {
             } else {
                 // --- Not In Chat Mode (Normal Command Processing) ---
                 log::debug!("Processing input in command mode: '{}'", line);
-                if line.starts_with("chat") {
-                    // --- Enter Chat Mode ---
-                    let parts: Vec<&str> = line.splitn(2, ' ').collect();
+
+                // --- Pass self (Repl) to command processor ---
+                // We clone the editor temporarily because process needs mutable access
+                // This is a bit awkward, maybe refactor CommandProcessor later
+                // to not require mutable editor directly for non-interactive commands.
+                // For now, this allows modifying Repl state like verify_responses.
+                let mut temp_editor = self.editor.clone();
+                let process_result = self.command_processor.process(line, self, &mut temp_editor).await;
+                // After processing, if the editor state changed (e.g., history),
+                // we might need to update self.editor. For now, assume only Repl state changes.
+                // self.editor = temp_editor; // If editor state needs persisting back
+
+                if line.starts_with("chat") && process_result.is_err() && process_result.as_ref().err().map_or(false, |e| e.to_string().contains("Unknown command")) {
+                     // --- Enter Chat Mode (Only if 'chat' wasn't handled as a command itself) ---
+                     // This allows potentially overriding 'chat' with a custom command later if needed.
+                     log::debug!("Processing 'chat' command to enter chat mode.");
+                     let parts: Vec<&str> = line.splitn(2, ' ').collect();
                     let target_server_opt = parts.get(1).map(|s| s.trim()).filter(|s| !s.is_empty());
 
                     if let Some(target_server) = target_server_opt {
@@ -292,12 +308,11 @@ impl Repl {
                         }
                     }
                 } else {
-                    // --- Process other commands ---
-                    log::debug!("Passing non-chat command to CommandProcessor: '{}'", line);
-                    match self.command_processor.process(line, &mut self.editor).await {
-                        Ok(result) => {
-                            log::debug!("CommandProcessor result: '{}'", result);
-                            if result == "exit" {
+                    // --- Process command result (already processed above) ---
+                    match process_result {
+                         Ok(result) => {
+                             log::debug!("CommandProcessor result: '{}'", result);
+                             if result == "exit" {
                                 log::info!("'exit' command received, breaking REPL loop.");
                                 break; // Exit REPL
                             }
@@ -397,37 +412,48 @@ impl Repl {
     ) -> Result<()> {
         log::debug!("Executing chat turn for server '{}'. Original user input: '{}'", server_name, user_input);
 
-        // --- Generate Verification Criteria FIRST ---
-        let criteria_result = generate_verification_criteria(&self.host, user_input).await;
         let mut final_user_input = user_input.to_string();
-        let criteria_for_verification: String; // Store clean criteria for verification step
+        let mut criteria_for_verification = String::new(); // Initialize empty
 
-        match criteria_result {
-            Ok(c) if !c.is_empty() => {
-                log::debug!("Generated criteria:\n{}", c);
-                criteria_for_verification = c.clone(); // Store for later verification
-                // Append criteria to the user input that the LLM will see
-                final_user_input.push_str(&format!(
-                    "\n\n---\n**Note:** Your response will be evaluated against the following criteria:\n{}\n---",
-                    c
-                ));
-                log::debug!("Appended criteria to user input for LLM.");
+        // --- Generate Verification Criteria FIRST (only if enabled) ---
+        if self.verify_responses {
+            println!("{}", style("Generating verification criteria...").dim()); // Inform user
+            let criteria_result = generate_verification_criteria(&self.host, user_input).await;
+
+            match criteria_result {
+                Ok(c) if !c.is_empty() => {
+                    log::debug!("Generated criteria:\n{}", c);
+                    criteria_for_verification = c.clone(); // Store for later verification
+                    // Append criteria to the user input that the LLM will see
+                    final_user_input.push_str(&format!(
+                        "\n\n---\n**Note:** Your response will be evaluated against the following criteria:\n{}\n---",
+                        c
+                    ));
+                    log::debug!("Appended criteria to user input for LLM.");
+                    println!("{}", style("Verification criteria generated.").dim());
+                }
+                Ok(_) => {
+                    // Criteria generation succeeded but was empty
+                    log::debug!("Generated criteria were empty.");
+                    println!("{}", style("No specific verification criteria generated for this request.").dim());
+                    // criteria_for_verification remains empty
+                }
+                Err(e) => {
+                    log::warn!("Failed to generate verification criteria: {}. Proceeding without verification.", e);
+                    println!("{}: Failed to generate verification criteria: {}", style("Warning").yellow(), e);
+                    // criteria_for_verification remains empty
+                }
             }
-            Ok(_) => {
-                // Criteria generation succeeded but was empty
-                log::debug!("Generated criteria were empty.");
-                criteria_for_verification = String::new();
-            }
-            Err(e) => {
-                log::warn!("Failed to generate verification criteria: {}. Proceeding without verification.", e);
-                criteria_for_verification = String::new(); // Use empty criteria if generation fails
-            }
+        } else {
+            log::debug!("Response verification is disabled.");
+            // criteria_for_verification remains empty
         }
         // --- End Criteria Generation ---
 
+
         // 1. Add potentially modified user message to state
-        state.add_user_message(&final_user_input); // Use the input with appended criteria
-        log::debug!("Added user message (potentially with criteria) to state. Total messages: {}", state.messages.len());
+        state.add_user_message(&final_user_input); // Use the input (with or without appended criteria)
+        log::debug!("Added user message to state. Total messages: {}", state.messages.len());
 
         // 2. Get AI client
         let client = self.host.ai_client().await
