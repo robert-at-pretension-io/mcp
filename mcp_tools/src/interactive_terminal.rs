@@ -155,7 +155,8 @@ impl InteractiveTerminalTool {
         let reader_handle = tokio::spawn(async move {
             let mut buf = [0; 2048]; // Larger buffer might be slightly more efficient
             loop {
-                let master_guard = reader_master_clone.lock().await;
+                // Declare master_guard as mutable
+                let mut master_guard = reader_master_clone.lock().await;
                 // Use select! to handle both reading and status changes? Or just read?
                 // Let's stick to simple read for now.
                 let read_result = master_guard.read(&mut buf).await;
