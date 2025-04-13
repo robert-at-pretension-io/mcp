@@ -29,10 +29,6 @@ pub struct AiderParams {
     pub model: String, // Changed from Option<String>
 
     #[serde(default)]
-    #[schemars(description = "Optional: Number of thinking tokens to use for Anthropic models (Claude). Higher values allow more thorough reasoning. Defaults based on model if empty.")]
-    pub thinking_tokens: Option<u32>,
-    
-    #[serde(default)]
     #[schemars(description = "Optional: Reasoning effort level for OpenAI models. Values: 'low', 'medium', 'high'. Defaults to 'high' if empty.")]
     pub reasoning_effort: String, // Changed from Option<String>
 }
@@ -145,14 +141,6 @@ impl AiderExecutor {
             info!("Using provider '{}' with model '{}'", provider, m);
         } else {
             info!("Using provider '{}' with no specific model", provider);
-        }
-
-        // Add thinking tokens for Anthropic models
-        if provider.to_lowercase() == "anthropic" {
-            let tokens = params.thinking_tokens.unwrap_or(32000);
-            cmd_args.push("--thinking-tokens".to_string());
-            cmd_args.push(tokens.to_string());
-            debug!("Using thinking_tokens: {}", tokens);
         }
 
         // Add reasoning effort for OpenAI models
@@ -376,10 +364,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "anthropic".to_string(),
                 model: "".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "".to_string(), // Changed from None
+                reasoning_effort: "".to_string(),
             };
-            
             // We don't actually execute the command, just check the validation logic
             // by inspecting the command that would be built
             let cmd_args = executor.build_command_args(&params);
@@ -392,10 +378,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "openai".to_string(),
                 model: "".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "".to_string(), // Changed from None
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--api-key".to_string()));
             
@@ -406,10 +390,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "invalid_provider".to_string(),
                 model: "".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "".to_string(), // Changed from None
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             // The provider should be defaulted to anthropic
             assert!(cmd_args.iter().any(|arg| arg.contains("anthropic=")));
@@ -493,10 +475,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "anthropic".to_string(),
                 model: "".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "".to_string(), // Changed from None
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
@@ -509,10 +489,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "openai".to_string(),
                 model: "".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "".to_string(), // Changed from None
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
@@ -525,10 +503,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "gemini".to_string(),
                 model: "".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "".to_string(), // Changed from None
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
@@ -541,10 +517,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "anthropic".to_string(),
                 model: "claude-3-opus-20240229".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "".to_string(), // Changed from None
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
@@ -571,10 +545,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "openai".to_string(),
                 model: "".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "high".to_string(), // Changed from Some(...)
+                reasoning_effort: "high".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--reasoning-effort".to_string()));
             let effort_index = cmd_args.iter().position(|arg| arg == "--reasoning-effort").unwrap();
@@ -587,10 +559,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "openai".to_string(),
                 model: "".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "invalid_effort".to_string(), // Changed from Some(...)
+                reasoning_effort: "invalid_effort".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--reasoning-effort".to_string()));
             let effort_index = cmd_args.iter().position(|arg| arg == "--reasoning-effort").unwrap();
@@ -603,10 +573,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "anthropic".to_string(),
                 model: "".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "high".to_string(), // Changed from Some(...)
+                reasoning_effort: "high".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(!cmd_args.contains(&"--reasoning-effort".to_string()));
 
@@ -617,10 +585,8 @@ mod tests {
                 options: "".to_string(), // Changed back from None
                 provider: "gemini".to_string(),
                 model: "".to_string(),
-                thinking_tokens: None,
-                reasoning_effort: "high".to_string(), // Changed from Some(...)
+                reasoning_effort: "high".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(!cmd_args.contains(&"--reasoning-effort".to_string()));
             
@@ -638,66 +604,7 @@ mod tests {
             let temp_dir = create_temp_dir().await.unwrap();
             let executor = AiderExecutor::new();
             
-            // Test valid thinking_tokens with Anthropic
-            let params = AiderParams {
-                directory: temp_dir.clone(),
-                message: "Test message".to_string(),
-                options: "".to_string(), // Changed back from None
-                provider: "anthropic".to_string(),
-                model: "".to_string(),
-                thinking_tokens: Some(16000),
-                reasoning_effort: "".to_string(), // Changed from None
-            };
-            
-            let cmd_args = executor.build_command_args(&params);
-            assert!(cmd_args.contains(&"--thinking-tokens".to_string()));
-            let tokens_index = cmd_args.iter().position(|arg| arg == "--thinking-tokens").unwrap();
-            assert_eq!(cmd_args[tokens_index + 1], "16000");
-            
-            // Test default thinking_tokens with Anthropic
-            let params = AiderParams {
-                directory: temp_dir.clone(),
-                message: "Test message".to_string(),
-                options: "".to_string(), // Changed back from None
-                provider: "anthropic".to_string(),
-                model: "".to_string(),
-                thinking_tokens: None, // Use default
-                reasoning_effort: "".to_string(), // Changed from None
-            };
-            
-            let cmd_args = executor.build_command_args(&params);
-            assert!(cmd_args.contains(&"--thinking-tokens".to_string()));
-            let tokens_index = cmd_args.iter().position(|arg| arg == "--thinking-tokens").unwrap();
-            assert_eq!(cmd_args[tokens_index + 1], "32000"); // Default value
-
-            // Test thinking_tokens with OpenAI - should be ignored
-            let params = AiderParams {
-                directory: temp_dir.clone(),
-                message: "Test message".to_string(),
-                options: "".to_string(), // Changed back from None
-                provider: "openai".to_string(),
-                model: "".to_string(),
-                thinking_tokens: Some(16000),
-                reasoning_effort: "".to_string(), // Changed from None
-            };
-            
-            let cmd_args = executor.build_command_args(&params);
-            assert!(!cmd_args.contains(&"--thinking-tokens".to_string()));
-
-            // Test thinking_tokens with Gemini - should be ignored
-            let params = AiderParams {
-                directory: temp_dir.clone(),
-                message: "Test message".to_string(),
-                options: "".to_string(), // Changed back from None
-                provider: "gemini".to_string(),
-                model: "".to_string(),
-                thinking_tokens: Some(16000),
-                reasoning_effort: "".to_string(), // Changed from None
-            };
-            
-            let cmd_args = executor.build_command_args(&params);
-            assert!(!cmd_args.contains(&"--thinking-tokens".to_string()));
-            
+            // Test thinking_tokens validation is removed
             // Handle cleanup gracefully
             let _ = fs::remove_dir_all(temp_dir).await;
         });
