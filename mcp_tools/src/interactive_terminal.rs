@@ -238,7 +238,7 @@ impl InteractiveTerminalTool {
         Ok(session_id)
     }
 
-    async fn run_command_internal(&self, session_id: &str, command: &str, timeout_ms: u64) -> Result<String> {
+    async fn run_command_internal(&self, session_id: &str, command: &str, _timeout_ms: u64) -> Result<String> { // Prefix unused timeout_ms
         let session_state = {
             let sessions_guard = self.sessions.lock().await;
             sessions_guard.get(session_id).cloned() // Clone the Arc<SessionState>
@@ -270,9 +270,10 @@ impl InteractiveTerminalTool {
             let mut writer_guard = state.pty_master.lock().await;
             writer_guard.write_all(command_with_newline.as_bytes()).await?;
             // Flush might be necessary depending on the PTY implementation and shell buffering
-            // Let's add it just in case. If it causes issues, it can be removed.
-            writer_guard.flush().await?;
+            // Let's remove it to see if it resolves the blocking issue.
+            // writer_guard.flush().await?;
             debug!("Session {}: Sent command: {}", session_id, command.trim());
+            // writer_guard is dropped here, which might implicitly flush.
         }
 
         // Return immediately after sending the command
