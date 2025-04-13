@@ -17,9 +17,9 @@ pub struct AiderParams {
     pub message: String,
     
     #[serde(default)]
-    #[schemars(description = "Additional command-line options to pass to aider (optional)")]
-    pub options: Vec<String>,
-    
+    #[schemars(description = "Optional: A space-separated string of additional command-line options to pass to aider (e.g., '--show-diff --verbose')")]
+    pub options: Option<String>,
+
     #[serde(default)]
     #[schemars(description = "The provider to use (e.g., 'anthropic', 'openai', 'gemini'). Defaults based on available API keys if not specified.")]
     pub provider: Option<String>,
@@ -172,9 +172,22 @@ impl AiderExecutor {
             debug!("Using reasoning_effort: {}", validated_effort);
         }
 
-        // Add any additional options
-        cmd_args.extend(params.options.iter().cloned());
-        
+        // Add any additional options from the optional string
+        if let Some(options_str) = &params.options {
+            if !options_str.trim().is_empty() {
+                match shellwords::split(options_str) {
+                    Ok(split_options) => {
+                        debug!("Adding additional aider options: {:?}", split_options);
+                        cmd_args.extend(split_options);
+                    }
+                    Err(e) => {
+                        error!("Failed to parse additional aider options string '{}': {}. Options ignored.", options_str, e);
+                        // Optionally, you could add the error to the stderr of the result later
+                    }
+                }
+            }
+        }
+
         cmd_args
     }
     
@@ -356,7 +369,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("anthropic".to_string()),
                 model: None,
                 thinking_tokens: None,
@@ -372,7 +385,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("openai".to_string()),
                 model: None,
                 thinking_tokens: None,
@@ -386,7 +399,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("invalid_provider".to_string()),
                 model: None,
                 thinking_tokens: None,
@@ -473,7 +486,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("anthropic".to_string()),
                 model: None,
                 thinking_tokens: None,
@@ -489,7 +502,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("openai".to_string()),
                 model: None,
                 thinking_tokens: None,
@@ -505,7 +518,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("gemini".to_string()),
                 model: None,
                 thinking_tokens: None,
@@ -521,7 +534,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("anthropic".to_string()),
                 model: Some("claude-3-opus-20240229".to_string()),
                 thinking_tokens: None,
@@ -551,7 +564,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("openai".to_string()),
                 model: None,
                 thinking_tokens: None,
@@ -567,7 +580,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("openai".to_string()),
                 model: None,
                 thinking_tokens: None,
@@ -583,7 +596,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("anthropic".to_string()),
                 model: None,
                 thinking_tokens: None,
@@ -597,7 +610,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("gemini".to_string()),
                 model: None,
                 thinking_tokens: None,
@@ -625,7 +638,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("anthropic".to_string()),
                 model: None,
                 thinking_tokens: Some(16000),
@@ -641,7 +654,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("anthropic".to_string()),
                 model: None,
                 thinking_tokens: None, // Use default
@@ -657,7 +670,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("openai".to_string()),
                 model: None,
                 thinking_tokens: Some(16000),
@@ -671,7 +684,7 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
+                options: None, // Changed from vec![]
                 provider: Some("gemini".to_string()),
                 model: None,
                 thinking_tokens: Some(16000),
