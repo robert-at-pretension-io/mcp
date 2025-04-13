@@ -10,8 +10,8 @@ use tracing::{debug, error, info, warn};
 use schemars::JsonSchema;
 use uuid::Uuid;
 // Updated imports for pty-process 0.5.1 with async feature
-use pty_process::{Command as PtyCommand, Pty, Pts};
-use pty_process::asyncio::PtyMaster; // PtyMaster is now here
+use pty_process::{Command as PtyCommand, Pty}; // Removed Pts import
+// Removed explicit PtyMaster import - rely on type inference from into_async_master
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use nix::errno::Errno; // Import Errno for EIO comparison
@@ -107,8 +107,8 @@ impl InteractiveTerminalTool {
     async fn start_session_internal(&self, shell_path: &str) -> Result<SessionId> {
         info!("Starting new interactive terminal session with shell: {}", shell_path);
 
-        // Use Pty::open() instead of Pty::new()
-        let pty = Pty::open()?;
+        // Use Pty::new() again
+        let pty = Pty::new()?;
         let pts = pty.pts()?; // Get slave PTY device
 
         // Configure the command to run in the PTY
@@ -132,8 +132,8 @@ impl InteractiveTerminalTool {
         // Spawn reader task
         let reader_buffer_clone = Arc::clone(&output_buffer);
         let reader_status_clone = Arc::clone(&status);
-        // Add explicit type annotation here
-        let reader_master_clone: Arc<Mutex<PtyMaster>> = Arc::clone(&pty_master_arc);
+        // Remove explicit PtyMaster type annotation, rely on inference
+        let reader_master_clone = Arc::clone(&pty_master_arc);
         let session_id_clone = session_id.clone();
 
         let reader_handle = tokio::spawn(async move {
