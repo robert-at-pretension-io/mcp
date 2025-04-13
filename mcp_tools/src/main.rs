@@ -237,9 +237,9 @@ async fn main() {
             // Delegate to NetlifyTool's implementation
             self.netlify_tool.netlify_help(params).await
         }
-
+ 
         // Supabase tool implementations
-        #[tool(description = "Executes authenticated Supabase CLI commands. Provide the command arguments *after* 'supabase' (e.g., 'projects list', 'functions deploy my-func'). Authentication is handled automatically.")]
+        #[tool(description = "Executes authenticated Supabase CLI commands. Provide the command arguments *after* 'supabase' (e.g., 'projects list', 'functions deploy my-func'). Authentication is handled automatically.\n\nEssential Supabase CLI Commands:\nInitialize & Local Dev: supabase init creates config files, then supabase start launches local services.\nDatabase Development: Create migrations with supabase migration new name or generate them from changes with supabase db diff -f name.\nLocal Testing: Check service status with supabase status, reset database with supabase db reset, and stop services with supabase stop.\nRemote Connection: Authenticate with supabase login, link to project with supabase link --project-ref YOUR_REF, and pull remote schema with supabase db pull.\nDeployment: Push migrations to production with supabase db push (use --dry-run to preview changes).\nEdge Functions: Create with supabase functions new name, serve locally with supabase functions serve, and deploy with supabase functions deploy name.\nType Generation: Generate TypeScript types with supabase gen types typescript --linked > types/supabase.ts.\nProduction Management: Add secrets with supabase secrets set KEY=VALUE, manage database with supabase db lint for errors, and use supabase db diff to check drift between environments.")]
         pub async fn supabase(
             &self,
             #[tool(aggr)] params: SupabaseParams,
