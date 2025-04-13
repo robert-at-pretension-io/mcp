@@ -84,11 +84,9 @@ impl<'a> Repl<'a> {
             verify_responses: false,
         };
 
-        // Now create the CommandProcessor, passing the mutable reference to the Repl instance
-        let command_processor = CommandProcessor::new(host, &mut repl_instance); // Pass host and &mut repl_instance
-
-        // Assign the created command_processor to the instance
-        repl_instance.command_processor = command_processor;
+        // Remove the problematic assignment and extra creation step that caused borrow errors
+        // let command_processor = CommandProcessor::new(host, &mut repl_instance);
+        // repl_instance.command_processor = command_processor;
 
         Ok(repl_instance) // Return the fully constructed instance
 
@@ -256,16 +254,17 @@ impl<'a> Repl<'a> {
                     // --- Process REPL Command While in Chat Mode ---
                     let command_line = line[1..].trim(); // Remove leading '/'
                     log::info!("Processing REPL command from within chat: '{}'", command_line);
-                    // Put the state back temporarily so CommandProcessor can potentially access it (e.g., for save_chat)
+                    // Put the state back temporarily so CommandProcessor can potentially access it via the repl argument
                     self.chat_state = Some((server_context.clone(), state));
-                    // Process the command
+                    // Process the command, passing self (as &mut Repl)
                     let process_result = self.command_processor.process(
+                        self, // Pass mutable reference to self (Repl)
                         command_line,
                         self.verify_responses,
                         &mut self.editor
                     ).await;
                     // Take the state back after processing
-                    let (server_context, state) = self.chat_state.take().unwrap(); // Should always exist here
+                    let (server_context, state) = self.chat_state.take().unwrap(); // Remove mut state here
 
                     match process_result {
                         Ok((output_string, new_verify_state)) => {
