@@ -22,7 +22,10 @@ use mcp_tools::long_running_task::{
 use mcp_tools::aider::{AiderTool, AiderParams};
 use mcp_tools::mermaid_chart::{MermaidChartTool, MermaidChartParams};
 use mcp_tools::netlify::{NetlifyTool, NetlifyParams, NetlifyHelpParams};
-use mcp_tools::supabase::{SupabaseTool, SupabaseParams, SupabaseHelpParams}; // Added Supabase imports
+use mcp_tools::supabase::{SupabaseTool, SupabaseParams, SupabaseHelpParams};
+use mcp_tools::interactive_terminal::{ // Added interactive terminal imports
+    InteractiveTerminalTool, StartTerminalParams, RunInTerminalParams, GetOutputParams, StopTerminalParams
+};
 // use mcp_tools::planner::{PlannerTool, PlannerParams};
 // use mcp_tools::gmail_integration::{
 //     GmailTool, AuthInitParams, AuthExchangeParams, SendMessageParams,
@@ -80,7 +83,8 @@ async fn main() {
         aider_tool: AiderTool,
         mermaid_chart_tool: MermaidChartTool,
         netlify_tool: NetlifyTool,
-        supabase_tool: SupabaseTool, // Added SupabaseTool field
+        supabase_tool: SupabaseTool,
+        interactive_terminal_tool: InteractiveTerminalTool, // Added interactive terminal field
         // planner_tool: PlannerTool,
         // gmail_tool: GmailTool,
         // email_validator_tool: EmailValidatorTool,
@@ -107,7 +111,8 @@ async fn main() {
                 aider_tool: AiderTool::new(),
                 mermaid_chart_tool: MermaidChartTool::new(),
                 netlify_tool: NetlifyTool::new(),
-                supabase_tool: SupabaseTool::new(), // Instantiate SupabaseTool
+                supabase_tool: SupabaseTool::new(),
+                interactive_terminal_tool: InteractiveTerminalTool::new(), // Instantiate interactive terminal
                 // planner_tool: PlannerTool::new(),
                 // gmail_tool: GmailTool::new(),
                 // email_validator_tool: EmailValidatorTool::new(),
@@ -251,6 +256,40 @@ async fn main() {
             // Delegate to SupabaseTool's implementation
             self.supabase_tool.supabase_help(params).await
         }
+
+        // Interactive Terminal tool implementations
+        #[tool(description = "Starts a new persistent interactive terminal session (e.g., bash). Returns a unique session ID.")]
+        pub async fn start_terminal_session(
+            &self,
+            #[tool(aggr)] params: StartTerminalParams,
+        ) -> String {
+            self.interactive_terminal_tool.start_terminal_session(params).await
+        }
+
+        #[tool(description = "Runs a command within an active terminal session and returns its output. Waits for the command to complete or times out.")]
+        pub async fn run_in_terminal(
+            &self,
+            #[tool(aggr)] params: RunInTerminalParams,
+        ) -> String {
+            self.interactive_terminal_tool.run_in_terminal(params).await
+        }
+
+        #[tool(description = "Retrieves the accumulated output buffer for a terminal session. Optionally returns only the last N lines.")]
+        pub async fn get_terminal_output(
+            &self,
+            #[tool(aggr)] params: GetOutputParams,
+        ) -> String {
+            self.interactive_terminal_tool.get_terminal_output(params).await
+        }
+
+        #[tool(description = "Stops an active terminal session and cleans up its resources.")]
+        pub async fn stop_terminal_session(
+            &self,
+            #[tool(aggr)] params: StopTerminalParams,
+        ) -> String {
+            self.interactive_terminal_tool.stop_terminal_session(params).await
+        }
+
 
         // // Planner tool implementation
         // #[tool(description = "Generates a multi-step plan using available tools to fulfill a user request. Provide the original user request, the AI's interpretation of that request, and a list of all available tools (including their descriptions and parameters). The tool will call a powerful LLM (Gemini) to devise a plan, including potential contingencies and points for reflection or waiting for results.")]

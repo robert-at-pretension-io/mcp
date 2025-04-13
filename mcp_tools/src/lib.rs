@@ -10,3 +10,4 @@ pub mod mermaid_chart;
 pub mod planner;
 pub mod netlify;
 pub mod supabase;
+pub mod interactive_terminal;
