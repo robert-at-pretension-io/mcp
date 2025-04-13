@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
 use serde::{Serialize, Deserialize};
-use tracing::{info, warn, error, debug};
+use tracing::{info, error, debug}; // Removed warn
 use schemars::JsonSchema;
 use std::env;
 

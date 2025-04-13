@@ -9,9 +9,10 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 use schemars::JsonSchema;
 use uuid::Uuid;
-use pty_process::{Command as PtyCommand, Pty, PtyMaster, WaitStatus};
+use pty_process::{Command as PtyCommand, Pty, PtyMaster}; // Removed WaitStatus
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
+use nix::errno::Errno; // Import Errno for EIO comparison
 
 
 use rmcp::tool;
@@ -75,6 +76,7 @@ enum SessionStatus {
 }
 
 // Represents an active terminal session state
+#[derive(Debug)] // Add Debug derive
 struct TerminalSessionState {
     pty_master: Arc<Mutex<PtyMaster>>, // pty-process master handle
     output_buffer: Arc<Mutex<String>>,
@@ -125,7 +127,8 @@ impl InteractiveTerminalTool {
         // Spawn reader task
         let reader_buffer_clone = Arc::clone(&output_buffer);
         let reader_status_clone = Arc::clone(&status);
-        let reader_master_clone = Arc::clone(&pty_master_arc);
+        // Add explicit type annotation here
+        let reader_master_clone: Arc<Mutex<PtyMaster>> = Arc::clone(&pty_master_arc);
         let session_id_clone = session_id.clone();
 
         let reader_handle = tokio::spawn(async move {
@@ -178,10 +181,11 @@ impl InteractiveTerminalTool {
                     Err(e) => {
                         // Check if the error is expected on close (e.g., EIO)
                         if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-                            if io_err.kind() == std::io::ErrorKind::Other && io_err.raw_os_error() == Some(libc::EIO) {
+                            // Use nix::errno::Errno::EIO for comparison
+                            if io_err.kind() == std::io::ErrorKind::Other && io_err.raw_os_error() == Some(Errno::EIO as i32) {
                                 info!("Session {}: PTY master closed (EIO), likely due to session stop.", session_id_clone);
                             } else {
-                                error!("Error reading from PTY master for session {}: {}", session_id_clone, e);
+                                error!("Error reading from PTY master for session {}: {} (Kind: {:?}, OS Error: {:?})", session_id_clone, e, io_err.kind(), io_err.raw_os_error());
                             }
                         } else {
                              error!("Non-IO error reading from PTY master for session {}: {}", session_id_clone, e);
