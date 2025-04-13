@@ -8,3 +8,4 @@ pub mod long_running_task;
 pub mod aider;
 pub mod mermaid_chart;
 pub mod planner;
+pub mod netlify;
