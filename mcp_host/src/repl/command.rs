@@ -38,13 +38,15 @@ impl CommandProcessor {
         }
     }
 
-    /// Process a command string, requires mutable access to the Repl and editor
+    /// Process a command string.
+    /// Takes the current verification state and returns the output message
+    /// and an optional new verification state if it was changed by the command.
     pub async fn process(
         &mut self,
         command: &str,
-        repl: &mut Repl, // Accept mutable Repl reference
+        current_verify_state: bool, // Pass current state instead of &mut Repl
         editor: &mut Editor<ReplHelper, DefaultHistory>
-    ) -> Result<String> {
+    ) -> Result<(String, Option<bool>)> { // Return tuple: (output, Option<new_verify_state>)
         // Split the command into parts, respecting quotes
         let parts = match shellwords::split(command) {
             Ok(parts) => parts,
@@ -57,25 +59,26 @@ impl CommandProcessor {
         
         let cmd = &parts[0];
         let args = &parts[1..];
-        
-        match cmd.as_str() {
-            "help" => self.cmd_help(),
-            "exit" | "quit" => Ok("exit".to_string()),
-            "servers" => self.cmd_servers().await,
-            "use" => self.cmd_use(args).await,
-            "tools" => self.cmd_tools(args).await,
-            "call" => self.cmd_call(args).await,
-            "provider" => self.cmd_provider(args).await,
-            "providers" => self.cmd_providers().await,
-            "model" => self.cmd_model(args).await, // Added model command
+        // Most commands return Ok(message) which we map to Ok((message, None))
+        // The 'verify' command is handled specially.
+        let result: Result<(String, Option<bool>)> = match cmd.as_str() {
+            "help" => self.cmd_help().map(|s| (s, None)),
+            "exit" | "quit" => Ok(("exit".to_string(), None)), // Special string "exit"
+            "servers" => self.cmd_servers().await.map(|s| (s, None)),
+            "use" => self.cmd_use(args).await.map(|s| (s, None)),
+            "tools" => self.cmd_tools(args).await.map(|s| (s, None)),
+            "call" => self.cmd_call(args).await.map(|s| (s, None)),
+            "provider" => self.cmd_provider(args).await.map(|s| (s, None)),
+            "providers" => self.cmd_providers().await.map(|s| (s, None)),
+            "model" => self.cmd_model(args).await.map(|s| (s, None)), // Added model command
             // chat command is handled directly in Repl::run
-            "add_server" => self.cmd_add_server(editor).await, // Pass editor
-            "edit_server" => self.cmd_edit_server(args, editor).await, // Pass editor
-            "remove_server" => self.cmd_remove_server(args).await, // New command
-            "save_config" => self.cmd_save_config().await, // New command
-            "reload_config" => self.cmd_reload_config(editor).await, // Pass editor
-            "show_config" => self.cmd_show_config(args).await, // New command
-            "verify" => self.cmd_verify(args, repl).await, // Added verify command, pass repl
+            "add_server" => self.cmd_add_server(editor).await.map(|s| (s, None)), // Pass editor
+            "edit_server" => self.cmd_edit_server(args, editor).await.map(|s| (s, None)), // Pass editor
+            "remove_server" => self.cmd_remove_server(args).await.map(|s| (s, None)), // New command
+            "save_config" => self.cmd_save_config().await.map(|s| (s, None)), // New command
+            "reload_config" => self.cmd_reload_config(editor).await.map(|s| (s, None)), // Pass editor
+            "show_config" => self.cmd_show_config(args).await.map(|s| (s, None)), // New command
+            "verify" => self.cmd_verify(args, current_verify_state).await, // Pass current state, returns tuple directly
             _ => {
                  // Check if it looks like a chat command before declaring unknown
                  if cmd == "chat" {
@@ -88,7 +91,8 @@ impl CommandProcessor {
                      Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
                  }
             }
-        }
+        };
+        result // Return the final result
     }
 
     /// Get available commands
@@ -193,20 +197,23 @@ impl CommandProcessor {
 
 
     // --- Verify Command ---
-    async fn cmd_verify(&mut self, args: &[String], repl: &mut Repl) -> Result<String> {
+    /// Handles the 'verify' command.
+    /// Takes the current verification state.
+    /// Returns a tuple: (output_message, Option<new_state>)
+    async fn cmd_verify(&self, args: &[String], current_state: bool) -> Result<(String, Option<bool>)> {
         if args.is_empty() {
-            // Show current status
-            let status = if repl.verify_responses { style("on").green() } else { style("off").yellow() };
-            Ok(format!("Response verification is currently {}.", status))
+            // Show current status - no state change
+            let status = if current_state { style("on").green() } else { style("off").yellow() };
+            Ok((format!("Response verification is currently {}.", status), None))
         } else {
             match args[0].to_lowercase().as_str() {
                 "on" | "true" | "yes" | "enable" => {
-                    repl.verify_responses = true;
-                    Ok(style("Response verification enabled.").green().to_string())
+                    // Request to enable - state changes to true
+                    Ok((style("Response verification enabled.").green().to_string(), Some(true)))
                 }
                 "off" | "false" | "no" | "disable" => {
-                    repl.verify_responses = false;
-                    Ok(style("Response verification disabled.").yellow().to_string())
+                    // Request to disable - state changes to false
+                    Ok((style("Response verification disabled.").yellow().to_string(), Some(false)))
                 }
                 _ => Err(anyhow!("Invalid argument '{}'. Use 'on' or 'off'.", args[0])),
             }

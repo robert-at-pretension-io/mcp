@@ -220,14 +220,18 @@ impl Repl {
                 // We clone the editor temporarily because process needs mutable access
                 // This is a bit awkward, maybe refactor CommandProcessor later
                 // to not require mutable editor directly for non-interactive commands.
-                // For now, this allows modifying Repl state like verify_responses.
-                // Pass the mutable editor directly.
-                let process_result = self.command_processor.process(line, self, &mut self.editor).await;
+                // Pass the current verification state and the mutable editor.
+                let process_result = self.command_processor.process(
+                    line,
+                    self.verify_responses, // Pass current state
+                    &mut self.editor
+                ).await;
                 // After processing, if the editor state changed (e.g., history),
                 // it's already reflected in self.editor.
 
-                if line.starts_with("chat") && process_result.is_err() && process_result.as_ref().err().map_or(false, |e| e.to_string().contains("Unknown command")) {
+                if line.starts_with("chat") && process_result.is_err() && process_result.as_ref().err().map_or(false, |e| e.0.to_string().contains("Unknown command")) {
                      // --- Enter Chat Mode (Only if 'chat' wasn't handled as a command itself) ---
+                     // Check the error within the tuple result
                      // This allows potentially overriding 'chat' with a custom command later if needed.
                      log::debug!("Processing 'chat' command to enter chat mode.");
                      let parts: Vec<&str> = line.splitn(2, ' ').collect();
@@ -309,17 +313,27 @@ impl Repl {
                 } else {
                     // --- Process command result (already processed above) ---
                     match process_result {
-                         Ok(result) => {
-                             log::debug!("CommandProcessor result: '{}'", result);
-                             if result == "exit" {
+                         Ok((output_string, new_verify_state)) => {
+                             log::debug!("CommandProcessor result: '{}', New verify state: {:?}", output_string, new_verify_state);
+
+                             // Update verify state if the command changed it
+                             if let Some(new_state) = new_verify_state {
+                                 self.verify_responses = new_state;
+                                 log::info!("Updated verify_responses to: {}", new_state);
+                             }
+
+                             // Handle exit command
+                             if output_string == "exit" {
                                 log::info!("'exit' command received, breaking REPL loop.");
                                 break; // Exit REPL
                             }
-                            if !result.is_empty() {
-                                println!("{}", result); // Print command output
+                            // Print command output if not empty
+                            if !output_string.is_empty() {
+                                println!("{}", output_string);
                             }
                         }
                         Err(e) => {
+                            // The error is now wrapped in the Result from process
                             log::error!("Command processing error: {}", e);
                             println!("{}: {}", style("Error").red().bold(), e);
                         }
