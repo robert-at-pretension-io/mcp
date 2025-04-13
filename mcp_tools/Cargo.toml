@@ -52,7 +52,7 @@ half = "^2.5.0"
 llm = "1.1.0" # Add llm dependency explicitly
 rllm = { version = "1.1.7", features = ["google"] }
 nix = { version = "0.29.0", features = ["process", "signal"] } # Added signal for process killing
-pty-process = "0.4.1" # For interactive terminal PTY handling
+pty-process = "0.5.1" # Updated version for interactive terminal PTY handling
 
 [dev-dependencies]
 wiremock = "^0.6.2"
