@@ -9,4 +9,3 @@ pub mod aider;
 pub mod mermaid_chart;
 pub mod planner;
 pub mod netlify;
-pub mod netlify;
