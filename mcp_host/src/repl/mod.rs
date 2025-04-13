@@ -471,6 +471,7 @@ impl Repl {
                 // Pass the current verification state and the mutable editor.
                 */
                 let process_result = self.command_processor.process(
+                    self, // Add missing 'self' argument
                     line,
                     self.verify_responses, // Pass current state
                     &mut self.editor
