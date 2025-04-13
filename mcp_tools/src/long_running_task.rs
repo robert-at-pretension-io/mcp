@@ -476,6 +476,10 @@ impl LongRunningTaskTool {
             }
             None => Err(anyhow!("Task not found: {}", task_id)),
         }
+
+        // Note: The status is updated optimistically when the signal is sent.
+        // We don't wait here to confirm process death, as that could block.
+        // The actual process exit will eventually be caught by the original task spawner's `child.wait().await`.
     }
 
     // Helper method to clear all tasks
