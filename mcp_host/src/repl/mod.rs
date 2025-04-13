@@ -229,9 +229,9 @@ impl Repl {
                 // After processing, if the editor state changed (e.g., history),
                 // it's already reflected in self.editor.
 
-                if line.starts_with("chat") && process_result.is_err() && process_result.as_ref().err().map_or(false, |e| e.0.to_string().contains("Unknown command")) {
+                if line.starts_with("chat") && process_result.is_err() && process_result.as_ref().err().map_or(false, |e| e.to_string().contains("Unknown command")) {
                      // --- Enter Chat Mode (Only if 'chat' wasn't handled as a command itself) ---
-                     // Check the error within the tuple result
+                     // Check the error string directly
                      // This allows potentially overriding 'chat' with a custom command later if needed.
                      log::debug!("Processing 'chat' command to enter chat mode.");
                      let parts: Vec<&str> = line.splitn(2, ' ').collect();
