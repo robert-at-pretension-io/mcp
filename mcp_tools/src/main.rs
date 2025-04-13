@@ -218,9 +218,9 @@ async fn main() {
             // Delegate to MermaidChartTool's implementation
             self.mermaid_chart_tool.mermaid_chart(params).await
         }
-
+ 
         // Netlify tool implementations
-        #[tool(description = "Executes authenticated Netlify CLI commands. Provide the command arguments *after* 'netlify' (e.g., 'sites:list', 'deploy --prod'). Authentication is handled automatically.")]
+        #[tool(description = "Executes authenticated Netlify CLI commands. Provide the command arguments *after* 'netlify' (e.g., 'sites:list', 'deploy --prod'). Authentication is handled automatically.\n\nEssential Netlify CLI Commands:\nAuthentication & Project Connection: netlify login authenticates your account; netlify sites:list identifies existing sites; netlify link connects to an existing site rather than creating a new one.\nLocal Development: netlify dev launches local server with all Netlify features (functions, redirects, headers); netlify dev --live creates shareable URL.\nFunctions: Create with netlify functions:create, test locally with netlify functions:invoke, all run automatically with netlify dev.\nEnvironment Variables: Set with netlify env:set KEY VALUE, list with netlify env:list, and import from files with netlify env:import.\nDeployment: Preview with netlify deploy (creates draft URL); deploy to production with netlify deploy --prod; use -d folder to specify build directory.\nMonitoring: Stream function logs with netlify logs:function; track deployments with netlify watch; check site status with netlify status.")]
         pub async fn netlify( // Added pub
             &self,
             #[tool(aggr)] params: NetlifyParams,
