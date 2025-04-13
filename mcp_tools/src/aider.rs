@@ -21,20 +21,20 @@ pub struct AiderParams {
     pub options: Option<String>,
 
     #[serde(default)]
-    #[schemars(description = "The provider to use (e.g., 'anthropic', 'openai', 'gemini'). Defaults based on available API keys if not specified.")]
-    pub provider: Option<String>,
-    
+    #[schemars(description = "Optional: The provider to use (e.g., 'anthropic', 'openai', 'gemini'). Leave empty to auto-detect based on available API keys.")]
+    pub provider: String, // Changed from Option<String>
+
     #[serde(default)]
-    #[schemars(description = "The model to use (e.g., 'claude-3-opus-20240229'). Falls back to AIDER_MODEL environment variable if not specified.")]
-    pub model: Option<String>,
-    
+    #[schemars(description = "Optional: The model to use (e.g., 'claude-3-opus-20240229'). Leave empty to use AIDER_MODEL env var or provider default.")]
+    pub model: String, // Changed from Option<String>
+
     #[serde(default)]
-    #[schemars(description = "Number of thinking tokens to use for Anthropic models (Claude). Higher values allow more thorough reasoning.")]
+    #[schemars(description = "Optional: Number of thinking tokens to use for Anthropic models (Claude). Higher values allow more thorough reasoning. Defaults based on model if empty.")]
     pub thinking_tokens: Option<u32>,
     
     #[serde(default)]
-    #[schemars(description = "Reasoning effort level for OpenAI models. Values: 'auto', 'low', 'medium', 'high'.")]
-    pub reasoning_effort: Option<String>,
+    #[schemars(description = "Optional: Reasoning effort level for OpenAI models. Values: 'low', 'medium', 'high'. Defaults to 'high' if empty.")]
+    pub reasoning_effort: String, // Changed from Option<String>
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -66,22 +66,21 @@ impl AiderExecutor {
 
     /// Helper method to build command arguments for testing
     pub fn build_command_args(&self, params: &AiderParams) -> Vec<String> {
-        // Determine provider: first use explicit parameter, otherwise detect available API keys
-        let provider = if let Some(p) = params.provider.clone() {
-            let p_l = p.to_lowercase();
+        // Determine provider: use explicit parameter if not empty, otherwise detect
+        let provider = if !params.provider.trim().is_empty() {
+            let p_l = params.provider.trim().to_lowercase();
             // Validate provider name
             if !["anthropic", "openai", "gemini"].contains(&p_l.as_str()) {
-                error!("Unsupported provider '{}'. Attempting auto-detection.", p);
-                // Fall through to auto-detection if specified provider is invalid
-                Self::detect_provider()
+                error!("Unsupported provider '{}' specified. Attempting auto-detection.", params.provider);
+                Self::detect_provider() // Fall back to auto-detection
             } else {
                 p_l // Use the valid specified provider
             }
         } else {
-            // Auto-detect provider based on available API keys
-            Self::detect_provider()
+            debug!("No provider specified, attempting auto-detection.");
+            Self::detect_provider() // Auto-detect if empty
         };
-        
+
         // Check for provider-specific API key first, then fall back to AIDER_API_KEY
         let provider_env_key = format!("{}_API_KEY", provider.to_uppercase());
         let api_key = std::env::var(&provider_env_key)
@@ -96,14 +95,14 @@ impl AiderExecutor {
             error!("No API key found for provider '{}'. Checked {} and AIDER_API_KEY", 
                 provider, provider_env_key);
         }
-        
-        // Get model from params, environment variables, or set default based on provider
-        let model = params.model
-            .clone()
-            .or_else(|| std::env::var("AIDER_MODEL").ok())
-            .or_else(|| {
-                // Set default models based on provider
-                match provider.to_lowercase().as_str() {
+
+        // Get model: use param if not empty, else env var, else provider default
+        let model = if !params.model.trim().is_empty() {
+            Some(params.model.trim().to_string())
+        } else {
+            std::env::var("AIDER_MODEL").ok().or_else(|| {
+                // Set default models based on provider if env var is also empty
+                match provider.as_str() { // provider is already lowercase String
                     "anthropic" => {
                         debug!("Using default Anthropic model: anthropic/claude-3-7-sonnet-20250219");
                         Some("anthropic/claude-3-7-sonnet-20250219".to_string())
@@ -121,7 +120,8 @@ impl AiderExecutor {
                         None
                     }
                 }
-            });
+            })
+        };
 
         // Build the command
         let mut cmd_args = vec![
@@ -156,17 +156,21 @@ impl AiderExecutor {
         }
 
         // Add reasoning effort for OpenAI models
-        if provider.to_lowercase() == "openai" {
-            let effort = params.reasoning_effort.as_deref().unwrap_or("high");
+        if provider == "openai" { // provider is already lowercase String
+            let effort = if params.reasoning_effort.trim().is_empty() {
+                "high" // Default if param is empty
+            } else {
+                params.reasoning_effort.trim()
+            };
             // Validate reasoning_effort - only allow "low", "medium", "high"
             let valid_efforts = ["low", "medium", "high"];
             let validated_effort = if valid_efforts.contains(&effort.to_lowercase().as_str()) {
-                effort.to_string()
+                effort.to_lowercase() // Use validated lowercase effort
             } else {
-                error!("Invalid reasoning_effort '{}'. Defaulting to 'high'", effort);
-                "high".to_string()
+                error!("Invalid reasoning_effort '{}' specified. Defaulting to 'high'", effort);
+                "high".to_string() // Default to high if invalid
             };
-            
+
             cmd_args.push("--reasoning-effort".to_string());
             cmd_args.push(validated_effort.clone());
             debug!("Using reasoning_effort: {}", validated_effort);
@@ -234,18 +238,18 @@ impl AiderExecutor {
         // Extract provider and model used (determined during arg building)
         // This is a bit indirect, ideally build_command_args would return them too.
         // We re-determine provider here for the result struct.
-        let provider = if let Some(p) = params.provider.clone() {
-             let p_l = p.to_lowercase();
+        let provider = if !params.provider.trim().is_empty() {
+             let p_l = params.provider.trim().to_lowercase();
              if ["anthropic", "openai", "gemini"].contains(&p_l.as_str()) { p_l } else { Self::detect_provider() }
         } else {
             Self::detect_provider()
         };
-        
+
         // Re-determine model used for the result struct
-        let model = params.model
-            .clone()
-            .or_else(|| std::env::var("AIDER_MODEL").ok())
-            .or_else(|| {
+        let model = if !params.model.trim().is_empty() {
+            Some(params.model.trim().to_string())
+        } else {
+            std::env::var("AIDER_MODEL").ok().or_else(|| {
                 match provider.as_str() {
                     "anthropic" => Some("anthropic/claude-3-7-sonnet-20250219".to_string()),
                     "openai" => Some("openai/o3-mini".to_string()),
@@ -369,11 +373,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("anthropic".to_string()),
-                model: None,
+                options: None,
+                provider: "anthropic".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None,
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             // We don't actually execute the command, just check the validation logic
@@ -385,11 +389,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("openai".to_string()),
-                model: None,
+                options: None,
+                provider: "openai".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None,
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -399,11 +403,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("invalid_provider".to_string()),
-                model: None,
+                options: None,
+                provider: "invalid_provider".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None,
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -486,11 +490,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("anthropic".to_string()),
-                model: None,
+                options: None,
+                provider: "anthropic".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None,
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -502,11 +506,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("openai".to_string()),
-                model: None,
+                options: None,
+                provider: "openai".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None,
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -518,11 +522,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("gemini".to_string()),
-                model: None,
+                options: None,
+                provider: "gemini".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None,
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -534,11 +538,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("anthropic".to_string()),
-                model: Some("claude-3-opus-20240229".to_string()),
+                options: None,
+                provider: "anthropic".to_string(), // Changed from Some(...)
+                model: "claude-3-opus-20240229".to_string(), // Changed from Some(...)
                 thinking_tokens: None,
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -564,11 +568,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("openai".to_string()),
-                model: None,
+                options: None,
+                provider: "openai".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None,
-                reasoning_effort: Some("high".to_string()),
+                reasoning_effort: "high".to_string(), // Changed from Some(...)
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -580,11 +584,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("openai".to_string()),
-                model: None,
+                options: None,
+                provider: "openai".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None,
-                reasoning_effort: Some("invalid_effort".to_string()),
+                reasoning_effort: "invalid_effort".to_string(), // Changed from Some(...)
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -596,11 +600,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("anthropic".to_string()),
-                model: None,
+                options: None,
+                provider: "anthropic".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None,
-                reasoning_effort: Some("high".to_string()),
+                reasoning_effort: "high".to_string(), // Changed from Some(...)
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -610,11 +614,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("gemini".to_string()),
-                model: None,
+                options: None,
+                provider: "gemini".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None,
-                reasoning_effort: Some("high".to_string()),
+                reasoning_effort: "high".to_string(), // Changed from Some(...)
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -638,11 +642,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("anthropic".to_string()),
-                model: None,
+                options: None,
+                provider: "anthropic".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: Some(16000),
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -654,11 +658,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("anthropic".to_string()),
-                model: None,
+                options: None,
+                provider: "anthropic".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: None, // Use default
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -670,11 +674,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("openai".to_string()),
-                model: None,
+                options: None,
+                provider: "openai".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: Some(16000),
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             let cmd_args = executor.build_command_args(&params);
@@ -684,11 +688,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: None, // Changed from vec![]
-                provider: Some("gemini".to_string()),
-                model: None,
+                options: None,
+                provider: "gemini".to_string(), // Changed from Some(...)
+                model: "".to_string(), // Changed from None
                 thinking_tokens: Some(16000),
-                reasoning_effort: None,
+                reasoning_effort: "".to_string(), // Changed from None
             };
             
             let cmd_args = executor.build_command_args(&params);
