@@ -180,7 +180,14 @@ impl MermaidChartTool {
         } else {
             params.chart_type.trim().to_string()
         };
-        let additional_instructions = params.prompt.trim(); // Use directly, empty if no instructions
+        let additional_instructions_raw = params.prompt.trim(); // Use directly, empty if no instructions
+
+        // Create the formatted instruction string beforehand if needed
+        let formatted_instructions = if additional_instructions_raw.is_empty() {
+            "".to_string() // Use an empty owned String if no instructions
+        } else {
+            format!("- {}", additional_instructions_raw) // Create the formatted owned String
+        };
 
         let prompt = format!(
             "Based on the code files below, generate a clean, well-structured Mermaid {} diagram that visualizes the relationships between components.\n\n\
@@ -193,7 +200,7 @@ impl MermaidChartTool {
              {}\n\n\
              IMPORTANT: Return only the diagram code with no code block formatting, explanations, or other text.",
             chart_type, file_contents, chart_type, chart_type,
-            if additional_instructions.is_empty() { "" } else { &format!("- {}", additional_instructions) } // Conditionally add instruction prefix
+            formatted_instructions // Use the pre-formatted string here
         );
 
         // Call Gemini API to generate the diagram
