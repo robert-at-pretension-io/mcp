@@ -52,11 +52,11 @@ impl CommandProcessor {
             Ok(parts) => parts,
             Err(_) => return Err(anyhow!("Invalid command syntax (unmatched quotes?)"))
         };
-        
+
         if parts.is_empty() {
-            return Ok("".to_string());
+            return Ok(("".to_string(), None)); // Return empty string and no state change
         }
-        
+
         let cmd = &parts[0];
         let args = &parts[1..];
         // Most commands return Ok(message) which we map to Ok((message, None))
