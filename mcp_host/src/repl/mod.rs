@@ -27,14 +27,14 @@ use tokio::time::Duration;
 use crate::host::MCPHost;
 // Define Role locally if not directly available from rllm 1.1.7
 
-use crate::conversation_logic::{generate_verification_criteria, VerificationOutcome}; // Import VerificationOutcome
+use crate::conversation_logic::{generate_verification_criteria}; // Removed VerificationOutcome import
 use crate::conversation_service::generate_tool_system_prompt; // Import tool prompt generator
 use crate::conversation_state::ConversationState; // Import ConversationState
 
 /// Main REPL implementation with enhanced CLI features
-pub struct Repl {
+pub struct Repl<'a> { // Add lifetime 'a
     editor: Editor<ReplHelper, DefaultHistory>, // Specify History type
-    command_processor: CommandProcessor,
+    command_processor: CommandProcessor<'a>, // Use lifetime 'a
     // helper field removed, it's now owned by the Editor
     history_path: PathBuf,
     host: MCPHost, // Store host directly, not Option
@@ -44,7 +44,8 @@ pub struct Repl {
     verify_responses: bool, // Added flag for verification
 }
 
-impl Repl {
+// Add lifetime 'a here
+impl<'a> Repl<'a> {
     /// Create a new REPL, requires an initialized MCPHost
     pub fn new(host: MCPHost) -> Result<Self> {
         // Set up config directory
@@ -56,15 +57,42 @@ impl Repl {
         let history_path = config_dir.join("history.txt");
 
         // Initialize the editor with the ReplHelper and DefaultHistory types.
-        // ReplHelper::default() will be called internally.
-        let editor = Editor::<ReplHelper, DefaultHistory>::new()?;
+        let mut editor = Editor::<ReplHelper, DefaultHistory>::new()?;
 
-        // Create command processor with the host
-        let command_processor = CommandProcessor::new(host.clone()); // Pass host clone only
+        // Load history early if it exists
+        if history_path.exists() {
+            if let Err(e) = editor.load_history(&history_path) {
+                // Log or print warning, but don't fail creation
+                log::warn!("Failed to load history from {}: {}", history_path.display(), e);
+                // Optionally: println!("{}: Failed to load history: {}", style("Warning").yellow(), e);
+            }
+        }
 
+        // Create the Repl instance *before* the CommandProcessor
+        // Note: CommandProcessor needs a mutable borrow of Repl, so we create Repl first.
+        let mut repl_instance = Self {
+            editor, // Move editor into the instance
+            // command_processor will be filled in below
+            command_processor: unsafe { std::mem::zeroed() }, // Temporary placeholder
+            history_path,
+            host: host.clone(), // Clone host for the Repl instance
+            chat_state: None,
+            loaded_conversation: None,
+            current_conversation_path: None,
+            verify_responses: false,
+        };
+
+        // Now create the CommandProcessor, passing the mutable reference to the Repl instance
+        let command_processor = CommandProcessor::new(host, &mut repl_instance); // Pass host and &mut repl_instance
+
+        // Assign the created command_processor to the instance
+        repl_instance.command_processor = command_processor;
+
+        Ok(repl_instance) // Return the fully constructed instance
+        /* Old code:
         Ok(Self {
             editor, // Repl owns the editor with its helper
-            command_processor,
+            command_processor, // This was the issue
             // helper field removed
             history_path,
             host, // Store the host

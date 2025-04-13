@@ -362,9 +362,9 @@ pub async fn resolve_assistant_response(
                         state.add_assistant_message(&next_resp);
                         next_resp
                     }
-                    Err(_e) => { // Use the error variable (prefixed with _)
-                        error!("Detailed error getting next AI response after tools: {:?}", _e);
-                        let error_msg = format!("Failed to get AI response after tool execution: {}", _e);
+                    Err(e) => { // Use the error variable (prefixed with _)
+                        error!("Detailed error getting next AI response after tools: {:?}", e);
+                        let error_msg = format!("Failed to get AI response after tool execution: {}", e);
                         log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg));
                         return Err(anyhow!(error_msg));
                     }
@@ -509,8 +509,8 @@ pub async fn resolve_assistant_response(
                                         // Loop continues to re-evaluate the revised response
                                         continue; // Go to next loop iteration
                                     }
-                                    Err(_e) => { // Use the error variable (prefixed with _)
-                                        error!("Error getting revised AI response after verification failure: {:?}", _e);
+                                    Err(e) => { // Use the error variable (prefixed with _)
+                                        error!("Error getting revised AI response after verification failure: {:?}", e);
                                         warn!("Returning unverified response due to error during revision.");
                                         let outcome = VerificationOutcome {
                                             final_response: current_response, // Return the response *before* the failed revision attempt
@@ -518,7 +518,7 @@ pub async fn resolve_assistant_response(
                                             verification_passed: Some(false),
                                             verification_feedback: feedback_opt,
                                         };
-                                        log(format!("\n--- Error During Revision Attempt: {} ---", _e)); // Use _e here
+                                        log(format!("\n--- Error During Revision Attempt: {} ---", e)); // Use e here
                                         log(format!("Returning previous (failed verification) response:\n```\n{}\n```", outcome.final_response));
                                         return Ok(outcome); // Return the last known response before the error
                                     }
@@ -538,17 +538,17 @@ pub async fn resolve_assistant_response(
                             }
                         }
                     }
-                    Err(_e) => { // Use the error variable (prefixed with _)
+                    Err(e) => { // Use the error variable (prefixed with _)
                         // Verification call itself failed
-                        error!("Error during verification call for server '{}': {}", server_name, _e);
+                        error!("Error during verification call for server '{}': {}", server_name, e);
                         warn!("Returning unverified response due to verification error.");
                         let outcome = VerificationOutcome {
                             final_response: current_response,
                             criteria: Some(criteria.to_string()),
                             verification_passed: None,
-                            verification_feedback: Some(format!("Verification Error: {}", _e)), // Use _e here
+                            verification_feedback: Some(format!("Verification Error: {}", e)), // Use e here
                         };
-                        log(format!("\n--- Verification Call Error: {} ---", _e)); // Use _e here
+                        log(format!("\n--- Verification Call Error: {} ---", e)); // Use e here
                         log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
                         return Ok(outcome); // Return the unverified response
                     }
@@ -629,10 +629,10 @@ async fn execute_single_tool_internal(
             debug!("Tool '{}' executed successfully on server '{}'.", tool_name, target_server_name);
             Ok(truncated_output) // Return the truncated output
         }
-        Err(_e) => { // Prefix with underscore: _e
+        Err(e) => { // Prefix with underscore: _e
             // Use `_e` in the format string and log message
             let error_msg = format!("Error executing tool '{}' on server '{}'", tool_name, target_server_name);
-            error!("{}: {:?}", error_msg, _e); // Log the actual error `_e`
+            error!("{}: {:?}", error_msg, e); // Log the actual error `_e`
 
             // Format error for printing if interactive
             if config.interactive_output {
@@ -642,7 +642,7 @@ async fn execute_single_tool_internal(
                     style("Error").red(),
                     style(tool_name).yellow(),
                     style(&target_server_name).green(), // Include server name in error
-                    _e // Include the error details
+                    e // Include the error details
                 );
                  // Print the formatted message
                  println!("\n{}", formatted_error);
@@ -650,7 +650,7 @@ async fn execute_single_tool_internal(
             // Return the error message itself as the "result" string to be added to the conversation
             // This allows the AI to potentially react to the tool failure.
             // Include the error details in the returned message for the AI
-            Ok(format!("{}: {}", error_msg, _e)) // Use '_e' here too
+            Ok(format!("{}: {}", error_msg, e)) // Use '_e' here too
         }
     }
 }
