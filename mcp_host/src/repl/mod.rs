@@ -221,11 +221,10 @@ impl Repl {
                 // This is a bit awkward, maybe refactor CommandProcessor later
                 // to not require mutable editor directly for non-interactive commands.
                 // For now, this allows modifying Repl state like verify_responses.
-                let mut temp_editor = self.editor.clone();
-                let process_result = self.command_processor.process(line, self, &mut temp_editor).await;
+                // Pass the mutable editor directly.
+                let process_result = self.command_processor.process(line, self, &mut self.editor).await;
                 // After processing, if the editor state changed (e.g., history),
-                // we might need to update self.editor. For now, assume only Repl state changes.
-                // self.editor = temp_editor; // If editor state needs persisting back
+                // it's already reflected in self.editor.
 
                 if line.starts_with("chat") && process_result.is_err() && process_result.as_ref().err().map_or(false, |e| e.to_string().contains("Unknown command")) {
                      // --- Enter Chat Mode (Only if 'chat' wasn't handled as a command itself) ---
