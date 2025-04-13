@@ -46,8 +46,8 @@ pub struct Repl {
     verify_responses: bool, // Added flag for verification
 }
 
-// Add lifetime 'a here
-impl<'a> Repl<'a> {
+// Remove lifetime 'a here
+impl Repl {
     /// Create a new REPL, requires an initialized MCPHost
     pub fn new(host: MCPHost) -> Result<Self> {
         // Set up config directory
@@ -105,7 +105,7 @@ impl<'a> Repl<'a> {
     }
 
     /// Gets the directory where conversations should be stored.
-    fn get_conversations_dir(&self) -> Result<PathBuf> {
+    pub fn get_conversations_dir(&self) -> Result<PathBuf> { // Make public
         let config_dir = dirs::config_dir()
             .ok_or_else(|| anyhow!("Could not determine config directory"))?
             .join("mcp");

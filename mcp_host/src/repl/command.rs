@@ -61,7 +61,7 @@ impl CommandProcessor {
     // Add repl: &mut Repl as an argument
     pub async fn process(
         &mut self,
-        repl: &mut Repl<'_>, // Pass mutable reference to Repl here, use anonymous lifetime
+        repl: &mut Repl, // Remove anonymous lifetime <'_>
         command: &str,
         current_verify_state: bool,
         editor: &mut Editor<ReplHelper, DefaultHistory>
@@ -382,7 +382,7 @@ impl CommandProcessor {
 
     // --- Save Chat ---
     // Add repl: &mut Repl argument
-    async fn cmd_save_chat(&mut self, repl: &mut Repl<'_>, args: &[String]) -> Result<String> {
+    async fn cmd_save_chat(&mut self, repl: &mut Repl, args: &[String]) -> Result<String> { // Remove <'_>
         // Access repl fields directly via the argument
         let state_to_save = repl.chat_state.as_ref().map(|(_, s)| s.clone())
             .or_else(|| repl.loaded_conversation.clone());
@@ -417,7 +417,7 @@ impl CommandProcessor {
 
     // --- Load Chat ---
     // Add repl: &mut Repl argument
-    async fn cmd_load_chat(&mut self, repl: &mut Repl<'_>, args: &[String]) -> Result<String> {
+    async fn cmd_load_chat(&mut self, repl: &mut Repl, args: &[String]) -> Result<String> { // Remove <'_>
         if args.is_empty() {
             return Err(anyhow!("Usage: load_chat <filename>"));
         }
@@ -446,7 +446,7 @@ impl CommandProcessor {
 
     // --- New Chat ---
     // Add repl: &mut Repl argument
-    async fn cmd_new_chat(&mut self, repl: &mut Repl<'_>) -> Result<String> {
+    async fn cmd_new_chat(&mut self, repl: &mut Repl) -> Result<String> { // Remove <'_>
         // Use repl argument
         repl.chat_state = None;
         repl.loaded_conversation = None;
