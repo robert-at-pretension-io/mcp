@@ -18,23 +18,26 @@ use crate::repl::helper::ReplHelper;
 use crate::repl::Repl; // Import Repl struct
 
 /// Command processor for the REPL
-pub struct CommandProcessor<'a> { // Add lifetime parameter
+// Remove lifetime parameter 'a
+pub struct CommandProcessor {
     host: MCPHost, // Store the host instance
     servers: Arc<Mutex<HashMap<String, ManagedServer>>>, // Keep servers for direct access if needed
     current_server: Option<String>,
     config_path: Option<PathBuf>,
-    repl: &'a mut Repl, // Add mutable reference to Repl
+    // Remove the repl field to break circular reference
+    // repl: &'a mut Repl<'a>,
 }
 
-impl<'a> CommandProcessor<'a> { // Add lifetime parameter
-    // Modify constructor to take MCPHost and mutable reference to Repl
-    pub fn new(host: MCPHost, repl: &'a mut Repl) -> Self {
+// Remove lifetime parameter 'a
+impl CommandProcessor {
+    // Modify constructor to take only MCPHost
+    pub fn new(host: MCPHost) -> Self {
         Self {
             servers: Arc::clone(&host.servers), // Get servers from host
             host,
             current_server: None,
             config_path: None,
-            repl, // Store the mutable reference
+            // repl field removed
         }
     }
 
@@ -55,10 +58,12 @@ impl<'a> CommandProcessor<'a> { // Add lifetime parameter
     /// Process a command string.
     /// Takes the current verification state and returns the output message
     /// and an optional new verification state if it was changed by the command.
+    // Add repl: &mut Repl as an argument
     pub async fn process(
         &mut self,
+        repl: &mut Repl<'_>, // Pass mutable reference to Repl here, use anonymous lifetime
         command: &str,
-        current_verify_state: bool, // Pass current state instead of &mut Repl
+        current_verify_state: bool,
         editor: &mut Editor<ReplHelper, DefaultHistory>
     ) -> Result<(String, Option<bool>)> { // Return tuple: (output, Option<new_verify_state>)
         // Split the command into parts, respecting quotes
@@ -91,11 +96,12 @@ impl<'a> CommandProcessor<'a> { // Add lifetime parameter
             "remove_server" => self.cmd_remove_server(args).await.map(|s| (s, None)), // New command
             "save_config" => self.cmd_save_config().await.map(|s| (s, None)), // New command
             "reload_config" => self.cmd_reload_config(editor).await.map(|s| (s, None)), // Pass editor
-            "show_config" => self.cmd_show_config(args).await.map(|s| (s, None)), // New command
-            "verify" => self.cmd_verify(args, current_verify_state).await, // Pass current state, returns tuple directly
-            "save_chat" => self.cmd_save_chat(args).await.map(|s| (s, None)), // Added
-            "load_chat" => self.cmd_load_chat(args).await.map(|s| (s, None)), // Added
-            "new_chat" => self.cmd_new_chat().await.map(|s| (s, None)), // Added
+            "show_config" => self.cmd_show_config(args).await.map(|s| (s, None)),
+            "verify" => self.cmd_verify(args, current_verify_state).await,
+            // Pass repl to commands that need it
+            "save_chat" => self.cmd_save_chat(repl, args).await.map(|s| (s, None)),
+            "load_chat" => self.cmd_load_chat(repl, args).await.map(|s| (s, None)),
+            "new_chat" => self.cmd_new_chat(repl).await.map(|s| (s, None)),
             _ => {
                  // Check if it looks like a chat command before declaring unknown
                  // 'chat' command is handled in the main REPL loop now
@@ -375,9 +381,11 @@ impl<'a> CommandProcessor<'a> { // Add lifetime parameter
     }
 
     // --- Save Chat ---
-    async fn cmd_save_chat(&mut self, args: &[String]) -> Result<String> {
-        let state_to_save = self.repl.chat_state.as_ref().map(|(_, s)| s.clone())
-            .or_else(|| self.repl.loaded_conversation.clone());
+    // Add repl: &mut Repl argument
+    async fn cmd_save_chat(&mut self, repl: &mut Repl<'_>, args: &[String]) -> Result<String> {
+        // Access repl fields directly via the argument
+        let state_to_save = repl.chat_state.as_ref().map(|(_, s)| s.clone())
+            .or_else(|| repl.loaded_conversation.clone());
 
         let state = match state_to_save {
             Some(s) => s,
@@ -393,13 +401,14 @@ impl<'a> CommandProcessor<'a> { // Add lifetime parameter
             if name.ends_with(".json") { name } else { format!("{}.json", name) }
         };
 
-        let conversations_dir = self.repl.get_conversations_dir()?;
+        // Use repl argument
+        let conversations_dir = repl.get_conversations_dir()?;
         let path = conversations_dir.join(&filename);
 
         match state.save_to_json(&path).await {
             Ok(_) => {
-                // Update the current conversation path in Repl
-                self.repl.set_current_conversation_path(Some(path.clone()));
+                // Update the current conversation path in Repl via the argument
+                repl.set_current_conversation_path(Some(path.clone()));
                 Ok(format!("Conversation saved to: {}", style(path.display()).green()))
             }
             Err(e) => Err(anyhow!("Failed to save conversation: {}", e)),
@@ -407,14 +416,16 @@ impl<'a> CommandProcessor<'a> { // Add lifetime parameter
     }
 
     // --- Load Chat ---
-    async fn cmd_load_chat(&mut self, args: &[String]) -> Result<String> {
+    // Add repl: &mut Repl argument
+    async fn cmd_load_chat(&mut self, repl: &mut Repl<'_>, args: &[String]) -> Result<String> {
         if args.is_empty() {
             return Err(anyhow!("Usage: load_chat <filename>"));
         }
         let filename = args[0].clone();
         let filename_with_ext = if filename.ends_with(".json") { filename } else { format!("{}.json", filename) };
 
-        let conversations_dir = self.repl.get_conversations_dir()?;
+        // Use repl argument
+        let conversations_dir = repl.get_conversations_dir()?;
         let path = conversations_dir.join(&filename_with_ext);
 
         if !path.exists() {
@@ -423,9 +434,10 @@ impl<'a> CommandProcessor<'a> { // Add lifetime parameter
 
         match crate::conversation_state::ConversationState::load_from_json(&path).await {
             Ok(loaded_state) => {
-                self.repl.chat_state = None; // Clear active chat
-                self.repl.loaded_conversation = Some(loaded_state); // Set loaded state
-                self.repl.set_current_conversation_path(Some(path.clone())); // Update path
+                // Use repl argument
+                repl.chat_state = None; // Clear active chat
+                repl.loaded_conversation = Some(loaded_state); // Set loaded state
+                repl.set_current_conversation_path(Some(path.clone())); // Update path
                 Ok(format!("Conversation loaded from: {}", style(path.display()).green()))
             }
             Err(e) => Err(anyhow!("Failed to load conversation: {}", e)),
@@ -433,10 +445,12 @@ impl<'a> CommandProcessor<'a> { // Add lifetime parameter
     }
 
     // --- New Chat ---
-    async fn cmd_new_chat(&mut self) -> Result<String> {
-        self.repl.chat_state = None;
-        self.repl.loaded_conversation = None;
-        self.repl.set_current_conversation_path(None);
+    // Add repl: &mut Repl argument
+    async fn cmd_new_chat(&mut self, repl: &mut Repl<'_>) -> Result<String> {
+        // Use repl argument
+        repl.chat_state = None;
+        repl.loaded_conversation = None;
+        repl.set_current_conversation_path(None);
         Ok(style("Cleared current conversation.").yellow().to_string())
     }
 

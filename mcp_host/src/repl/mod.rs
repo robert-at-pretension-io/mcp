@@ -70,10 +70,12 @@ impl<'a> Repl<'a> {
 
         // Create the Repl instance *before* the CommandProcessor
         // Note: CommandProcessor needs a mutable borrow of Repl, so we create Repl first.
-        let mut repl_instance = Self {
+        // Create command processor simply now
+        let command_processor = CommandProcessor::new(host.clone());
+
+        let repl_instance = Self {
             editor, // Move editor into the instance
-            // command_processor will be filled in below
-            command_processor: unsafe { std::mem::zeroed() }, // Temporary placeholder
+            command_processor, // Assign the created processor
             history_path,
             host: host.clone(), // Clone host for the Repl instance
             chat_state: None,
@@ -192,7 +194,8 @@ impl<'a> Repl<'a> {
             let line = match readline_result {
                 Ok(l) => l, // Successfully read line
                 Err(ReadlineError::Interrupted) => { // Ctrl+C
-                    if let Some((server_context, state)) = self.chat_state.take() {
+                    // Prefix unused server_context with _
+                    if let Some((_server_context, state)) = self.chat_state.take() {
                         log::debug!("Ctrl+C detected in chat mode, moving state to loaded_conversation.");
                         println!("\n{}", style("Exited chat input. Conversation loaded. Type 'chat' to resume or '/<command>'. Use 'new_chat' to clear.").yellow());
                         self.loaded_conversation = Some(state); // Keep the state
@@ -333,8 +336,9 @@ impl<'a> Repl<'a> {
                         line
                     };
                     log::debug!("Processing command: '{}'", command_line);
-                    // Pass the current verification state and the mutable editor.
+                    // Pass the current verification state, the mutable editor, and self (as &mut Repl).
                     let process_result = self.command_processor.process(
+                        self, // Pass mutable reference to self (Repl)
                         command_line,
                         self.verify_responses, // Pass current state
                         &mut self.editor
