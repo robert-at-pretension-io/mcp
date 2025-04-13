@@ -21,7 +21,8 @@ use mcp_tools::long_running_task::{
 };
 use mcp_tools::aider::{AiderTool, AiderParams};
 use mcp_tools::mermaid_chart::{MermaidChartTool, MermaidChartParams};
-use mcp_tools::netlify::{NetlifyTool, NetlifyParams, NetlifyHelpParams}; // Added Netlify imports
+use mcp_tools::netlify::{NetlifyTool, NetlifyParams, NetlifyHelpParams};
+use mcp_tools::supabase::{SupabaseTool, SupabaseParams, SupabaseHelpParams}; // Added Supabase imports
 // use mcp_tools::planner::{PlannerTool, PlannerParams};
 // use mcp_tools::gmail_integration::{
 //     GmailTool, AuthInitParams, AuthExchangeParams, SendMessageParams,
@@ -78,7 +79,8 @@ async fn main() {
         long_running_task_tool: LongRunningTaskTool,
         aider_tool: AiderTool,
         mermaid_chart_tool: MermaidChartTool,
-        netlify_tool: NetlifyTool, // Added NetlifyTool field
+        netlify_tool: NetlifyTool,
+        supabase_tool: SupabaseTool, // Added SupabaseTool field
         // planner_tool: PlannerTool,
         // gmail_tool: GmailTool,
         // email_validator_tool: EmailValidatorTool,
@@ -104,7 +106,8 @@ async fn main() {
                 long_running_task_tool: task_tool,
                 aider_tool: AiderTool::new(),
                 mermaid_chart_tool: MermaidChartTool::new(),
-                netlify_tool: NetlifyTool::new(), // Instantiate NetlifyTool
+                netlify_tool: NetlifyTool::new(),
+                supabase_tool: SupabaseTool::new(), // Instantiate SupabaseTool
                 // planner_tool: PlannerTool::new(),
                 // gmail_tool: GmailTool::new(),
                 // email_validator_tool: EmailValidatorTool::new(),
@@ -228,6 +231,25 @@ async fn main() {
         ) -> String {
             // Delegate to NetlifyTool's implementation
             self.netlify_tool.netlify_help(params).await
+        }
+
+        // Supabase tool implementations
+        #[tool(description = "Executes authenticated Supabase CLI commands. Provide the command arguments *after* 'supabase' (e.g., 'projects list', 'functions deploy my-func'). Authentication is handled automatically via SUPABASE_ACCESS_TOKEN.")]
+        pub async fn supabase(
+            &self,
+            #[tool(aggr)] params: SupabaseParams,
+        ) -> String {
+            // Delegate to SupabaseTool's implementation
+            self.supabase_tool.supabase(params).await
+        }
+
+        #[tool(description = "Gets help for the Supabase CLI or a specific command.")]
+        pub async fn supabase_help(
+            &self,
+            #[tool(aggr)] params: SupabaseHelpParams,
+        ) -> String {
+            // Delegate to SupabaseTool's implementation
+            self.supabase_tool.supabase_help(params).await
         }
 
         // // Planner tool implementation
