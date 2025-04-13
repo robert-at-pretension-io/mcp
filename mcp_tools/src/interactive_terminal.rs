@@ -10,8 +10,8 @@ use tracing::{debug, error, info, warn};
 use schemars::JsonSchema;
 use uuid::Uuid;
 // Updated imports for pty-process 0.5.1 with async feature
-use pty_process::{Command as PtyCommand, Pty}; // Removed Pts import
-// Removed explicit PtyMaster import - rely on type inference from into_async_master
+use pty_process::{Command as PtyCommand, Pty, open}; // Import open, keep Pty
+// Removed explicit PtyMaster import
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use nix::errno::Errno; // Import Errno for EIO comparison
@@ -80,7 +80,7 @@ enum SessionStatus {
 // Represents an active terminal session state
 #[derive(Debug)] // Add Debug derive
 struct TerminalSessionState {
-    pty_master: Arc<Mutex<PtyMaster>>, // pty-process master handle
+    pty_master: Arc<Mutex<Pty>>, // Use pty_process::Pty for the master handle
     output_buffer: Arc<Mutex<String>>,
     status: Arc<Mutex<SessionStatus>>,
     reader_handle: JoinHandle<()>,
@@ -107,9 +107,8 @@ impl InteractiveTerminalTool {
     async fn start_session_internal(&self, shell_path: &str) -> Result<SessionId> {
         info!("Starting new interactive terminal session with shell: {}", shell_path);
 
-        // Use Pty::new() again
-        let pty = Pty::new()?;
-        let pts = pty.pts()?; // Get slave PTY device
+        // Use pty_process::open() which returns (Pty, Pts)
+        let (pty, pts) = open()?; // Use the imported open function
 
         // Configure the command to run in the PTY
         let cmd = PtyCommand::new(shell_path);
@@ -121,19 +120,20 @@ impl InteractiveTerminalTool {
         let pid = child.id();
         info!("Spawned shell process with PID: {:?}", pid);
 
-        // Get the async master handle using into_async_master
-        let master = pty.into_async_master()?;
+        // The 'pty' variable from open() is the master handle we need
+        // No need for into_async_master()
 
         let session_id = Uuid::new_v4().to_string();
         let output_buffer = Arc::new(Mutex::new(String::new()));
         let status = Arc::new(Mutex::new(SessionStatus::Starting)); // Start in Starting state
-        let pty_master_arc = Arc::new(Mutex::new(master));
+        // Create Arc<Mutex<Pty>> directly
+        let pty_master_arc: Arc<Mutex<Pty>> = Arc::new(Mutex::new(pty));
 
         // Spawn reader task
         let reader_buffer_clone = Arc::clone(&output_buffer);
         let reader_status_clone = Arc::clone(&status);
-        // Remove explicit PtyMaster type annotation, rely on inference
-        let reader_master_clone = Arc::clone(&pty_master_arc);
+        // Add explicit type annotation for the Arc clone
+        let reader_master_clone: Arc<Mutex<Pty>> = Arc::clone(&pty_master_arc);
         let session_id_clone = session_id.clone();
 
         let reader_handle = tokio::spawn(async move {
