@@ -344,12 +344,48 @@ impl InteractiveTerminalTool {
 
                  // Attempt to kill the process group if PID is known, just in case closing PTY wasn't enough
                  if let Some(pid_val) = state.process_pid {
-                     info!("Session {}: Attempting to kill process group {} (PID: {})", session_id, pid_val, pid_val);
-                     let pid = Pid::from_raw(pid_val);
-                     match kill(pid, Signal::SIGKILL) { // Send SIGKILL directly to ensure termination
-                         Ok(_) => info!("Session {}: Sent SIGKILL to process {}.", session_id, pid_val),
-                         Err(e) => warn!("Session {}: Failed to send SIGKILL to process {}: {} (process might have already exited)", session_id, pid_val, e),
+                     let pid = Pid::from_raw(pid_val); // Create Pid before moving into closure
+                     info!("Session {}: Attempting to stop process group {} (PID: {})", session_id, pid_val, pid_val);
+
+                     // --- Try SIGTERM first using spawn_blocking ---
+                     let term_pid = pid; // Clone Pid for the first closure
+                     let term_result = tokio::task::spawn_blocking(move || {
+                         kill(term_pid, Signal::SIGTERM)
+                     }).await;
+
+                     match term_result {
+                         Ok(Ok(_)) => {
+                             info!("Session {}: Sent SIGTERM to process {}.", session_id, pid_val);
+                             // Wait a very short moment to see if it exits gracefully
+                             tokio::time::sleep(Duration::from_millis(50)).await;
+                             // Check if process still exists (optional, kill might fail harmlessly if it's gone)
+                         }
+                         Ok(Err(e)) => {
+                             warn!("Session {}: Failed to send SIGTERM to process {}: {} (may already be stopped or permissions issue)", session_id, pid_val, e);
+                         }
+                         Err(e) => {
+                             error!("Session {}: Spawn_blocking failed for SIGTERM on process {}: {}", session_id, pid_val, e); // JoinError
+                         }
                      }
+
+                     // --- Always attempt SIGKILL using spawn_blocking as a fallback/ensure termination ---
+                     // This handles cases where SIGTERM failed, was ignored, or we just want to be sure.
+                     info!("Session {}: Attempting SIGKILL for process {} (PID: {})", session_id, pid_val, pid_val);
+                     let kill_pid = pid; // Clone Pid for the second closure
+                     let kill_result = tokio::task::spawn_blocking(move || {
+                         kill(kill_pid, Signal::SIGKILL)
+                     }).await;
+
+                     match kill_result {
+                         Ok(Ok(_)) => info!("Session {}: Sent SIGKILL to process {}.", session_id, pid_val),
+                         Ok(Err(nix::Error::Sys(errno)) ) if errno == nix::errno::Errno::ESRCH => {
+                             // ESRCH means "No such process", which is fine if SIGTERM worked or it exited already
+                             info!("Session {}: SIGKILL unnecessary for process {} (already exited).", session_id, pid_val);
+                         }
+                         Ok(Err(e)) => warn!("Session {}: Failed to send SIGKILL to process {}: {}", session_id, pid_val, e),
+                         Err(e) => error!("Session {}: Spawn_blocking failed for SIGKILL on process {}: {}", session_id, pid_val, e), // JoinError
+                     }
+
                  } else {
                      warn!("Session {}: No PID recorded, cannot explicitly kill process.", session_id);
                  }
