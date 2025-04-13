@@ -5,6 +5,9 @@ use std::env;
 use std::process::Command;
 use tracing::{debug, error, warn};
 
+// Import the tool macro
+use rmcp::tool;
+
 // --- Parameter Structs ---
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -118,10 +121,10 @@ impl NetlifyTool {
 
     // --- Tool Methods ---
 
-    #[rmcp::tool(description = "Executes Netlify CLI commands. Requires NETLIFY_AUTH_TOKEN env var. Provide the command arguments *after* 'netlify' (e.g., 'sites:list', 'deploy --prod').")]
+    #[tool(description = "Executes Netlify CLI commands. Requires NETLIFY_AUTH_TOKEN env var. Provide the command arguments *after* 'netlify' (e.g., 'sites:list', 'deploy --prod').")] // Use tool macro
     pub async fn netlify(
         &self,
-        #[rmcp::tool(aggr)] params: NetlifyParams,
+        #[tool(aggr)] params: NetlifyParams, // Correct attribute syntax
     ) -> String {
         debug!("Executing netlify tool with params: {:?}", params);
 
@@ -140,10 +143,10 @@ impl NetlifyTool {
         }
     }
 
-    #[rmcp::tool(description = "Gets help for the Netlify CLI or a specific command. Does not require auth token.")]
+    #[tool(description = "Gets help for the Netlify CLI or a specific command. Does not require auth token.")] // Use tool macro
     pub async fn netlify_help(
         &self,
-        #[rmcp::tool(aggr)] params: NetlifyHelpParams,
+        #[tool(aggr)] params: NetlifyHelpParams, // Correct attribute syntax
     ) -> String {
         debug!("Executing netlify_help tool with params: {:?}", params);
 
