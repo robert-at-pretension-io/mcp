@@ -256,108 +256,27 @@ impl InteractiveTerminalTool {
              return Err(anyhow!("Session {} is not running (status: {:?}).", session_id, current_status));
         }
         if current_status == SessionStatus::Starting {
-            warn!("Session {} is still starting, command execution might be delayed or capture initial prompt.", session_id);
+            warn!("Session {} is still starting, command execution might be delayed.", session_id);
         }
 
-        let start_marker = format!("MCP_START_MARKER_{}", Uuid::new_v4());
-        let end_marker = format!("MCP_END_MARKER_{}", Uuid::new_v4());
-        // Use a simpler marker strategy: just echo start/end markers around the command's *expected* output.
-        // We rely on reading until the *end* marker appears after the command is sent.
-
-        // Write command and markers
-        // Ensure the command itself ends with a newline
-        let command_with_newline = if command.ends_with('\n') { command.to_string() } else { format!("{}\n", command) };
-        let full_command_to_send = format!(
-            "echo '{}' && {} && echo '{}'\n", // Chain with && to ensure markers echo only on success? Or just sequence? Let's sequence.
-            start_marker,
-            command_with_newline.trim_end(), // The command itself
-            end_marker
-            // Adding a final newline might be needed depending on shell
-        );
-        // Alternative: Separate echoes
-        // let full_command_to_send = format!(
-        //     "echo '{}'\n{}\necho '{}'\n",
-        //     start_marker,
-        //     command_with_newline,
-        //     end_marker
-        // );
-
-
-        // Record buffer state *before* writing
-        let (initial_buffer_len, _initial_buffer_snapshot) = { // Prefix unused var with _
-            let buffer_guard = state.output_buffer.lock().await;
-            (buffer_guard.len(), buffer_guard.clone())
+        // Ensure the command ends with a newline for shell execution
+        let command_with_newline = if command.ends_with('\n') {
+            command.to_string()
+        } else {
+            format!("{}\n", command)
         };
-
 
         { // Scope for writer lock
             let mut writer_guard = state.pty_master.lock().await;
-            writer_guard.write_all(full_command_to_send.as_bytes()).await?;
-            // No flush needed for PtyMaster according to pty-process docs? Let's assume not for now.
-            // writer_guard.flush().await?;
-            debug!("Session {}: Sent command and markers.", session_id);
+            writer_guard.write_all(command_with_newline.as_bytes()).await?;
+            // Flush might be necessary depending on the PTY implementation and shell buffering
+            // Let's add it just in case. If it causes issues, it can be removed.
+            writer_guard.flush().await?;
+            debug!("Session {}: Sent command: {}", session_id, command.trim());
         }
 
-
-        // Wait for the end marker in the output buffer
-        let timeout_duration = Duration::from_millis(timeout_ms);
-        let start_time = std::time::Instant::now();
-
-        loop {
-            // Check elapsed time
-            if start_time.elapsed() > timeout_duration {
-                warn!("Session {}: Timeout waiting for end marker '{}'", session_id, end_marker);
-                // Return buffer content *after* the initial snapshot
-                let current_buffer = state.output_buffer.lock().await;
-                let output_slice = if current_buffer.len() > initial_buffer_len {
-                    &current_buffer[initial_buffer_len..]
-                } else {
-                    "" // Buffer hasn't grown or somehow shrunk?
-                };
-                return Ok(format!("TIMEOUT\nOutput since command sent:\n{}", output_slice.trim_start()));
-            }
-
-            // Check buffer for end marker *after* the initial length
-            let current_buffer = state.output_buffer.lock().await;
-            if current_buffer.len() > initial_buffer_len {
-                let search_area = &current_buffer[initial_buffer_len..];
-                if let Some(end_marker_pos_rel) = search_area.rfind(&end_marker) {
-                    let end_marker_pos_abs = initial_buffer_len + end_marker_pos_rel;
-                    debug!("Session {}: Found end marker '{}' at pos {}", session_id, end_marker, end_marker_pos_abs);
-
-                    // Now find the start marker within the relevant part of the buffer
-                    // Look between the initial length and the end marker position
-                    let relevant_output_slice = &current_buffer[initial_buffer_len..end_marker_pos_abs];
-
-                    if let Some(start_marker_pos_rel) = relevant_output_slice.find(&start_marker) {
-                         let start_marker_pos_abs = initial_buffer_len + start_marker_pos_rel;
-                         // Extract content between start marker (+ its length + newline) and end marker
-                         let content_start = start_marker_pos_abs + start_marker.len() + 1; // +1 for newline after echo
-                         let content_end = end_marker_pos_abs; // Position *before* the end marker
-
-                         if content_start <= content_end {
-                            let command_output = current_buffer[content_start..content_end].trim().to_string();
-                            info!("Session {}: Successfully extracted command output ({} bytes)", session_id, command_output.len());
-                            // Optional: Clean the command itself from the output if the shell echoes it?
-                            // This is tricky. Let's return raw output between markers for now.
-                            return Ok(command_output);
-                         } else {
-                             warn!("Session {}: Markers found but positions invalid (start={}, end={}). Returning empty.", session_id, content_start, content_end);
-                             return Ok("".to_string());
-                         }
-                    } else {
-                        // End marker found, but start marker wasn't in the expected place.
-                        // This might happen if the command failed before echoing the start marker.
-                        warn!("Session {}: Found end marker but not start marker. Command might have failed early. Returning output before end marker.", session_id);
-                        return Ok(format!("MARKER_ERROR (Start marker missing)\nOutput before end marker:\n{}", relevant_output_slice.trim()));
-                    }
-                }
-            } // else: end marker not found yet
-
-            // Drop the lock and yield/sleep briefly before checking again
-            drop(current_buffer);
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        // Return immediately after sending the command
+        Ok(format!("Command sent to session {}. Use 'get_terminal_output' to see results later.", session_id))
     }
 
      async fn get_output_internal(&self, session_id: &str, lines: Option<usize>) -> Result<String> {
@@ -451,7 +370,7 @@ impl InteractiveTerminalTool {
         }
     }
 
-    #[tool(description = "Runs a command within an active terminal session and returns its output. Waits for the command to complete or times out.")]
+    #[tool(description = "Sends a command to run asynchronously within an active terminal session. Returns immediately. Use 'get_terminal_output' to view the command's output later.")]
     pub async fn run_in_terminal(
         &self,
         #[tool(aggr)] params: RunInTerminalParams,
