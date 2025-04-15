@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AiConfigFileStructure, ProviderModelsStructure } from '../../types.js';
 // Using the full namespace import for TOML
+import type { Server as SocketIOServer } from 'socket.io'; // Import Socket.IO Server type
 import * as TOML_MODULE from '@ltd/j-toml';
 const TOML = TOML_MODULE.default;
 
@@ -18,7 +19,8 @@ const baseDir = path.join(routesDir, '../../..'); // Project root
 
 export function createAiRouter(
     conversationManager: ConversationManager,
-    serverManager: ServerManager // Inject ServerManager if needed by routes here
+    serverManager: ServerManager, // Inject ServerManager if needed by routes here
+    io: SocketIOServer // Accept the io instance
 ): Router {
     const router = Router();
     const aiConfigPath = path.join(baseDir, 'ai_config.json');
@@ -162,7 +164,9 @@ export function createAiRouter(
             const providerConfig = aiConfigData.providers[providerName];
             const actualModel = conversationManager.switchAiClient(providerConfig, providerModels);
 
-            // Emit model changed event via ConversationManager or directly
+            // Emit model changed event via socket
+            io.emit('model-changed', { provider: providerName, model: actualModel });
+            console.log(`[API] Emitted model-changed event: ${providerName} - ${actualModel}`);
 
             res.json({ provider: providerName, model: actualModel });
         } catch (error) {
@@ -201,8 +205,9 @@ export function createAiRouter(
                     const providerConfig = aiConfigData.providers[provider];
                     const model = conversationManager.switchAiClient(providerConfig, providerModels);
 
-                    // Emit model changed event (key changed)
-                    // This should ideally be handled by the caller (WebServer) after getting the response
+                    // Emit model changed event (key changed and applied)
+                    io.emit('model-changed', { provider, model });
+                    console.log(`[API] Emitted model-changed event after key update: ${provider} - ${model}`);
 
                     res.json({
                         success: true,

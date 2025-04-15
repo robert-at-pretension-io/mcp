@@ -61,7 +61,7 @@ export class WebServer {
 
     // Set up routes and socket events
     this.setupRoutes(
-      createAiRouter(this.conversationManager, this.serverManager),
+      createAiRouter(this.conversationManager, this.serverManager, this.io), // Pass io instance here
       createServersRouter(this.serverManager),
       createConfigRouter(),
       createConversationRouter(this.conversationManager, this.io) // Pass io for emitting events
