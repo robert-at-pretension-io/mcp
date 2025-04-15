@@ -3,8 +3,6 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { 
   ConfigFileStructure, 
   ServerConnection, 
-  ConfigFileStructure,
-  ServerConnection,
   ToolExecutionOptions,
   ToolExecutionResult,
   StdioServerConfig // Import StdioServerConfig
@@ -66,7 +64,7 @@ export class ServerManager {
         command: serverConfig.command,
         args: serverConfig.args || [],
          // Apply environment variables if defined
-         env: { ...process.env, ...(serverConfig.env || {}) }
+         env: { ...Object.fromEntries(Object.entries(process.env).filter(([_, v]) => v !== undefined)) as Record<string, string>, ...(serverConfig.env || {}) }
       });
 
       // Set up transport error handlers
@@ -247,16 +245,19 @@ export class ServerManager {
     try {
       // Execute with timeout
       const result = await server.client.callTool(
-         { name: toolName, arguments: args }, // Use 'arguments' field
-         { timeout: timeoutMs } // Pass timeout option
+         { name: toolName, arguments: args } // Use 'arguments' field
        );
 
       // Check if the tool itself reported an error
       if (result.isError) {
           // Extract error message from the tool's response content if possible
           let errorMessage = `Tool '${toolName}' reported an error.`;
-          if (result.content && result.content.length > 0 && result.content[0].type === 'text') {
-              errorMessage = result.content[0].text;
+          // Check if result.content is an array with items 
+          if (Array.isArray(result.content) && result.content.length > 0) {
+            const item = result.content[0];
+            if (item && typeof item === 'object' && 'type' in item && item.type === 'text' && 'text' in item) {
+              errorMessage = item.text as string;
+            }
           }
           return {
               serverName,

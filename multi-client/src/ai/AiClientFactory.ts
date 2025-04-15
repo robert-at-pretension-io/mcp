@@ -3,8 +3,8 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatMistralAI } from '@langchain/mistralai';
 import { ChatFireworks } from '@langchain/community/chat_models/fireworks';
-import { ChatTogetherAI } from "@langchain/community/chat_models/togetherai";
 // Import other necessary chat models (e.g., Groq, Cohere) if needed
+// Removing TogetherAI for now due to import issues
 
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
@@ -40,22 +40,22 @@ export class AiClientFactory {
     switch (providerKey) {
       case 'openai':
         chatModel = new ChatOpenAI({
-          model: modelToUse,
+          modelName: modelToUse,
           temperature: temperature,
-          apiKey: apiKey, // apiKey is optional, LangChain checks OPENAI_API_KEY by default
+          openAIApiKey: apiKey, // apiKey is optional, LangChain checks OPENAI_API_KEY by default
         });
         break;
       case 'anthropic':
         chatModel = new ChatAnthropic({
-          model: modelToUse,
+          modelName: modelToUse,
           temperature: temperature,
-          apiKey: apiKey, // apiKey is optional, LangChain checks ANTHROPIC_API_KEY by default
+          anthropicApiKey: apiKey, // apiKey is optional, LangChain checks ANTHROPIC_API_KEY by default
         });
         break;
       case 'google-genai':
       case 'google': // Allow alias
         chatModel = new ChatGoogleGenerativeAI({
-          model: modelToUse,
+          modelName: modelToUse,
           temperature: temperature,
           apiKey: apiKey, // apiKey is optional, LangChain checks GOOGLE_API_KEY by default
         });
@@ -63,26 +63,18 @@ export class AiClientFactory {
       case 'mistralai':
       case 'mistral': // Allow alias
         chatModel = new ChatMistralAI({
-          model: modelToUse,
+          modelName: modelToUse,
           temperature: temperature,
           apiKey: apiKey, // apiKey is optional, LangChain checks MISTRAL_API_KEY by default
         });
         break;
       case 'fireworks':
         chatModel = new ChatFireworks({
-          model: modelToUse,
+          modelName: modelToUse,
           temperature: temperature,
-          apiKey: apiKey, // apiKey is optional, LangChain checks FIREWORKS_API_KEY by default
+          fireworksApiKey: apiKey, // LangChain checks FIREWORKS_API_KEY by default
         });
         break;
-      case 'togetherai':
-      case 'together': // Allow alias
-         chatModel = new ChatTogetherAI({
-           model: modelToUse,
-           temperature: temperature,
-           apiKey: apiKey, // apiKey is optional, LangChain checks TOGETHER_API_KEY by default
-         });
-         break;
       // Add cases for other providers (Groq, Cohere, Ollama, etc.) here
       // Example:
       // case 'groq':

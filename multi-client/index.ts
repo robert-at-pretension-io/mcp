@@ -8,6 +8,7 @@ import type { ConfigFileStructure, AiProviderConfig, ProviderModelsStructure } f
 import { AiClientFactory } from './src/ai/AiClientFactory.js'; // Import Factory
 import type { IAiClient } from './src/ai/IAiClient.js'; // Import Interface
 import { ConversationManager } from './src/conversation/ConversationManager.js'; // Import ConversationManager
+import { WebServer } from './src/web/WebServer.js'; // Import WebServer
 
 // Helper to get the directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -171,12 +172,28 @@ async function main() {
 
   const repl = new Repl(serverManager, conversationManager); // Pass conversationManager
 
+  // --- Initialize Web Server (if enabled in command line args) ---
+  let webServer: WebServer | null = null;
+  const useWeb = process.argv.includes('--web') || process.argv.includes('-w');
+  const webPort = 3000; // Default port for web server
+  
+  if (useWeb && conversationManager) {
+    webServer = new WebServer(conversationManager, serverManager, webPort);
+    webServer.start();
+    console.log(`Web interface available at http://localhost:${webPort}`);
+  }
+
   // --- Graceful Shutdown ---
   const shutdown = async (signal: string) => {
     console.log(`\nReceived ${signal}. Shutting down...`);
     
     // Stop REPL
     repl.stop();
+    
+    // Stop web server if running
+    if (webServer) {
+      await webServer.stop();
+    }
     
     // Close server connections
     await serverManager.closeAll();
@@ -189,8 +206,16 @@ async function main() {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   
-  // Start REPL
-  repl.start();
+  // Start REPL if web interface is not enabled or if explicitly requested
+  const useRepl = !useWeb || process.argv.includes('--repl') || process.argv.includes('-r');
+  if (useRepl) {
+    repl.start();
+    if (useWeb) {
+      console.log('Running in both REPL and web mode. Press Ctrl+C in this terminal to stop both.');
+    }
+  } else if (useWeb) {
+    console.log('Running in web-only mode. Press Ctrl+C to stop.');
+  }
 }
 
 // Run the main function
