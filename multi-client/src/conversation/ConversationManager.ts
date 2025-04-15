@@ -1,4 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'; // Import UUID for tool call IDs
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { IAiClient } from '../ai/IAiClient.js';
 import type { ServerManager } from '../ServerManager.js';
 import { ConversationState } from './ConversationState.js';
@@ -9,6 +12,27 @@ import { ToolParser, type ParsedToolCall } from './ToolParser.js';
 import { AiClientFactory } from '../ai/AiClientFactory.js';
 import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
 
+// Use ES module approach for __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const baseDir = path.join(__dirname, '../../..');
+
+// Interface for serialized conversations
+interface SerializedConversation {
+  id: string;
+  title: string;
+  modelName: string;
+  provider: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: {
+    role: string;
+    content: string;
+    hasToolCalls?: boolean;
+    pendingToolCalls?: boolean;
+  }[];
+}
+
 export class ConversationManager {
   private state: ConversationState;
   private aiClient: IAiClient;
@@ -17,6 +41,11 @@ export class ConversationManager {
   private toolsLastUpdated: number = 0; // Timestamp of when tools were last updated
   private readonly TOOLS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache TTL
   private aiClientFactory: typeof AiClientFactory; // Store the factory reference for switching models
+  
+  // Conversation persistence properties
+  private conversationsDir: string;
+  private currentConversationId: string;
+  private saveDebounceTimeout: NodeJS.Timeout | null = null;
   
   // Prompts from the design doc
   private readonly TOOL_RESULTS_PROMPT = `You have received results from the tool(s) you called previously (shown immediately above).
@@ -97,10 +126,201 @@ Concise Summary:`;
     // Store the factory reference for switching models
     this.aiClientFactory = AiClientFactory;
     
+    // Set up conversations directory
+    this.conversationsDir = path.join(baseDir, 'conversations');
+    this.ensureConversationsDir();
+    
+    // Generate a new conversation ID for this session
+    this.currentConversationId = uuidv4();
+    
     // Immediately fetch all tools to prime the cache
     this.refreshToolsCache().catch(err => {
       console.warn('Failed to initialize tools cache:', err);
     });
+  }
+  
+  /**
+   * Ensures the conversations directory exists
+   */
+  private ensureConversationsDir(): void {
+    try {
+      if (!fs.existsSync(this.conversationsDir)) {
+        fs.mkdirSync(this.conversationsDir, { recursive: true });
+        console.log(`Created conversations directory at: ${this.conversationsDir}`);
+      }
+    } catch (error) {
+      console.error(`Error creating conversations directory:`, error);
+    }
+  }
+  
+  /**
+   * Saves the current conversation to disk
+   */
+  private saveConversation(): void {
+    if (this.saveDebounceTimeout) {
+      clearTimeout(this.saveDebounceTimeout);
+    }
+    
+    // Debounce save operations to prevent excessive disk writes
+    this.saveDebounceTimeout = setTimeout(() => {
+      try {
+        const messages = this.state.getMessages();
+        
+        // Don't save if there are no messages
+        if (messages.length === 0) {
+          return;
+        }
+        
+        // Generate a title from the first few user messages
+        let title = 'New Conversation';
+        const userMessages = messages.filter(m => m._getType() === 'human');
+        
+        if (userMessages.length > 0) {
+          // Use the first user message as the title, limited to 50 chars
+          const firstMessage = userMessages[0].content.toString();
+          title = firstMessage.length > 50 
+            ? firstMessage.substring(0, 47) + '...' 
+            : firstMessage;
+        }
+        
+        // Create serialized conversation
+        const conversation: SerializedConversation = {
+          id: this.currentConversationId,
+          title,
+          modelName: this.getAiClientModelName(),
+          provider: this.aiClient.getProvider?.() || 'unknown',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          messages: messages.map(msg => ({
+            role: msg._getType(),
+            content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+            hasToolCalls: (msg as any).hasToolCalls,
+            pendingToolCalls: (msg as any).pendingToolCalls
+          }))
+        };
+        
+        // Write to file
+        const filePath = path.join(this.conversationsDir, `${this.currentConversationId}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(conversation, null, 2), 'utf-8');
+        console.log(`Saved conversation to: ${filePath}`);
+      } catch (error) {
+        console.error('Error saving conversation:', error);
+      }
+    }, 1000); // 1 second debounce
+  }
+  
+  /**
+   * Loads a conversation from disk
+   * @param conversationId The ID of the conversation to load
+   * @returns true if successful, false otherwise
+   */
+  public loadConversation(conversationId: string): boolean {
+    try {
+      const filePath = path.join(this.conversationsDir, `${conversationId}.json`);
+      
+      if (!fs.existsSync(filePath)) {
+        console.error(`Conversation file not found: ${filePath}`);
+        return false;
+      }
+      
+      const conversationData = fs.readFileSync(filePath, 'utf-8');
+      const conversation: SerializedConversation = JSON.parse(conversationData);
+      
+      // Clear current conversation
+      this.state.clearHistory();
+      
+      // Set current conversation ID
+      this.currentConversationId = conversation.id;
+      
+      // Reconstruct messages
+      for (const msg of conversation.messages) {
+        if (msg.role === 'system') {
+          this.state.addMessage(new SystemMessage(msg.content));
+        } else if (msg.role === 'human') {
+          this.state.addMessage(new HumanMessage(msg.content));
+        } else if (msg.role === 'ai') {
+          this.state.addMessage(new AIMessage(msg.content, {
+            hasToolCalls: msg.hasToolCalls,
+            pendingToolCalls: msg.pendingToolCalls
+          }));
+        } else if (msg.role === 'tool') {
+          // Tool messages need a proper tool call ID and name which we don't have
+          // For now, we'll create them with placeholder values
+          this.state.addMessage(new ToolMessage(
+            msg.content,
+            'restored-tool-call-id',
+            'restored-tool'
+          ));
+        }
+      }
+      
+      // Emit events or return the loaded state
+      console.log(`Loaded conversation: ${conversation.title}`);
+      return true;
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Lists all saved conversations
+   * @returns Array of conversation metadata
+   */
+  public listConversations(): any[] {
+    try {
+      // Ensure conversations directory exists
+      this.ensureConversationsDir();
+      
+      // Read conversation files
+      const files = fs.readdirSync(this.conversationsDir)
+        .filter(file => file.endsWith('.json'));
+        
+      // Extract metadata
+      const conversations = files.map(file => {
+        try {
+          const filePath = path.join(this.conversationsDir, file);
+          const data = fs.readFileSync(filePath, 'utf-8');
+          const conversation: SerializedConversation = JSON.parse(data);
+          
+          return {
+            id: conversation.id,
+            title: conversation.title,
+            modelName: conversation.modelName,
+            provider: conversation.provider,
+            createdAt: conversation.createdAt,
+            updatedAt: conversation.updatedAt,
+            messageCount: conversation.messages.length,
+            isActive: conversation.id === this.currentConversationId
+          };
+        } catch (error) {
+          console.warn(`Error parsing conversation file: ${file}`, error);
+          return null;
+        }
+      }).filter(Boolean); // Remove nulls
+      
+      // Sort by updatedAt, most recent first
+      return conversations.sort((a, b) => {
+        if (!a || !b) return 0;
+        return new Date(b.updatedAt || '').getTime() - new Date(a.updatedAt || '').getTime();
+      });
+    } catch (error) {
+      console.error('Error listing conversations:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Creates a new empty conversation
+   */
+  public newConversation(): void {
+    // Clear current state
+    this.state.clearHistory();
+    
+    // Generate new ID
+    this.currentConversationId = uuidv4();
+    
+    console.log(`Created new conversation with ID: ${this.currentConversationId}`);
   }
   
   /**
@@ -336,15 +556,17 @@ Important:
   private async generateVerificationCriteria(userInput: string): Promise<string> {
     console.log('Generating verification criteria...');
     try {
-      // Create the criteria prompt as a system message
-      const systemMessage = new SystemMessage("You are a helpful assistant that generates verification criteria.");
-      
-      // Create a user message with the criteria prompt template
+      // Create the criteria prompt
       const promptText = this.VERIFICATION_CRITERIA_PROMPT.replace('{user_request}', userInput);
-      const userMessage = new HumanMessage(promptText);
       
-      // Call the AI with both messages for criteria generation
-      const criteriaResponse = await this.aiClient.generateResponse([systemMessage, userMessage]);
+      // Create a temporary array with system message first, then user message
+      const messages = [
+        new SystemMessage("You are a helpful assistant that generates verification criteria."),
+        new HumanMessage(promptText)
+      ];
+      
+      // Call the AI with the properly ordered messages for criteria generation
+      const criteriaResponse = await this.aiClient.generateResponse(messages);
       console.log('Generated criteria:', criteriaResponse);
       
       return criteriaResponse;
@@ -369,20 +591,20 @@ Important:
     console.log('Verifying response against criteria...');
     
     try {
-      // Create a system message for the verification context
-      const systemMessage = new SystemMessage("You are a strict evaluator that verifies responses against criteria and returns JSON.");
-      
       // Create the verification prompt with all placeholders filled
       const promptText = this.VERIFICATION_PROMPT
         .replace('{original_request}', originalRequest)
         .replace('{criteria}', criteria)
         .replace('{relevant_history_sequence}', relevantSequence);
       
-      // Add as a user message (not system message)
-      const userMessage = new HumanMessage(promptText);
+      // Create messages array with system message first
+      const messages = [
+        new SystemMessage("You are a strict evaluator that verifies responses against criteria and returns JSON."),
+        new HumanMessage(promptText)
+      ];
       
-      // Call the AI with both messages for verification
-      const verificationResponse = await this.aiClient.generateResponse([systemMessage, userMessage]);
+      // Call the AI with properly ordered messages for verification
+      const verificationResponse = await this.aiClient.generateResponse(messages);
       
       try {
         // Parse the JSON response
@@ -421,6 +643,9 @@ Important:
 
     // 1. Add user message to state
     this.state.addMessage(new HumanMessage(userInput));
+    
+    // Save conversation after adding user message
+    this.saveConversation();
 
     // 2. Generate verification criteria if this is a new request
     // and there are no existing criteria for the conversation
@@ -613,6 +838,9 @@ Important:
           // Add the corrected response to history
           this.state.addMessage(new AIMessage(correctedResponse));
           
+          // Save conversation after adding AI response
+          this.saveConversation();
+          
           // Return the corrected response
           return correctedResponse;
         } catch (error) {
@@ -621,6 +849,9 @@ Important:
       }
     }
 
+    // Save the conversation after adding the AI response
+    this.saveConversation();
+    
     // If no tool calls or verification issues, return the original response
     return aiResponseContent;
   }
@@ -630,7 +861,11 @@ Important:
    */
   clearConversation(): void {
     this.state.clearHistory();
-    console.log("Conversation history cleared.");
+    
+    // Generate a new conversation ID for the cleared conversation
+    this.currentConversationId = uuidv4();
+    
+    console.log("Conversation history cleared. New conversation ID: " + this.currentConversationId);
   }
 
   /**
@@ -639,5 +874,100 @@ Important:
   getHistory(): ConversationMessage[] {
     // Return messages including the system prompt for context
     return this.state.getMessages();
+  }
+  
+  /**
+   * Gets the current conversation metadata
+   */
+  getCurrentConversation(): any {
+    try {
+      const filePath = path.join(this.conversationsDir, `${this.currentConversationId}.json`);
+      
+      if (fs.existsSync(filePath)) {
+        const conversationData = fs.readFileSync(filePath, 'utf-8');
+        return JSON.parse(conversationData);
+      } else {
+        // If file doesn't exist yet, return basic metadata
+        return {
+          id: this.currentConversationId,
+          title: 'New Conversation',
+          modelName: this.getAiClientModelName(),
+          provider: this.aiClient.getProvider?.() || 'unknown',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          messageCount: this.state.getMessages().length,
+        };
+      }
+    } catch (error) {
+      console.error('Error getting current conversation:', error);
+      return {
+        id: this.currentConversationId,
+        title: 'New Conversation',
+        error: 'Failed to load conversation data'
+      };
+    }
+  }
+  
+  /**
+   * Renames a conversation
+   * @param conversationId The ID of the conversation to rename
+   * @param newTitle The new title for the conversation
+   * @returns true if successful, false otherwise
+   */
+  public renameConversation(conversationId: string, newTitle: string): boolean {
+    try {
+      const filePath = path.join(this.conversationsDir, `${conversationId}.json`);
+      
+      if (!fs.existsSync(filePath)) {
+        console.error(`Conversation file not found: ${filePath}`);
+        return false;
+      }
+      
+      const conversationData = fs.readFileSync(filePath, 'utf-8');
+      const conversation: SerializedConversation = JSON.parse(conversationData);
+      
+      // Update title
+      conversation.title = newTitle;
+      conversation.updatedAt = new Date().toISOString();
+      
+      // Write updated conversation back to file
+      fs.writeFileSync(filePath, JSON.stringify(conversation, null, 2), 'utf-8');
+      console.log(`Renamed conversation ${conversationId} to: ${newTitle}`);
+      
+      return true;
+    } catch (error) {
+      console.error('Error renaming conversation:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Deletes a conversation
+   * @param conversationId The ID of the conversation to delete
+   * @returns true if successful, false otherwise
+   */
+  public deleteConversation(conversationId: string): boolean {
+    try {
+      const filePath = path.join(this.conversationsDir, `${conversationId}.json`);
+      
+      if (!fs.existsSync(filePath)) {
+        console.error(`Conversation file not found: ${filePath}`);
+        return false;
+      }
+      
+      // Delete the file
+      fs.unlinkSync(filePath);
+      console.log(`Deleted conversation: ${conversationId}`);
+      
+      // If the deleted conversation was the current one, create a new conversation
+      if (conversationId === this.currentConversationId) {
+        this.newConversation();
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      return false;
+    }
   }
 }
