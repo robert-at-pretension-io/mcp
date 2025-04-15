@@ -2,6 +2,8 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+// Import LangChain message types
+import type { BaseMessage } from '@langchain/core/messages';
 
 /**
  * Configuration for a single stdio server
@@ -11,13 +13,28 @@ export interface StdioServerConfig extends Omit<StdioServerParameters, 'env'> {
 }
 
 /**
- * Structure of the servers.json file
+ * Configuration for an AI Provider
+ */
+export interface AiProviderConfig {
+  provider: string; // e.g., "openai", "anthropic", "google-genai", "mistralai", "fireworks"
+  model?: string; // Optional: e.g., "gpt-4o-mini", "claude-3-5-sonnet-20240620" - If omitted, uses default from TOML
+  apiKeyEnvVar?: string; // Optional: Environment variable name for the API key (defaults based on provider)
+  temperature?: number; // Optional: Model temperature
+  // Add other provider-specific options if needed
+}
+
+/**
+ * Structure of the servers.json file (or main config)
  */
 export interface ConfigFileStructure {
   mcpServers: Record<string, StdioServerConfig>;
   timeouts?: {
     request: number;
     tool: number;
+  };
+  ai?: { // New section for AI configuration
+    defaultProvider?: string; // Name of the default provider key below
+    providers: Record<string, AiProviderConfig>; // Map of provider configurations
   };
 }
 
@@ -29,6 +46,7 @@ export interface ServerConnection {
   transport: Transport;
   tools?: Tool[];
   isConnected: boolean;
+  config: StdioServerConfig; // Keep config for potential restarts
 }
 
 /**
@@ -59,6 +77,11 @@ export interface Command {
   description: string;
   execute: (args: string[]) => Promise<string | void>;
 }
+
+/**
+ * Type alias for LangChain messages used in conversation state
+ */
+export type ConversationMessage = BaseMessage;
 
 
 /**

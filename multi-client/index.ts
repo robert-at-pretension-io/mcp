@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 import TOML from '@ltd/j-toml'; // Import TOML parser
 import { ServerManager } from './src/ServerManager.js';
 import { Repl } from './src/Repl.js';
-import type { ConfigFileStructure, ProviderModelsStructure } from './src/types.js'; // Import ProviderModelsStructure
+import type { ConfigFileStructure, AiProviderConfig, ProviderModelsStructure } from './src/types.js'; // Import AiProviderConfig
+import { AiClientFactory } from './src/ai/AiClientFactory.js'; // Import Factory
+import type { IAiClient } from './src/ai/IAiClient.js'; // Import Interface
+import { ConversationManager } from './src/conversation/ConversationManager.js'; // Import ConversationManager
 
 // Helper to get the directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -103,10 +106,46 @@ async function main() {
   }
 
 
-  // Create server manager
+  // --- AI Client Initialization ---
+  let aiClient: IAiClient | null = null;
+  let conversationManager: ConversationManager | null = null;
+  const providerNames = Object.keys(configData.ai?.providers || {});
+
+  const defaultProviderName = configData.ai?.defaultProvider;
+  const aiProviders = configData.ai?.providers;
+
+  if (defaultProviderName && aiProviders && aiProviders[defaultProviderName]) {
+      try {
+          const defaultProviderConfig = aiProviders[defaultProviderName];
+          // Pass the loaded model suggestions to the factory
+          aiClient = AiClientFactory.createClient(defaultProviderConfig, providerModels);
+          console.log(`Initialized default AI client: ${defaultProviderName} (${aiClient.getModelName()})`);
+      } catch (error) {
+          console.error(`Failed to initialize default AI provider "${defaultProviderName}":`, error instanceof Error ? error.message : String(error));
+          console.error("Chat functionality will be disabled. Check your AI configuration and API keys.");
+          // Continue without AI client
+      }
+  } else if (providerNames.length > 0) {
+       console.warn("No default AI provider specified or the specified default is invalid. Chat will be disabled until a provider is selected (feature not yet implemented).");
+  } else {
+      console.warn("No AI providers configured. Chat functionality is disabled.");
+  }
+
+
+  // --- Server Manager Initialization ---
   const serverManager = new ServerManager(configData);
-  
-  // Connect to all servers
+
+  // --- Conversation Manager Initialization (if AI client is available) ---
+  if (aiClient) {
+      conversationManager = new ConversationManager(aiClient, serverManager);
+  } else {
+      // Create a dummy or null ConversationManager if needed by Repl, or handle in Repl
+      console.log("ConversationManager not created due to missing AI client.");
+      // conversationManager = new DummyConversationManager(); // Or handle null in Repl
+  }
+
+
+  // --- Connect to Servers ---
   try {
     console.log('Connecting to configured servers...');
     const connectedServers = await serverManager.connectAll();
@@ -119,11 +158,20 @@ async function main() {
     console.error('Error connecting to servers:', error instanceof Error ? error.message : String(error));
     // Continue even if some servers failed to connect
   }
-  
-  // Set up REPL
-  const repl = new Repl(serverManager);
-  
-  // Set up graceful shutdown
+
+  // --- REPL Setup ---
+  // Handle the case where conversationManager might be null
+  if (!conversationManager) {
+      console.error("Cannot start REPL in chat mode without a configured AI provider. Exiting.");
+      // Optionally, start REPL in a limited command-only mode
+      // For now, let's exit if the primary purpose (chat) isn't available.
+      await serverManager.closeAll(); // Clean up connected servers
+      process.exit(1);
+  }
+
+  const repl = new Repl(serverManager, conversationManager); // Pass conversationManager
+
+  // --- Graceful Shutdown ---
   const shutdown = async (signal: string) => {
     console.log(`\nReceived ${signal}. Shutting down...`);
     

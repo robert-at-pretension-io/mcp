@@ -3,10 +3,13 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { 
   ConfigFileStructure, 
   ServerConnection, 
+  ConfigFileStructure,
+  ServerConnection,
   ToolExecutionOptions,
-  ToolExecutionResult
+  ToolExecutionResult,
+  StdioServerConfig // Import StdioServerConfig
 } from './types.js';
-import type { Implementation } from '@modelcontextprotocol/sdk/types.js';
+import type { Implementation, Tool } from '@modelcontextprotocol/sdk/types.js'; // Import Tool
 
 /**
  * Manages connections to multiple MCP servers
@@ -14,11 +17,12 @@ import type { Implementation } from '@modelcontextprotocol/sdk/types.js';
 export class ServerManager {
   private servers: Record<string, ServerConnection> = {};
   private config: ConfigFileStructure;
-  private defaultToolTimeout: number;
-  
+  private defaultToolTimeout: number; // seconds
+
   constructor(config: ConfigFileStructure) {
     this.config = config;
-    this.defaultToolTimeout = config.timeouts?.tool || 300;
+    // Default timeout from config or 300 seconds (5 minutes)
+    this.defaultToolTimeout = (config.timeouts?.tool ?? 300) * 1000; // Store in ms
   }
 
   /**
@@ -42,24 +46,29 @@ export class ServerManager {
   /**
    * Connect to a specific server
    */
-  async connectToServer(serverName: string, serverConfig: any): Promise<string> {
+  async connectToServer(serverName: string, serverConfig: StdioServerConfig): Promise<string> {
     console.log(`[${serverName}] Attempting to connect...`);
-    
+
+     // Check if already connected or connection attempt in progress
+     if (this.servers[serverName]?.isConnected) {
+         console.log(`[${serverName}] Already connected.`);
+         return serverName;
+     }
+      if (this.servers[serverName]) {
+         console.log(`[${serverName}] Connection attempt already made (failed?). Skipping.`);
+         // Or potentially retry logic here? For now, just skip.
+         throw new Error(`Previous connection attempt failed for ${serverName}.`);
+     }
+
     try {
       // Create transport
       const transport = new StdioClientTransport({
         command: serverConfig.command,
         args: serverConfig.args || [],
+         // Apply environment variables if defined
+         env: { ...process.env, ...(serverConfig.env || {}) }
       });
-      
-      // Apply environment variables if defined
-      if (serverConfig.env && Object.keys(serverConfig.env).length > 0) {
-        Object.entries(serverConfig.env).forEach(([key, value]) => {
-          process.env[key] = value as string;
-        });
-        console.log(`[${serverName}] Set environment variables: ${Object.keys(serverConfig.env).join(', ')}`);
-      }
-      
+
       // Set up transport error handlers
       transport.onerror = (error) => {
         console.error(`[${serverName}] Transport error:`, error.message);
@@ -74,34 +83,58 @@ export class ServerManager {
           this.servers[serverName].isConnected = false;
         }
       };
-      
       // Create client
       const clientInfo: Implementation = {
-        name: `multi-client-${serverName.replace(/\s+/g, '-')}`,
-        version: '1.0.0',
+        name: `mcp-multi-client-${serverName.replace(/\s+/g, '-')}`, // Consistent name prefix
+        version: '1.0.0', // Use version from package.json?
       };
-      
+
       const client = new Client(clientInfo);
-      
+
+       // Store connection attempt immediately
+        this.servers[serverName] = {
+          client,
+          transport,
+          isConnected: false, // Mark as not connected until successful
+          config: serverConfig,
+        };
+
       // Connect client to transport
       await client.connect(transport);
-      
-      // Store connection
+
+      // Fetch tools after successful connection
+      let tools: Tool[] = [];
+      try {
+        const toolResult = await client.listTools();
+        tools = toolResult.tools || [];
+        console.log(`[${serverName}] Found ${tools.length} tools.`);
+      } catch (toolError) {
+        console.warn(`[${serverName}] Failed to list tools after connection: ${toolError instanceof Error ? toolError.message : String(toolError)}`);
+        // Continue connection even if tools fail to list
+      }
+
+      // Update server state
       this.servers[serverName] = {
         client,
         transport,
-        isConnected: true
+        tools,
+        isConnected: true,
+        config: serverConfig,
       };
-      
-      // Fetch and store tools
-      const toolsResult = await client.listTools();
-      this.servers[serverName].tools = toolsResult.tools;
-      
-      console.log(`[${serverName}] Successfully connected! Found ${toolsResult.tools.length} tools.`);
-      return serverName;
+
+      return serverName; // Return server name on success
     } catch (error) {
-      console.error(`[${serverName}] Connection error:`, error instanceof Error ? error.message : String(error));
-      throw new Error(`Failed to connect to server ${serverName}: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`[${serverName}] Error during connection: ${error instanceof Error ? error.message : String(error)}`);
+       // Ensure server entry exists but is marked as not connected
+        this.servers[serverName] = {
+          // @ts-ignore
+          client: undefined,
+          // @ts-ignore
+          transport: undefined,
+          isConnected: false,
+          config: serverConfig,
+        };
+      throw error; // Re-throw the error to be caught by connectAll
     }
   }
 
@@ -117,13 +150,52 @@ export class ServerManager {
   /**
    * List all tools for a specific server
    */
-  getServerTools(serverName: string) {
+  getServerTools(serverName: string): Tool[] {
     const server = this.servers[serverName];
     if (!server || !server.isConnected) {
       throw new Error(`Server ${serverName} is not connected.`);
     }
     return server.tools || [];
   }
+
+   /**
+    * Get all tools from all connected servers.
+    */
+   async getAllTools(): Promise<Tool[]> {
+       const allTools: Tool[] = [];
+       const connectedServers = this.getConnectedServers();
+
+       for (const serverName of connectedServers) {
+           try {
+               // Re-fetch tools in case they changed, or use cached ones if confident
+               const connection = this.servers[serverName];
+               if (connection?.isConnected && connection.client) {
+                   // Option 1: Use cached tools (faster, might be stale)
+                   // if (connection.tools) {
+                   //    allTools.push(...connection.tools);
+                   // }
+
+                   // Option 2: Re-fetch tools (slower, always up-to-date)
+                   const toolResult = await connection.client.listTools();
+                   const tools = toolResult.tools || [];
+                   // Add server name prefix to tool name if needed for uniqueness?
+                   // For now, just collect them. Ensure unique names later if necessary.
+                   allTools.push(...tools);
+                   // Update cache
+                   connection.tools = tools;
+
+               }
+           } catch (error) {
+               console.warn(`[${serverName}] Failed to list tools for getAllTools: ${error instanceof Error ? error.message : String(error)}`);
+               // Optionally skip tools from this server if listing fails
+           }
+       }
+
+       // TODO: Consider handling duplicate tool names across servers if necessary
+       // For now, just return the combined list.
+       return allTools;
+   }
+
 
   /**
    * Execute a tool on a specific server
@@ -138,13 +210,29 @@ export class ServerManager {
     
     // Get server connection
     const server = this.servers[serverName];
-    if (!server || !server.isConnected) {
-      throw new Error(`Server ${serverName} is not connected.`);
+    if (!server || !server.isConnected || !server.client) { // Check for client existence
+       return {
+         serverName,
+         toolName,
+         executionTime: Date.now() - startTime,
+         isError: true,
+         errorMessage: `Server '${serverName}' not found or not connected.`,
+       };
     }
-    
+
+    // Find the specific tool to check schema (optional but good practice)
+    const toolDefinition = server.tools?.find(t => t.name === toolName);
+    if (!toolDefinition) {
+       // Tool might exist but wasn't listed? Proceed cautiously or error out.
+       console.warn(`[${serverName}] Tool '${toolName}' not found in listed tools. Attempting execution anyway.`);
+       // return { serverName, toolName, executionTime: Date.now() - startTime, isError: true, errorMessage: `Tool '${toolName}' not found on server '${serverName}'.` };
+    }
+
+    // TODO: Validate args against toolDefinition.input_schema using Zod if desired
+
     // Set up timeout
-    const timeout = options.timeout || this.defaultToolTimeout;
-    
+    const timeoutMs = options?.timeout ? options.timeout * 1000 : this.defaultToolTimeout;
+
     // Show progress indicator if requested
     let progressInterval: NodeJS.Timeout | undefined;
     if (options.showProgress) {
@@ -156,28 +244,40 @@ export class ServerManager {
         process.stdout.write(`\r[${serverName}] Executing tool '${toolName}'... ${spinner[i]} `);
       }, 100);
     }
-    
     try {
       // Execute with timeout
-      const result = await Promise.race([
-        server.client.callTool({
-          name: toolName,
-          parameters: args
-        }),
-        new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error(`Tool execution timed out after ${timeout}ms`)), timeout)
-        )
-      ]);
-      
+      const result = await server.client.callTool(
+         { name: toolName, arguments: args }, // Use 'arguments' field
+         { timeout: timeoutMs } // Pass timeout option
+       );
+
+      // Check if the tool itself reported an error
+      if (result.isError) {
+          // Extract error message from the tool's response content if possible
+          let errorMessage = `Tool '${toolName}' reported an error.`;
+          if (result.content && result.content.length > 0 && result.content[0].type === 'text') {
+              errorMessage = result.content[0].text;
+          }
+          return {
+              serverName,
+              toolName,
+              executionTime: Date.now() - startTime,
+              isError: true,
+              errorMessage: errorMessage,
+              toolResult: result.content // Include the raw error content
+          };
+      }
+
       // Return formatted result
       return {
         serverName,
         toolName,
         executionTime: Date.now() - startTime,
-        toolResult: result,
-        isError: false
+        toolResult: result.content, // Return the structured content
+        isError: false,
       };
     } catch (error) {
+       console.error(`[${serverName}] Error executing tool '${toolName}':`, error); // Log the error
       return {
         serverName,
         toolName,
@@ -221,12 +321,15 @@ export class ServerManager {
           await connection.transport.close();
           connection.isConnected = false;
         } catch (error) {
-          console.error(`Error closing connection to ${name}:`, 
+          console.error(`Error closing connection to ${name}:`,
             error instanceof Error ? error.message : String(error));
         }
       }
     });
-    
+
     await Promise.allSettled(closePromises);
+     // Clean up server entries after attempting to close
+     this.servers = {};
+     console.log('Finished closing server connections.');
   }
 }
