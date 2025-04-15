@@ -40,8 +40,9 @@ function sendMessage() {
     const message = userInputElement.value.trim();
     // Check state before sending
     if (message && !appState.isThinking()) {
-        // Add user message optimistically (optional, server history is source of truth)
-        // addMessageToConversation('user', message); // Commented out: rely on history-update
+        // Add user message optimistically
+        addMessageToConversation('human', message); // Use 'human' role
+        scrollToBottom(); // Scroll after adding user message
 
         // Send the message via socket
         emitUserMessage(message);

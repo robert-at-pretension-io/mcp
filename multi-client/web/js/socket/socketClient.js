@@ -55,11 +55,7 @@ export function init(eventHandlers) {
         if (handlers.onHistoryUpdate) handlers.onHistoryUpdate(data.history);
     });
 
-    // 'ai-response' might not be needed if history-update covers it
-    // socket.on('ai-response', (data) => {
-    //     console.log('Received ai-response:', data);
-    //     // Handle if needed, maybe just log or confirm message receipt
-    // });
+    // 'ai-response' event is removed from backend, no listener needed.
 
     socket.on('thinking', (data) => {
         // console.log('Received thinking:', data);

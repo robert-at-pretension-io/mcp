@@ -256,13 +256,7 @@ export class WebServer {
       // Emit 'thinking' event to indicate processing has finished
       this.io.emit('thinking', { status: false });
       
-      // Emit the AI response
-      this.io.emit('ai-response', { 
-        role: 'ai',
-        content: aiResponse
-      });
-      
-      // Send updated history
+      // Send updated history (which includes the new AI response)
       const history = this.conversationManager.getHistory();
       this.io.emit('history-update', { 
         history: history.map(msg => ({
