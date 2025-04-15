@@ -84,8 +84,21 @@ export class WebServer {
     // API route for available tools
     this.app.get('/api/tools', async (req, res) => {
       try {
-        const tools = await this.serverManager.getAllTools();
-        res.json({ tools });
+        // Format tools as { serverName: toolsArray }
+        const connectedServers = this.serverManager.getConnectedServers();
+        const toolsByServer = {};
+        
+        for (const serverName of connectedServers) {
+          try {
+            const serverTools = this.serverManager.getServerTools(serverName);
+            toolsByServer[serverName] = serverTools;
+          } catch (error) {
+            console.warn(`Error getting tools for server ${serverName}:`, error);
+            toolsByServer[serverName] = [];
+          }
+        }
+        
+        res.json(toolsByServer);
       } catch (error) {
         res.status(500).json({ error: `Failed to get tools: ${error}` });
       }
@@ -98,6 +111,144 @@ export class WebServer {
         res.json({ model });
       } catch (error) {
         res.status(500).json({ error: `Failed to get AI model info: ${error}` });
+      }
+    });
+    
+    // API routes for conversation management
+    this.app.get('/api/conversations', (req, res) => {
+      try {
+        const conversations = this.conversationManager.listConversations();
+        res.json({ conversations });
+      } catch (error) {
+        res.status(500).json({ error: `Failed to list conversations: ${error}` });
+      }
+    });
+    
+    this.app.post('/api/conversations/new', (req, res) => {
+      try {
+        this.conversationManager.newConversation();
+        
+        // Get the new conversation
+        const currentConversation = this.conversationManager.getCurrentConversation();
+        
+        // Send updated history
+        const history = this.conversationManager.getHistory();
+        this.io.emit('history-update', { 
+          history: history.map(msg => ({
+            role: msg._getType(),
+            content: msg.content,
+            hasToolCalls: (msg as any).hasToolCalls,
+            pendingToolCalls: (msg as any).pendingToolCalls
+          }))
+        });
+        
+        // Emit the conversation-loaded event
+        this.io.emit('conversation-loaded', {
+          id: currentConversation.id,
+          messages: history.map(msg => ({
+            role: msg._getType(),
+            content: msg.content,
+            hasToolCalls: msg.hasToolCalls,
+            pendingToolCalls: msg.pendingToolCalls
+          }))
+        });
+        
+        // Send the updated conversations list
+        const conversations = this.conversationManager.listConversations();
+        this.io.emit('conversations-list', { conversations });
+        
+        res.json({ success: true, id: currentConversation.id });
+      } catch (error) {
+        res.status(500).json({ error: `Failed to create new conversation: ${error}` });
+      }
+    });
+    
+    this.app.post('/api/conversations/load', (req, res) => {
+      try {
+        const { id } = req.body;
+        
+        if (!id) {
+          return res.status(400).json({ error: 'Conversation ID is required' });
+        }
+        
+        const success = this.conversationManager.loadConversation(id);
+        
+        if (!success) {
+          return res.status(404).json({ error: `Conversation with ID ${id} not found` });
+        }
+        
+        // Send updated history
+        const history = this.conversationManager.getHistory();
+        
+        // Emit the conversation-loaded event
+        this.io.emit('conversation-loaded', {
+          id,
+          messages: history.map(msg => ({
+            role: msg._getType(),
+            content: msg.content,
+            hasToolCalls: msg.hasToolCalls,
+            pendingToolCalls: msg.pendingToolCalls
+          }))
+        });
+        
+        res.json({ success: true, id });
+      } catch (error) {
+        res.status(500).json({ error: `Failed to load conversation: ${error}` });
+      }
+    });
+    
+    // API route for deleting a conversation
+    this.app.delete('/api/conversations/:id', (req, res) => {
+      try {
+        const { id } = req.params;
+        
+        if (!id) {
+          return res.status(400).json({ error: 'Conversation ID is required' });
+        }
+        
+        const success = this.conversationManager.deleteConversation(id);
+        
+        if (!success) {
+          return res.status(404).json({ error: `Conversation with ID ${id} not found` });
+        }
+        
+        // Send the updated conversations list
+        const conversations = this.conversationManager.listConversations();
+        this.io.emit('conversations-list', { conversations });
+        
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: `Failed to delete conversation: ${error}` });
+      }
+    });
+    
+    // API route for renaming a conversation
+    this.app.post('/api/conversations/:id/rename', (req, res) => {
+      try {
+        const { id } = req.params;
+        const { title } = req.body;
+        
+        if (!id) {
+          return res.status(400).json({ error: 'Conversation ID is required' });
+        }
+        
+        if (!title) {
+          return res.status(400).json({ error: 'Title is required' });
+        }
+        
+        const success = this.conversationManager.renameConversation(id, title);
+        
+        if (!success) {
+          return res.status(404).json({ error: `Conversation with ID ${id} not found` });
+        }
+        
+        // Send the updated conversations list
+        const conversations = this.conversationManager.listConversations();
+        this.io.emit('conversations-list', { conversations });
+        
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: `Failed to rename conversation: ${error}` });
       }
     });
     
@@ -531,6 +682,87 @@ export class WebServer {
         res.status(500).json({ error: `Failed to process message: ${error}` });
       }
     });
+    
+    // API routes for inline configuration file editing
+    this.app.get('/api/config/:file', (req, res) => {
+      try {
+        const { file } = req.params;
+        
+        // Only allow specific config files for security
+        const allowedFiles = ['ai_config.json', 'servers.json', 'provider_models.toml'];
+        
+        if (!allowedFiles.includes(file)) {
+          return res.status(403).json({ error: `Access to file "${file}" is not allowed` });
+        }
+        
+        const filePath = path.join(__dirname, '../../../', file);
+        
+        if (!fs.existsSync(filePath)) {
+          return res.status(404).json({ error: `File "${file}" not found` });
+        }
+        
+        // Read the file content
+        const content = fs.readFileSync(filePath, 'utf-8');
+        
+        // Return the content with file metadata
+        res.json({
+          file,
+          path: filePath,
+          content,
+          // Add file type for editor syntax highlighting
+          type: file.endsWith('.json') ? 'json' : file.endsWith('.toml') ? 'toml' : 'text'
+        });
+      } catch (error) {
+        res.status(500).json({ error: `Failed to read configuration file: ${error}` });
+      }
+    });
+    
+    this.app.post('/api/config/:file', async (req, res) => {
+      try {
+        const { file } = req.params;
+        const { content } = req.body;
+        
+        if (content === undefined) {
+          return res.status(400).json({ error: 'File content is required' });
+        }
+        
+        // Only allow specific config files for security
+        const allowedFiles = ['ai_config.json', 'servers.json', 'provider_models.toml'];
+        
+        if (!allowedFiles.includes(file)) {
+          return res.status(403).json({ error: `Access to file "${file}" is not allowed` });
+        }
+        
+        const filePath = path.join(__dirname, '../../../', file);
+        
+        // Validate content based on file type
+        if (file.endsWith('.json')) {
+          try {
+            // Check that it's valid JSON
+            JSON.parse(content);
+          } catch (jsonError) {
+            return res.status(400).json({ error: `Invalid JSON: ${jsonError.message}` });
+          }
+        }
+        
+        // Save the file
+        await fs.promises.writeFile(filePath, content, 'utf-8');
+        
+        // If this is the active config, notify that a restart might be needed
+        const needsRestart = file !== 'provider_models.toml'; // provider_models.toml changes don't need restart
+        
+        // Return success
+        res.json({ 
+          success: true, 
+          message: needsRestart 
+            ? 'Configuration saved. A restart may be required for changes to take effect.' 
+            : 'Configuration saved successfully.',
+          needsRestart
+        });
+      } catch (error) {
+        res.status(500).json({ error: `Failed to save configuration file: ${error}` });
+      }
+    });
 
     // API route for clearing the conversation
     this.app.post('/api/clear', (req, res) => {
@@ -567,6 +799,68 @@ export class WebServer {
         this.conversationManager.clearConversation();
         this.io.emit('conversation-cleared');
       });
+      
+      // Handle new conversation request
+      socket.on('new-conversation', () => {
+        try {
+          this.conversationManager.newConversation();
+          const history = this.conversationManager.getHistory();
+          
+          // Emit the new conversation ID
+          const currentConversation = this.conversationManager.getCurrentConversation();
+          this.io.emit('conversation-loaded', {
+            id: currentConversation.id,
+            messages: history.map(msg => ({
+              role: msg._getType(),
+              content: msg.content,
+              hasToolCalls: msg.hasToolCalls,
+              pendingToolCalls: msg.pendingToolCalls
+            }))
+          });
+          
+          // Send the updated conversations list
+          const conversations = this.conversationManager.listConversations();
+          this.io.emit('conversations-list', { conversations });
+        } catch (error) {
+          console.error('Error creating new conversation:', error);
+          socket.emit('error', { 
+            message: `Error creating new conversation: ${error instanceof Error ? error.message : String(error)}`
+          });
+        }
+      });
+      
+      // Handle load conversation request
+      socket.on('load-conversation', (data) => {
+        try {
+          const { id } = data;
+          if (!id) {
+            throw new Error('Conversation ID is required');
+          }
+          
+          const success = this.conversationManager.loadConversation(id);
+          if (!success) {
+            throw new Error(`Conversation with ID ${id} not found`);
+          }
+          
+          const history = this.conversationManager.getHistory();
+          
+          // Emit the loaded conversation
+          this.io.emit('conversation-loaded', {
+            id,
+            messages: history.map(msg => ({
+              role: msg._getType(),
+              content: msg.content,
+              hasToolCalls: msg.hasToolCalls,
+              pendingToolCalls: msg.pendingToolCalls
+            }))
+          });
+        } catch (error) {
+          console.error('Error loading conversation:', error);
+          socket.emit('error', { 
+            message: `Error loading conversation: ${error instanceof Error ? error.message : String(error)}`
+          });
+        }
+      });
     });
   }
 
@@ -587,9 +881,46 @@ export class WebServer {
         }))
       });
 
-      // Send available tools
-      const tools = await this.serverManager.getAllTools();
-      socket.emit('tools-info', { tools });
+      // Send available tools, organizing by server
+      const allTools = await this.serverManager.getAllTools();
+      const serverNames = this.serverManager.getConnectedServers();
+      
+      // Format tools as { serverName: toolsArray }
+      const toolsByServer = {};
+      for (const serverName of serverNames) {
+        try {
+          const serverTools = this.serverManager.getServerTools(serverName);
+          toolsByServer[serverName] = serverTools;
+        } catch (error) {
+          console.warn(`Error getting tools for server ${serverName}:`, error);
+          toolsByServer[serverName] = [];
+        }
+      }
+      
+      socket.emit('tools-info', toolsByServer);
+      
+      // Send the list of conversations
+      try {
+        const conversations = this.conversationManager.listConversations();
+        socket.emit('conversations-list', { conversations });
+        
+        // If there's a current conversation, send its ID
+        const currentConversation = this.conversationManager.getCurrentConversation();
+        if (currentConversation && currentConversation.id) {
+          socket.emit('conversation-loaded', { 
+            id: currentConversation.id,
+            messages: history.map(msg => ({
+              role: msg._getType(),
+              content: msg.content,
+              hasToolCalls: msg.hasToolCalls,
+              pendingToolCalls: msg.pendingToolCalls
+            }))
+          });
+        }
+      } catch (conversationError) {
+        console.error('Error sending conversations list:', conversationError);
+        // Continue even if this part fails
+      }
     } catch (error) {
       console.error('Error sending initial data:', error);
     }
@@ -622,6 +953,17 @@ export class WebServer {
           pendingToolCalls: msg.pendingToolCalls
         }))
       });
+      
+      // If we have a current conversation, emit the updated conversation
+      try {
+        const currentConversation = this.conversationManager.getCurrentConversation();
+        if (currentConversation && currentConversation.id) {
+          this.io.emit('conversation-saved', currentConversation);
+        }
+      } catch (conversationError) {
+        console.error('Error getting current conversation:', conversationError);
+        // Continue even if this part fails
+      }
     } catch (error) {
       console.error('Error processing message:', error);
       this.io.emit('thinking', { status: false });
@@ -647,21 +989,51 @@ export class WebServer {
    * Stop the web server
    */
   public stop() {
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       if (!this.isRunning) {
         resolve();
         return;
       }
       
-      this.server.close((err) => {
-        if (err) {
-          reject(err);
-        } else {
-          console.log('Web server stopped');
-          this.isRunning = false;
-          resolve();
-        }
-      });
+      // First close all socket connections
+      if (this.io) {
+        console.log('Closing Socket.IO connections');
+        this.io.close(() => {
+          // After socket connections closed, close the HTTP server
+          this.server.close((err) => {
+            if (err) {
+              console.error('Error closing HTTP server:', err);
+              reject(err);
+            } else {
+              console.log('Web server stopped');
+              this.isRunning = false;
+              resolve();
+            }
+          });
+        });
+      } else {
+        // If io doesn't exist, just close the HTTP server
+        this.server.close((err) => {
+          if (err) {
+            console.error('Error closing HTTP server:', err);
+            reject(err);
+          } else {
+            console.log('Web server stopped');
+            this.isRunning = false;
+            resolve();
+          }
+        });
+      }
+      
+      // Set a timeout in case the server doesn't close properly
+      const timeout = setTimeout(() => {
+        console.log('Server stop timed out, forcing close');
+        this.isRunning = false;
+        resolve();
+      }, 3000); // 3 seconds timeout
+      
+      // Clear the timeout if the server closes properly
+      timeout.unref();
     });
   }
 }
