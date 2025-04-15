@@ -226,24 +226,48 @@ async function main() {
   const shutdown = async (signal: string) => {
     console.log(`\nReceived ${signal}. Shutting down...`);
     
-    // Stop REPL
-    repl.stop();
+    // Set a timeout for force exit in case shutdown hangs
+    const exitTimer = setTimeout(() => forceExit(signal), forceExitTimeout);
     
-    // Stop web server if running
-    if (webServer) {
-      await webServer.stop();
+    try {
+      // Stop REPL
+      repl.stop();
+      
+      // Stop web server if running
+      if (webServer) {
+        await webServer.stop();
+      }
+      
+      // Close server connections
+      await serverManager.closeAll();
+      
+      // Clear force exit timer since shutdown completed successfully
+      clearTimeout(exitTimer);
+      
+      console.log('All server connections closed.');
+      process.exit(0);
+    } catch (error) {
+      console.error('Error during shutdown:', error);
+      
+      // Clear force exit timer since we're exiting now
+      clearTimeout(exitTimer);
+      
+      // Exit with error code
+      process.exit(1);
     }
-    
-    // Close server connections
-    await serverManager.closeAll();
-    
-    console.log('All server connections closed.');
-    process.exit(0);
   };
   
   // Handle termination signals
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGTSTP', () => shutdown('SIGTSTP')); // Handle Ctrl+Z
+  
+  // Ensure we exit even if shutdown doesn't complete cleanly
+  const forceExitTimeout = 5000; // 5 seconds
+  const forceExit = (signal: string) => {
+    console.log(`\nForcing exit after ${forceExitTimeout/1000} seconds (signal: ${signal}).`);
+    process.exit(1);
+  };
   
   // Start REPL if web interface is not enabled or if explicitly requested
   const useRepl = !useWeb || process.argv.includes('--repl') || process.argv.includes('-r');
