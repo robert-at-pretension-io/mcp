@@ -3,7 +3,10 @@
  * This is similar to the ToolParser in the Rust implementation.
  */
 
+import { v4 as uuidv4 } from 'uuid'; // Import UUID
+
 export interface ParsedToolCall {
+  id: string; // Add a unique ID for each tool call request
   name: string;
   arguments: Record<string, any>;
   fullText: string; // The full text of the tool call including delimiters
@@ -52,7 +55,9 @@ export class ToolParser {
           toolCallData.arguments !== null && 
           !Array.isArray(toolCallData.arguments)
         ) {
+          const toolCallId = `tool_${uuidv4()}`; // Generate unique ID
           toolCalls.push({
+            id: toolCallId, // Include the ID
             name: toolCallData.name,
             arguments: toolCallData.arguments,
             fullText: fullText

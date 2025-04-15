@@ -460,13 +460,14 @@ Important:
 
   /**
    * Executes a set of parsed tool calls in parallel.
-   * @param toolCalls Array of parsed tool calls to execute.
-   * @returns Promise that resolves to an array of tool execution results.
+   * @param toolCalls Array of parsed tool calls (including IDs) to execute.
+   * @returns Promise that resolves to a map of tool call IDs to their string results.
    */
   private async executeToolCalls(toolCalls: ParsedToolCall[]): Promise<Map<string, string>> {
     const results = new Map<string, string>();
-    const executions = toolCalls.map(async (toolCall, index) => {
-      const toolCallId = `tool-${uuidv4().substring(0, 8)}-${index}`; // Generate a short unique ID
+    // Use the toolCall object directly, which now includes the pre-generated ID
+    const executions = toolCalls.map(async (toolCall) => { 
+      const toolCallId = toolCall.id; // Use the ID generated during parsing
 
       try {
         // Find which server provides this tool
@@ -824,14 +825,26 @@ Important:
       
       console.log(`Found ${parsedToolCalls.length} tool calls in AI response.`);
       
+      
       // Add the AI response that *requested* the tools
-      const aiMessageRequestingTools = new AIMessage(currentResponse, { 
-        hasToolCalls: true, 
-        pendingToolCalls: true 
+      // Pass the parsed tool calls with IDs to additional_kwargs for correct formatting by LangChain
+      const aiMessageRequestingTools = new AIMessage(currentResponse, {
+        hasToolCalls: true,
+        pendingToolCalls: true,
+        // LangChain integrations (like ChatAnthropic) often expect tool call info here
+        // Structure typically includes id, name, and input/arguments
+        additional_kwargs: {
+          tool_calls: parsedToolCalls.map(tc => ({
+            id: tc.id,
+            type: "tool_use", // Explicitly marking type might help Anthropic integration
+            name: tc.name,
+            input: tc.arguments, // Map our 'arguments' to 'input' if needed by the integration
+          }))
+        }
       });
       this.state.addMessage(aiMessageRequestingTools);
       
-      // Execute tool calls
+      // Execute tool calls (passing the calls with IDs)
       const toolResults = await this.executeToolCalls(parsedToolCalls);
       
       // Mark the tool calls in the previous AI message as no longer pending

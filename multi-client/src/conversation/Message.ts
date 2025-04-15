@@ -31,9 +31,20 @@ export class AIMessage extends LCAIMessage {
   // Add optional properties for tracking tool calls
   public hasToolCalls?: boolean;
   public pendingToolCalls?: boolean;
+  // Ensure additional_kwargs are passed to the super constructor
 
-  constructor(content: string, options?: { hasToolCalls?: boolean, pendingToolCalls?: boolean }) {
-    super(content);
+  constructor(
+    content: string, 
+    options?: { 
+      hasToolCalls?: boolean, 
+      pendingToolCalls?: boolean,
+      additional_kwargs?: Record<string, any> // Add additional_kwargs here
+    }
+  ) {
+    // Pass content and additional_kwargs to the super constructor
+    // LangChain's BaseMessage constructor accepts an object or just content.
+    // We need to pass the object form to include additional_kwargs.
+    super({ content: content, additional_kwargs: options?.additional_kwargs || {} }); 
     this.hasToolCalls = options?.hasToolCalls || false;
     this.pendingToolCalls = options?.pendingToolCalls || false;
   }
