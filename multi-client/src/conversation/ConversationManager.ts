@@ -705,8 +705,14 @@ Important:
         });
         this.state.addMessage(aiMessage);
         
+        // Add IDs to tool calls before executing
+        const toolCallsWithIds = parsedToolCalls.map(call => ({
+          ...call,
+          id: `call-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+        }));
+        
         // Execute tool calls
-        const toolResults = await this.executeToolCalls(parsedToolCalls);
+        const toolResults = await this.executeToolCalls(toolCallsWithIds);
         
         // Mark tool calls as no longer pending
         aiMessage.pendingToolCalls = false;
