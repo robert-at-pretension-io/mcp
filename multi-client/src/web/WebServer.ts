@@ -215,6 +215,7 @@ export class WebServer {
         }
       }
       
+      console.log('[WebServer] Emitting tools-info:', JSON.stringify(toolsByServer, null, 2)); // Add logging
       socket.emit('tools-info', toolsByServer);
       
       // Send the list of conversations

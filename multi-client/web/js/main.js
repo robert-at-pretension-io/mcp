@@ -35,6 +35,8 @@ function initializeApp() {
         onToolsInfo: (tools) => {
             // Assuming tools is { serverName: [tool] }
             appState.setAllToolsData(tools);
+            console.log('[main.js] Received tools-info via socket:', tools); // Add logging
+            appState.setAllToolsData(tools);
             sidebarUI.renderToolsList(tools); // Pass data directly
         },
         onStatusUpdate: appState.setStatus,
