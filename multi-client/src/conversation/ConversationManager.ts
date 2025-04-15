@@ -808,12 +808,8 @@ Important:
     let currentResponse = aiResponseContent; // Start with the initial AI response
     let toolRound = 0;
     const maxToolRounds = 5; // Limit recursive tool calls
-
-    // If no tool calls were involved in the first place, add the initial response
-    // This ensures the message is in history before verification if the loop didn't run.
-    if (!ToolParser.containsToolCalls(currentResponse)) { // Check the initial response directly
-        this.state.addMessage(new AIMessage(currentResponse)); 
-    }
+    
+    // We will determine the single final AI message later and add it once.
 
     // Loop while the response contains tool calls and we haven't hit the limit
     while (ToolParser.containsToolCalls(currentResponse) && toolRound < maxToolRounds) {
@@ -868,10 +864,9 @@ Important:
         console.warn(`Reached maximum tool call rounds (${maxToolRounds}). Proceeding with last response.`);
         // The last response might still contain tool calls, which will be ignored now.
     }
-
-    // Add the *final* AI response (the one that doesn't contain tool calls, or the last one if limit was reached)
-    // Ensure it doesn't have the hasToolCalls flag set
-    this.state.addMessage(new AIMessage(currentResponse, { hasToolCalls: false }));
+    
+    // We will add the final AI message *after* potential verification corrections.
+    let finalAiResponseContent = currentResponse; // Store the content string
 
     // 9. Verify the final response (if verification is enabled)
     const verificationState = this.state.getVerificationState();
@@ -933,12 +928,25 @@ Important:
         }
       }
     }
+    
+    // Add the single, definitive final AI message for this turn to the state
+    // Use the potentially corrected content from verification
+    const finalAiMessage = new AIMessage(finalAiResponseContent, { hasToolCalls: false });
+    // Check if the last message added was already this exact response (e.g., from failed verification retry)
+    const history = this.state.getHistoryWithoutSystemPrompt();
+    const lastMessage = history[history.length - 1];
+    if (!(lastMessage instanceof AIMessage && lastMessage.content === finalAiMessage.content)) {
+         this.state.addMessage(finalAiMessage);
+    } else {
+        console.log("Skipping adding duplicate final AI message after verification handling.");
+    }
+
 
     // Save the conversation after adding the final AI response
     this.saveConversation();
     
-    // Return the final response content
-    return currentResponse;
+    // Return the final response content string
+    return finalAiResponseContent;
   }
 
   /**
