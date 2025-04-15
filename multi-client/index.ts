@@ -7,8 +7,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 // import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio.js';
-import type { Implementation } from '@modelcontextprotocol/sdk/types.js'; // Import Implementation type
-import type { ListToolsResult } from '@modelcontextprotocol/sdk/client/index.js'; // Import ListToolsResult type
+import type { Implementation, ListToolsResult } from '@modelcontextprotocol/sdk/types.js'; // Import Implementation and ListToolsResult types
 
 // Define types for the configuration structure
 
