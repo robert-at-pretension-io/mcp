@@ -1,6 +1,13 @@
-use shared_protocol_objects::{Role, ToolInfo};
+// Use local Role definition from repl/mod.rs or define here if needed standalone
+// Use the local Role definition consistently
+// Import rmcp Tool type
+use rmcp::model::{Role, Tool as RmcpTool};
 use console::style;
+use serde::{Deserialize, Serialize}; // Import Serialize and Deserialize
 use serde_json;
+use anyhow::{Context, Result}; // Import Result and Context
+use std::path::Path; // Import Path
+use tokio::fs; // Import tokio::fs
 
 /// Formats JSON nicely within a code block.
 pub fn format_json_output(json_str: &str) -> String {
@@ -70,9 +77,9 @@ pub fn format_tool_response(tool_name: &str, response: &str) -> String {
 /// Formats a chat message with role styling and dimmed content.
 pub fn format_chat_message(role: &Role, content: &str) -> String {
     let role_style = match role {
-        Role::System => style("System").blue().bold(),
         Role::User => style("User").magenta().bold(),
         Role::Assistant => style("Assistant").cyan().bold(),
+        // Removed unreachable pattern
     };
 
     // Apply markdown formatting (which includes dimming) to the content
@@ -121,58 +128,82 @@ pub fn format_assistant_response_with_tool_calls(raw_response: &str) -> String {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)] // Add Serialize, Deserialize
 pub struct Message {
     pub role: Role,
     pub content: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)] // Add Serialize, Deserialize
 pub struct ConversationState {
     pub messages: Vec<Message>,
     pub system_prompt: String,
-    pub tools: Vec<ToolInfo>,
+    // Use rmcp::model::Tool here
+    pub tools: Vec<RmcpTool>, // Use aliased rmcp Tool
 }
 
 impl ConversationState {
-    pub fn new(system_prompt: String, tools: Vec<ToolInfo>) -> Self {
-        let mut state = Self {
-            messages: Vec::new(),
+    // Update constructor signature
+    pub fn new(system_prompt: String, tools: Vec<RmcpTool>) -> Self { // Use aliased rmcp Tool
+        let state = Self { // Remove 'mut'
             system_prompt: system_prompt.clone(),
-            tools: tools.clone(),
+            messages: Vec::new(),
+            tools: tools.clone(), // Store the tools
         };
-
-        // Generate a combined system prompt including the tool format instructions
-        let combined_prompt = format!(
-            "{}\n\n{}",
-            system_prompt,
-            crate::conversation_service::generate_tool_system_prompt(&tools) // Use new function name
-        );
-
-        // Add the combined system prompt as the first system message
-        state.add_system_message(&combined_prompt);
-        // REMOVED: state.add_user_message(&combined_prompt); // Do not add duplicate user message
+        // The system prompt is stored but not added as a message here.
+        // The REPL will add the initial tool list as a user message.
         state
     }
 
-    pub fn add_system_message(&mut self, content: &str) {
-        self.messages.push(Message {
-            role: Role::System,
-            content: content.to_string(),
-        });
+    /// Saves the conversation state to a JSON file.
+    pub async fn save_to_json(&self, path: &Path) -> Result<()> {
+        log::info!("Saving conversation state to: {:?}", path);
+        let json_string = serde_json::to_string_pretty(self)
+            .context("Failed to serialize conversation state")?;
+
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).await
+                .with_context(|| format!("Failed to create conversation directory {:?}", parent))?;
+        }
+
+        fs::write(path, json_string).await
+            .with_context(|| format!("Failed to write conversation file {:?}", path))?;
+        log::info!("Conversation state saved successfully.");
+        Ok(())
+    }
+
+    /// Loads conversation state from a JSON file.
+    pub async fn load_from_json(path: &Path) -> Result<Self> {
+        log::info!("Loading conversation state from: {:?}", path);
+        let json_string = fs::read_to_string(path).await
+            .with_context(|| format!("Failed to read conversation file {:?}", path))?;
+        let state: Self = serde_json::from_str(&json_string)
+            .context("Failed to deserialize conversation state")?;
+        log::info!("Conversation state loaded successfully ({} messages).", state.messages.len());
+        Ok(state)
     }
 
     pub fn add_user_message(&mut self, content: &str) {
         self.messages.push(Message {
-            role: Role::User,
+            role: Role::User, // Already correct
             content: content.to_string(),
         });
     }
 
     pub fn add_assistant_message(&mut self, content: &str) {
         self.messages.push(Message {
-            role: Role::Assistant,
+            role: Role::Assistant, // Already correct
             content: content.to_string(),
         });
+    }
+
+    /// Get the stored system prompt string.
+    pub fn get_system_prompt(&self) -> Option<&str> {
+        if self.system_prompt.is_empty() {
+            None
+        } else {
+            Some(&self.system_prompt)
+        }
     }
 }

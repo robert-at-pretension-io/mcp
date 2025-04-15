@@ -1,33 +1,36 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::path::PathBuf;
 use tokio::process::Command;
 use tracing::{debug, error, info};
+use schemars::JsonSchema;
 
-use shared_protocol_objects::ToolInfo;
+// Import rmcp SDK components
+use rmcp::tool;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AiderParams {
-    /// The directory to run aider in (must exist)
+    #[schemars(description = "The directory path where aider should run (must exist and contain code files)")]
     pub directory: String,
-    /// The message to send to aider
+    
+    #[schemars(description = "Detailed instructions for what changes aider should make to the code")]
     pub message: String,
-    /// Additional options to pass to aider (optional)
+    
     #[serde(default)]
-    pub options: Vec<String>,
-    /// The provider to use (e.g., "anthropic", "openai")
+    #[schemars(description = "Optional: A space-separated string of additional command-line options to pass to aider (e.g., '--show-diff --verbose'). Leave empty for none.")]
+    pub options: String, // Changed back from Option<String>
+
     #[serde(default)]
-    pub provider: Option<String>,
-    /// The model to use (e.g., "claude-3-opus-20240229")
+    #[schemars(description = "Optional: The provider to use (e.g., 'anthropic', 'openai', 'gemini'). Leave empty to auto-detect based on available API keys.")]
+    pub provider: String, // Changed from Option<String>
+
     #[serde(default)]
-    pub model: Option<String>,
-    /// Number of thinking tokens for Anthropic models
+    #[schemars(description = "Optional: The model to use (e.g., 'claude-3-opus-20240229'). Leave empty to use AIDER_MODEL env var or provider default.")]
+    pub model: String, // Changed from Option<String>
+
     #[serde(default)]
-    pub thinking_tokens: Option<u32>,
-    /// Reasoning effort level for OpenAI models
-    #[serde(default)]
-    pub reasoning_effort: Option<String>,
+    #[schemars(description = "Optional: Reasoning effort level for OpenAI models. Values: 'low', 'medium', 'high'. Defaults to 'high' if empty.")]
+    pub reasoning_effort: String, // Changed from Option<String>
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -44,9 +47,9 @@ pub struct AiderResult {
     pub directory: String,
     /// The message that was sent to aider
     pub message: String,
-    /// The provider that was used (e.g., "anthropic", "openai")
+    /// The provider that was used (e.g., "anthropic", "openai", "gemini")
     pub provider: String,
-    /// The model that was used (e.g., "claude-3-opus-20240229")
+    /// The model that was used (e.g., "claude-3-opus-20240229", "gemini/gemini-1.5-pro-latest")
     pub model: Option<String>,
 }
 
@@ -59,31 +62,21 @@ impl AiderExecutor {
 
     /// Helper method to build command arguments for testing
     pub fn build_command_args(&self, params: &AiderParams) -> Vec<String> {
-        // Determine provider: first use explicit parameter, otherwise detect available API keys
-        let provider = if let Some(p) = params.provider.clone() {
-            let p_l = p.to_lowercase();
-            if p_l != "anthropic" && p_l != "openai" {
-                error!("Unsupported provider '{}'. Defaulting to 'anthropic'", p);
-                "anthropic".to_string()
+        // Determine provider: use explicit parameter if not empty, otherwise detect
+        let provider = if !params.provider.trim().is_empty() {
+            let p_l = params.provider.trim().to_lowercase();
+            // Validate provider name
+            if !["anthropic", "openai", "gemini"].contains(&p_l.as_str()) {
+                error!("Unsupported provider '{}' specified. Attempting auto-detection.", params.provider);
+                Self::detect_provider() // Fall back to auto-detection
             } else {
-                p_l
+                p_l // Use the valid specified provider
             }
         } else {
-            let has_anthropic = std::env::var("ANTHROPIC_API_KEY").is_ok();
-            let has_openai = std::env::var("OPENAI_API_KEY").is_ok();
-            if has_anthropic && !has_openai {
-                "anthropic".to_string()
-            } else if has_openai && !has_anthropic {
-                "openai".to_string()
-            } else if has_anthropic && has_openai {
-                // If both providers have keys, maintain current default preference
-                "anthropic".to_string()
-            } else {
-                // Default to anthropic if no API keys are found
-                "anthropic".to_string()
-            }
+            debug!("No provider specified, attempting auto-detection.");
+            Self::detect_provider() // Auto-detect if empty
         };
-        
+
         // Check for provider-specific API key first, then fall back to AIDER_API_KEY
         let provider_env_key = format!("{}_API_KEY", provider.to_uppercase());
         let api_key = std::env::var(&provider_env_key)
@@ -98,25 +91,33 @@ impl AiderExecutor {
             error!("No API key found for provider '{}'. Checked {} and AIDER_API_KEY", 
                 provider, provider_env_key);
         }
-        
-        // Get model from params, environment variables, or set default based on provider
-        let model = params.model
-            .clone()
-            .or_else(|| std::env::var("AIDER_MODEL").ok())
-            .or_else(|| {
-                // Set default models based on provider
-                match provider.to_lowercase().as_str() {
+
+        // Get model: use param if not empty, else env var, else provider default
+        let model = if !params.model.trim().is_empty() {
+            Some(params.model.trim().to_string())
+        } else {
+            std::env::var("AIDER_MODEL").ok().or_else(|| {
+                // Set default models based on provider if env var is also empty
+                match provider.as_str() { // provider is already lowercase String
                     "anthropic" => {
                         debug!("Using default Anthropic model: anthropic/claude-3-7-sonnet-20250219");
                         Some("anthropic/claude-3-7-sonnet-20250219".to_string())
                     },
                     "openai" => {
-                        debug!("Using default OpenAI model: openai/o1");
+                        debug!("Using default OpenAI model: openai/o3-mini");
                         Some("openai/o3-mini".to_string())
                     },
-                    _ => None
+                    "gemini" => {
+                        debug!("Using default Gemini model: gemini/gemini-2.5-pro-preview-03-25");
+                        Some("gemini/gemini-2.5-pro-preview-03-25".to_string())
+                    }
+                    _ => {
+                        error!("Cannot determine default model for unknown provider: {}", provider);
+                        None
+                    }
                 }
-            });
+            })
+        };
 
         // Build the command
         let mut cmd_args = vec![
@@ -142,35 +143,65 @@ impl AiderExecutor {
             info!("Using provider '{}' with no specific model", provider);
         }
 
-        // Add thinking tokens for Anthropic models
-        if provider.to_lowercase() == "anthropic" {
-            let tokens = params.thinking_tokens.unwrap_or(32000);
-            cmd_args.push("--thinking-tokens".to_string());
-            cmd_args.push(tokens.to_string());
-            debug!("Using thinking_tokens: {}", tokens);
-        }
-
         // Add reasoning effort for OpenAI models
-        if provider.to_lowercase() == "openai" {
-            let effort = params.reasoning_effort.as_deref().unwrap_or("high");
+        if provider == "openai" { // provider is already lowercase String
+            let effort = if params.reasoning_effort.trim().is_empty() {
+                "high" // Default if param is empty
+            } else {
+                params.reasoning_effort.trim()
+            };
             // Validate reasoning_effort - only allow "low", "medium", "high"
             let valid_efforts = ["low", "medium", "high"];
             let validated_effort = if valid_efforts.contains(&effort.to_lowercase().as_str()) {
-                effort.to_string()
+                effort.to_lowercase() // Use validated lowercase effort
             } else {
-                error!("Invalid reasoning_effort '{}'. Defaulting to 'high'", effort);
-                "high".to_string()
+                error!("Invalid reasoning_effort '{}' specified. Defaulting to 'high'", effort);
+                "high".to_string() // Default to high if invalid
             };
-            
+
             cmd_args.push("--reasoning-effort".to_string());
             cmd_args.push(validated_effort.clone());
             debug!("Using reasoning_effort: {}", validated_effort);
         }
 
-        // Add any additional options
-        cmd_args.extend(params.options.iter().cloned());
-        
+        // Add any additional options from the options string if it's not empty
+        if !params.options.trim().is_empty() {
+            match shellwords::split(&params.options) { // Use params.options directly
+                Ok(split_options) => {
+                    debug!("Adding additional aider options: {:?}", split_options);
+                    cmd_args.extend(split_options);
+                }
+                Err(e) => {
+                    error!("Failed to parse additional aider options string '{}': {}. Options ignored.", params.options, e);
+                    // Optionally, you could add the error to the stderr of the result later
+                }
+            }
+        }
+
         cmd_args
+    
+    }
+    
+    /// Detects the provider based on available API keys in the environment.
+    /// Prioritizes Gemini > Anthropic > OpenAI if multiple keys are present. Defaults to Gemini.
+    fn detect_provider() -> String {
+        let has_gemini = std::env::var("GEMINI_API_KEY").is_ok();
+        let has_anthropic = std::env::var("ANTHROPIC_API_KEY").is_ok();
+        let has_openai = std::env::var("OPENAI_API_KEY").is_ok();
+
+        if has_gemini {
+            debug!("Detected GEMINI_API_KEY, selecting 'gemini' provider.");
+            "gemini".to_string()
+        } else if has_anthropic {
+            debug!("Detected ANTHROPIC_API_KEY, selecting 'anthropic' provider.");
+            "anthropic".to_string()
+        } else if has_openai {
+            debug!("Detected OPENAI_API_KEY, selecting 'openai' provider.");
+            "openai".to_string()
+        } else {
+            debug!("No specific provider API key found. Defaulting to 'gemini'.");
+            "gemini".to_string() // Default if no keys are found
+        }
     }
 
     pub async fn execute(&self, params: AiderParams) -> Result<AiderResult> {
@@ -188,10 +219,32 @@ impl AiderExecutor {
             return Err(anyhow!("Message cannot be empty"));
         }
 
-        // Build command arguments
+        // Build command arguments (this also determines the provider)
         let cmd_args = self.build_command_args(&params);
-        let provider = params.provider.clone().unwrap_or_else(|| "anthropic".to_string());
-        let model = params.model.clone();
+        
+        // Extract provider and model used (determined during arg building)
+        // This is a bit indirect, ideally build_command_args would return them too.
+        // We re-determine provider here for the result struct.
+        let provider = if !params.provider.trim().is_empty() {
+             let p_l = params.provider.trim().to_lowercase();
+             if ["anthropic", "openai", "gemini"].contains(&p_l.as_str()) { p_l } else { Self::detect_provider() }
+        } else {
+            Self::detect_provider()
+        };
+
+        // Re-determine model used for the result struct
+        let model = if !params.model.trim().is_empty() {
+            Some(params.model.trim().to_string())
+        } else {
+            std::env::var("AIDER_MODEL").ok().or_else(|| {
+                match provider.as_str() {
+                    "anthropic" => Some("anthropic/claude-3-7-sonnet-20250219".to_string()),
+                    "openai" => Some("openai/o3-mini".to_string()),
+                    "gemini" => Some("gemini/gemini-2.5-pro-preview-03-25".to_string()), // Updated default model
+                    _ => None,
+                }
+            })
+        }; // <-- Add missing semicolon here
 
         debug!("Running aider with args: {:?}", cmd_args);
         info!("Executing aider in directory: {}", params.directory);
@@ -225,111 +278,57 @@ impl AiderExecutor {
             stderr,
             directory: params.directory,
             message: params.message,
-            provider: provider.clone(),
-            model: model.clone(),
+            provider, // Use the determined provider
+            model,    // Use the determined model
         })
     }
 }
 
-/// Returns the tool info for the aider tool
-pub fn aider_tool_info() -> ToolInfo {
-    ToolInfo {
-        name: "aider".to_string(),
-        description: Some(
-            "AI pair programming tool for making targeted code changes. Use this tool to:
-            
-            1. Implement new features or functionality in existing code
-            2. Add tests to an existing codebase
-            3. Fix bugs in code
-            4. Refactor or improve existing code
-            5. Make structural changes across multiple files
+#[derive(Debug, Clone)]
+pub struct AiderTool;
 
-            When using aider, make sure to pass ALL of the context into the message needed for a particular issue. don't just provide the solution.
-            
-            The tool requires:
-            - A directory path where the code exists
-            - A detailed message describing what changes to make. Please only describe one change per message. If you need to make multiple changes, please submit multiple requests. You must include all context required because this tool doesn't have any memory of previous requests.
-            
-            Best practices for messages:
-            - Clearly describe the problem we're seeing in the tests
-            - Show the relevant code that's failing
-            - Explain why it's failing
-            - Provide the specific error messages
-            - Outline the approach to fix it
-            - Include any related code that might be affected by the changes
-            - Specify the file paths that include relevent context for the problem
-            
-            
-            Note: This tool runs aider with the --yes-always flag which automatically accepts all proposed changes.
-            
-            MODEL AND PROVIDER OPTIONS:
-            This tool supports both Anthropic (Claude) and OpenAI models. You can specify which provider and model to use:
-            
-            - Default provider: 'anthropic' with model 'anthropic/claude-3-7-sonnet-20250219'
-            - Alternative provider: 'openai' with default model 'openai/o3-mini'
-            
-            Examples of provider/model usage:
-            - Basic usage (uses default Anthropic model): {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\"}
-            - Specify provider: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"openai\"}
-            - Specify provider and model: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"anthropic\", \"model\": \"claude-3-opus-20240229\"}
-            
-            ADVANCED FEATURES:
-            - For Anthropic models (Claude), the default 'thinking_tokens' is set to 32000 for optimal performance, but you can override it:
-              Example: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"anthropic\", \"thinking_tokens\": 16000}
-            
-            - For OpenAI models, the default 'reasoning_effort' is set to 'high' for optimal performance, but you can override it:
-              Example: {\"directory\": \"/path/to/code\", \"message\": \"Fix the bug\", \"provider\": \"openai\", \"reasoning_effort\": \"medium\"}
-              Valid values: 'auto', 'low', 'medium', 'high'
-            
-            Note: The tool will look for API keys in environment variables. It first checks for provider-specific keys 
-            (ANTHROPIC_API_KEY or OPENAI_API_KEY) and then falls back to AIDER_API_KEY if needed."
-                .to_string(),
-        ),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "directory": {
-                    "type": "string",
-                    "description": "The directory path where aider should run (must exist and contain code files)"
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Detailed instructions for what changes aider should make to the code"
-                },
-                "options": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "description": "Additional command-line options to pass to aider (optional)"
-                },
-                "provider": {
-                    "type": "string",
-                    "description": "The provider to use (e.g., 'anthropic', 'openai'). Defaults to 'anthropic' if not specified."
-                },
-                "model": {
-                    "type": "string",
-                    "description": "The model to use (e.g., 'claude-3-opus-20240229'). Falls back to AIDER_MODEL environment variable if not specified."
-                },
-                "thinking_tokens": {
-                    "type": "integer",
-                    "description": "Number of thinking tokens to use for Anthropic models (Claude). Higher values allow more thorough reasoning."
-                },
-                "reasoning_effort": {
-                    "type": "string",
-                    "description": "Reasoning effort level for OpenAI models. Values: 'auto', 'low', 'medium', 'high'."
-                }
-            },
-            "required": ["directory", "message"],
-            "additionalProperties": false
-        }),
+impl AiderTool {
+    pub fn new() -> Self {
+        Self
     }
 }
 
-/// Handler function for aider tool calls
-pub async fn handle_aider_tool_call(params: AiderParams) -> Result<AiderResult> {
-    let executor = AiderExecutor::new();
-    executor.execute(params).await
+#[tool(tool_box)]
+impl AiderTool {
+    #[tool(description = "AI pair programming tool for making targeted code changes. Requires VERY SPECIFIC instructions to perform well. It has NO CONTEXT from the conversation; all necessary details must be in the 'message'. Use for implementing new features, adding tests, fixing bugs, refactoring code, or making structural changes across multiple files.")]
+    pub async fn aider(
+        &self,
+        #[tool(aggr)] params: AiderParams
+    ) -> String {
+        info!("Running aider in directory: {} with provider: {:?}", 
+             params.directory, params.provider);
+        
+        let executor = AiderExecutor::new();
+        
+        match executor.execute(params).await {
+            Ok(result) => {
+                // Format a nice response
+                let model_info = match &result.model {
+                    Some(model) => format!("Provider: {} | Model: {}", result.provider, model),
+                    None => format!("Provider: {}", result.provider),
+                };
+                
+                format!(
+                    "Aider execution {} [{}]\n\nDirectory: {}\nExit status: {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                    if result.success { "succeeded" } else { "failed" },
+                    model_info,
+                    result.directory,
+                    result.status,
+                    result.stdout,
+                    result.stderr
+                )
+            },
+            Err(e) => {
+                error!("Aider execution failed: {}", e);
+                format!("Error executing aider: {}", e)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -362,13 +361,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
-                provider: Some("anthropic".to_string()),
-                model: None,
-                thinking_tokens: None,
-                reasoning_effort: None,
+                options: "".to_string(), // Changed back from None
+                provider: "anthropic".to_string(),
+                model: "".to_string(),
+                reasoning_effort: "".to_string(),
             };
-            
             // We don't actually execute the command, just check the validation logic
             // by inspecting the command that would be built
             let cmd_args = executor.build_command_args(&params);
@@ -378,13 +375,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
-                provider: Some("openai".to_string()),
-                model: None,
-                thinking_tokens: None,
-                reasoning_effort: None,
+                options: "".to_string(), // Changed back from None
+                provider: "openai".to_string(),
+                model: "".to_string(),
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--api-key".to_string()));
             
@@ -392,13 +387,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
-                provider: Some("invalid_provider".to_string()),
-                model: None,
-                thinking_tokens: None,
-                reasoning_effort: None,
+                options: "".to_string(), // Changed back from None
+                provider: "invalid_provider".to_string(),
+                model: "".to_string(),
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             // The provider should be defaulted to anthropic
             assert!(cmd_args.iter().any(|arg| arg.contains("anthropic=")));
@@ -406,6 +399,64 @@ mod tests {
             // Handle cleanup gracefully
             let _ = fs::remove_dir_all(temp_dir).await;
         });
+    }
+
+    // Test provider detection logic
+    #[test]
+    fn test_provider_detection() {
+        // Test priority: Gemini > Anthropic > OpenAI > Default (Gemini)
+        
+        // Case 1: Only Gemini key
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::remove_var("OPENAI_API_KEY");
+        env::set_var("GEMINI_API_KEY", "test_key");
+        assert_eq!(AiderExecutor::detect_provider(), "gemini");
+
+        // Case 2: Only Anthropic key
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::remove_var("OPENAI_API_KEY");
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::remove_var("OPENAI_API_KEY");
+        env::remove_var("GEMINI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "anthropic");
+
+        // Case 3: Only OpenAI key
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        env::remove_var("GEMINI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "openai");
+
+        // Case 4: Gemini and Anthropic keys (Gemini priority)
+        env::set_var("GEMINI_API_KEY", "test_key");
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::remove_var("OPENAI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "gemini");
+
+        // Case 5: Anthropic and OpenAI keys (Anthropic priority)
+        env::remove_var("GEMINI_API_KEY");
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        assert_eq!(AiderExecutor::detect_provider(), "anthropic");
+
+        // Case 6: All keys (Gemini priority)
+        env::set_var("GEMINI_API_KEY", "test_key");
+        env::set_var("ANTHROPIC_API_KEY", "test_key");
+        env::set_var("OPENAI_API_KEY", "test_key");
+        assert_eq!(AiderExecutor::detect_provider(), "gemini");
+
+        // Case 7: No keys (Default to Gemini)
+        env::remove_var("GEMINI_API_KEY");
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::remove_var("OPENAI_API_KEY");
+        assert_eq!(AiderExecutor::detect_provider(), "gemini");
+
+        // Clean up env vars
+        env::remove_var("GEMINI_API_KEY");
+        env::remove_var("ANTHROPIC_API_KEY");
+        env::remove_var("OPENAI_API_KEY");
+        env::remove_var("GEMINI_API_KEY");
     }
     
     // Test default model selection logic
@@ -421,13 +472,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
-                provider: Some("anthropic".to_string()),
-                model: None,
-                thinking_tokens: None,
-                reasoning_effort: None,
+                options: "".to_string(), // Changed back from None
+                provider: "anthropic".to_string(),
+                model: "".to_string(),
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
@@ -437,29 +486,39 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
-                provider: Some("openai".to_string()),
-                model: None,
-                thinking_tokens: None,
-                reasoning_effort: None,
+                options: "".to_string(), // Changed back from None
+                provider: "openai".to_string(),
+                model: "".to_string(),
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
             assert_eq!(cmd_args[model_index + 1], "openai/o3-mini");
+
+            // Test default model for gemini
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: "".to_string(), // Changed back from None
+                provider: "gemini".to_string(),
+                model: "".to_string(),
+                reasoning_effort: "".to_string(),
+            };
+            let cmd_args = executor.build_command_args(&params);
+            assert!(cmd_args.contains(&"--model".to_string()));
+            let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
+            assert_eq!(cmd_args[model_index + 1], "gemini/gemini-2.5-pro-preview-03-25"); // Updated default model
             
             // Test custom model overrides default
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
-                provider: Some("anthropic".to_string()),
-                model: Some("claude-3-opus-20240229".to_string()),
-                thinking_tokens: None,
-                reasoning_effort: None,
+                options: "".to_string(), // Changed back from None
+                provider: "anthropic".to_string(),
+                model: "claude-3-opus-20240229".to_string(),
+                reasoning_effort: "".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--model".to_string()));
             let model_index = cmd_args.iter().position(|arg| arg == "--model").unwrap();
@@ -483,13 +542,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
-                provider: Some("openai".to_string()),
-                model: None,
-                thinking_tokens: None,
-                reasoning_effort: Some("high".to_string()),
+                options: "".to_string(), // Changed back from None
+                provider: "openai".to_string(),
+                model: "".to_string(),
+                reasoning_effort: "high".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--reasoning-effort".to_string()));
             let effort_index = cmd_args.iter().position(|arg| arg == "--reasoning-effort").unwrap();
@@ -499,13 +556,11 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
-                provider: Some("openai".to_string()),
-                model: None,
-                thinking_tokens: None,
-                reasoning_effort: Some("invalid_effort".to_string()),
+                options: "".to_string(), // Changed back from None
+                provider: "openai".to_string(),
+                model: "".to_string(),
+                reasoning_effort: "invalid_effort".to_string(),
             };
-            
             let cmd_args = executor.build_command_args(&params);
             assert!(cmd_args.contains(&"--reasoning-effort".to_string()));
             let effort_index = cmd_args.iter().position(|arg| arg == "--reasoning-effort").unwrap();
@@ -515,16 +570,41 @@ mod tests {
             let params = AiderParams {
                 directory: temp_dir.clone(),
                 message: "Test message".to_string(),
-                options: vec![],
-                provider: Some("anthropic".to_string()),
-                model: None,
-                thinking_tokens: None,
-                reasoning_effort: Some("high".to_string()),
+                options: "".to_string(), // Changed back from None
+                provider: "anthropic".to_string(),
+                model: "".to_string(),
+                reasoning_effort: "high".to_string(),
             };
-            
+            let cmd_args = executor.build_command_args(&params);
+            assert!(!cmd_args.contains(&"--reasoning-effort".to_string()));
+
+            // Test reasoning_effort with Gemini - should be ignored
+            let params = AiderParams {
+                directory: temp_dir.clone(),
+                message: "Test message".to_string(),
+                options: "".to_string(), // Changed back from None
+                provider: "gemini".to_string(),
+                model: "".to_string(),
+                reasoning_effort: "high".to_string(),
+            };
             let cmd_args = executor.build_command_args(&params);
             assert!(!cmd_args.contains(&"--reasoning-effort".to_string()));
             
+            // Handle cleanup gracefully
+            let _ = fs::remove_dir_all(temp_dir).await;
+        });
+    }
+
+    // Test thinking_tokens validation
+    #[test]
+    fn test_thinking_tokens_validation() {
+        let rt = Runtime::new().unwrap();
+        
+        rt.block_on(async {
+            let temp_dir = create_temp_dir().await.unwrap();
+            let executor = AiderExecutor::new();
+            
+            // Test thinking_tokens validation is removed
             // Handle cleanup gracefully
             let _ = fs::remove_dir_all(temp_dir).await;
         });

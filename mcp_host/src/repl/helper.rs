@@ -5,7 +5,8 @@ use rustyline::validate::Validator;
 use rustyline::Context;
 use std::borrow::Cow;
 
-use shared_protocol_objects::ToolInfo; // Import ToolInfo
+// Use rmcp's Tool type directly
+use rmcp::model::Tool as ToolInfo; // Keep alias for clarity in this file
 
 /// Helper for rustyline with command completion
 pub struct ReplHelper {
@@ -57,6 +58,11 @@ impl ReplHelper {
                 "save_config".to_string(),
                 "reload_config".to_string(),
                 "show_config".to_string(),
+                "verify".to_string(),
+                "save_chat".to_string(), // Added
+                "load_chat".to_string(), // Added
+                "new_chat".to_string(), // Added
+                "compact".to_string(), // Added compact command (chat mode only)
                 "exit".to_string(),
                 "quit".to_string(),
             ],
@@ -126,7 +132,8 @@ impl Completer for ReplHelper {
                 // Complete tool names for 'call' command using current_tools
                 let matches: Vec<Pair> = self.current_tools.iter()
                     .filter(|tool| tool.name.starts_with(word))
-                    .map(|tool| Pair { display: tool.name.clone(), replacement: tool.name.clone() })
+                    // Convert Cow to String for Pair
+                    .map(|tool| Pair { display: tool.name.to_string(), replacement: tool.name.to_string() }) // Already correct
                     .collect();
                 return Ok((start, matches));
             } else if command == "provider" {
@@ -142,6 +149,13 @@ impl Completer for ReplHelper {
                      .map(|name| Pair { display: name.clone(), replacement: name.clone() })
                      .collect();
                  return Ok((start, matches));
+            } else if command == "verify" { // Add completion for verify arguments
+                let options = ["on", "off"];
+                let matches: Vec<Pair> = options.iter()
+                    .filter(|opt| opt.starts_with(word))
+                    .map(|opt| Pair { display: (*opt).to_string(), replacement: (*opt).to_string() })
+                    .collect();
+                return Ok((start, matches));
             }
         } else if line_parts.len() == 3 && line_parts[0] == "call" {
              // Complete server names after the tool name for 'call' command
@@ -184,6 +198,10 @@ impl Hinter for ReplHelper {
             "edit_server" if line_parts.len() == 1 => Some(" <server_name>".to_string()),
             "remove_server" if line_parts.len() == 1 => Some(" <server_name>".to_string()),
             "show_config" if line_parts.len() == 1 => Some(" [server_name]".to_string()),
+            "verify" if line_parts.len() == 1 => Some(" [on|off]".to_string()),
+            "save_chat" if line_parts.len() == 1 => Some(" [filename]".to_string()), // Added hint
+            "load_chat" if line_parts.len() == 1 => Some(" <filename>".to_string()), // Added hint
+            // "new_chat" needs no arguments
             _ => None,
         }
     }

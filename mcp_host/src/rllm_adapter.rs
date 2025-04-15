@@ -1,12 +1,19 @@
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use rmcp::model::Role;
+// Import LLMError for detailed error matching
+use rllm::error::LLMError;
+use tracing::info;
 use crate::ai_client::{AIClient, AIRequestBuilder, GenerationConfig, ModelCapabilities};
 use serde_json::Value;
-use shared_protocol_objects::Role;
+// Use the local Role definition from repl/mod.rs
 use rllm::builder::{LLMBackend, LLMBuilder};
-use rllm::chat::{ChatMessage, ChatRole, MessageType};
+// Import necessary types from rllm::chat
+use rllm::chat::{ChatMessage, ChatRole, MessageType}; // Removed ChatContent, ContentPart
 use std::path::Path;
 use log;
+use regex::Regex;
+use once_cell::sync::Lazy; // For static regex compilation
 
 /// Client adapter for the rllm crate to interface with the MCP system
 pub struct RLLMClient {
@@ -114,19 +121,15 @@ impl RLLMClient {
         }
     }
 
-    /// Convert MCP Role to rllm's ChatRole
-    fn convert_role(role: &Role) -> ChatRole {
-        match role {
-            Role::User => ChatRole::User,
-            Role::Assistant => ChatRole::Assistant,
-            Role::System => {
-                // System role doesn't exist in this version of rllm::ChatRole, use User role as fallback
-                log::warn!("Mapping Role::System to rllm::ChatRole::User as ChatRole::System is unavailable.");
-                ChatRole::User
-            }
-        }
-    }
+    // Removed unused convert_role function
 }
+
+// Static Regex for extracting text from GoogleChatResponse string format
+// Looks for `text: "` followed by the captured group `(.*?)` until the next `"`
+static GOOGLE_TEXT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"text:\s*"(.*?)""#).expect("Invalid Google Text Regex")
+});
+
 
 // Implement Debug
 impl std::fmt::Debug for RLLMClient {
@@ -147,10 +150,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for Google Gemini provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Google Gemini API key not provided (GEMINI_API_KEY)"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
-                .filter(|s| !s.is_empty()) // Ensure model is not empty string
-                .unwrap_or("gemini-1.5-flash"); // Default Gemini model
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'google/gemini'"))?;
             // Use new_with_base_url, passing None for base_url
             let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::Google, None)?;
             Ok(Box::new(client))
@@ -158,10 +161,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
         "anthropic" => {
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Anthropic API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("claude-3-haiku-20240307"); // Default Anthropic model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'anthropic'"))?;
 
             log::info!("Using RLLM adapter for Anthropic provider");
             // Explicitly set the base URL for Anthropic
@@ -176,10 +179,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
         "openai" => {
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("OpenAI API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("gpt-4o-mini"); // Default OpenAI model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'openai'"))?;
 
             log::info!("Using RLLM adapter for OpenAI provider");
             // Use new_with_base_url, passing None for base_url
@@ -192,10 +195,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             let base_url = config["endpoint"].as_str()
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string()); // Store as Option<String>
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("llama3"); // Default Ollama model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'ollama'"))?;
 
             // Ollama doesn't typically require an API key, pass an empty string
             // Use new_with_base_url, passing the optional base_url
@@ -206,10 +209,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for DeepSeek provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("DeepSeek API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("deepseek-chat"); // Default DeepSeek model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'deepseek'"))?;
 
             // Use new_with_base_url, passing None for base_url
             let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::DeepSeek, None)?;
@@ -219,10 +222,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for XAI/Grok provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("XAI API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("grok-1"); // Default XAI model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'xai'"))?;
 
             // Use new_with_base_url, passing None for base_url
             let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::XAI, None)?;
@@ -232,10 +235,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for Phind provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Phind API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("Phind-70B"); // Default Phind model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'phind'"))?;
 
             // Use new_with_base_url, passing None for base_url
             let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::Phind, None)?;
@@ -245,10 +248,10 @@ pub fn create_rllm_client_for_provider(provider: &str, config: Value) -> Result<
             log::info!("Using RLLM adapter for Groq provider");
             let api_key = config["api_key"].as_str()
                 .ok_or_else(|| anyhow!("Groq API key not provided"))?;
-            // Use provider default if model is missing or empty
+            // Model name MUST be provided by the caller now
             let model = config["model"].as_str()
                 .filter(|s| !s.is_empty())
-                .unwrap_or("llama3-8b-8192"); // Default Groq model
+                 .ok_or_else(|| anyhow!("Model name missing or empty in config for provider 'groq'"))?;
 
             // Use new_with_base_url, passing None for base_url
             let client = RLLMClient::new_with_base_url(api_key.to_string(), model.to_string(), LLMBackend::Groq, None)?;
@@ -498,13 +501,16 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             }
         }
         
-        // Store the image path in a special format that will be handled during execution
+        // TODO: Implement proper image path handling. This requires reading the file,
+        // potentially base64 encoding it, checking model capabilities, and using
+        // MessageType::Image. For now, store as a special text message.
         let mut msgs = self.messages.clone();
-        msgs.push((Role::User, text));
+        msgs.push((Role::User, text)); // Add the text part
+        // Add the image path as a separate placeholder message
         msgs.push((Role::User, format!("__IMAGE_PATH__:{}", image_path.display())));
-        
+
         let mut builder = (*self).clone();
-        builder.messages = msgs;
+        builder.messages = msgs; // Update messages in the cloned builder
         Ok(Box::new(builder))
     }
 
@@ -531,15 +537,16 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             log::warn!("Image URL doesn't have a common image extension (.jpg, .png, etc). Some models may reject it.");
         }
         
-        // Store messages with the image URL in a special format
-        let mut msgs = self.messages.clone();
-        msgs.push((Role::User, text));
-        
-        // Store the image URL in a special format
+        // TODO: Implement proper image URL handling. This requires checking model
+        // capabilities and potentially using MessageType::Image(url).
+        // For now, store as a special text message.
+        let mut msgs = self.messages.clone(); // Keep only this declaration
+        msgs.push((Role::User, text)); // Add the text part
+        // Add the image URL as a separate placeholder message
         msgs.push((Role::User, format!("__IMAGE_URL__:{}", image_url)));
-        
+
         let mut builder = (*self).clone();
-        builder.messages = msgs;
+        builder.messages = msgs; // Update messages in the cloned builder
         Box::new(builder)
     }
 
@@ -583,10 +590,15 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             builder = builder.max_tokens(50000);
        }
 
-        // System message is now handled by injecting into the message list below
-        // if let Some(sys) = &self.system {
-        //     builder = builder.system(sys);
-        // }
+        // --- Apply System Prompt using Builder ---
+        if !self.system_prompt.is_empty() {
+            log::debug!("Applying system prompt via LLMBuilder: '{}...'", self.system_prompt.chars().take(50).collect::<String>());
+            builder = builder.system(&self.system_prompt);
+        } else {
+            log::debug!("No system prompt to apply via LLMBuilder.");
+        }
+        // --- End System Prompt ---
+
         // Build the client
         let llm = match builder.build() {
             Ok(provider) => provider,
@@ -597,73 +609,64 @@ impl AIRequestBuilder for RLLMRequestBuilder {
             }
         };
 
-        // Build the chat messages
+        // Build the chat messages for the rllm library
         let mut chat_messages = Vec::new();
         let mut _has_image = false; // Keep track if images are involved
-        let mut image_text = String::new(); // Buffer for text associated with an image
 
-        // --- REMOVED Manual System Prompt Injection ---
-        // The system prompt should now be the first message in self.messages from ConversationState
+        // --- System Prompt is handled by the builder now ---
 
-        for (i, (role, content)) in self.messages.iter().enumerate() {
-            // Check for special image markers
-            if content.starts_with("__IMAGE_PATH__:") || content.starts_with("__IMAGE_URL__:") {
-                _has_image = true; // Mark that an image is present
-                
-                // If previous message was the image text, skip adding it separately
-                if i > 0 && self.messages[i-1].0 == Role::User && !image_text.is_empty() {
-                    continue;
-                }
-                
-                // Otherwise, add the image reference with the content
-                let marker_type = if content.starts_with("__IMAGE_PATH__:") { "path" } else { "URL" };
-                let path_or_url = if content.starts_with("__IMAGE_PATH__:") {
-                    content.strip_prefix("__IMAGE_PATH__:").unwrap_or("")
-                } else {
-                    content.strip_prefix("__IMAGE_URL__:").unwrap_or("")
-                };
-                
-                log::debug!("Adding image {} as text in message: {}", marker_type, path_or_url);
-                
-                // Add a user message that includes the image reference as text
-                chat_messages.push(ChatMessage {
-                    role: ChatRole::User,
-                    content: format!("{}\n[Image {}: {}]", image_text, marker_type, path_or_url).into(),
-                    message_type: MessageType::Text,
-                });
-                
-                // Reset image text for next image
-                image_text = String::new();
-                continue;
+        // --- Process User/Assistant Messages ---
+        // Skip the first message if a system prompt was set via the builder
+        let messages_to_add = if !self.system_prompt.is_empty() && !self.messages.is_empty() {
+            // Check if the first message content actually matches the system prompt
+            // This is a safety check in case the state management changes
+            if self.messages[0].1 == self.system_prompt {
+                 log::debug!("Skipping first message in adapter loop as it matches the system prompt.");
+                 self.messages.iter().skip(1)
+            } else {
+                 log::warn!("System prompt set, but first message content doesn't match. Adding all messages.");
+                 self.messages.iter().skip(0) // Add all if mismatch
             }
-            
-            // Handle regular messages
-            if *role == Role::User && i + 1 < self.messages.len() {
-                // Check if this message is followed by an image marker
-                let next_content = &self.messages[i + 1].1;
-                if next_content.starts_with("__IMAGE_PATH__:") || next_content.starts_with("__IMAGE_URL__:") {
-                    // This text belongs with the image
-                    image_text = content.clone();
-                    continue; // Skip adding this text message now, it will be added with the image
-                }
-            }
+        } else {
+            self.messages.iter().skip(0) // Add all messages if no system prompt was set
+        };
 
-            // Regular message (including System messages from state)
-            let chat_role = RLLMClient::convert_role(role);
-            log::debug!("Adding message with role {:?}", chat_role);
+        for (role, content) in messages_to_add {
+            let (rllm_role, message_type) = match role {
+                Role::User => {
+                    // Determine message type based on content prefix
+                    if content.starts_with("__IMAGE_PATH__:") {
+                        // TODO: Implement proper image path handling (read file, base64 encode, use MessageType::Image)
+                        log::warn!("Image path handling not fully implemented. Sending as text.");
+                        (ChatRole::User, MessageType::Text)
+                    } else if content.starts_with("__IMAGE_URL__:") {
+                        // TODO: Check model capabilities and use MessageType::Image(url) if supported.
+                        log::warn!("Image URL handling not fully implemented. Sending as text.");
+                        (ChatRole::User, MessageType::Text)
+                    } else {
+                        (ChatRole::User, MessageType::Text)
+                    }
+                }
+                Role::Assistant => (ChatRole::Assistant, MessageType::Text),
+                // System role is handled by the builder
+            };
+
+            log::debug!("Adding message: Role={:?}, Type={:?}, Content='{}...'",
+                       rllm_role, message_type, content.chars().take(50).collect::<String>());
+
             chat_messages.push(ChatMessage {
-                role: chat_role,
-                content: content.clone().into(), // Use into() for potential future content types
-                message_type: MessageType::Text, // Assuming Text for now
+                role: rllm_role,
+                content: content.clone(), // Content is now just a String
+                message_type, // Add the required message_type field
+                // name: None, // Removed: Field not found in rllm::chat::ChatMessage
             });
         }
 
-        // --- Log the final messages being sent (Manual Formatting) ---
-        log::debug!("Final RLLM Chat Messages Payload:");
+        // --- Log the final messages being sent (using rllm Debug) ---
+        log::debug!("Final RLLM ChatMessages Payload ({} messages):", chat_messages.len());
         for msg in &chat_messages {
-            // Access the content string directly and take a preview
             let content_preview = msg.content.lines().next().unwrap_or("").chars().take(100).collect::<String>();
-            log::debug!("  - Role: {:?}, Content Preview: '{}...'", msg.role, content_preview);
+            log::debug!("  - Role: {:?}, Type: {:?}, Content Preview: '{}...'", msg.role, msg.message_type, content_preview);
         }
         // --- End Logging ---
 
@@ -679,42 +682,47 @@ impl AIRequestBuilder for RLLMRequestBuilder {
 
         // Chat with the LLM
         match llm.chat(&chat_messages).await {
-            Ok(response) => {
+            Ok(response_box) => {
                 let elapsed = start_time.elapsed();
-                // Extract the primary text content from the response
-                // Assuming the response object has a method or field like `text()` or `content()`
-                // Adjust based on the actual structure of rllm::chat::ChatResponse
-                let response_str = response.text() // Assuming this method exists
-                    .unwrap_or_else(|| {
-                        log::warn!("Response text extraction failed, falling back to full response.");
-                        response.to_string() // Fallback to the full string representation
-                    });
-                
-                // choices.get(0) // Get the first choice
-                //     .and_then(|choice| choice.message.content.clone()) // Get the message content
+                // Convert the Box<dyn ChatResponse> to a String using Display trait
+                info!("time elapsed: {:.2}s", elapsed.as_secs_f64());
+                Ok(response_box.text().unwrap())
+
+                // Removed old extraction logic:
+                // choices.get(0)
+                //     .and_then(|choice| choice.message.content.clone())
                 //     .unwrap_or_else(|| {
                 //         log::warn!("Could not extract primary text from RLLM response, falling back to full string representation.");
                 //         response.to_string() // Fallback to the full string representation if extraction fails
                 //     });
 
-                log::info!(
-                    "RLLM request completed in {:.2}s, received {} characters",
-                    elapsed.as_secs_f64(),
-                    response_str.len()
-                );
-                Ok(response_str)
             },
             Err(e) => {
                 let elapsed = start_time.elapsed();
-                // Log the detailed error from rllm crate
-                log::error!("Underlying RLLM chat error: {:?}", e);
-                let error_msg = format!(
+                // Log more detailed error information
+                log::error!("RLLM chat request failed after {:.2}s.", elapsed.as_secs_f64());
+                log::error!("Underlying RLLM Error (Debug): {:?}", e); // Log Debug representation
+                log::error!("Underlying RLLM Error (Display): {}", e); // Log Display representation
+
+                // Extract more details if it's an HttpError
+                let detailed_error_msg = if let LLMError::HttpError(http_err_str) = &e {
+                    // The HttpError variant often contains the response body or more specific details
+                    format!("HTTP Error Details: {}", http_err_str)
+                } else {
+                    // For other error types, just use the standard display format
+                    format!("Error: {}", e)
+                };
+
+                log::error!("Formatted Error for Reporting: {}", detailed_error_msg);
+
+                // Construct the final error message for anyhow, including the detailed info if available
+                let final_error_msg = format!(
                     "RLLM chat request failed after {:.2}s: {}",
                     elapsed.as_secs_f64(),
-                    e // Keep the original error message for the final anyhow error
+                    detailed_error_msg // Use the potentially more detailed message
                 );
-                log::error!("{}", error_msg); // Log the formatted message too
-                Err(anyhow!(error_msg))
+
+                Err(anyhow!(final_error_msg)) // Return the final error
             }
         }
     }

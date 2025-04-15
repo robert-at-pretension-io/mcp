@@ -1,6 +1,6 @@
 pub mod server_manager;
 pub mod config;
-pub mod protocol;
+// pub mod protocol; // Removed unused module
 pub mod error;
 
 use std::sync::Arc;
@@ -12,19 +12,20 @@ use std::time::Duration; // Re-add Duration import
 
 // Removed duplicate imports below
 use anyhow::{anyhow}; // Keep anyhow, remove duplicate Result
-use log::{debug, error, info, warn}; // Added debug, warn
+use log::{debug, error, info, warn};
 use server_manager::ManagedServer;
-use shared_protocol_objects::Implementation;
-// Removed duplicate HashMap
-// Removed unused Arc, Duration, Mutex
-// Removed duplicate Arc, Duration, Mutex below
-    
+use rmcp::model::Implementation as RmcpImplementation; // Alias Implementation
+use rmcp::model::Tool as RmcpTool; // Alias Tool
+use std::sync::Arc as StdArc; // Add alias import
+
 use crate::ai_client::{AIClient, AIClientFactory};
-use crate::host::config::{AIProviderConfig, Config as HostConfig, ProviderModelsConfig}; // Added ProviderModelsConfig
+// Import the tool prompt generator
+use crate::conversation_service::generate_tool_system_prompt;
+use crate::host::config::{AIProviderConfig, Config as HostConfig, ProviderModelsConfig}; // Removed unused ServerConfig
 use std::path::PathBuf;
 pub struct MCPHost {
     pub servers: Arc<Mutex<HashMap<String, ManagedServer>>>,
-    pub client_info: Implementation,
+    pub client_info: RmcpImplementation, // Use aliased type
     pub request_timeout: Duration,
     pub config: Arc<Mutex<HostConfig>>, // Store the whole config
     pub config_path: Arc<Mutex<Option<PathBuf>>>, // Store the config path
@@ -39,7 +40,7 @@ impl Clone for MCPHost {
     fn clone(&self) -> Self {
         Self {
             servers: Arc::clone(&self.servers),
-            client_info: self.client_info.clone(),
+            client_info: self.client_info.clone(), // Use aliased type
             request_timeout: self.request_timeout,
             config: Arc::clone(&self.config), // Clone Arc for config
             config_path: Arc::clone(&self.config_path), // Clone Arc for path
@@ -62,10 +63,7 @@ impl MCPHost {
         MCPHostBuilder::new().build().await
     }
 
-    /// Load configuration from a file
-    pub async fn load_config(&self, config_path: &str) -> Result<()> {
-        self.server_manager().load_config(config_path).await
-    }
+    // Removed load_config method. Use reload_host_config or apply_config.
 
     /// Apply a new configuration, starting/stopping servers as needed.
     pub async fn apply_config(&self, new_config: HostConfig) -> Result<()> {
@@ -271,14 +269,15 @@ impl MCPHost {
     /// Get a reference to the server manager
     fn server_manager(&self) -> server_manager::ServerManager {
         server_manager::ServerManager::new(
-            Arc::clone(&self.servers),
-            self.client_info.clone(),
+            StdArc::clone(&self.servers), // Use aliased Arc
+            self.client_info.clone(), // Use aliased type
             self.request_timeout,
         )
     }
 
     /// List the tools available on a server
-    pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<shared_protocol_objects::ToolInfo>> {
+    // Update return type to use rmcp::model::Tool
+    pub async fn list_server_tools(&self, server_name: &str) -> Result<Vec<RmcpTool>> { // Use aliased type
         self.server_manager().list_server_tools(server_name).await
     }
 
@@ -287,43 +286,60 @@ impl MCPHost {
         self.server_manager().call_tool(server_name, tool_name, args).await
     }
 
-    /// Start a server with the given command
-    pub async fn start_server(&self, name: &str, command: &str, args: &[String]) -> Result<()> {
-        self.server_manager().start_server(name, command, args).await
+    /// Start a server using a command string and optional extra arguments.
+    /// This is a convenience wrapper. For more control (e.g., environment variables),
+    /// modify the configuration and use `apply_config` or `reload_host_config`.
+    pub async fn start_server(&self, name: &str, command: &str, extra_args: &[String]) -> Result<()> {
+        self.server_manager().start_server(name, command, extra_args).await
     }
 
-    /// Stop a server
+    /// Stop a server by name.
     pub async fn stop_server(&self, name: &str) -> Result<()> {
         self.server_manager().stop_server(name).await
     }
 
     /// List tools from all currently running servers, removing duplicates by name.
-    pub async fn list_all_tools(&self) -> Result<Vec<shared_protocol_objects::ToolInfo>> {
+    // Update return type to use rmcp::model::Tool
+    pub async fn list_all_tools(&self) -> Result<Vec<RmcpTool>> { // Use aliased type
         info!("Listing tools from all active servers...");
-        let mut all_tools = HashMap::new(); // Use HashMap to deduplicate by name
-        let server_names = { // Scope lock
-            let servers_guard = self.servers.lock().await;
-            servers_guard.keys().cloned().collect::<Vec<_>>()
-        }; // Lock released
+        let mut all_tools_map = HashMap::new(); // Use HashMap to deduplicate by name
 
-        for server_name in server_names {
-            match self.list_server_tools(&server_name).await {
-                Ok(tools) => {
+        // --- Step 1: Collect Peers ---
+        let peers_to_query: Vec<(String, rmcp::service::Peer<rmcp::service::RoleClient>)> = {
+            let servers_guard = self.servers.lock().await;
+            servers_guard.iter()
+                .map(|(name, server)| (name.clone(), server.client.clone())) // Clone the Peer directly
+                .collect()
+        }; // Lock released here
+        debug!("Collected {} peers to query.", peers_to_query.len());
+
+        // --- Step 2: Query Peers Concurrently (or sequentially) ---
+        // Using sequential iteration for simplicity first. Can optimize with futures::join_all later if needed.
+        for (server_name, peer) in peers_to_query {
+            debug!("Querying tools for server '{}'...", server_name);
+            // Directly call list_tools on the cloned Peer
+            match peer.list_tools(None).await {
+                Ok(list_tools_result) => {
+                    let tools = list_tools_result.tools;
                     debug!("Found {} tools on server '{}'", tools.len(), server_name);
                     for tool in tools {
                         // Insert into HashMap, replacing duplicates (last one wins if names collide)
-                        all_tools.insert(tool.name.clone(), tool);
+                        all_tools_map.insert(tool.name.clone(), tool);
                     }
                 }
                 Err(e) => {
+                    // Log error using server_name obtained during peer collection
                     warn!("Failed to list tools for server '{}': {}. Skipping.", server_name, e);
                 }
             }
         }
-        let unique_tools: Vec<_> = all_tools.into_values().collect();
+
+        // --- Step 3: Collect Unique Tools ---
+        let unique_tools: Vec<_> = all_tools_map.into_values().collect();
         info!("Found {} unique tools across all servers.", unique_tools.len());
         Ok(unique_tools)
     }
+
 
     /// Find the name of the server that provides a specific tool.
     pub async fn get_server_for_tool(&self, tool_name: &str) -> Result<String> {
@@ -356,14 +372,14 @@ impl MCPHost {
     /// Enter chat mode with a specific server
     pub async fn enter_chat_mode(&self, server_name: &str) -> Result<crate::conversation_state::ConversationState> {
         info!("Entering single-server chat mode for '{}'", server_name);
-        // Fetch tools from the specific server
+        // Fetch tools from the specific server (already returns Vec<rmcp::model::Tool>)
         let tool_info_list = self.list_server_tools(server_name).await?;
 
         // Convert our tool list to a JSON structure - we'll use this for debugging
         let _tools_json: Vec<serde_json::Value> = tool_info_list.iter().map(|t| {
             serde_json::json!({
                 "name": t.name,
-                "description": t.description.as_ref().unwrap_or(&"".to_string()),
+                "description": t.description.parse::<String>().unwrap_or("".to_string()),
                 "inputSchema": t.input_schema
             })
         }).collect();
@@ -371,27 +387,31 @@ impl MCPHost {
         // Create the tools string first
         let tools_str = tool_info_list.iter().map(|tool| {
             format!(
-                "- {}: {}\ninput schema: {:?}",
-                tool.name,
-                tool.description.as_ref().unwrap_or(&"".to_string()),
-                tool.input_schema
+                "- {}: {}\ninput schema: {}", // Use {} for schema display
+                tool.name.as_ref(),
+                // Revert to map().unwrap_or() on the Option<&Cow>
+                tool.description.to_string(),
+                serde_json::to_string_pretty(&tool.input_schema).unwrap_or_else(|_| "{}".to_string()) // Pretty print schema
             )
-        }).collect::<Vec<_>>().join("");
+        }).collect::<Vec<_>>().join("\n"); // Join with newline
 
-        log::debug!("tool_str is {:?}", &tools_str);
+        log::debug!("tool_str is {:?}", &tools_str); // Keep this debug log
 
-        // Generate simplified system prompt
+        // Generate the tool instructions part of the prompt
+        let tool_instructions = generate_tool_system_prompt(&tool_info_list);
+
+        // Combine base prompt with tool instructions
         let system_prompt = format!(
-            "You are a helpful assistant with access to tools. Use tools EXACTLY according to their descriptions.\n\
-            TOOLS:\n{}",
-            tools_str
+            "You are a helpful assistant. You have access to the following tools. Use them when appropriate, following their specified input schema precisely.\n\n{}",
+            tool_instructions
         );
+        log::debug!("Generated full system prompt for single-server chat (length: {})", system_prompt.len());
 
-        // Create the conversation state (no longer needs to be mutable here)
-        let state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list.clone());
+        // Create the conversation state with the full system prompt
+        let state = crate::conversation_state::ConversationState::new(system_prompt, tool_info_list);
 
-        // The ConversationState::new now incorporates the tool prompt generation,
-        // so we don't need to add it separately here.
+        // The ConversationState::new only adds the base system prompt.
+        // The tool instructions might be added later or handled by the AI client builder.
         // The generate_tool_system_prompt function is called within ConversationState::new.
 
         Ok(state)
@@ -400,24 +420,20 @@ impl MCPHost {
     /// Enter chat mode using tools from all available servers.
     pub async fn enter_multi_server_chat_mode(&self) -> Result<crate::conversation_state::ConversationState> {
         info!("Entering multi-server chat mode.");
-        // Fetch tools from all servers
+        // Fetch tools from all servers (already returns Vec<rmcp::model::Tool>)
         let all_tools = self.list_all_tools().await?;
 
-        // Generate system prompt using combined tool list
-        let system_prompt = format!(
-            "You are a helpful assistant with access to tools from multiple servers. Use tools EXACTLY according to their descriptions.\n\
-            TOOLS:\n{}",
-            all_tools.iter().map(|tool| {
-                format!(
-                    "- {}: {}\n  input schema: {:?}",
-                    tool.name,
-                    tool.description.as_ref().unwrap_or(&"".to_string()),
-                    tool.input_schema
-                )
-            }).collect::<Vec<_>>().join("\n")
-        );
+        // Generate the tool instructions part of the prompt using the combined list
+        let tool_instructions = generate_tool_system_prompt(&all_tools);
 
-        // Create the conversation state
+        // Combine base prompt with tool instructions
+        let system_prompt = format!(
+            "You are a helpful assistant. You have access to the following tools from multiple servers. Use them when appropriate, following their specified input schema precisely.\n\n{}",
+            tool_instructions
+        );
+        log::debug!("Generated full system prompt for multi-server chat (length: {})", system_prompt.len());
+
+        // Create the conversation state with the full system prompt
         let state = crate::conversation_state::ConversationState::new(system_prompt, all_tools);
         Ok(state)
     }
@@ -467,17 +483,36 @@ impl MCPHost {
                 .cloned() // Clone the Option<&AIProviderConfig> into Option<AIProviderConfig>
         }; // config lock released here
 
-        // Get the default model using the new logic if config wasn't found
-        let final_provider_config = provider_config.unwrap_or_else(|| { // Use provider_config here
-            warn!("Provider '{}' not found in main config, determining default model...", provider_name);
-            // Need to acquire provider_models lock here
-            let default_model = { // Scope for provider_models lock
-                let models_guard = futures::executor::block_on(self.provider_models.lock()); // Block briefly for sync access
-                Self::get_default_model_for_provider(provider_name, &models_guard)
-            };
-            debug!("Using determined default model '{}' for provider '{}'", default_model, provider_name);
-            AIProviderConfig { model: default_model }
-        });
+        // Determine the final config, prioritizing main config, then provider_models.toml, then hardcoded defaults
+        let final_provider_config = match provider_config {
+            Some(config) => {
+                debug!("Using provider config found in main config file for '{}'.", provider_name);
+                config // Use the config directly from the main file
+            }
+            None => {
+                warn!("Provider '{}' not found in main config, checking provider_models.toml...", provider_name);
+                // Lock provider_models to get the default
+                let models_guard = self.provider_models.lock().await;
+                let provider_key = provider_name.to_lowercase();
+                let model_from_toml = models_guard.providers
+                    .get(&provider_key)
+                    .and_then(|list| list.models.first()) // Get the first model if list exists
+                    .filter(|s| !s.is_empty()); // Ensure it's not empty
+
+                let determined_model = match model_from_toml {
+                    Some(model) => {
+                        debug!("Using default model '{}' from provider_models.toml for provider '{}'", model, provider_name);
+                        model.clone()
+                    }
+                    None => {
+                        // If not in TOML or list is empty, use the hardcoded fallback logic
+                        warn!("Provider '{}' not found or has no models listed in provider_models.toml. Using hardcoded default.", provider_name);
+                        Self::get_default_model_for_provider(provider_name, &models_guard) // Pass the locked guard
+                    }
+                };
+                AIProviderConfig { model: determined_model }
+            }
+        };
 
         // Try to create the client for this provider using the final config
         match Self::create_ai_client_internal(provider_name, &final_provider_config).await {
@@ -660,7 +695,7 @@ pub struct MCPHostBuilder {
     provider_models_path: Option<PathBuf>, // Added path for provider models config
     // Removed ai_provider_configs and default_ai_provider
     request_timeout: Option<Duration>,
-    client_info: Option<Implementation>,
+    client_info: Option<RmcpImplementation>, // Use aliased type
 }
 
 impl MCPHostBuilder {
@@ -696,16 +731,18 @@ impl MCPHostBuilder {
 
     /// Set the client info
     pub fn client_info(mut self, name: &str, version: &str) -> Self {
-        self.client_info = Some(Implementation {
-            name: name.to_string(),
-            version: version.to_string(),
+        self.client_info = Some(RmcpImplementation { // Use aliased type
+            name: name.to_string().into(), // Convert to Cow<'static, str>
+            version: version.to_string().into(), // Convert to Cow<'static, str>
+            // Add other fields if needed, using Default::default()
+            ..Default::default()
         });
         self
     }
 
     /// Build the MCPHost
     pub async fn build(self) -> Result<MCPHost> {
-        // Determine config path (use default if not specified)
+        // --- Configuration Loading ---
         let config_path = self.config_path.unwrap_or_else(|| {
             let default = dirs::config_dir()
                 .map(|p| p.join("mcp/mcp_host_config.json"))
@@ -739,13 +776,46 @@ impl MCPHostBuilder {
         // Load provider models config
         let provider_models_config = ProviderModelsConfig::load(&provider_models_path).await;
 
+        // --- Client Info ---
+        let client_info = self.client_info.unwrap_or_else(|| RmcpImplementation { // Use aliased type
+            name: "mcp-host".to_string().into(), // Convert to Cow
+            version: env!("CARGO_PKG_VERSION").to_string().into(), // Convert to Cow
+            ..Default::default()
+        });
 
-        // Determine initial AI provider based on loaded/default config
+        // --- Timeouts ---
+        let request_timeout = self.request_timeout.unwrap_or(Duration::from_secs(120));
+
+        // --- Initialize Core Host Structure (without servers started yet) ---
+        let host_servers_map = StdArc::new(Mutex::new(HashMap::new()));
+        let host = MCPHost {
+            servers: StdArc::clone(&host_servers_map),
+            client_info: client_info.clone(), // Clone for the host instance
+            request_timeout,
+            config: StdArc::new(Mutex::new(initial_config.clone())), // Store loaded config
+            config_path: StdArc::new(Mutex::new(Some(config_path))),
+            provider_models: StdArc::new(Mutex::new(provider_models_config.clone())), // Store loaded models
+            provider_models_path: StdArc::new(Mutex::new(provider_models_path)),
+            active_provider_name: StdArc::new(Mutex::new(None)), // Start with no active provider name
+            ai_client: StdArc::new(Mutex::new(None)), // Start with no active client
+        };
+
+        // --- Start Initial Servers Defined in Config ---
+        // --- Start Initial Servers Defined in Config ---
+        // We need to call start_server_with_components directly on the host instance
+        // after it's fully constructed but before returning it.
+        // We'll do this after initializing the AI client.
+
+        // --- Determine Initial AI Provider ---
+        // (This logic remains largely the same, but operates on the created host instance's fields)
+
+
+        // --- Determine Initial AI Provider ---
+        // (This logic remains largely the same, but operates on the created host instance's fields)
         let mut initial_ai_client: Option<Arc<dyn AIClient>> = None;
         let mut active_provider_name: Option<String> = None;
-        let default_provider_name = initial_config.default_ai_provider.clone(); // Use loaded default
+        let default_provider_name = initial_config.default_ai_provider.clone();
 
-        // Try setting default provider first
         if let Some(ref name) = default_provider_name {
              if let Some(provider_config) = initial_config.ai_providers.get(name) {
                  match MCPHost::create_ai_client_internal(name, provider_config).await {
@@ -797,23 +867,39 @@ impl MCPHostBuilder {
             warn!("No AI provider could be activated. Check configurations and API key environment variables.");
         }
 
-        let request_timeout = self.request_timeout.unwrap_or(Duration::from_secs(120));
+        // --- Update Host with Initial AI Client ---
+        // (The host struct was already created, now update the AI fields)
+        *host.ai_client.lock().await = initial_ai_client;
+        *host.active_provider_name.lock().await = active_provider_name;
 
-        let client_info = self.client_info.unwrap_or_else(|| Implementation {
-            name: "mcp-host".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-        });
+        // --- Start Initial Servers AFTER Host is Constructed ---
+        // Now that the host object exists, we can call its methods.
+        // We need to clone the initial_config again or access it via host.config
+        let config_for_startup = host.config.lock().await.clone();
+        info!("Starting initial servers from configuration...");
+        let mut servers_started_successfully = 0;
+        for (name, server_config) in &config_for_startup.servers {
+            info!("Attempting initial start for server '{}'", name);
+            let program = &server_config.command;
+            let args = server_config.args.as_deref().unwrap_or(&[]); // Get args slice
+            let envs = &server_config.env;
+            // Call the method on the host instance itself
+            match host.server_manager().start_server_with_components(name, program, args, envs).await {
+                 Ok(_) => {
+                     info!("Successfully started initial server '{}'", name);
+                     servers_started_successfully += 1;
+                 }
+                 Err(e) => {
+                     // Log error but continue trying to start other servers
+                     error!("Failed to start initial server '{}': {}", name, e);
+                 }
+            }
+        }
+         info!("Finished starting initial servers. {} started successfully out of {}.",
+               servers_started_successfully, config_for_startup.servers.len());
 
-        Ok(MCPHost {
-            servers: Arc::new(Mutex::new(HashMap::new())), // Start with empty servers map
-            client_info,
-            request_timeout,
-            config: Arc::new(Mutex::new(initial_config)),
-            config_path: Arc::new(Mutex::new(Some(config_path))),
-            provider_models: Arc::new(Mutex::new(provider_models_config)), // Store loaded models
-            provider_models_path: Arc::new(Mutex::new(provider_models_path)), // Store models path
-            active_provider_name: Arc::new(Mutex::new(active_provider_name)),
-            ai_client: Arc::new(Mutex::new(initial_ai_client)),
-        })
+
+        info!("MCPHost build complete.");
+        Ok(host) // Return the fully initialized host
     }
 }

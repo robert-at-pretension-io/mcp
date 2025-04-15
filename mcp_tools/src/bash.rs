@@ -1,14 +1,21 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema; // Added
 use std::process::Command;
-use serde_json::json;
 
-use shared_protocol_objects::ToolInfo;
+use tracing::{debug, error}; // Added tracing
+// Import specific items from rmcp instead of prelude
+use rmcp::tool;
 
-#[derive(Debug, Serialize, Deserialize)]
+// Removed unused shared_protocol_objects::ToolInfo import
+
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)] // Added JsonSchema
 pub struct BashParams {
+    #[schemars(description = "The bash command to execute")] // Added
     pub command: String,
     #[serde(default = "default_cwd")]
+    #[schemars(description = "The working directory for the command (defaults to current dir)")] // Added
     pub cwd: String,
 }
 
@@ -34,27 +41,7 @@ impl BashExecutor {
         BashExecutor
     }
 
-    pub fn tool_info(&self) -> ToolInfo {
-        ToolInfo {
-            name: "bash".to_string(),
-            description: Some(
-                "Executes bash shell commands on the host system. Use this tool to:
-                
-                1. Run system commands and utilities
-                2. Check file/directory status
-                3. Process text/data with command line tools
-                4. Manage files and directories
-                
-                Important notes:
-                - Always provide the full command including any required flags
-                - Use absolute paths or specify working directory (cwd)
-                - Commands run with the same permissions as the host process
-                - Output is limited to stdout/stderr (no interactive prompts)
-                - Commands run in a non-interactive shell (sh)".to_string()
-            ),
-            input_schema: json!({})
-        }
-    }
+    // Removed tool_info method as it's handled by the SDK macro now
 
     pub async fn execute(&self, params: BashParams) -> Result<BashResult> {
         // Create working directory if it doesn't exist
@@ -63,7 +50,7 @@ impl BashExecutor {
             std::fs::create_dir_all(&cwd)?;
         }
 
-        let output = Command::new("sh")
+        let output = Command::new("bash")
             .arg("-c")
             .arg(&params.command)
             .current_dir(&cwd)
@@ -86,82 +73,47 @@ impl BashExecutor {
     }
 }
 
-pub fn bash_tool_info() -> ToolInfo {
-    ToolInfo {
-        name: BashExecutor::new().tool_info().name,
-        description: BashExecutor::new().tool_info().description,
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The bash command to execute"
-                },
-                "cwd": {
-                    "type": "string",
-                    "description": "The working directory for the command"
-                }
-            },
-            "required": ["command"],
-            "additionalProperties": false
-        }),
+// --- New SDK Implementation ---
+
+#[derive(Debug, Clone)] // Added Clone
+pub struct BashTool;
+
+impl BashTool {
+    // Add a constructor
+    pub fn new() -> Self {
+        Self
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct QuickBashParams {
-    pub cmd: String,
-}
+// Remove the tool_box macro here, as McpToolServer handles registration
+impl BashTool {
+    // Make the method public so McpToolServer can call it
+    #[tool(description = "Executes bash shell commands on the host system. Use this tool to run system commands, check files, process text, manage files/dirs. Runs in a non-interactive `sh` shell.")] // Use description from old info (fixed quotes around sh)
+    pub async fn bash( // Changed to pub async fn
+        &self,
+        #[tool(aggr)] params: BashParams // Automatically aggregates JSON args into BashParams
+    ) -> String { // Return String directly
+        debug!("Executing bash tool with params: {:?}", params);
+        let executor = BashExecutor::new();
 
-pub fn quick_bash_tool_info() -> ToolInfo {
-    ToolInfo {
-        name: "quick_bash".to_string(),
-        description: Some(
-            "Fast shell command tool for simple one-liners. Use this to:
-            
-            1. Run quick system checks (ls, ps, grep, find, etc.)
-            2. View file contents (cat, head, tail, less)
-            3. Create, move, or delete files and directories
-            4. Process text with utilities like grep, sed, awk
-            
-            Advantages over regular bash tool:
-            - Streamlined interface for common commands
-            - Optimized for one-line operations
-            - Focuses on readable command output
-            - Perfect for file system operations and text processing
-            
-            Example commands:
-            - `ls -la /path/to/dir`
-            - `grep -r \"pattern\" /search/path`
-            - `find . -name \"*.txt\" -mtime -7`
-            - `cat file.txt | grep pattern | wc -l`
-            - `du -sh /path/to/dir`
-            
-            Note: Commands run with your current user permissions.".to_string()
-        ),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "cmd": {
-                    "type": "string",
-                    "description": "The shell command to execute"
-                }
-            },
-            "required": ["cmd"],
-            "additionalProperties": false
-        }),
+        // Execute the command and handle the Result explicitly
+        match executor.execute(params).await {
+            Ok(result) => {
+                // Format the success/failure message as before
+                format!(
+                    "Command completed with status {}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                    result.status,
+                    result.stdout,
+                    result.stderr
+                )
+            }
+            Err(e) => {
+                // If the executor itself fails, format the error into the returned string
+                let error_message = format!("Failed to execute bash command: {}", e);
+                error!("BashExecutor failed: {}", error_message); // Log the error
+                // Return the error message as the tool's output string
+                format!("TOOL EXECUTION ERROR: {}", error_message)
+            }
+        }
     }
-}
-
-pub async fn handle_quick_bash(params: QuickBashParams) -> Result<BashResult> {
-    let executor = BashExecutor::new();
-    
-    // Convert the quick bash params to regular bash params
-    let bash_params = BashParams {
-        command: params.cmd,
-        cwd: default_cwd(),  // Always use the current working directory
-    };
-    
-    // Execute the command using the existing executor
-    executor.execute(bash_params).await
 }

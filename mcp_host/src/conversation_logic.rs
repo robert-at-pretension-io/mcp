@@ -1,17 +1,18 @@
 
 // Keep only one set of imports
-use crate::ai_client::AIClient; // Removed unused AIRequestBuilder
+use crate::ai_client::AIClient;
 use crate::conversation_state::ConversationState;
 use crate::host::MCPHost;
-use crate::tool_parser::ToolParser; // Removed unused ToolCall
+use crate::tool_parser::ToolParser;
 use anyhow::{anyhow, Context, Result};
 use console::style;
 use log::{debug, error, info, warn};
-use serde::Deserialize; // Added Deserialize
-use serde_json; // Added serde_json
+use rmcp::model::Role;
+use serde::Deserialize;
+use serde_json;
 use std::sync::Arc;
-use shared_protocol_objects::Role;
-use tokio::sync::mpsc; // Added for logger channel
+// Use the local Role definition consistently
+use tokio::sync::mpsc;
 
 /// Configuration for how the conversation logic should behave.
 #[derive(Clone)] // Removed Debug derive as Sender doesn't implement it
@@ -101,6 +102,7 @@ async fn verify_response(
         .ok_or_else(|| anyhow!("No AI client active for verification"))?;
 
     // Find the index of the last user message
+    // Use the local Role enum
     let last_user_message_index = state.messages.iter().rposition(|m| m.role == Role::User);
 
     // Extract the original user request (the last one found)
@@ -114,12 +116,12 @@ async fn verify_response(
             .iter()
             // .filter(|m| m.role == Role::Assistant) // Keep user feedback messages too
             .map(|msg| {
-                // Format based on role
+                // Format based on role (already using aliased Role)
                 match msg.role {
                     Role::User => crate::conversation_state::format_chat_message(&msg.role, &msg.content),
                     Role::Assistant => crate::conversation_state::format_assistant_response_with_tool_calls(&msg.content),
-                    Role::System => String::new(), // Skip system messages in this sequence
-                } // The match expression is now the return value of the closure
+                    // Removed unreachable pattern
+                }
             })
             .collect::<Vec<String>>()
             .join("\n\n---\n\n"), // Separate messages clearly
@@ -143,9 +145,9 @@ async fn verify_response(
         1. Carefully review the *entire sequence* including user feedback, assistant actions (tool calls/results shown), and the final response.\n\
         2. Compare this sequence against each point in the 'Success Criteria'.\n\
         3. Determine if the *outcome* of the assistant's actions and the final response *fully and accurately* satisfy *all* criteria.\n\
-        4. Output ONLY a valid JSON object with the following structure:\n\
-           `{{\"passes\": boolean, \"feedback\": \"string (provide concise feedback ONLY if passes is false, explaining which criteria failed and why, referencing the assistant's actions/responses if relevant)\"}}`\n\
-        5. Do NOT include any other text, explanations, or markdown formatting.",
+        4. Output ONLY the raw JSON object. Your entire response must start with `{{` and end with `}}`.\n\
+        5. The JSON object must have the following structure: `{{\"passes\": boolean, \"feedback\": \"string (provide concise feedback ONLY if passes is false, explaining which criteria failed and why, referencing the assistant's actions/responses if relevant)\"}}`\n\
+        6. ABSOLUTELY DO NOT include any other text, explanations, apologies, introductory phrases, or markdown formatting like ```json or ```.",
         original_request, criteria, final_actions_and_response_for_verifier // Use the full sequence here
     );
 
@@ -322,12 +324,13 @@ pub async fn resolve_assistant_response(
                 // --- Get Next AI Response After Tools ---
                 log("\n>>> Calling AI again after tool execution...".to_string());
                 debug!("All tools executed for iteration {}. Getting next AI response.", iterations);
-                let mut builder = client.raw_builder(&state.system_prompt);
+                // Get system prompt from state helper method
+                let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
+                let mut builder = client.raw_builder(system_prompt);
 
-                // Add messages from state to the builder
-                for msg in &state.messages {
+                // Add all messages from state. The system prompt is handled by the builder.
+                for msg in state.messages.iter() {
                     match msg.role {
-                        Role::System => {} // System prompt is handled by raw_builder
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
                     }
@@ -359,10 +362,10 @@ pub async fn resolve_assistant_response(
                         state.add_assistant_message(&next_resp);
                         next_resp
                     }
-                    Err(_e) => { // Prefix unused variable with underscore
+                    Err(_e) => { // Prefix unused e with _
                         error!("Detailed error getting next AI response after tools: {:?}", _e);
                         let error_msg = format!("Failed to get AI response after tool execution: {}", _e);
-                        log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg)); // Use error_msg here
+                        log(format!("\n--- Error Getting Next AI Response: {} ---", error_msg));
                         return Err(anyhow!(error_msg));
                     }
                 };
@@ -388,10 +391,13 @@ pub async fn resolve_assistant_response(
                 // Call LLM again for correction
                 log("\n>>> Calling AI again for tool format correction...".to_string());
                 debug!("Calling AI again after invalid tool format detection.");
-                let mut builder = client.raw_builder(&state.system_prompt);
-                for msg in &state.messages {
+                // Get system prompt from state helper method
+                let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
+                let mut builder = client.raw_builder(system_prompt);
+
+                // Add all messages from state. The system prompt is handled by the builder.
+                for msg in state.messages.iter() {
                     match msg.role {
-                        Role::System => {}
                         Role::User => builder = builder.user(msg.content.clone()),
                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
                     }
@@ -475,10 +481,13 @@ pub async fn resolve_assistant_response(
 
                                 log("\n>>> Calling AI again for revision...".to_string());
                                 debug!("Calling AI again after verification failure (feedback as user message).");
-                                let mut builder = client.raw_builder(&state.system_prompt);
-                                for msg in &state.messages {
+                                // Get system prompt from state helper method
+                                let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
+                                let mut builder = client.raw_builder(system_prompt);
+
+                                // Add all messages from state. The system prompt is handled by the builder.
+                                for msg in state.messages.iter() {
                                     match msg.role {
-                                        Role::System => {}
                                         Role::User => builder = builder.user(msg.content.clone()),
                                         Role::Assistant => builder = builder.assistant(msg.content.clone()),
                                     }
@@ -500,8 +509,8 @@ pub async fn resolve_assistant_response(
                                         // Loop continues to re-evaluate the revised response
                                         continue; // Go to next loop iteration
                                     }
-                                    Err(_e) => { // Prefixed unused variable
-                                        error!("Error getting revised AI response after verification failure: {:?}", _e);
+                                    Err(e) => { // Use the error variable (prefixed with _)
+                                        error!("Error getting revised AI response after verification failure: {:?}", e);
                                         warn!("Returning unverified response due to error during revision.");
                                         let outcome = VerificationOutcome {
                                             final_response: current_response, // Return the response *before* the failed revision attempt
@@ -509,8 +518,7 @@ pub async fn resolve_assistant_response(
                                             verification_passed: Some(false),
                                             verification_feedback: feedback_opt,
                                         };
-                                        // Remove duplicate log lines and use _e
-                                        log(format!("\n--- Error During Revision Attempt: {} ---", _e)); 
+                                        log(format!("\n--- Error During Revision Attempt: {} ---", e)); // Use e here
                                         log(format!("Returning previous (failed verification) response:\n```\n{}\n```", outcome.final_response));
                                         return Ok(outcome); // Return the last known response before the error
                                     }
@@ -530,21 +538,20 @@ pub async fn resolve_assistant_response(
                             }
                         }
                     }
-                    Err(_e) => { // Prefix unused variable
+                    Err(e) => { // Use the error variable (prefixed with _)
                         // Verification call itself failed
-                        error!("Error during verification call for server '{}': {}", server_name, _e);
+                        error!("Error during verification call for server '{}': {}", server_name, e);
                         warn!("Returning unverified response due to verification error.");
                         let outcome = VerificationOutcome {
                             final_response: current_response,
                             criteria: Some(criteria.to_string()),
                             verification_passed: None,
-                            verification_feedback: Some(format!("Verification Error: {}", _e)),
+                            verification_feedback: Some(format!("Verification Error: {}", e)), // Use e here
                         };
-                        log(format!("\n--- Verification Call Error: {} ---", _e));
+                        log(format!("\n--- Verification Call Error: {} ---", e)); // Use e here
                         log(format!("Returning unverified response:\n```\n{}\n```", outcome.final_response));
                         return Ok(outcome); // Return the unverified response
                     }
-                    // Removed unreachable Err(_e) pattern here
                 }
             } // End of if/else for tool_calls.is_empty()
         } // End loop
@@ -622,24 +629,28 @@ async fn execute_single_tool_internal(
             debug!("Tool '{}' executed successfully on server '{}'.", tool_name, target_server_name);
             Ok(truncated_output) // Return the truncated output
         }
-        Err(error) => {
-            let error_msg = format!("Error executing tool '{}' on server '{}': {}", tool_name, target_server_name, error);
-            error!("{}", error_msg); // Log the error
+        Err(e) => { // Prefix with underscore: _e
+            // Use `_e` in the format string and log message
+            let error_msg = format!("Error executing tool '{}' on server '{}'", tool_name, target_server_name);
+            error!("{}: {:?}", error_msg, e); // Log the actual error `_e`
 
             // Format error for printing if interactive
             if config.interactive_output {
+                // Use `e` when formatting the error message
                 let formatted_error = format!(
-                    "{} executing tool '{}' on server '{}': {}",
+                    "{} executing tool '{}' on server '{}': {}", // Add placeholder for error details
                     style("Error").red(),
                     style(tool_name).yellow(),
                     style(&target_server_name).green(), // Include server name in error
-                    error // Use the original error for detail
+                    e // Include the error details
                 );
-                println!("\n{}", formatted_error);
+                 // Print the formatted message
+                 println!("\n{}", formatted_error);
             }
             // Return the error message itself as the "result" string to be added to the conversation
             // This allows the AI to potentially react to the tool failure.
-            Ok(error_msg)
+            // Include the error details in the returned message for the AI
+            Ok(format!("{}: {}", error_msg, e)) // Use '_e' here too
         }
     }
 }

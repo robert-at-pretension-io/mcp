@@ -1,12 +1,9 @@
-// Enhanced MCP Host REPL Implementation 
+// Enhanced MCP Host REPL Implementation
 // Merges REPL simplicity with CLI prompt enhancements
-// Keep connections module for tests, will remove later
-#[cfg(test)]
-mod connections;
+// connections module removed as MCPHost handles server management
 mod command;
 mod helper;
-#[cfg(test)]
-mod test_utils;
+
 
 pub use command::CommandProcessor;
 pub use helper::ReplHelper;
@@ -16,30 +13,40 @@ pub use helper::ReplHelper;
 // Import required types
 use anyhow::{anyhow, Result};
 use console::style;
+use rmcp::model::Role;
 use rustyline::error::ReadlineError;
 use rustyline::history::DefaultHistory; // Import History types (Removed unused History trait)
 use rustyline::Editor;
 use std::path::PathBuf;
 // Removed unused import: use std::sync::Arc;
-use tokio::process::Command as TokioCommand; // Renamed to avoid conflict
+// Removed unused import: use tokio::process::Command as TokioCommand;
 // Removed unused import: use tokio::sync::Mutex;
 use tokio::time::Duration;
 
 // Removed unused import: use crate::conversation_service::handle_assistant_response;
 use crate::host::MCPHost;
-use shared_protocol_objects::Role;
-use crate::conversation_logic::generate_verification_criteria; // Import the function
+// Define Role locally if not directly available from rllm 1.1.7
+
+use crate::conversation_logic::{generate_verification_criteria}; // Removed VerificationOutcome import
+use crate::conversation_service::generate_tool_system_prompt; // Import tool prompt generator
+use crate::conversation_state::ConversationState; // Import ConversationState
 
 /// Main REPL implementation with enhanced CLI features
+// Remove lifetime 'a from Repl struct definition
 pub struct Repl {
     editor: Editor<ReplHelper, DefaultHistory>, // Specify History type
+    // Remove lifetime 'a from CommandProcessor field type
     command_processor: CommandProcessor,
     // helper field removed, it's now owned by the Editor
     history_path: PathBuf,
     host: MCPHost, // Store host directly, not Option
-    chat_state: Option<(String, crate::conversation_state::ConversationState)>, // (server_name, state)
+    chat_state: Option<(String, ConversationState)>, // (server_name, state) - Active chat session
+    loaded_conversation: Option<ConversationState>, // Holds state when not actively chatting
+    current_conversation_path: Option<PathBuf>, // Path for save/load
+    verify_responses: bool, // Added flag for verification
 }
 
+// Remove lifetime 'a here
 impl Repl {
     /// Create a new REPL, requires an initialized MCPHost
     pub fn new(host: MCPHost) -> Result<Self> {
@@ -52,20 +59,60 @@ impl Repl {
         let history_path = config_dir.join("history.txt");
 
         // Initialize the editor with the ReplHelper and DefaultHistory types.
-        // ReplHelper::default() will be called internally.
-        let editor = Editor::<ReplHelper, DefaultHistory>::new()?;
+        let mut editor = Editor::<ReplHelper, DefaultHistory>::new()?;
 
-        // Create command processor with the host
-        let command_processor = CommandProcessor::new(host.clone()); // Pass host clone only
+        // Load history early if it exists
+        if history_path.exists() {
+            if let Err(e) = editor.load_history(&history_path) {
+                // Log or print warning, but don't fail creation
+                log::warn!("Failed to load history from {}: {}", history_path.display(), e);
+                // Optionally: println!("{}: Failed to load history: {}", style("Warning").yellow(), e);
+            }
+        }
 
-        Ok(Self {
-            editor, // Repl owns the editor with its helper
-            command_processor,
-            // helper field removed
+        // Create the Repl instance *before* the CommandProcessor
+        // Note: CommandProcessor needs a mutable borrow of Repl, so we create Repl first.
+        // Create command processor simply now
+        let command_processor = CommandProcessor::new(host.clone());
+
+        let repl_instance = Self {
+            editor, // Move editor into the instance
+            command_processor, // Assign the created processor
             history_path,
-            host, // Store the host
-            chat_state: None, // Initialize chat state
-        })
+            host: host.clone(), // Clone host for the Repl instance
+            chat_state: None,
+            loaded_conversation: None,
+            current_conversation_path: None,
+            verify_responses: false,
+        };
+
+        // Remove the problematic assignment and extra creation step that caused borrow errors
+        // let command_processor = CommandProcessor::new(host, &mut repl_instance);
+        // repl_instance.command_processor = command_processor;
+
+        Ok(repl_instance) // Return the fully constructed instance
+
+    }
+
+    /// Sets the path for the current conversation file.
+    pub fn set_current_conversation_path(&mut self, path: Option<PathBuf>) {
+        self.current_conversation_path = path;
+        if let Some(p) = &self.current_conversation_path {
+            log::info!("Current conversation file path set to: {:?}", p);
+        } else {
+            log::info!("Current conversation file path cleared.");
+        }
+    }
+
+    /// Gets the directory where conversations should be stored.
+    pub fn get_conversations_dir(&self) -> Result<PathBuf> { // Make public
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("Could not determine config directory"))?
+            .join("mcp");
+        let conversations_dir = config_dir.join("conversations");
+        // Ensure the directory exists (create if not)
+        std::fs::create_dir_all(&conversations_dir)?;
+        Ok(conversations_dir)
     }
 
     // with_host method removed as host is now required in new()
@@ -116,19 +163,25 @@ impl Repl {
 
             // --- Prompt Generation ---
             let prompt = if let Some((server_context, _)) = &self.chat_state {
-                // Chat mode prompt
+                // --- Active Chat Mode Prompt ---
                 let context_display = if server_context == "*all*" {
                     style("(all servers)").dim().to_string()
                 } else {
                     style(server_context).green().to_string()
                 };
-                log::debug!("Generating chat prompt for context: {}", server_context);
+                log::debug!("Generating active chat prompt for context: {}", server_context);
                 format!("{} {}❯ ", style("Chat").magenta(), context_display)
             } else {
-                // Normal command mode prompt
-                log::debug!("Generating normal command prompt. Current server: {:?}, Provider: {}",
-                            self.command_processor.current_server_name(), provider_part);
-                format!("{} {}❯ ", server_part, ai_info_part)
+                // --- Normal Command Mode Prompt ---
+                let conversation_indicator = if self.loaded_conversation.is_some() {
+                    // Indicate a conversation is loaded but not active
+                    style("[chat loaded]").dim().to_string()
+                } else {
+                    "".to_string()
+                };
+                log::debug!("Generating normal command prompt. Current server: {:?}, Provider: {}, Loaded Conv: {}",
+                            self.command_processor.current_server_name(), provider_part, self.loaded_conversation.is_some());
+                format!("{} {} {}❯ ", server_part, ai_info_part, conversation_indicator).trim_end().to_string() + " " // Ensure space before cursor
             };
 
             // The helper is now part of the editor, no need to set it here.
@@ -140,26 +193,29 @@ impl Repl {
             // --- Handle Readline Result ---
             let line = match readline_result {
                 Ok(l) => l, // Successfully read line
-                Err(ReadlineError::Interrupted) => {
-                    if self.chat_state.is_some() {
-                        log::debug!("Ctrl+C detected in chat mode, exiting chat.");
-                        println!("{}", style("Exiting chat mode (Ctrl+C).").yellow());
-                        self.chat_state = None; // Exit chat mode
+                Err(ReadlineError::Interrupted) => { // Ctrl+C
+                    // Prefix unused server_context with _
+                    if let Some((_server_context, state)) = self.chat_state.take() {
+                        log::debug!("Ctrl+C detected in chat mode, moving state to loaded_conversation.");
+                        println!("\n{}", style("Exited chat input. Conversation loaded. Type 'chat' to resume or '/<command>'. Use 'new_chat' to clear.").yellow());
+                        self.loaded_conversation = Some(state); // Keep the state
+                        // Keep self.current_conversation_path as is
                     } else {
                         log::debug!("Ctrl+C detected in normal mode.");
-                        println!("{}", style("^C").yellow()); // Style ^C
+                        println!("\n{}", style("^C").yellow()); // Style ^C, add newline
                     }
                     continue; // Continue to next REPL iteration
                 }
-                Err(ReadlineError::Eof) => {
-                    if self.chat_state.is_some() {
-                        log::debug!("Ctrl+D detected in chat mode, exiting chat.");
-                        println!("{}", style("Exiting chat mode (Ctrl+D).").yellow());
-                        self.chat_state = None; // Exit chat mode
-                        continue; // Continue to next REPL iteration (now outside chat)
+                Err(ReadlineError::Eof) => { // Ctrl+D
+                    if let Some((_server_context, state)) = self.chat_state.take() {
+                        log::debug!("Ctrl+D detected in chat mode, moving state to loaded_conversation.");
+                        println!("{}", style("\nExited chat input. Conversation loaded. Type 'chat' to resume or '/<command>'. Use 'new_chat' to clear.").yellow());
+                        self.loaded_conversation = Some(state); // Keep the state
+                        // Keep self.current_conversation_path as is
+                        continue; // Continue REPL loop (now outside chat input)
                     } else {
                         log::debug!("Ctrl+D detected in normal mode, exiting REPL.");
-                        println!("{}", style("^D").yellow()); // Style ^D
+                        println!("{}", style("\n^D").yellow()); // Style ^D, add newline
                         break; // Exit REPL
                     }
                 }
@@ -186,36 +242,256 @@ impl Repl {
             }
 
             // --- Process based on State (Chat or Command) ---
-            if let Some((ref server_context, mut state)) = self.chat_state.take() { // Take ownership to modify state
-                // --- In Chat Mode ---
-                log::debug!("Processing input in chat mode for context '{}': '{}'", server_context, line);
+            if let Some((server_context, mut state)) = self.chat_state.take() { // Take ownership to modify state
+                // --- In Active Chat Mode ---
+                log::debug!("Processing input in active chat mode for context '{}': '{}'", server_context, line);
+
+                // Check for chat-specific commands first
                 if line.eq_ignore_ascii_case("exit") || line.eq_ignore_ascii_case("quit") {
-                    println!("{}", style("Exiting chat mode.").yellow());
-                    log::debug!("User requested exit from chat mode.");
-                    // self.chat_state remains None because we took it
+                    println!("{}", style("\nExited chat input. Conversation loaded. Type 'chat' to resume or '/<command>'. Use 'new_chat' to clear.").yellow());
+                    log::debug!("User requested exit from chat mode, moving state to loaded_conversation.");
+                    self.loaded_conversation = Some(state); // Keep the state
+                    // Keep self.current_conversation_path as is
+                } else if line.starts_with('/') {
+                    // --- Process REPL Command While in Chat Mode ---
+                    let command_line = line[1..].trim(); // Remove leading '/'
+                    log::info!("Processing REPL command from within chat: '{}'", command_line);
+                    // Put the state back temporarily so CommandProcessor can potentially access it via arguments
+                    self.chat_state = Some((server_context.clone(), state));
+                    // Process the command, passing mutable state fields instead of self
+                    let process_result = self.command_processor.process(
+                        &mut self.chat_state, // Pass mutable chat_state
+                        &mut self.loaded_conversation, // Pass mutable loaded_conversation
+                        &mut self.current_conversation_path, // Pass mutable path
+                        command_line,
+                        self.verify_responses,
+                        &mut self.editor
+                    ).await;
+                    // Take the state back after processing (it might have been modified by process)
+                    let (server_context, state) = self.chat_state.take().unwrap();
+
+                    match process_result {
+                        Ok((output_string, new_verify_state)) => {
+                            if let Some(new_state) = new_verify_state { self.verify_responses = new_state; }
+                            if output_string == "exit" { // Handle exit command from within chat
+                                log::info!("'exit' command received from within chat, breaking REPL loop.");
+                                self.loaded_conversation = Some(state); // Save state before exiting
+                                break;
+                            }
+                            if !output_string.is_empty() { println!("{}", output_string); }
+                            // Put state back to continue chat
+                            self.chat_state = Some((server_context, state));
+                        }
+                        Err(e) => {
+                            log::error!("Error processing command '{}' from within chat: {}", command_line, e);
+                            println!("{}: {}", style("Error").red().bold(), e);
+                            // Put state back to continue chat despite command error
+                            self.chat_state = Some((server_context, state));
+                        }
+                    }
+                } else if line.eq_ignore_ascii_case("compact") { // Keep compact as a chat-specific keyword for now
+                    // --- Handle Compact Command ---
+                    log::info!("Compact command received in active chat mode.");
+                    println!("{}", style("Compacting conversation history...").dim());
+                    match self.execute_compact_conversation(&server_context, &state).await {
+                        Ok(new_state) => {
+                            println!("{}", style("Conversation compacted successfully.").green());
+                            log::info!("Conversation compacted. New state has {} messages.", new_state.messages.len());
+                            // Put the new compacted state back
+                            self.chat_state = Some((server_context.clone(), new_state));
+                        }
+                        Err(e) => {
+                            log::error!("Error during conversation compaction: {}", e);
+                            println!("{}: {}", style("Compaction Error").red().bold(), e);
+                            // Put the *original* state back into chat_state if compaction fails
+                            self.chat_state = Some((server_context.clone(), state));
+                        }
+                    }
                 } else {
-                    // Execute chat turn logic using the new helper function
-                    // Pass the server_context (which might be "*all*")
-                    match self.execute_chat_turn(server_context, &mut state, line).await {
+                    // --- Normal Chat Turn ---
+                    // Execute chat turn logic using the helper function
+                    match self.execute_chat_turn(&server_context, &mut state, line).await {
                         Ok(_) => {
-                            log::debug!("Chat turn executed successfully for context '{}'. Putting state back.", server_context);
-                            // Put the potentially modified state back
+                            log::debug!("Chat turn executed successfully for context '{}'. Putting state back into chat_state.", server_context);
+                            // Put the potentially modified state back into chat_state
                             self.chat_state = Some((server_context.clone(), state)); // Clone server_context
                         }
                         Err(e) => {
                             log::error!("Error during chat turn for context '{}': {}", server_context, e);
                             println!("{}: {}", style("Chat Error").red().bold(), e);
-                            println!("{}", style("Exiting chat mode due to error.").yellow());
-                            // self.chat_state remains None, exiting chat mode
+                            println!("{}", style("Exiting chat input due to error. Conversation loaded.").yellow());
+                            // Move the potentially modified state to loaded_conversation on error
+                            self.loaded_conversation = Some(state);
+                            // Keep self.current_conversation_path as is
                         }
                     }
                 }
             } else {
-                // --- Not In Chat Mode (Normal Command Processing) ---
+                // --- Not In Active Chat Mode ---
                 log::debug!("Processing input in command mode: '{}'", line);
-                if line.starts_with("chat") {
-                    // --- Enter Chat Mode ---
-                    let parts: Vec<&str> = line.splitn(2, ' ').collect();
+
+                // Check if it's a command or potentially a chat message to resume
+                if line.starts_with('/') || self.command_processor.is_known_command(line) {
+                    // --- Process REPL Command ---
+                    let command_line = if line.starts_with('/') {
+                        line[1..].trim()
+                    } else {
+                        line
+                    };
+                    log::debug!("Processing command: '{}'", command_line);
+                    // Pass the current verification state, the mutable editor, and mutable state fields.
+                    let process_result = self.command_processor.process(
+                        &mut self.chat_state, // Pass mutable chat_state
+                        &mut self.loaded_conversation, // Pass mutable loaded_conversation
+                        &mut self.current_conversation_path, // Pass mutable path
+                        command_line,
+                        self.verify_responses, // Pass current state
+                        &mut self.editor
+                    ).await;
+
+                    // Handle command result
+                    match process_result {
+                        Ok((output_string, new_verify_state)) => {
+                            log::debug!("CommandProcessor result: '{}', New verify state: {:?}", output_string, new_verify_state);
+
+                            // Update verify state if the command changed it
+                            if let Some(new_state) = new_verify_state {
+                                self.verify_responses = new_state;
+                                log::info!("Updated verify_responses to: {}", new_state);
+                            }
+
+                            // Handle exit command
+                            if output_string == "exit" {
+                                log::info!("'exit' command received, breaking REPL loop.");
+                                break; // Exit REPL
+                            }
+                            // Print command output if not empty
+                            if !output_string.is_empty() {
+                                println!("{}", output_string);
+                            }
+                        }
+                        Err(e) => {
+                            // The error is now wrapped in the Result from process
+                            log::error!("Command processing error: {}", e);
+                            println!("{}: {}", style("Error").red().bold(), e);
+                        }
+                    }
+                } else if line.eq_ignore_ascii_case("chat") {
+                    // --- Enter/Resume Chat Mode Command ---
+                    log::debug!("'chat' command received.");
+                    if let Some(state) = self.loaded_conversation.take() {
+                        // --- Resume Loaded Conversation ---
+                        log::info!("Resuming loaded conversation.");
+                        // Determine server context (might need adjustment if loaded state doesn't store it)
+                        // For now, assume multi-server context if loaded without active chat
+                        let server_context = "*all*".to_string(); // Or retrieve from state if stored
+                        let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
+                        let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
+                        println!(
+                            "\n{}",
+                            style(format!(
+                                "Resuming chat using provider '{}' (model: {}).",
+                                style(&active_provider).cyan(),
+                                style(&active_model).green()
+                            )).italic()
+                        );
+                        println!("{}", style("Type '/exit' or press Ctrl+C/D to leave chat input.").dim());
+                        self.chat_state = Some((server_context, state));
+                    } else {
+                        // --- Start New Chat (Multi-server default) ---
+                        log::info!("Starting new multi-server chat session.");
+                        match self.host.enter_multi_server_chat_mode().await {
+                            Ok(mut initial_state) => { // Add mut here
+                                let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
+                                let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
+                                println!(
+                                    "\n{}",
+                                    style(format!(
+                                        "Entering multi-server chat mode using provider '{}' (model: {}). Tools from all servers available.",
+                                        style(&active_provider).cyan(),
+                                        style(&active_model).green()
+                                    )).italic()
+                                );
+                                // Generate and add tool instructions as the first user message
+                                let tool_instructions = generate_tool_system_prompt(&initial_state.tools);
+                                if !initial_state.tools.is_empty() {
+                                    let tool_msg = format!("Okay, I have access to the following tools from all servers:\n{}", tool_instructions);
+                                    initial_state.add_user_message(&tool_msg);
+                                } else {
+                                     let no_tool_msg = "No tools found on any active server.".to_string();
+                                     initial_state.add_user_message(&no_tool_msg);
+                                }
+                                println!("{}", style("Type '/exit' or press Ctrl+C/D to leave chat input.").dim());
+                                log::info!("Successfully entered multi-server chat mode.");
+                                self.chat_state = Some(("*all*".to_string(), initial_state)); // Use special marker
+                                self.current_conversation_path = None; // Clear path for new chat
+                            }
+                            Err(e) => {
+                                log::error!("Failed to enter multi-server chat mode: {}", e);
+                                println!("{}: Error entering multi-server chat mode: {}", style("Error").red().bold(), e);
+                            }
+                        }
+                    }
+                } else if self.loaded_conversation.is_some() {
+                     // --- Implicitly Resume Chat ---
+                     // Treat non-command input as a chat message if a conversation is loaded
+                     log::debug!("Non-command input received while conversation loaded. Resuming chat.");
+                     let state = self.loaded_conversation.take().unwrap(); // Take the loaded state
+                     // Determine server context (default to *all* for now)
+                     let server_context = "*all*".to_string();
+                     println!("{}", style("(Resuming chat...)").dim()); // Indicate resumption
+                     self.chat_state = Some((server_context.clone(), state)); // Put it into active chat_state
+                     // Re-process the line as a chat turn
+                     // Need to re-enter the chat processing logic block for this line
+                     // This is a bit tricky with the current loop structure.
+                     // Let's call execute_chat_turn directly here.
+                     let mut current_state = self.chat_state.take().unwrap().1; // Get the state back
+                     match self.execute_chat_turn(&server_context.clone(), &mut current_state, line).await {
+                         Ok(_) => {
+                             // Put the updated state back into active chat
+                             self.chat_state = Some((server_context, current_state));
+                         }
+                         Err(e) => {
+                             log::error!("Error during implicit chat resumption for context '{}': {}", server_context, e);
+                             println!("{}: {}", style("Chat Error").red().bold(), e);
+                             println!("{}", style("Exiting chat input due to error. Conversation loaded.").yellow());
+                             // Move state to loaded on error
+                             self.loaded_conversation = Some(current_state);
+                         }
+                     }
+
+                } else {
+                    // --- Unknown Command/Input ---
+                    println!("{}: Unknown command or input '{}'. Type '/help' or 'chat'.", style("Error").red(), line);
+                }
+
+
+                // --- Old 'chat' command handling removed from here ---
+                /*
+                // --- Pass self (Repl) to command processor ---
+                // We clone the editor temporarily because process needs mutable access
+                // This is a bit awkward, maybe refactor CommandProcessor later
+                // to not require mutable editor directly for non-interactive commands.
+                // Pass the current verification state and the mutable editor.
+                */
+                // Update the call inside the commented block as well
+                let process_result = self.command_processor.process(
+                    &mut self.chat_state, // Pass mutable chat_state
+                    &mut self.loaded_conversation, // Pass mutable loaded_conversation
+                    &mut self.current_conversation_path, // Pass mutable path
+                    line,
+                    self.verify_responses, // Pass current state
+                    &mut self.editor
+                ).await;
+                // After processing, if the editor state changed (e.g., history),
+                // it's already reflected in self.editor.
+
+                if line.starts_with("chat") && process_result.is_err() && process_result.as_ref().err().map_or(false, |e| e.to_string().contains("Unknown command")) {
+                     // --- Enter Chat Mode (Only if 'chat' wasn't handled as a command itself) ---
+                     // Check the error string directly
+                     // This allows potentially overriding 'chat' with a custom command later if needed.
+                     log::debug!("Processing 'chat' command to enter chat mode.");
+                     let parts: Vec<&str> = line.splitn(2, ' ').collect();
                     let target_server_opt = parts.get(1).map(|s| s.trim()).filter(|s| !s.is_empty());
 
                     if let Some(target_server) = target_server_opt {
@@ -223,7 +499,7 @@ impl Repl {
                         log::info!("'chat' command detected for specific server: '{}'", target_server);
                         log::debug!("Attempting to enter single-server chat mode with '{}'", target_server);
                         match self.host.enter_chat_mode(target_server).await {
-                            Ok(initial_state) => {
+                            Ok(mut initial_state) => { // Add mut here
                                 let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
                                 let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
                                 println!(
@@ -235,6 +511,17 @@ impl Repl {
                                         style(&active_model).green()
                                     )).italic()
                                 );
+                                // Generate and add tool instructions as the first user message
+                                let tool_instructions = generate_tool_system_prompt(&initial_state.tools);
+                                if !initial_state.tools.is_empty() {
+                                    let tool_msg = format!("Okay, I have access to the following tools on server '{}':\n{}", target_server, tool_instructions);
+                                    // REMOVED: println!("{}", style(&tool_msg).dim()); // Print the tool list dimmed
+                                    initial_state.add_user_message(&tool_msg);
+                                } else {
+                                    let no_tool_msg = format!("No tools found on server '{}'.", target_server);
+                                     // REMOVED: println!("{}", style(&no_tool_msg).dim());
+                                     initial_state.add_user_message(&no_tool_msg);
+                                }
                                 println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
                                 log::info!("Successfully entered single-server chat mode with '{}'", target_server);
                                 self.chat_state = Some((target_server.to_string(), initial_state));
@@ -248,7 +535,7 @@ impl Repl {
                         // --- Multi-Server Chat ---
                         log::info!("'chat' command detected with no server specified. Entering multi-server mode.");
                         match self.host.enter_multi_server_chat_mode().await {
-                            Ok(initial_state) => {
+                            Ok(mut initial_state) => { // Add mut here
                                 let active_provider = self.host.get_active_provider_name().await.unwrap_or("none".to_string());
                                 let active_model = self.host.ai_client().await.map(|c| c.model_name()).unwrap_or("?".to_string());
                                 println!(
@@ -259,6 +546,17 @@ impl Repl {
                                         style(&active_model).green()
                                     )).italic()
                                 );
+                                // Generate and add tool instructions as the first user message
+                                let tool_instructions = generate_tool_system_prompt(&initial_state.tools);
+                                if !initial_state.tools.is_empty() {
+                                    let tool_msg = format!("Okay, I have access to the following tools from all servers:\n{}", tool_instructions);
+                                    // REMOVED: println!("{}", style(&tool_msg).dim()); // Print the tool list dimmed
+                                    initial_state.add_user_message(&tool_msg);
+                                } else {
+                                     let no_tool_msg = "No tools found on any active server.".to_string();
+                                     // REMOVED: println!("{}", style(&no_tool_msg).dim());
+                                     initial_state.add_user_message(&no_tool_msg);
+                                }
                                 println!("{}", style("Type 'exit' or 'quit' to leave.").dim());
                                 log::info!("Successfully entered multi-server chat mode.");
                                 self.chat_state = Some(("*all*".to_string(), initial_state)); // Use special marker
@@ -270,20 +568,29 @@ impl Repl {
                         }
                     }
                 } else {
-                    // --- Process other commands ---
-                    log::debug!("Passing non-chat command to CommandProcessor: '{}'", line);
-                    match self.command_processor.process(line, &mut self.editor).await {
-                        Ok(result) => {
-                            log::debug!("CommandProcessor result: '{}'", result);
-                            if result == "exit" {
+                    // --- Process command result (already processed above) ---
+                    match process_result {
+                         Ok((output_string, new_verify_state)) => {
+                             log::debug!("CommandProcessor result: '{}', New verify state: {:?}", output_string, new_verify_state);
+
+                             // Update verify state if the command changed it
+                             if let Some(new_state) = new_verify_state {
+                                 self.verify_responses = new_state;
+                                 log::info!("Updated verify_responses to: {}", new_state);
+                             }
+
+                             // Handle exit command
+                             if output_string == "exit" {
                                 log::info!("'exit' command received, breaking REPL loop.");
                                 break; // Exit REPL
                             }
-                            if !result.is_empty() {
-                                println!("{}", result); // Print command output
+                            // Print command output if not empty
+                            if !output_string.is_empty() {
+                                println!("{}", output_string);
                             }
                         }
                         Err(e) => {
+                            // The error is now wrapped in the Result from process
                             log::error!("Command processing error: {}", e);
                             println!("{}: {}", style("Error").red().bold(), e);
                         }
@@ -365,6 +672,80 @@ impl Repl {
         Ok(())
     }
 
+    /// Compacts the current conversation history using an LLM.
+    async fn execute_compact_conversation(
+        &self,
+        _server_context: &str, // Keep for potential future use, but not needed now
+        state: &ConversationState,
+    ) -> Result<ConversationState> {
+        log::debug!("Executing conversation compaction.");
+
+        // 1. Get AI client
+        let client = self.host.ai_client().await
+            .ok_or_else(|| anyhow!("No AI client is active for compaction."))?;
+        let model_name = client.model_name();
+        log::debug!("Using AI client for model: {}", model_name);
+        println!("{}", style(format!("Using AI model for compaction: {}", model_name)).dim());
+
+        // 2. Format history for summarization prompt
+        let history_string = state.messages.iter()
+            .map(|msg| crate::conversation_state::format_chat_message(&msg.role, &msg.content))
+            .collect::<Vec<String>>()
+            .join("\n\n---\n\n");
+
+        if history_string.is_empty() {
+            return Err(anyhow!("Cannot compact an empty conversation history."));
+        }
+
+        // 3. Define summarization prompt
+        let summarization_prompt = format!(
+            "You are an expert conversation summarizer. Analyze the following conversation history and provide a concise summary. Focus on:\n\
+            - Key user requests and goals.\n\
+            - Important information discovered or generated.\n\
+            - Decisions made.\n\
+            - Final outcomes or current status.\n\
+            - Any critical unresolved questions or next steps mentioned.\n\n\
+            Keep the summary factual and brief, retaining essential context for the conversation to continue.\n\n\
+            Conversation History:\n\
+            ```\n\
+            {}\n\
+            ```\n\n\
+            Concise Summary:",
+            history_string
+        );
+
+        // 4. Call AI for summarization (use raw_builder, no tools needed)
+        // Pass empty system prompt as it's not relevant for summarization itself
+        let summary = crate::repl::with_progress(
+            "Generating summary".to_string(),
+            async {
+                client.raw_builder("")
+                    .user(summarization_prompt)
+                    .execute()
+                    .await
+                    .map_err(|e| anyhow!("Summarization AI request failed: {}", e))
+            }
+        ).await?;
+
+        log::debug!("Received summary (length: {})", summary.len());
+
+        // 5. Create new state with original system prompt and tools
+        // Use the *original* system prompt and tools from the *input* state
+        let mut new_state = ConversationState::new(state.system_prompt.clone(), state.tools.clone());
+
+        // 6. Add summary message to the new state
+        let summary_message = format!(
+            "Conversation history compacted. Key points from previous discussion:\n\n{}",
+            summary.trim()
+        );
+        // Add as an assistant message to indicate it's a system action summary
+        new_state.add_assistant_message(&summary_message);
+        log::debug!("Added summary message to new state.");
+
+        Ok(new_state)
+    }
+
+
     /// Executes one turn of the chat interaction.
     /// Takes user input, calls the AI, and handles the response (including tool calls).
     async fn execute_chat_turn(
@@ -375,37 +756,48 @@ impl Repl {
     ) -> Result<()> {
         log::debug!("Executing chat turn for server '{}'. Original user input: '{}'", server_name, user_input);
 
-        // --- Generate Verification Criteria FIRST ---
-        let criteria_result = generate_verification_criteria(&self.host, user_input).await;
         let mut final_user_input = user_input.to_string();
-        let criteria_for_verification: String; // Store clean criteria for verification step
+        let mut criteria_for_verification = String::new(); // Initialize empty
 
-        match criteria_result {
-            Ok(c) if !c.is_empty() => {
-                log::debug!("Generated criteria:\n{}", c);
-                criteria_for_verification = c.clone(); // Store for later verification
-                // Append criteria to the user input that the LLM will see
-                final_user_input.push_str(&format!(
-                    "\n\n---\n**Note:** Your response will be evaluated against the following criteria:\n{}\n---",
-                    c
-                ));
-                log::debug!("Appended criteria to user input for LLM.");
+        // --- Generate Verification Criteria FIRST (only if enabled) ---
+        if self.verify_responses {
+            println!("{}", style("Generating verification criteria...").dim()); // Inform user
+            let criteria_result = generate_verification_criteria(&self.host, user_input).await;
+
+            match criteria_result {
+                Ok(c) if !c.is_empty() => {
+                    log::debug!("Generated criteria:\n{}", c);
+                    criteria_for_verification = c.clone(); // Store for later verification
+                    // Append criteria to the user input that the LLM will see
+                    final_user_input.push_str(&format!(
+                        "\n\n---\n**Note:** Your response will be evaluated against the following criteria:\n{}\n---",
+                        c
+                    ));
+                    log::debug!("Appended criteria to user input for LLM.");
+                    println!("{}", style("Verification criteria generated.").dim());
+                }
+                Ok(_) => {
+                    // Criteria generation succeeded but was empty
+                    log::debug!("Generated criteria were empty.");
+                    println!("{}", style("No specific verification criteria generated for this request.").dim());
+                    // criteria_for_verification remains empty
+                }
+                Err(e) => {
+                    log::warn!("Failed to generate verification criteria: {}. Proceeding without verification.", e);
+                    println!("{}: Failed to generate verification criteria: {}", style("Warning").yellow(), e);
+                    // criteria_for_verification remains empty
+                }
             }
-            Ok(_) => {
-                // Criteria generation succeeded but was empty
-                log::debug!("Generated criteria were empty.");
-                criteria_for_verification = String::new();
-            }
-            Err(e) => {
-                log::warn!("Failed to generate verification criteria: {}. Proceeding without verification.", e);
-                criteria_for_verification = String::new(); // Use empty criteria if generation fails
-            }
+        } else {
+            log::debug!("Response verification is disabled.");
+            // criteria_for_verification remains empty
         }
         // --- End Criteria Generation ---
 
+
         // 1. Add potentially modified user message to state
-        state.add_user_message(&final_user_input); // Use the input with appended criteria
-        log::debug!("Added user message (potentially with criteria) to state. Total messages: {}", state.messages.len());
+        state.add_user_message(&final_user_input); // Use the input (with or without appended criteria)
+        log::debug!("Added user message to state. Total messages: {}", state.messages.len());
 
         // 2. Get AI client
         let client = self.host.ai_client().await
@@ -424,15 +816,16 @@ impl Repl {
         let initial_response_result: Result<String> = crate::repl::with_progress( // Use with_progress for the *first* call
             "Getting initial response".to_string(),
             async {
-                // Pass system prompt when creating builder
-                let mut builder = client.raw_builder(&state.system_prompt);
+                // Get system prompt from state helper method
+                let system_prompt = state.get_system_prompt().unwrap_or(""); // Use empty if not found
+                let mut builder = client.raw_builder(system_prompt);
                 log::trace!("Building raw AI request for initial chat turn.");
-                // Add messages *up to this point* (excluding potential future tool results)
+                // Add all messages *up to this point*. System prompt is handled by the builder.
                 for msg in state.messages.iter() {
                      match msg.role {
-                         Role::System => builder = builder.system(msg.content.clone()),
                          Role::User => builder = builder.user(msg.content.clone()),
                          Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                         // Removed unreachable pattern
                      }
                 }
                 // Tool prompt is already included in state via ConversationState::new
@@ -501,28 +894,6 @@ impl Repl {
         Ok(())
     }
 
-
-    /// Load a configuration file
-    pub async fn load_config(&mut self, config_path: &str) -> Result<()> {
-        println!("{}", style(format!("Loading configuration from: {}", config_path)).yellow());
-
-        // Use self.host directly to load the config
-        self.host.load_config(config_path).await?;
-        println!("{}", style("Successfully loaded configuration using host").green());
-
-        // Reload the command processor with the potentially updated host state?
-        // Or assume host updates its internal state which command_processor uses.
-        // For now, assume host state is updated and command_processor uses the clone.
-
-        Ok(())
-    }
-
-    /// This method is deprecated and will be removed
-    #[deprecated(note = "Use MCPHost.start_server instead")]
-    pub async fn start_server(&mut self, _name: &str, _command: TokioCommand) -> Result<()> {
-        println!("{}", style("Warning: Direct server start is deprecated. Use an MCPHost instance instead.").yellow());
-        Ok(())
-    }
 }
 
 /// Truncate a string to a maximum number of lines.

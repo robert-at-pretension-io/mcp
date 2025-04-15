@@ -1,5 +1,6 @@
 use anyhow::{Result, Context, anyhow};
 use mcp_host::MCPHost;
+use rmcp::model::Role;
 // Removed duplicate imports below
 // use anyhow::{Result, Context, anyhow};
 // use mcp_host::MCPHost;
@@ -14,7 +15,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use log::{info, error, debug};
 use shellexpand; // Added shellexpand
-use shared_protocol_objects::Role; // Import Role
 
 // Define a serializable version of the Message struct
 #[derive(Serialize, Debug, Clone)]
@@ -26,7 +26,6 @@ struct SerializableMessage {
 impl From<&mcp_host::conversation_state::Message> for SerializableMessage {
     fn from(msg: &mcp_host::conversation_state::Message) -> Self {
         let role_str = match msg.role {
-            Role::System => "system",
             Role::User => "user",
             Role::Assistant => "assistant",
         }.to_string();
@@ -242,7 +241,6 @@ async fn main() -> Result<()> {
                 .as_ref()
                 .map(|hist| {
                     hist.iter()
-                        .filter(|msg| msg.role != Role::System) // Filter out system messages
                         .map(SerializableMessage::from)
                         .collect()
                 })
@@ -459,10 +457,10 @@ async fn execute_task_simulation(
          let mut builder = client.raw_builder(&state.system_prompt);
          for msg in state.messages.iter() {
              match msg.role {
+                
                  // System messages are handled by injection now, skip adding them here
-                 shared_protocol_objects::Role::System => {} // Skip system message from state
-                 shared_protocol_objects::Role::User => builder = builder.user(msg.content.clone()),
-                 shared_protocol_objects::Role::Assistant => builder = builder.assistant(msg.content.clone()),
+                 rmcp::model::Role::User => builder = builder.user(msg.content.clone()),
+                 rmcp::model::Role::Assistant => builder = builder.assistant(msg.content.clone()),
              }
         }
         debug!("Executing initial AI request for simulation...");

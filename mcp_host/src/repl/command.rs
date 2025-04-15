@@ -10,67 +10,121 @@ use log::{error, info, warn}; // Removed unused debug import
 // Removed unused io imports
 
 use crate::host::server_manager::ManagedServer;
-use crate::host::MCPHost; // Import MCPHost
-use crate::host::config::{ServerConfig}; // Removed AIProviderConfig
+use crate::host::MCPHost;
+use crate::host::config::{ServerConfig};
 use rustyline::Editor;
-use rustyline::history::DefaultHistory; // Import DefaultHistory
-use crate::repl::helper::ReplHelper; // Import ReplHelper
+use rustyline::history::DefaultHistory;
+use crate::repl::helper::ReplHelper;
+use crate::repl::Repl; // Import Repl struct
 
 /// Command processor for the REPL
+// Remove lifetime parameter 'a
 pub struct CommandProcessor {
     host: MCPHost, // Store the host instance
     servers: Arc<Mutex<HashMap<String, ManagedServer>>>, // Keep servers for direct access if needed
     current_server: Option<String>,
     config_path: Option<PathBuf>,
-    // Removed editor field
+    // Remove the repl field to break circular reference
+    // repl: &'a mut Repl<'a>,
 }
 
+// Remove lifetime parameter 'a
 impl CommandProcessor {
-    // Modify constructor to take MCPHost only
+    // Modify constructor to take only MCPHost
     pub fn new(host: MCPHost) -> Self {
         Self {
             servers: Arc::clone(&host.servers), // Get servers from host
             host,
             current_server: None,
             config_path: None,
-            // Removed editor initialization
+            // repl field removed
         }
     }
 
-    /// Process a command string, requires mutable access to the editor
-    pub async fn process(&mut self, command: &str, editor: &mut Editor<ReplHelper, DefaultHistory>) -> Result<String> { // Added History type
+    /// Check if a string corresponds to a known command.
+    pub fn is_known_command(&self, line: &str) -> bool {
+        let command = line.split_whitespace().next().unwrap_or("");
+        // Add new commands here
+        matches!(command,
+            "help" | "exit" | "quit" | "servers" | "use" | "tools" | "call" |
+            "provider" | "providers" | "model" | "add_server" | "edit_server" |
+            "remove_server" | "save_config" | "reload_config" | "show_config" |
+            "verify" | "save_chat" | "load_chat" | "new_chat"
+            // Note: 'chat' is handled specially in the REPL loop
+        )
+    }
+
+
+    /// Process a command string.
+    /// Takes the current verification state and returns the output message
+    /// and an optional new verification state if it was changed by the command.
+    // Remove repl: &mut Repl argument, add mutable state fields needed by commands
+    pub async fn process(
+        &mut self,
+        // Pass mutable references to the parts of Repl state needed by commands
+        chat_state: &mut Option<(String, crate::conversation_state::ConversationState)>,
+        loaded_conversation: &mut Option<crate::conversation_state::ConversationState>,
+        current_conversation_path: &mut Option<PathBuf>,
+        command: &str,
+        current_verify_state: bool,
+        editor: &mut Editor<ReplHelper, DefaultHistory>
+    ) -> Result<(String, Option<bool>)> { // Return tuple: (output, Option<new_verify_state>)
         // Split the command into parts, respecting quotes
         let parts = match shellwords::split(command) {
             Ok(parts) => parts,
             Err(_) => return Err(anyhow!("Invalid command syntax (unmatched quotes?)"))
         };
-        
+
         if parts.is_empty() {
-            return Ok("".to_string());
+            return Ok(("".to_string(), None)); // Return empty string and no state change
         }
-        
+
         let cmd = &parts[0];
         let args = &parts[1..];
-        
-        match cmd.as_str() {
-            "help" => self.cmd_help(),
-            "exit" | "quit" => Ok("exit".to_string()),
-            "servers" => self.cmd_servers().await,
-            "use" => self.cmd_use(args).await,
-            "tools" => self.cmd_tools(args).await,
-            "call" => self.cmd_call(args).await,
-            "provider" => self.cmd_provider(args).await,
-            "providers" => self.cmd_providers().await,
-            "model" => self.cmd_model(args).await, // Added model command
+        // Most commands return Ok(message) which we map to Ok((message, None))
+        // The 'verify' command is handled specially.
+        let result: Result<(String, Option<bool>)> = match cmd.as_str() {
+            "help" => self.cmd_help().map(|s| (s, None)),
+            "exit" | "quit" => Ok(("exit".to_string(), None)), // Special string "exit"
+            "servers" => self.cmd_servers().await.map(|s| (s, None)),
+            "use" => self.cmd_use(args).await.map(|s| (s, None)),
+            "tools" => self.cmd_tools(args).await.map(|s| (s, None)),
+            "call" => self.cmd_call(args).await.map(|s| (s, None)),
+            "provider" => self.cmd_provider(args).await.map(|s| (s, None)),
+            "providers" => self.cmd_providers().await.map(|s| (s, None)),
+            "model" => self.cmd_model(args).await.map(|s| (s, None)), // Added model command
             // chat command is handled directly in Repl::run
-            "add_server" => self.cmd_add_server(editor).await, // Pass editor
-            "edit_server" => self.cmd_edit_server(args, editor).await, // Pass editor
-            "remove_server" => self.cmd_remove_server(args).await, // New command
-            "save_config" => self.cmd_save_config().await, // New command
-            "reload_config" => self.cmd_reload_config(editor).await, // Pass editor
-            "show_config" => self.cmd_show_config(args).await, // New command
-            _ => Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
-        }
+            "add_server" => self.cmd_add_server(editor).await.map(|s| (s, None)), // Pass editor
+            "edit_server" => self.cmd_edit_server(args, editor).await.map(|s| (s, None)), // Pass editor
+            "remove_server" => self.cmd_remove_server(args).await.map(|s| (s, None)), // New command
+            "save_config" => self.cmd_save_config().await.map(|s| (s, None)), // New command
+            "reload_config" => self.cmd_reload_config(editor).await.map(|s| (s, None)), // Pass editor
+            "show_config" => self.cmd_show_config(args).await.map(|s| (s, None)),
+            "verify" => self.cmd_verify(args, current_verify_state).await,
+            // Pass mutable state fields to commands that need them
+            "save_chat" => self.cmd_save_chat(chat_state, loaded_conversation, current_conversation_path, args).await.map(|s| (s, None)),
+            "load_chat" => self.cmd_load_chat(chat_state, loaded_conversation, current_conversation_path, args).await.map(|s| (s, None)),
+            "new_chat" => self.cmd_new_chat(chat_state, loaded_conversation, current_conversation_path).await.map(|s| (s, None)),
+            _ => {
+                 // Check if it looks like a chat command before declaring unknown
+                 // 'chat' command is handled in the main REPL loop now
+                 // if cmd == "chat" {
+                 //     // Let the main REPL loop handle 'chat' if it wasn't explicitly overridden
+                 //     // Return a specific error or signal to indicate this.
+                 //     // Using the original "Unknown command" error works for now,
+                 //     // as the REPL loop checks for this specific error.
+                 //     Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
+                 // } else {
+                     // Let the main REPL loop handle 'chat' if it wasn't explicitly overridden
+                     // Return a specific error or signal to indicate this.
+                     // Using the original "Unknown command" error works for now,
+                     // as the REPL loop checks for this specific error.
+                     Err(anyhow!("Unknown command: '{}'. Type 'help' for available commands", cmd))
+                 }
+                };
+        
+        result // Return the final result
+                
     }
 
     /// Get available commands
@@ -95,6 +149,10 @@ impl CommandProcessor {
             ("show_config [server_name]", "Display the current configuration (all or a specific server)."),
             ("save_config", "Save server configuration changes to the file."),
             ("reload_config", "Reload server and provider model configs from files (discards unsaved changes)."),
+            ("verify [on|off]", "Enable or disable AI response verification during chat (default: off)."),
+            ("save_chat [filename]", "Save the current conversation to a JSON file (default: conversations/chat_<timestamp>.json)."),
+            ("load_chat <filename>", "Load a conversation from a JSON file."),
+            ("new_chat", "Clear the current loaded conversation."),
             ("exit, quit", "Exit the REPL."),
         ];
 
@@ -171,6 +229,32 @@ impl CommandProcessor {
             }
         }
     }
+
+
+    // --- Verify Command ---
+    /// Handles the 'verify' command.
+    /// Takes the current verification state.
+    /// Returns a tuple: (output_message, Option<new_state>)
+    async fn cmd_verify(&self, args: &[String], current_state: bool) -> Result<(String, Option<bool>)> {
+        if args.is_empty() {
+            // Show current status - no state change
+            let status = if current_state { style("on").green() } else { style("off").yellow() };
+            Ok((format!("Response verification is currently {}.", status), None))
+        } else {
+            match args[0].to_lowercase().as_str() {
+                "on" | "true" | "yes" | "enable" => {
+                    // Request to enable - state changes to true
+                    Ok((style("Response verification enabled.").green().to_string(), Some(true)))
+                }
+                "off" | "false" | "no" | "disable" => {
+                    // Request to disable - state changes to false
+                    Ok((style("Response verification disabled.").yellow().to_string(), Some(false)))
+                }
+                _ => Err(anyhow!("Invalid argument '{}'. Use 'on' or 'off'.", args[0])),
+            }
+        }
+    }
+
 
     // --- Edit Server ---
     async fn cmd_edit_server(&mut self, args: &[String], editor: &mut Editor<ReplHelper, DefaultHistory>) -> Result<String> { // Added History type
@@ -297,6 +381,107 @@ impl CommandProcessor {
                 ))
             }
         }
+    }
+
+    // --- Save Chat ---
+    // Remove repl: &mut Repl, add state fields
+    async fn cmd_save_chat(
+        &mut self,
+        chat_state: &mut Option<(String, crate::conversation_state::ConversationState)>,
+        loaded_conversation: &mut Option<crate::conversation_state::ConversationState>,
+        current_conversation_path: &mut Option<PathBuf>,
+        args: &[String]
+    ) -> Result<String> {
+        // Access state fields directly via arguments
+        let state_to_save = chat_state.as_ref().map(|(_, s)| s.clone())
+            .or_else(|| loaded_conversation.clone());
+
+        let state = match state_to_save {
+            Some(s) => s,
+            None => return Ok(style("No active or loaded conversation to save.").yellow().to_string()),
+        };
+
+        let filename = if args.is_empty() {
+            // Generate default filename with timestamp
+            let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+            format!("chat_{}.json", timestamp)
+        } else {
+            let name = args[0].clone();
+            if name.ends_with(".json") { name } else { format!("{}.json", name) }
+        };
+
+        // Calculate conversations dir (needs helper or config access)
+        // Let's assume a helper function `get_conversations_dir_path()` exists or is added.
+        // For now, hardcoding the logic here. Ideally, move this to a shared place.
+        let conversations_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("Could not determine config directory"))?
+            .join("mcp/conversations");
+        std::fs::create_dir_all(&conversations_dir)?; // Ensure it exists
+
+        let path = conversations_dir.join(&filename);
+
+        match state.save_to_json(&path).await {
+            Ok(_) => {
+                // Update the current conversation path via the argument
+                *current_conversation_path = Some(path.clone());
+                Ok(format!("Conversation saved to: {}", style(path.display()).green()))
+            }
+            Err(e) => Err(anyhow!("Failed to save conversation: {}", e)),
+        }
+    }
+
+    // --- Load Chat ---
+    // Remove repl: &mut Repl, add state fields
+    async fn cmd_load_chat(
+        &mut self,
+        chat_state: &mut Option<(String, crate::conversation_state::ConversationState)>,
+        loaded_conversation: &mut Option<crate::conversation_state::ConversationState>,
+        current_conversation_path: &mut Option<PathBuf>,
+        args: &[String]
+    ) -> Result<String> {
+        if args.is_empty() {
+            return Err(anyhow!("Usage: load_chat <filename>"));
+        }
+        let filename = args[0].clone();
+        let filename_with_ext = if filename.ends_with(".json") { filename } else { format!("{}.json", filename) };
+
+        // Calculate conversations dir
+        let conversations_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("Could not determine config directory"))?
+            .join("mcp/conversations");
+        // No need to create dir on load
+
+        let path = conversations_dir.join(&filename_with_ext);
+
+        if !path.exists() {
+            return Err(anyhow!("Conversation file not found: {}", path.display()));
+        }
+
+        match crate::conversation_state::ConversationState::load_from_json(&path).await {
+            Ok(loaded_state) => {
+                // Use arguments to update state
+                *chat_state = None; // Clear active chat
+                *loaded_conversation = Some(loaded_state); // Set loaded state
+                *current_conversation_path = Some(path.clone()); // Update path
+                Ok(format!("Conversation loaded from: {}", style(path.display()).green()))
+            }
+            Err(e) => Err(anyhow!("Failed to load conversation: {}", e)),
+        }
+    }
+
+    // --- New Chat ---
+    // Remove repl: &mut Repl, add state fields
+    async fn cmd_new_chat(
+        &mut self,
+        chat_state: &mut Option<(String, crate::conversation_state::ConversationState)>,
+        loaded_conversation: &mut Option<crate::conversation_state::ConversationState>,
+        current_conversation_path: &mut Option<PathBuf>
+    ) -> Result<String> {
+        // Use arguments to update state
+        *chat_state = None;
+        *loaded_conversation = None;
+        *current_conversation_path = None;
+        Ok(style("Cleared current conversation.").yellow().to_string())
     }
 
 
@@ -462,8 +647,9 @@ impl CommandProcessor {
         let server = servers_map.get(&server_name)
             .ok_or_else(|| anyhow!("Internal error: Server '{}' vanished", server_name))?;
 
-        // Call list_tools directly on the ManagedServer's client
-        let tools = server.client.list_tools().await?;
+        // Call list_tools directly on the Peer stored in ManagedServer
+        let list_tools_result = server.client.list_tools(None).await?; // Pass None for default params
+        let tools = list_tools_result.tools; // Extract Vec<Tool>
 
         if tools.is_empty() {
             return Ok(format!("No tools available on {}", style(&server_name).green()));
@@ -471,9 +657,10 @@ impl CommandProcessor {
 
         let tool_list = tools.iter()
             .map(|tool| {
-                let desc = tool.description.as_deref().unwrap_or("No description");
+                // Use .as_ref() on Cow to get &str
+                let desc = tool.description.as_ref();
                 // Style tool name yellow, description dimmed
-                format!("  {} - {}", style(&tool.name).yellow(), style(desc).dim())
+                format!("  {} - {}", style(tool.name.as_ref()).yellow(), style(desc).dim())
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -505,9 +692,22 @@ impl CommandProcessor {
 
         // Call tool with progress indicator
         let progress_msg = format!("Calling tool '{}' on server '{}'...", style(tool_name).yellow(), style(&server_name).green());
+
+        // Prepare parameters for the Peer's call_tool method
+        let arguments_map = match args_value {
+            Value::Object(map) => Some(map),
+            Value::Null => None,
+            _ => return Err(anyhow!("Tool arguments must be a JSON object or null")),
+        };
+        let params = rmcp::model::CallToolRequestParam { // Use rmcp type directly
+            name: tool_name.to_string().into(),
+            arguments: arguments_map,
+        };
+
+        // Call call_tool directly on the Peer stored in ManagedServer
         let result = crate::repl::with_progress(
             progress_msg,
-            server.client.call_tool(tool_name, args_value)
+            server.client.call_tool(params) // Pass the prepared params
         ).await?;
 
         // Format result
@@ -517,10 +717,9 @@ impl CommandProcessor {
             format!("{} Result from tool '{}' on server '{}':\n", style("Success:").green(), style(tool_name).yellow(), style(&server_name).green())
         };
 
-        for content in result.content {
-            raw_output.push_str(&content.text);
-            raw_output.push('\n');
-        }
+        // Use the shared formatter which handles different Content types
+        // Ensure format_tool_result is public or move it
+        raw_output.push_str(&crate::host::server_manager::format_tool_result(&result));
 
         // Truncate the output before returning
         Ok(crate::repl::truncate_lines(&raw_output, 150))

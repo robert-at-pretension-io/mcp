@@ -5,18 +5,20 @@
 // Removed parse_json_response function
 // Removed handle_assistant_response function
 // Removed execute_single_tool function
-// Removed execute_tool_and_continue function
 // Removed continue_conversation_after_tools function
+
+// Import rmcp Tool type
+use rmcp::model::Tool as RmcpTool;
 
 
 /// Generate a system prompt instructing the AI about tool usage with text delimiters
-pub fn generate_tool_system_prompt(tools: &[shared_protocol_objects::ToolInfo]) -> String {
+pub fn generate_tool_system_prompt(tools: &[RmcpTool]) -> String { // Use aliased rmcp Tool
     // Format tools information
     let tools_info = tools.iter()
         .map(|t| format!(
             "- Name: {}\n  Description: {}\n  Schema: {}",
-            t.name,
-            t.description.as_ref().unwrap_or(&"No description".to_string()),
+            t.name.as_ref(),
+            t.description.parse::<String>().unwrap_or("".to_string()), // Use as_deref().unwrap_or("")
             serde_json::to_string_pretty(&t.input_schema).unwrap_or_else(|_| "{}".to_string())
         ))
         .collect::<Vec<String>>()
