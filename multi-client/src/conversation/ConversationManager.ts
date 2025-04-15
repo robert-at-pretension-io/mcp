@@ -804,66 +804,11 @@ Important:
       }
     }
 
-    // 11. Verify non-tool responses before returning
-    this.state.addMessage(new AIMessage(aiResponseContent)); // Add to history for verification
-
-    const verificationState = this.state.getVerificationState();
-    if (verificationState) {
-      const { originalRequest, criteria } = verificationState;
-      const relevantSequence = this.state.getRelevantSequenceForVerification();
-      
-      const verificationResult = await this.verifyResponse(
-        originalRequest, 
-        criteria, 
-        relevantSequence
-      );
-      
-      // If verification fails, retry with feedback
-      if (!verificationResult.passes) {
-        console.log('Response verification failed. Retrying with feedback.');
-        
-        // Generate a correction prompt
-        const correctionPrompt = this.VERIFICATION_FAILURE_PROMPT.replace(
-          '{feedback}', 
-          verificationResult.feedback
-        );
-        
-        // Create a system message with a brief instruction
-        const systemMessage = new SystemMessage("You are a helpful assistant that needs to correct your previous response.");
-        
-        // Create a user message with the correction prompt
-        const userMessage = new HumanMessage(correctionPrompt);
-        
-        // Add correction prompt to messages
-        const correctionMessages = [...this.state.getMessages(), systemMessage, userMessage];
-        
-        // Make one more AI call with the correction
-        try {
-          const correctedResponse = await this.aiClient.generateResponse(correctionMessages);
-          console.log('Generated corrected response after verification failure');
-          
-          // Add the corrected response to history
-          this.state.addMessage(new AIMessage(correctedResponse));
-          
-          // Save conversation after adding AI response
-          this.saveConversation();
-          
-          // Return the corrected response
-          return correctedResponse;
-        } catch (error) {
-          console.error('Error generating corrected response:', error);
-        }
-      }
+    // If no tool calls were involved in the first place, add the initial response
+    // This ensures the message is in history before verification if the loop didn't run.
+    if (toolRound === 0) {
+        this.state.addMessage(new AIMessage(currentResponse)); 
     }
-
-    // Save the conversation after adding the AI response
-    this.saveConversation();
-    
-    // If no tool calls or verification issues, return the original response
-    
-    let currentResponse = aiResponseContent;
-    let toolRound = 0;
-    const maxToolRounds = 5; // Limit recursive tool calls
 
     // Loop while the response contains tool calls and we haven't hit the limit
     while (ToolParser.containsToolCalls(currentResponse) && toolRound < maxToolRounds) {
