@@ -90,47 +90,8 @@ export class WebServer {
     // Example: Remove old /api/servers route if handled by serversRouter
     // this.app.get('/api/servers', (req, res) => { ... });
 
-    // Example: Remove old /api/history route if handled by conversationRouter
-    // this.app.get('/api/history', (req, res) => { ... });
-
-    // Example: Remove old /api/tools route if handled by serversRouter
-    // this.app.get('/api/tools', async (req, res) => { ... });
-
-    // Example: Remove old /api/model route if handled by aiRouter
-    // this.app.get('/api/model', (req, res) => { ... });
-
-    // Example: Remove old /api/conversations routes if handled by conversationRouter
-    // this.app.get('/api/conversations', (req, res) => { ... });
-    // this.app.post('/api/conversations/new', (req, res) => { ... });
-    // this.app.post('/api/conversations/load', (req, res) => { ... });
-    // this.app.delete('/api/conversations/:id', (req, res) => { ... });
-    // this.app.post('/api/conversations/:id/rename', (req, res) => { ... });
-
-    // Example: Remove old /api/servers config routes if handled by serversRouter or configRouter
-    // this.app.get('/api/servers/config', async (req, res) => { ... }); // Moved to serversRouter
-    // this.app.post('/api/servers/config', async (req, res) => { ... }); // Moved to serversRouter
-
-    // Example: Remove old /api/keys route if handled by aiRouter
-    // this.app.post('/api/keys', async (req, res) => { ... });
-
-    // Example: Remove old /api/providers route if handled by aiRouter
-    // this.app.get('/api/providers', async (req, res) => { ... });
-
-    // Example: Remove old /api/provider route if handled by aiRouter
-    // this.app.post('/api/provider', async (req, res) => { ... });
-
-    // Example: Remove old /api/model POST route if handled by aiRouter
-    // this.app.post('/api/model', async (req, res) => { ... });
-
-    // Example: Remove old /api/message route if handled by conversationRouter or socket
-    // this.app.post('/api/message', (req, res) => { ... });
-
-    // Example: Remove old /api/config/:file routes if handled by configRouter
-    // this.app.get('/api/config/:file', (req, res) => { ... });
-    // this.app.post('/api/config/:file', async (req, res) => { ... });
-
-    // Example: Remove old /api/clear route if handled by conversationRouter or socket
-    // this.app.post('/api/clear', (req, res) => { ... });
+    // All old route definitions previously here should be removed as they are now
+    // handled by the imported routers (aiRouter, serversRouter, configRouter, conversationRouter).
   }
 
   private setupSocketEvents() {
