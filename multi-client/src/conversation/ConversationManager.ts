@@ -92,12 +92,10 @@ Instructions:
 5. The JSON object must have the following structure: \`{"passes": boolean, "feedback": "string (provide concise feedback ONLY if passes is false, explaining which criteria failed and why, referencing the assistant's actions/responses if relevant)"}\`
 6. ABSOLUTELY DO NOT include any other text, explanations, apologies, introductory phrases, or markdown formatting like \`\`\`json or \`\`\`.`;
 
-  private readonly VERIFICATION_FAILURE_PROMPT = `Correction Request:
-Your previous response failed verification.
-Feedback: {feedback}
+  private readonly VERIFICATION_FAILURE_PROMPT = `Your previous response failed verification based on the following feedback:
+{feedback}
 
-Please analyze this feedback carefully and revise your plan and response to fully address the original request and meet all success criteria. 
-You may need to use tools differently or provide more detailed information.`;
+Revise your response to fully address the original request and meet all success criteria based on this feedback. Provide only the corrected response.`;
 
   private readonly CONVERSATION_COMPACTION_PROMPT = `You are an expert conversation summarizer. Analyze the following conversation history and provide a concise summary. Focus on:
 - Key user requests and goals.
