@@ -1,6 +1,6 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express'; // Import Request and Response types
 import * as fs from 'node:fs/promises';
-import * as fsSync from 'node:fs'; // For existsSync
+import * as fsSync from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,7 +15,7 @@ export function createConfigRouter(): Router {
     const allowedFiles = ['ai_config.json', 'servers.json', 'provider_models.toml'];
 
     // --- Get Config File Content ---
-    router.get('/:file', async (req, res) => {
+    router.get('/:file', async (req: Request, res: Response) => { // Add types
         try {
             const { file } = req.params;
 
@@ -43,7 +43,7 @@ export function createConfigRouter(): Router {
     });
 
     // --- Save Config File Content ---
-    router.post('/:file', async (req, res) => {
+    router.post('/:file', async (req: Request, res: Response) => { // Add types
         try {
             const { file } = req.params;
             const { content } = req.body;

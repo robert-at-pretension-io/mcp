@@ -1,6 +1,6 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express'; // Import Request and Response types
 import type { ConversationManager } from '../../conversation/ConversationManager.js';
-import type { ServerManager } from '../../ServerManager.js'; // Needed for tools
+import type { ServerManager } from '../../ServerManager.js';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs'; // For existsSync
 import * as path from 'node:path';
@@ -69,18 +69,19 @@ export function createAiRouter(
 
 
     // --- AI Model Info ---
-    router.get('/model', (req, res) => {
+    router.get('/model', (req: Request, res: Response) => { // Add types
         try {
             const model = conversationManager.getAiClientModelName();
-            const provider = conversationManager.aiClient.getProvider?.() || 'unknown';
+            const provider = conversationManager.getAiProviderName(); // Use the new getter
             res.json({ model, provider }); // Return both
         } catch (error) {
-            res.status(500).json({ error: `Failed to get AI model info: ${error}` });
+            console.error("Error in /api/ai/model:", error); // Log the specific error
+            res.status(500).json({ error: `Failed to get AI model info: ${error instanceof Error ? error.message : String(error)}` });
         }
     });
 
     // --- AI Providers Info ---
-    router.get('/providers', async (req, res) => {
+    router.get('/providers', async (req: Request, res: Response) => { // Add types
         try {
             // Load config and models inside the handler
             const aiConfigData = await readAiConfig();
@@ -98,7 +99,7 @@ export function createAiRouter(
 
     // --- Switch AI Provider ---
     // Note: This endpoint might be deprecated in favor of /model endpoint handling provider change
-    router.post('/provider', async (req, res) => {
+    router.post('/provider', async (req: Request, res: Response) => { // Add types
         try {
             const { provider } = req.body;
             if (!provider) {
@@ -131,7 +132,7 @@ export function createAiRouter(
     });
 
     // --- Switch AI Model (can also handle provider change) ---
-    router.post('/model', async (req, res) => {
+    router.post('/model', async (req: Request, res: Response) => { // Add types
         try {
             const { model, provider } = req.body; // Provider is optional, defaults to current
             if (!model) {
@@ -168,7 +169,7 @@ export function createAiRouter(
     });
 
     // --- Update API Keys ---
-    router.post('/keys', async (req, res) => {
+    router.post('/keys', async (req: Request, res: Response) => { // Add types
         try {
             const { provider, apiKey } = req.body;
             if (!provider || !apiKey) {

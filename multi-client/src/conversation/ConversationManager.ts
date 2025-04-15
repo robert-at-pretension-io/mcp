@@ -362,6 +362,13 @@ Concise Summary:`;
   }
 
   /**
+   * Gets the provider name identifier from the underlying AI client.
+   */
+  public getAiProviderName(): string {
+    return this.aiClient.getProvider?.() || 'unknown';
+  }
+
+  /**
    * Refreshes the tools cache by fetching all tools from connected servers.
    * @returns Promise that resolves when the cache is refreshed.
    */
