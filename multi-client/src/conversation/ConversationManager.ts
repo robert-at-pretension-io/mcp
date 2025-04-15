@@ -911,20 +911,20 @@ Important:
         try {
           const correctedResponse = await this.aiClient.generateResponse(correctionMessages);
           console.log('Generated corrected response after verification failure');
-          
-          // Add the corrected response to history
+
+          // Update the content to be returned and added later
+          finalAiResponseContent = correctedResponse;
+
+          // Add the corrected response to history *immediately* so it's part of the state
+          // before the final addMessage check later (this replaces the failed one implicitly)
           this.state.addMessage(new AIMessage(correctedResponse));
-          
-          // Save conversation after adding corrected AI response
-          this.saveConversation();
-          
-          // Return the corrected response
-          return correctedResponse;
+
+          // We will save and return finalAiResponseContent later
         } catch (error) {
           console.error('Error generating corrected response:', error);
-          // Fall back to the uncorrected response if correction fails
+          // Fall back to the uncorrected response content if correction fails
+          // finalAiResponseContent remains the uncorrected 'currentResponse'
           this.saveConversation(); // Save even if correction failed
-          return currentResponse; 
         }
       }
     }
