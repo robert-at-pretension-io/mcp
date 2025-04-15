@@ -86,7 +86,7 @@ export async function deleteConversation(conversationId) {
 
 export async function fetchProviders() {
      try {
-        return await fetchApi('/ai/providers');
+        return await fetchApi('/providers');
     } catch (error) {
         showToast('error', 'API Error', `Failed to load AI providers: ${error.message}`);
         // Return a default structure or rethrow based on how critical this is
