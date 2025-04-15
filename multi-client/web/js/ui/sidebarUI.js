@@ -142,7 +142,7 @@ function addConversationItemListeners() {
                 e.stopPropagation(); // Prevent triggering load
                 const conversationId = item.dataset.id;
                 const conversation = appState.getConversations().find(c => c.id === conversationId);
-                const conversation = appState.getConversations().find(c => c.id === conversationId);
+                // Removed duplicate declaration of 'conversation'
                 if (conversation) {
                     const newTitle = prompt('Enter new title:', conversation.title || '');
                     if (newTitle !== null && newTitle.trim() !== (conversation.title || '')) { // Compare with potentially empty title
