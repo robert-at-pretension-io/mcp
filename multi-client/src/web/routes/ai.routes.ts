@@ -69,7 +69,7 @@ export function createAiRouter(
 
 
     // --- AI Model Info ---
-    router.get('/model', (req, res) => { // Remove explicit types, they are inferred
+    router.get('/model', ((req, res) => { // Cast to RequestHandler
         try {
             const model = conversationManager.getAiClientModelName();
             const provider = conversationManager.getAiProviderName(); // Use the new getter
@@ -78,7 +78,7 @@ export function createAiRouter(
             console.error("Error in /api/ai/model:", error); // Log the specific error
             res.status(500).json({ error: `Failed to get AI model info: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
     // --- AI Providers Info ---
     router.get('/providers', (async (req, res) => { // Remove explicit types, add RequestHandler cast
