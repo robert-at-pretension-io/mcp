@@ -276,8 +276,8 @@ async function promptForInput(promptText: string, hideInput: boolean = false): P
   });
 
   // Hacky way to hide input in standard readline
-  // Use rl.output which is NodeJS.WritableStream
-  const outputStream = rl.output as NodeJS.WritableStream;
+  // Use process.stdout directly as it's the stream being used by the interface
+  const outputStream = process.stdout as NodeJS.WritableStream;
   const originalWrite = outputStream.write;
 
   if (hideInput) {
