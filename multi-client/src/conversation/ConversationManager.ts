@@ -860,7 +860,135 @@ Important:
     this.saveConversation();
     
     // If no tool calls or verification issues, return the original response
-    return aiResponseContent;
+    
+    let currentResponse = aiResponseContent;
+    let toolRound = 0;
+    const maxToolRounds = 5; // Limit recursive tool calls
+
+    // Loop while the response contains tool calls and we haven't hit the limit
+    while (ToolParser.containsToolCalls(currentResponse) && toolRound < maxToolRounds) {
+      toolRound++;
+      console.log(`--- Tool Call Round ${toolRound} ---`);
+
+      // Extract and parse tool calls from the current response
+      const parsedToolCalls = ToolParser.parseToolCalls(currentResponse);
+      
+      if (parsedToolCalls.length === 0) {
+        console.warn("Tool call delimiters detected but no valid tool calls parsed. Exiting loop.");
+        break; // Exit loop if parsing fails despite delimiters
+      }
+      
+      console.log(`Found ${parsedToolCalls.length} tool calls in AI response.`);
+      
+      // Add the AI response that *requested* the tools
+      const aiMessageRequestingTools = new AIMessage(currentResponse, { 
+        hasToolCalls: true, 
+        pendingToolCalls: true 
+      });
+      this.state.addMessage(aiMessageRequestingTools);
+      
+      // Execute tool calls
+      const toolResults = await this.executeToolCalls(parsedToolCalls);
+      
+      // Mark the tool calls in the previous AI message as no longer pending
+      aiMessageRequestingTools.pendingToolCalls = false;
+      
+      // Build the tool results message for the next AI call
+      // Note: The tool results themselves were added to history inside executeToolCalls
+      const toolResultsPrompt = this.createToolResultsMessage(toolResults);
+      
+      // Get the updated message history including the tool results
+      const messagesForFollowUp = this.state.getMessages();
+      
+      // Make the next AI call with the tool results context
+      try {
+        currentResponse = await this.aiClient.generateResponse(messagesForFollowUp);
+        console.log(`AI Response (Round ${toolRound + 1}):`, 
+          currentResponse.substring(0, 200) + (currentResponse.length > 200 ? '...' : ''));
+      } catch (error) {
+        console.error(`Error during AI follow-up interaction (Round ${toolRound + 1}):`, error);
+        const errorMessage = `Sorry, I encountered an error processing the tool results: ${error instanceof Error ? error.message : String(error)}`;
+        this.state.addMessage(new AIMessage(errorMessage)); // Add error message to history
+        currentResponse = errorMessage; // Set response to error message
+        break; // Exit loop on error
+      }
+    } // End while loop
+
+    if (toolRound >= maxToolRounds) {
+        console.warn(`Reached maximum tool call rounds (${maxToolRounds}). Proceeding with last response.`);
+        // The last response might still contain tool calls, which will be ignored now.
+    }
+
+    // Add the *final* AI response (the one that doesn't contain tool calls, or the last one if limit was reached)
+    // Ensure it doesn't have the hasToolCalls flag set
+    this.state.addMessage(new AIMessage(currentResponse, { hasToolCalls: false }));
+
+    // 9. Verify the final response (if verification is enabled)
+    const verificationState = this.state.getVerificationState();
+    if (verificationState) {
+      const { originalRequest, criteria } = verificationState;
+      const relevantSequence = this.state.getRelevantSequenceForVerification();
+      
+      const verificationResult = await this.verifyResponse(
+        originalRequest, 
+        criteria, 
+        relevantSequence
+      );
+      
+      // Attach verification result to the last AI message for potential UI display
+      const lastMessageIndex = this.state.getHistoryWithoutSystemPrompt().length - 1;
+      if (lastMessageIndex >= 0) {
+          const lastMessage = this.state.getHistoryWithoutSystemPrompt()[lastMessageIndex];
+          if (lastMessage instanceof AIMessage) {
+              (lastMessage as any).verificationResult = verificationResult; // Add verification result
+          }
+      }
+
+      // 10. If verification fails, retry with feedback
+      if (!verificationResult.passes) {
+        console.log('Response verification failed. Retrying with feedback.');
+        
+        // Generate a correction prompt
+        const correctionPrompt = this.VERIFICATION_FAILURE_PROMPT.replace(
+          '{feedback}', 
+          verificationResult.feedback
+        );
+        
+        // Create messages for the correction call
+        // Use a minimal system prompt for correction
+        const correctionMessages = [
+            new SystemMessage("You are a helpful assistant. Correct your previous response based on the feedback."),
+            ...this.state.getHistoryWithoutSystemPrompt(), // Include history up to the failed response
+            new HumanMessage(correctionPrompt) // Add the correction request
+        ];
+        
+        // Make one more AI call with the correction
+        try {
+          const correctedResponse = await this.aiClient.generateResponse(correctionMessages);
+          console.log('Generated corrected response after verification failure');
+          
+          // Add the corrected response to history
+          this.state.addMessage(new AIMessage(correctedResponse));
+          
+          // Save conversation after adding corrected AI response
+          this.saveConversation();
+          
+          // Return the corrected response
+          return correctedResponse;
+        } catch (error) {
+          console.error('Error generating corrected response:', error);
+          // Fall back to the uncorrected response if correction fails
+          this.saveConversation(); // Save even if correction failed
+          return currentResponse; 
+        }
+      }
+    }
+
+    // Save the conversation after adding the final AI response
+    this.saveConversation();
+    
+    // Return the final response content
+    return currentResponse;
   }
 
   /**
