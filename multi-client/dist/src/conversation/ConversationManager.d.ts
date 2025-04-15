@@ -1,6 +1,7 @@
 import type { IAiClient } from '../ai/IAiClient.js';
 import type { ServerManager } from '../ServerManager.js';
 import type { ConversationMessage } from './Message.js';
+import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
 export declare class ConversationManager {
     private state;
     private aiClient;
@@ -8,13 +9,21 @@ export declare class ConversationManager {
     private allTools;
     private toolsLastUpdated;
     private readonly TOOLS_CACHE_TTL_MS;
+    private aiClientFactory;
     private readonly TOOL_RESULTS_PROMPT;
     private readonly INVALID_TOOL_FORMAT_PROMPT;
     private readonly VERIFICATION_CRITERIA_PROMPT;
     private readonly VERIFICATION_PROMPT;
     private readonly VERIFICATION_FAILURE_PROMPT;
     private readonly CONVERSATION_COMPACTION_PROMPT;
-    constructor(aiClient: IAiClient, serverManager: ServerManager);
+    constructor(aiClient: IAiClient, serverManager: ServerManager, providerModels: ProviderModelsStructure);
+    /**
+     * Switch the AI client to a different provider and model
+     * @param providerConfig The provider configuration to use
+     * @param providerModels Available models for providers
+     * @returns The new model name if switch was successful
+     */
+    switchAiClient(providerConfig: AiProviderConfig, providerModels: ProviderModelsStructure): string;
     /**
      * Gets the model name identifier from the underlying AI client.
      */

@@ -16,6 +16,7 @@ export interface AiProviderConfig {
     provider: string;
     model?: string;
     apiKeyEnvVar?: string;
+    apiKey?: string;
     temperature?: number;
 }
 /**
@@ -23,14 +24,13 @@ export interface AiProviderConfig {
  */
 export interface ConfigFileStructure {
     mcpServers: Record<string, StdioServerConfig>;
-    timeouts?: {
-        request: number;
-        tool: number;
-    };
-    ai?: {
-        defaultProvider?: string;
-        providers: Record<string, AiProviderConfig>;
-    };
+}
+/**
+ * Structure for the ai_config.json file
+ */
+export interface AiConfigFileStructure {
+    defaultProvider?: string;
+    providers: Record<string, AiProviderConfig>;
 }
 /**
  * Server connection details

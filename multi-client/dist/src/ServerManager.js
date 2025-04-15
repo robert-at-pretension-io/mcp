@@ -5,12 +5,12 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
  */
 export class ServerManager {
     servers = {};
-    config;
-    defaultToolTimeout; // seconds
+    config; // Keep config to access mcpServers easily
+    defaultToolTimeout; // milliseconds
     constructor(config) {
         this.config = config;
-        // Default timeout from config or 300 seconds (5 minutes)
-        this.defaultToolTimeout = (config.timeouts?.tool ?? 300) * 1000; // Store in ms
+        // Use a hardcoded default timeout since it's removed from config
+        this.defaultToolTimeout = 300 * 1000; // 300 seconds in ms
     }
     /**
      * Connect to all servers defined in the configuration

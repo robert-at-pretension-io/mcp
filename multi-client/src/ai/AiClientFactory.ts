@@ -55,6 +55,24 @@ export class AiClientFactory {
     // 3. If neither is set, some providers might work if LangChain has internal defaults (like checking OPENAI_API_KEY),
     // but we'll rely on the specific config for clarity. If no key source is defined, error out later if the provider requires one.
     // We pass `undefined` to the LangChain constructor, letting it handle its default env var checks if applicable.
+    else {
+      // No API key source specified, try to infer based on provider
+      const envVarMap: Record<string, string> = {
+        'openai': 'OPENAI_API_KEY',
+        'anthropic': 'ANTHROPIC_API_KEY',
+        'google-genai': 'GOOGLE_API_KEY',
+        'mistralai': 'MISTRAL_API_KEY',
+        'fireworks': 'FIREWORKS_API_KEY'
+      };
+      
+      const defaultEnvVar = envVarMap[providerKey];
+      if (defaultEnvVar && process.env[defaultEnvVar]) {
+        apiKeyToUse = process.env[defaultEnvVar];
+        console.log(`Using API key from default environment variable "${defaultEnvVar}" for provider "${providerKey}".`);
+      } else if (defaultEnvVar) {
+        throw new MissingApiKeyError(config.provider, defaultEnvVar);
+      }
+    }
 
     // --- Determine the model to use ---
     let modelToUse = config.model; // Start with the model specified in servers.json

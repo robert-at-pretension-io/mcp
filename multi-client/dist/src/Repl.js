@@ -1,7 +1,14 @@
 import * as readline from 'node:readline';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 /**
  * Interactive REPL for interacting with MCP servers and AI agent
  */
+// Helper to get the directory name in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const baseDir = path.join(__dirname, '..');
 export class Repl {
     rl;
     commands = new Map();
@@ -10,12 +17,19 @@ export class Repl {
     currentServer = null; // For direct server interaction
     isChatMode = false; // Flag for chat mode
     running = false;
+    providers = {}; // Available AI providers
+    providerModels = {}; // Available models for providers
+    currentProvider = ''; // Current provider name
+    aiConfigPath = path.join(baseDir, 'ai_config.json'); // Path to AI config file
     // History handling might need adjustment for chat mode
     // private history: string[] = [];
     // private historyIndex = 0;
-    constructor(serverManager, conversationManager) {
+    constructor(serverManager, conversationManager, providerModels) {
         this.serverManager = serverManager;
         this.conversationManager = conversationManager; // Store ConversationManager
+        this.providerModels = providerModels; // Store model list
+        // Load AI config
+        this.loadAiConfig();
         // Create readline interface
         this.rl = readline.createInterface({
             input: process.stdin,
@@ -25,6 +39,42 @@ export class Repl {
         });
         // Register default commands
         this.registerCommands();
+    }
+    /**
+     * Load the AI provider configuration from the config file
+     */
+    loadAiConfig() {
+        try {
+            const aiConfigFile = fs.readFileSync(this.aiConfigPath, 'utf-8');
+            const aiConfigData = JSON.parse(aiConfigFile);
+            // Store providers
+            this.providers = aiConfigData.providers || {};
+            // Store current provider
+            this.currentProvider = aiConfigData.defaultProvider || '';
+            console.log(`Loaded AI configurations for: ${Object.keys(this.providers).join(', ')}`);
+            if (this.currentProvider) {
+                console.log(`Current AI provider: ${this.currentProvider}`);
+            }
+        }
+        catch (error) {
+            console.error('Error loading AI config:', error instanceof Error ? error.message : String(error));
+        }
+    }
+    /**
+     * Save the AI provider configuration to the config file
+     */
+    saveAiConfig() {
+        try {
+            const aiConfigData = {
+                defaultProvider: this.currentProvider,
+                providers: this.providers
+            };
+            fs.writeFileSync(this.aiConfigPath, JSON.stringify(aiConfigData, null, 2), 'utf-8');
+            console.log(`AI configuration saved to ${this.aiConfigPath}`);
+        }
+        catch (error) {
+            console.error('Error saving AI config:', error instanceof Error ? error.message : String(error));
+        }
     }
     getPrompt() {
         if (this.isChatMode) {
@@ -47,13 +97,18 @@ export class Repl {
                 output += '  chat         - Enter interactive chat mode with the AI agent.\n';
                 output += '  exit         - Exit chat mode or the REPL.\n';
                 output += '  quit         - Alias for exit.\n';
+                output += '  --- AI/Model Commands ---\n';
+                output += '  providers    - List available AI providers and models.\n';
+                output += '  provider <name> - Set the current AI provider.\n';
+                output += '  model <name> - Set the model for the current provider.\n';
                 output += '  --- Server Commands ---\n';
                 output += '  servers      - List all connected servers.\n';
                 output += '  use <server> - Select a server for direct tool calls.\n';
                 output += '  tools [srv]  - List tools on current or specified server.\n';
                 output += '  call <tool> [json] - Call tool on current/auto-detected server.\n';
-                output += '  history      - Show conversation history (in chat mode).\n'; // Added
-                output += '  clear        - Clear conversation history (in chat mode).\n'; // Added
+                output += '  --- Chat Commands ---\n';
+                output += '  history      - Show conversation history (in chat mode).\n';
+                output += '  clear        - Clear conversation history (in chat mode).\n';
                 return output;
             }
         });
@@ -193,6 +248,100 @@ export class Repl {
                 }
                 catch (error) {
                     return `Error: ${error instanceof Error ? error.message : String(error)}`;
+                }
+            }
+        });
+        // --- AI/Model Commands ---
+        // List providers command
+        this.addCommand({
+            name: 'providers',
+            description: 'List available AI providers and models',
+            execute: async () => {
+                const output = ['Available AI providers and models:'];
+                for (const [providerName, config] of Object.entries(this.providers)) {
+                    const isCurrent = providerName === this.currentProvider;
+                    const prefix = isCurrent ? '* ' : '  ';
+                    output.push(`${prefix}${providerName}: ${config.model || 'No model specified'}`);
+                    // List available models for this provider
+                    const providerKey = providerName.toLowerCase();
+                    const models = this.providerModels[providerKey]?.models || [];
+                    if (models.length > 0) {
+                        output.push(`    Available models:`);
+                        for (const model of models) {
+                            const isCurrentModel = config.model === model;
+                            output.push(`    ${isCurrentModel ? '* ' : '  '}${model}`);
+                        }
+                    }
+                    else {
+                        output.push(`    No model suggestions available for this provider.`);
+                    }
+                    output.push(''); // Add blank line between providers
+                }
+                if (Object.keys(this.providers).length === 0) {
+                    output.push('No AI providers configured. Please check your ai_config.json file.');
+                }
+                return output.join('\n');
+            }
+        });
+        // Switch provider command
+        this.addCommand({
+            name: 'provider',
+            description: 'Set the current AI provider',
+            execute: async (args) => {
+                if (!args[0]) {
+                    return 'Error: Provider name required. Use "providers" command to see available providers.';
+                }
+                const providerName = args[0];
+                if (!this.providers[providerName]) {
+                    return `Error: Provider '${providerName}' not found in config. Use "providers" command to see available providers.`;
+                }
+                // Set current provider
+                this.currentProvider = providerName;
+                // Save updated config to file
+                this.saveAiConfig();
+                // Switch the AI client
+                try {
+                    const providerConfig = this.providers[providerName];
+                    const modelName = this.conversationManager.switchAiClient(providerConfig, this.providerModels);
+                    this.rl.setPrompt(this.getPrompt()); // Update prompt with new model
+                    return `Switched to provider: ${providerName} with model: ${modelName}`;
+                }
+                catch (error) {
+                    return `Error switching provider: ${error instanceof Error ? error.message : String(error)}`;
+                }
+            }
+        });
+        // Switch model command
+        this.addCommand({
+            name: 'model',
+            description: 'Set the model for the current provider',
+            execute: async (args) => {
+                if (!this.currentProvider) {
+                    return 'Error: No provider selected. Use "provider <name>" command first.';
+                }
+                if (!args[0]) {
+                    return 'Error: Model name required. Use "providers" command to see available models.';
+                }
+                const modelName = args[0];
+                const providerConfig = this.providers[this.currentProvider];
+                const providerKey = this.currentProvider.toLowerCase();
+                const models = this.providerModels[providerKey]?.models || [];
+                // Check if model exists in available models
+                if (models.length > 0 && !models.includes(modelName)) {
+                    return `Warning: Model '${modelName}' not found in suggested models for provider '${this.currentProvider}'. Continuing anyway.`;
+                }
+                // Update config
+                this.providers[this.currentProvider].model = modelName;
+                // Save updated config to file
+                this.saveAiConfig();
+                // Switch the AI client with the updated model
+                try {
+                    const updatedModelName = this.conversationManager.switchAiClient(providerConfig, this.providerModels);
+                    this.rl.setPrompt(this.getPrompt()); // Update prompt with new model
+                    return `Switched model for provider '${this.currentProvider}' to: ${updatedModelName}`;
+                }
+                catch (error) {
+                    return `Error switching model: ${error instanceof Error ? error.message : String(error)}`;
                 }
             }
         });

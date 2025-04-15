@@ -177,7 +177,7 @@ async function main() {
 
   // --- Conversation Manager Initialization (if AI client is available) ---
   if (aiClient) {
-      conversationManager = new ConversationManager(aiClient, serverManager);
+      conversationManager = new ConversationManager(aiClient, serverManager, providerModels);
   } else {
       // Create a dummy or null ConversationManager if needed by Repl, or handle in Repl
       console.log("ConversationManager not created due to missing AI client.");
@@ -209,7 +209,7 @@ async function main() {
       process.exit(1);
   }
 
-  const repl = new Repl(serverManager, conversationManager); // Pass conversationManager
+  const repl = new Repl(serverManager, conversationManager, providerModels); // Pass conversationManager and providerModels
 
   // --- Initialize Web Server (if enabled in command line args) ---
   let webServer: WebServer | null = null;

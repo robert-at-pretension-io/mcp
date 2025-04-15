@@ -5,32 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MCP Multi-Client</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>MCP Multi-Client</h1>
-            <div class="server-info">
-                <span id="connected-servers">Loading...</span>
-                <span id="ai-model">Loading...</span>
+            <div class="logo-area">
+                <h1>MCP Multi-Client</h1>
+            </div>
+            <div class="info-controls">
+                <div class="server-info">
+                    <div class="info-item">
+                        <i class="fas fa-server"></i>
+                        <span id="connected-servers">Loading...</span>
+                        <button id="manage-servers-btn" title="Manage servers"><i class="fas fa-cog"></i></button>
+                    </div>
+                    <div class="info-item model-info">
+                        <i class="fas fa-robot"></i>
+                        <span id="ai-model">Loading...</span>
+                        <button id="change-model-btn" title="Change AI model"><i class="fas fa-cog"></i></button>
+                    </div>
+                </div>
             </div>
         </header>
 
         <main>
-            <div class="conversation" id="conversation">
-                <!-- Messages will be added here dynamically -->
+            <div class="conversation-container">
+                <div class="conversation" id="conversation">
+                    <!-- Messages will be added here dynamically -->
+                </div>
+
+                <div class="input-area">
+                    <textarea id="user-input" placeholder="Type your message here..."></textarea>
+                    <div class="button-group">
+                        <button id="send-button"><i class="fas fa-paper-plane"></i> Send</button>
+                        <button id="clear-button"><i class="fas fa-trash"></i> Clear</button>
+                    </div>
+                </div>
             </div>
 
-            <div class="tools-panel">
-                <h3>Available Tools</h3>
-                <div id="tools-list">Loading...</div>
-            </div>
-
-            <div class="input-area">
-                <textarea id="user-input" placeholder="Type your message here..."></textarea>
-                <div class="button-group">
-                    <button id="send-button">Send</button>
-                    <button id="clear-button">Clear Conversation</button>
+            <div class="right-panel">
+                <div class="panel-section providers-panel" id="providers-panel">
+                    <h3><i class="fas fa-plug"></i> AI Providers</h3>
+                    <div id="providers-list" class="providers-list">Loading...</div>
+                </div>
+                
+                <div class="panel-section tools-panel">
+                    <h3><i class="fas fa-tools"></i> Available Tools</h3>
+                    <div id="tools-list" class="tools-list">Loading...</div>
                 </div>
             </div>
         </main>
@@ -38,6 +60,104 @@
         <footer>
             <div id="status">Ready</div>
         </footer>
+    </div>
+
+    <!-- Model Change Modal -->
+    <div id="model-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Change AI Provider/Model</h2>
+            
+            <div class="modal-section">
+                <h3>Select Provider</h3>
+                <select id="provider-select">
+                    <!-- Options will be added dynamically -->
+                </select>
+            </div>
+            
+            <div class="modal-section">
+                <h3>Select Model</h3>
+                <select id="model-select">
+                    <!-- Options will be added dynamically -->
+                </select>
+            </div>
+            
+            <div class="modal-section">
+                <h3>API Key</h3>
+                <div class="input-group">
+                    <input type="password" id="api-key-input" placeholder="Enter API key for this provider">
+                    <button id="toggle-api-key-visibility" title="Toggle visibility"><i class="fas fa-eye"></i></button>
+                </div>
+                <div class="help-text">
+                    API keys are saved directly in the configuration file.
+                </div>
+            </div>
+            
+            <div class="modal-buttons">
+                <button id="cancel-model-change">Cancel</button>
+                <button id="apply-model-change">Apply</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Server Configuration Modal -->
+    <div id="servers-modal" class="modal">
+        <div class="modal-content wide-modal">
+            <span class="close">&times;</span>
+            <h2>Manage MCP Servers</h2>
+            
+            <div class="modal-section">
+                <h3>Server Configurations</h3>
+                <div class="server-editor">
+                    <div class="server-list">
+                        <div class="server-list-header">
+                            <h4>Servers</h4>
+                            <button id="add-server-btn" title="Add new server"><i class="fas fa-plus"></i></button>
+                        </div>
+                        <ul id="server-list-items">
+                            <!-- Server items will be added dynamically -->
+                        </ul>
+                    </div>
+                    <div class="server-details">
+                        <div id="server-form" class="hidden">
+                            <div class="form-row">
+                                <label for="server-name">Server Name</label>
+                                <input type="text" id="server-name" placeholder="e.g., bash, search">
+                            </div>
+                            <div class="form-row">
+                                <label for="server-command">Command</label>
+                                <input type="text" id="server-command" placeholder="e.g., npx">
+                            </div>
+                            <div class="form-row">
+                                <label>Arguments</label>
+                                <div id="server-args" class="args-list">
+                                    <!-- Args will be added dynamically -->
+                                </div>
+                                <button id="add-arg-btn" class="small-button"><i class="fas fa-plus"></i> Add Argument</button>
+                            </div>
+                            <div class="form-row">
+                                <label>Environment Variables</label>
+                                <div id="server-env" class="env-list">
+                                    <!-- Env vars will be added dynamically -->
+                                </div>
+                                <button id="add-env-btn" class="small-button"><i class="fas fa-plus"></i> Add Environment Variable</button>
+                            </div>
+                        </div>
+                        <div id="no-server-selected" class="centered-message">
+                            <p>Select a server from the list or add a new one</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="help-text">
+                    <b>Note:</b> Changes to server configurations require restarting the application to take effect.
+                </div>
+            </div>
+            
+            <div class="modal-buttons">
+                <button id="cancel-servers-change">Cancel</button>
+                <button id="apply-servers-change">Save Changes</button>
+            </div>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>

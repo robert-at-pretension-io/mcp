@@ -6,6 +6,8 @@ import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from './Message.j
 import type { ConversationMessage } from './Message.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'; // MCP Tool type
 import { ToolParser, type ParsedToolCall } from './ToolParser.js';
+import { AiClientFactory } from '../ai/AiClientFactory.js';
+import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
 
 export class ConversationManager {
   private state: ConversationState;
@@ -14,6 +16,7 @@ export class ConversationManager {
   private allTools: Tool[] = []; // Cache of all available tools
   private toolsLastUpdated: number = 0; // Timestamp of when tools were last updated
   private readonly TOOLS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache TTL
+  private aiClientFactory: typeof AiClientFactory; // Store the factory reference for switching models
   
   // Prompts from the design doc
   private readonly TOOL_RESULTS_PROMPT = `You have received results from the tool(s) you called previously (shown immediately above).
@@ -81,16 +84,54 @@ Conversation History:
 
 Concise Summary:`;
 
-  constructor(aiClient: IAiClient, serverManager: ServerManager) {
+  constructor(
+    aiClient: IAiClient, 
+    serverManager: ServerManager, 
+    providerModels: ProviderModelsStructure
+  ) {
     this.aiClient = aiClient;
     this.serverManager = serverManager;
     this.state = new ConversationState(); // Initialize with no system prompt initially
     // System prompt will be generated dynamically based on tools
     
+    // Store the factory reference for switching models
+    this.aiClientFactory = AiClientFactory;
+    
     // Immediately fetch all tools to prime the cache
     this.refreshToolsCache().catch(err => {
       console.warn('Failed to initialize tools cache:', err);
     });
+  }
+  
+  /**
+   * Switch the AI client to a different provider and model
+   * @param providerConfig The provider configuration to use
+   * @param providerModels Available models for providers
+   * @returns The new model name if switch was successful
+   */
+  public switchAiClient(
+    providerConfig: AiProviderConfig, 
+    providerModels: ProviderModelsStructure
+  ): string {
+    try {
+      // Create the new client
+      const newClient = this.aiClientFactory.createClient(providerConfig, providerModels);
+      
+      // Store the old client temporarily in case we need to roll back
+      const oldClient = this.aiClient;
+      
+      // Set the new client
+      this.aiClient = newClient;
+      
+      // Clear conversation history on model switch
+      this.clearConversation();
+      
+      console.log(`Switched AI client to: ${providerConfig.provider} (${newClient.getModelName()})`);
+      return newClient.getModelName();
+    } catch (error) {
+      console.error(`Failed to switch AI client:`, error instanceof Error ? error.message : String(error));
+      throw error; // Re-throw to let the caller handle it
+    }
   }
 
   /**

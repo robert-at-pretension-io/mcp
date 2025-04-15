@@ -1,9 +1,6 @@
-import type { Command } from './types.js';
+import type { Command, ProviderModelsStructure } from './types.js';
 import type { ServerManager } from './ServerManager.js';
 import type { ConversationManager } from './conversation/ConversationManager.js';
-/**
- * Interactive REPL for interacting with MCP servers and AI agent
- */
 export declare class Repl {
     private rl;
     private commands;
@@ -12,7 +9,19 @@ export declare class Repl {
     private currentServer;
     private isChatMode;
     private running;
-    constructor(serverManager: ServerManager, conversationManager: ConversationManager);
+    private providers;
+    private providerModels;
+    private currentProvider;
+    private aiConfigPath;
+    constructor(serverManager: ServerManager, conversationManager: ConversationManager, providerModels: ProviderModelsStructure);
+    /**
+     * Load the AI provider configuration from the config file
+     */
+    private loadAiConfig;
+    /**
+     * Save the AI provider configuration to the config file
+     */
+    private saveAiConfig;
     private getPrompt;
     private registerCommands;
     /**
