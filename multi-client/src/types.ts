@@ -18,7 +18,8 @@ export interface StdioServerConfig extends Omit<StdioServerParameters, 'env'> {
 export interface AiProviderConfig {
   provider: string; // e.g., "openai", "anthropic", "google-genai", "mistralai", "fireworks"
   model?: string; // Optional: e.g., "gpt-4o-mini", "claude-3-5-sonnet-20240620" - If omitted, uses default from TOML
-  apiKeyEnvVar?: string; // Optional: Environment variable name for the API key (defaults based on provider)
+  apiKeyEnvVar?: string; // Optional: Environment variable name for the API key (used if apiKey is not set)
+  apiKey?: string; // Optional: Direct API key (takes precedence over apiKeyEnvVar) - Use with caution!
   temperature?: number; // Optional: Model temperature
   // Add other provider-specific options if needed
 }

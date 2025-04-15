@@ -11,12 +11,50 @@ import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
 import { LangchainClient } from './LangchainClient.js';
 import type { IAiClient } from './IAiClient.js';
 
+/**
+ * Custom error for missing API keys that require user prompting.
+ */
+export class MissingApiKeyError extends Error {
+  public providerName: string;
+  public apiKeyEnvVar: string;
+
+  constructor(providerName: string, apiKeyEnvVar: string) {
+    super(`API key environment variable "${apiKeyEnvVar}" for provider "${providerName}" is not set.`);
+    this.name = 'MissingApiKeyError';
+    this.providerName = providerName;
+    this.apiKeyEnvVar = apiKeyEnvVar;
+    // Set the prototype explicitly.
+    Object.setPrototypeOf(this, MissingApiKeyError.prototype);
+  }
+}
+
+
 export class AiClientFactory {
   static createClient(config: AiProviderConfig, providerModels: ProviderModelsStructure): IAiClient {
     let chatModel: BaseChatModel;
-    const apiKey = config.apiKeyEnvVar ? process.env[config.apiKeyEnvVar] : undefined;
+    let apiKeyToUse: string | undefined = undefined;
     const temperature = config.temperature ?? 0.7; // Default temperature
     const providerKey = config.provider.toLowerCase();
+
+    // --- Determine API Key ---
+    // 1. Check for direct apiKey in config
+    if (config.apiKey) {
+      apiKeyToUse = config.apiKey;
+      console.log(`Using direct API key from config for provider "${providerKey}".`);
+    }
+    // 2. If no direct key, check environment variable specified by apiKeyEnvVar
+    else if (config.apiKeyEnvVar) {
+      apiKeyToUse = process.env[config.apiKeyEnvVar];
+      if (apiKeyToUse) {
+        console.log(`Using API key from environment variable "${config.apiKeyEnvVar}" for provider "${providerKey}".`);
+      } else {
+        // Environment variable specified but not set - throw specific error
+        throw new MissingApiKeyError(config.provider, config.apiKeyEnvVar);
+      }
+    }
+    // 3. If neither is set, some providers might work if LangChain has internal defaults (like checking OPENAI_API_KEY),
+    // but we'll rely on the specific config for clarity. If no key source is defined, error out later if the provider requires one.
+    // We pass `undefined` to the LangChain constructor, letting it handle its default env var checks if applicable.
 
     // --- Determine the model to use ---
     let modelToUse = config.model; // Start with the model specified in servers.json
@@ -42,14 +80,14 @@ export class AiClientFactory {
         chatModel = new ChatOpenAI({
           modelName: modelToUse,
           temperature: temperature,
-          openAIApiKey: apiKey, // apiKey is optional, LangChain checks OPENAI_API_KEY by default
+          openAIApiKey: apiKeyToUse, // Pass the determined key
         });
         break;
       case 'anthropic':
         chatModel = new ChatAnthropic({
           modelName: modelToUse,
           temperature: temperature,
-          anthropicApiKey: apiKey, // apiKey is optional, LangChain checks ANTHROPIC_API_KEY by default
+          anthropicApiKey: apiKeyToUse, // Pass the determined key
         });
         break;
       case 'google-genai':
@@ -57,7 +95,7 @@ export class AiClientFactory {
         chatModel = new ChatGoogleGenerativeAI({
           modelName: modelToUse,
           temperature: temperature,
-          apiKey: apiKey, // apiKey is optional, LangChain checks GOOGLE_API_KEY by default
+          apiKey: apiKeyToUse, // Pass the determined key
         });
         break;
       case 'mistralai':
@@ -65,14 +103,14 @@ export class AiClientFactory {
         chatModel = new ChatMistralAI({
           modelName: modelToUse,
           temperature: temperature,
-          apiKey: apiKey, // apiKey is optional, LangChain checks MISTRAL_API_KEY by default
+          apiKey: apiKeyToUse, // Pass the determined key
         });
         break;
       case 'fireworks':
         chatModel = new ChatFireworks({
           modelName: modelToUse,
           temperature: temperature,
-          fireworksApiKey: apiKey, // LangChain checks FIREWORKS_API_KEY by default
+          fireworksApiKey: apiKeyToUse, // Pass the determined key
         });
         break;
       // Add cases for other providers (Groq, Cohere, Ollama, etc.) here

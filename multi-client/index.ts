@@ -4,12 +4,13 @@ import { fileURLToPath } from 'node:url';
 import TOML from '@ltd/j-toml';
 import { ServerManager } from './src/ServerManager.js';
 import { Repl } from './src/Repl.js';
+import * as readline from 'node:readline'; // Import readline for prompting
 // Import AiConfigFileStructure and remove AiProviderConfig import from here
 import type { ConfigFileStructure, AiConfigFileStructure, ProviderModelsStructure, AiProviderConfig } from './src/types.js';
-import { AiClientFactory } from './src/ai/AiClientFactory.js';
+import { AiClientFactory, MissingApiKeyError } from './src/ai/AiClientFactory.js'; // Import Factory and Error
 import type { IAiClient } from './src/ai/IAiClient.js';
 import { ConversationManager } from './src/conversation/ConversationManager.js';
-import { WebServer } from './src/web/WebServer.js'; // Import WebServer
+import { WebServer } from './src/web/WebServer.js';
 
 // Helper to get the directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -167,30 +168,9 @@ async function main() {
 
 
   // --- AI Client Initialization ---
-  let aiClient: IAiClient | null = null;
+  // Use the new function that handles prompting for keys
+  const aiClient = await initializeAiClientWithPrompting(aiConfigData, providerModels, aiConfigPath);
   let conversationManager: ConversationManager | null = null;
-  const providerNames = Object.keys(aiConfigData.providers || {}); // Use aiConfigData
-
-  const defaultProviderName = aiConfigData.defaultProvider; // Use aiConfigData
-  const aiProviders = aiConfigData.providers; // Use aiConfigData
-
-  if (defaultProviderName && aiProviders && aiProviders[defaultProviderName]) {
-      try {
-          const defaultProviderConfig: AiProviderConfig = aiProviders[defaultProviderName]; // Explicit type
-          // Pass the loaded model suggestions to the factory
-          aiClient = AiClientFactory.createClient(defaultProviderConfig, providerModels);
-          console.log(`Initialized default AI client: ${defaultProviderName} (${aiClient.getModelName()})`);
-      } catch (error) {
-          console.error(`Failed to initialize default AI provider "${defaultProviderName}" from ai_config.json:`, error instanceof Error ? error.message : String(error));
-          console.error("Chat functionality will be disabled. Check your AI configuration and API keys.");
-          // Continue without AI client
-      }
-  } else if (providerNames.length > 0) {
-       console.warn("No default AI provider specified or the specified default is invalid. Chat will be disabled until a provider is selected (feature not yet implemented).");
-  } else {
-      console.warn("No AI providers configured. Chat functionality is disabled.");
-  }
-
 
   // --- Server Manager Initialization ---
   const serverManager = new ServerManager(serversConfigData); // Use serversConfigData
@@ -282,3 +262,139 @@ main().catch(error => {
   console.error('Unhandled error in main function:', error instanceof Error ? error.message : String(error));
   process.exit(1);
 });
+
+// --- Helper Functions ---
+
+/**
+ * Prompts the user for input, optionally hiding the input (for passwords/keys).
+ */
+async function promptForInput(promptText: string, hideInput: boolean = false): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  // Hacky way to hide input in standard readline
+  const originalWrite = (rl.output as NodeJS.WriteStream).write;
+  if (hideInput) {
+    (rl.output as NodeJS.WriteStream).write = (chunk: any, encoding?: BufferEncoding | ((err?: Error | null) => void), cb?: (err?: Error | null) => void): boolean => {
+       if (typeof chunk === 'string') {
+           switch (chunk) {
+               case '\r\n':
+               case '\n':
+                   break; // Keep newlines
+               default:
+                   (rl.output as NodeJS.WriteStream).write('*', encoding, cb); // Replace chars with '*'
+                   return true; // Indicate success
+           }
+       }
+       // Fallback for non-string chunks or if write returns false
+       return originalWrite.call(rl.output, chunk, encoding, cb);
+    };
+  }
+
+  return new Promise((resolve) => {
+    rl.question(promptText, (answer) => {
+      if (hideInput) {
+         (rl.output as NodeJS.WriteStream).write = originalWrite; // Restore original write
+         process.stdout.write('\n'); // Add newline after hidden input
+      }
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+
+/**
+ * Initializes the AI client, prompting for missing API keys if necessary.
+ */
+async function initializeAiClientWithPrompting(
+  aiConfigData: AiConfigFileStructure,
+  providerModels: ProviderModelsStructure,
+  aiConfigPath: string
+): Promise<IAiClient | null> {
+  const providerNames = Object.keys(aiConfigData.providers || {});
+  const defaultProviderName = aiConfigData.defaultProvider;
+  const aiProviders = aiConfigData.providers;
+
+  if (!defaultProviderName || !aiProviders || !aiProviders[defaultProviderName]) {
+    if (providerNames.length > 0) {
+      console.warn("No default AI provider specified or the specified default is invalid in ai_config.json. Chat will be disabled.");
+    } else {
+      console.warn("No AI providers configured in ai_config.json. Chat functionality is disabled.");
+    }
+    return null;
+  }
+
+  let defaultProviderConfig: AiProviderConfig = { ...aiProviders[defaultProviderName] }; // Clone to allow modification
+  let aiClient: IAiClient | null = null;
+  let retries = 3; // Limit retries for prompting
+
+  while (retries > 0 && aiClient === null) {
+    try {
+      aiClient = AiClientFactory.createClient(defaultProviderConfig, providerModels);
+      console.log(`Initialized default AI client: ${defaultProviderName} (${aiClient.getModelName()})`);
+    } catch (error) {
+      if (error instanceof MissingApiKeyError) {
+        console.warn(`Configuration requires environment variable "${error.apiKeyEnvVar}" for provider "${error.providerName}", but it's not set.`);
+        const apiKey = await promptForInput(`Enter API Key for ${error.providerName} (or press Enter to skip): `, true);
+
+        if (!apiKey) {
+          console.error(`API Key not provided for ${error.providerName}. Cannot initialize this provider.`);
+          return null; // Stop trying for this provider
+        }
+
+        // Key provided: Update environment for this session
+        process.env[error.apiKeyEnvVar] = apiKey;
+        console.log(`API Key for ${error.providerName} set for this session.`);
+
+        // Update the config file
+        try {
+          // Read the current config file again to avoid overwriting concurrent changes (less likely here, but good practice)
+          const currentAiConfigFile = fs.readFileSync(aiConfigPath, 'utf-8');
+          const currentAiConfigData = JSON.parse(currentAiConfigFile) as AiConfigFileStructure;
+
+          // Find the provider and update it
+          if (currentAiConfigData.providers && currentAiConfigData.providers[error.providerName]) {
+            console.log(`Saving API key directly to ${aiConfigPath} for provider "${error.providerName}".`);
+            console.warn("SECURITY WARNING: Storing API keys directly in configuration files is not recommended.");
+
+            // Add apiKey, remove apiKeyEnvVar
+            currentAiConfigData.providers[error.providerName].apiKey = apiKey;
+            delete currentAiConfigData.providers[error.providerName].apiKeyEnvVar;
+
+            // Write back to the file
+            fs.writeFileSync(aiConfigPath, JSON.stringify(currentAiConfigData, null, 2), 'utf-8');
+            console.log(`Configuration updated in ${aiConfigPath}.`);
+
+            // Update the in-memory config for the retry
+            defaultProviderConfig = { ...currentAiConfigData.providers[error.providerName] };
+
+          } else {
+            console.error(`Could not find provider "${error.providerName}" in ${aiConfigPath} to save the key.`);
+            // Continue retry with the key set in process.env for this session
+          }
+        } catch (writeError) {
+          console.error(`Error writing updated configuration to ${aiConfigPath}:`, writeError);
+          // Continue retry with the key set in process.env for this session
+        }
+
+        // Decrement retries and loop to try creating the client again
+        retries--;
+
+      } else {
+        // Different error, rethrow
+        console.error(`Failed to initialize default AI provider "${defaultProviderName}" from ai_config.json:`, error instanceof Error ? error.message : String(error));
+        console.error("Chat functionality will be disabled. Check your AI configuration.");
+        return null; // Stop trying
+      }
+    }
+  } // End while loop
+
+  if (!aiClient) {
+     console.error(`Failed to initialize AI client for ${defaultProviderName} after multiple attempts.`);
+  }
+
+  return aiClient;
+}
