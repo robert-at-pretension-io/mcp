@@ -1,0 +1,89 @@
+/* web/css/layout.css */
+/* Move .container, header, main, footer styles here */
+
+.container {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    height: 100vh;
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+/* Header styles */
+header {
+    background-color: var(--panel-bg);
+    color: var(--text-color);
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: var(--shadow-sm);
+    z-index: 10;
+}
+
+.logo-area h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.info-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem; /* Add gap for toggle button */
+}
+
+.server-info {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.info-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-light);
+}
+
+.info-item i {
+    color: var(--primary-color);
+}
+
+.model-info {
+    position: relative;
+}
+
+
+/* Main area styles */
+main {
+    display: grid;
+    /* Default: panel visible */
+    grid-template-columns: 1fr 320px;
+    gap: 1rem;
+    padding: 1rem;
+    height: calc(100vh - 120px); /* Adjust based on header/footer height */
+    overflow: hidden;
+}
+
+/* Styles for collapsed panel */
+main.panel-collapsed {
+    grid-template-columns: 1fr 0; /* Hide panel column */
+}
+
+main.panel-collapsed .right-panel {
+    display: none; /* Ensure it's fully hidden */
+}
+
+
+/* Footer styles */
+footer {
+    background-color: var(--panel-bg);
+    color: var(--text-light);
+    padding: 0.75rem 1.5rem;
+    text-align: center;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.875rem;
+}

@@ -1,0 +1,274 @@
+/* web/css/sidebar.css */
+/* Move styles for right panel, panel sections, lists, items, filter here */
+
+.right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.panel-section {
+    background-color: var(--panel-bg);
+    border-radius: var(--radius);
+    padding: 1rem;
+    box-shadow: var(--shadow);
+}
+
+.panel-section h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: space-between; /* Keep space for buttons */
+}
+
+.panel-section h3 i {
+    color: var(--primary-color);
+}
+
+.empty-list {
+    padding: 0.75rem;
+    text-align: center;
+    color: var(--text-light);
+    font-size: 0.875rem;
+}
+
+/* Conversations Panel */
+.conversations-panel {
+    flex-shrink: 0;
+}
+
+.conversations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 300px; /* Adjust as needed */
+    overflow-y: auto;
+}
+
+.conversation-item {
+    padding: 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background-color: var(--background-color);
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.conversation-item.active {
+    border-color: var(--primary-color);
+    background-color: rgba(37, 99, 235, 0.05);
+}
+
+.conversation-item:hover {
+    border-color: var(--primary-color);
+}
+
+.conversation-title {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    padding-right: 60px; /* Space for buttons */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.conversation-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+
+.conversation-model {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 70%;
+}
+
+.conversation-date {
+    flex-shrink: 0;
+}
+
+.conversation-actions {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: none; /* Show on hover */
+    gap: 0.25rem;
+}
+
+.conversation-item:hover .conversation-actions {
+    display: flex;
+}
+
+.conversation-rename-btn,
+.conversation-delete-btn {
+    background: none;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    padding: 0.25rem;
+    font-size: 0.8rem;
+    border-radius: var(--radius-sm);
+    transition: color 0.2s, background-color 0.2s;
+}
+
+.conversation-rename-btn:hover {
+    color: var(--primary-color);
+    background-color: rgba(37, 99, 235, 0.1);
+}
+
+.conversation-delete-btn:hover {
+    color: var(--danger-color);
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* Providers Panel */
+.providers-panel {
+    flex-shrink: 0;
+}
+
+.providers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.provider-item {
+    padding: 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background-color: var(--background-color);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.provider-item.active {
+    border-color: var(--primary-color);
+    background-color: rgba(37, 99, 235, 0.05);
+}
+
+.provider-item:hover {
+    border-color: var(--primary-color);
+}
+
+.provider-name {
+    font-weight: 500;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.provider-item.active .provider-name {
+    font-weight: 600;
+    color: var(--primary-dark);
+}
+
+.provider-item.active .provider-name i {
+    color: var(--success-color); /* Make checkmark green */
+}
+
+.provider-model {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin-top: 0.25rem;
+}
+
+/* Tools Panel */
+.tools-panel {
+    flex-grow: 1; /* Allow tools panel to take remaining space */
+    overflow-y: auto; /* Allow scrolling within tools panel */
+}
+
+.tools-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem; /* Increased gap for server groups */
+}
+
+.tool-server-group {
+    margin-bottom: 1rem;
+}
+
+.tool-server-group h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-light);
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px dashed var(--border-color);
+}
+
+.tool-item {
+    padding: 0.5rem 0.75rem; /* Slightly reduced padding */
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background-color: var(--background-color);
+}
+
+.tool-item h5 { /* Changed from h4 to h5 for hierarchy */
+    color: var(--primary-color);
+    margin-bottom: 0.25rem;
+    font-size: 0.9rem;
+    font-weight: 500; /* Slightly less bold */
+}
+
+.tool-description {
+    font-size: 0.8rem;
+    color: var(--text-color);
+}
+
+/* Config Panel */
+.config-panel {
+    flex-shrink: 0;
+}
+
+.config-options {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+}
+
+.config-option {
+    padding: 0.75rem;
+    text-align: center;
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.config-option i {
+    font-size: 1.25rem;
+    color: var(--primary-color);
+}
+
+.config-option:hover {
+    border-color: var(--primary-color);
+}
+
+.config-option.highlight {
+    animation: pulse 1s infinite;
+    border-color: var(--primary-color);
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
+    70% { box-shadow: 0 0 0 5px rgba(37, 99, 235, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+}

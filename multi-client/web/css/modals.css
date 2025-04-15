@@ -1,0 +1,289 @@
+/* web/css/modals.css */
+/* Move common modal styles and specific modal styles here */
+
+/* Common Modal Styles */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    overflow: auto;
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.2s ease-out; /* Use same fade as messages */
+}
+
+.modal-content {
+    background-color: var(--panel-bg);
+    margin: 5% auto;
+    padding: 1.5rem;
+    width: 90%;
+    max-width: 500px; /* Default max width */
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    position: relative;
+    animation: slideIn 0.3s ease-out;
+    max-height: 90vh; /* Limit height */
+    overflow-y: auto; /* Allow scrolling within modal */
+}
+
+.wide-modal {
+    max-width: 800px; /* Wider modal variant */
+}
+
+@keyframes slideIn {
+    from { transform: translateY(-30px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    color: var(--text-light);
+    font-size: 1.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.2s;
+    background: none; /* Ensure no button background */
+    border: none; /* Ensure no button border */
+    padding: 0; /* Ensure no extra padding */
+    line-height: 1; /* Adjust line height if needed */
+}
+
+.close:hover {
+    color: var(--danger-color);
+}
+
+.modal h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1.5rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.modal-section {
+    margin-bottom: 1.5rem;
+}
+
+.modal-section h3 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding-top: 1rem; /* Add padding above buttons */
+    border-top: 1px solid var(--border-color); /* Separator */
+}
+
+/* Specific Modal Styles */
+
+/* Model Change Modal */
+#cancel-model-change {
+    background-color: var(--text-light);
+}
+#cancel-model-change:hover {
+    background-color: var(--text-color);
+}
+#apply-model-change {
+    background-color: var(--primary-color);
+}
+#apply-model-change:hover {
+    background-color: var(--primary-dark);
+}
+
+/* Server Configuration Modal */
+.server-editor {
+    display: grid;
+    grid-template-columns: 250px 1fr; /* List | Details */
+    gap: 1.5rem;
+    height: 400px; /* Fixed height */
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.server-list {
+    background-color: var(--background-color);
+    border-right: 1px solid var(--border-color);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.server-list-header {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--panel-bg);
+    flex-shrink: 0; /* Prevent header from shrinking */
+}
+
+.server-list-header h4 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+#server-list-items {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    overflow-y: auto;
+    flex-grow: 1;
+}
+
+.server-list-item {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background-color 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.server-list-item:hover {
+    background-color: rgba(37, 99, 235, 0.05);
+}
+
+.server-list-item.active {
+    background-color: rgba(37, 99, 235, 0.1);
+    font-weight: 500;
+}
+
+.server-delete-btn {
+    color: var(--text-light);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    font-size: 0.8rem;
+    border-radius: var(--radius-sm);
+    transition: color 0.2s, background-color 0.2s;
+}
+
+.server-delete-btn:hover {
+    color: var(--danger-color);
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+.server-details {
+    padding: 1rem;
+    overflow-y: auto;
+    position: relative; /* For centered message */
+}
+
+.form-row {
+    margin-bottom: 1rem;
+}
+
+.form-row label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.form-row input,
+.form-row select,
+.form-row textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background-color: var(--background-color);
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.centered-message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--text-light);
+}
+
+.args-list, .env-list {
+    margin-bottom: 0.75rem;
+}
+
+.arg-item, .env-item {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    align-items: center;
+}
+
+.arg-item input, .env-item input {
+    flex-grow: 1;
+}
+
+.env-item .key-input {
+    width: 40%;
+    flex-grow: 0;
+}
+
+.arg-item .remove-btn, .env-item .remove-btn {
+    background: none;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    padding: 0.25rem;
+    font-size: 0.9rem;
+    border-radius: var(--radius-sm);
+    transition: color 0.2s, background-color 0.2s;
+}
+
+.arg-item .remove-btn:hover, .env-item .remove-btn:hover {
+    color: var(--danger-color);
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+#cancel-servers-change { background-color: var(--text-light); }
+#cancel-servers-change:hover { background-color: var(--text-color); }
+#apply-servers-change { background-color: var(--primary-color); }
+#apply-servers-change:hover { background-color: var(--primary-dark); }
+
+
+/* Config Editor Modal */
+.code-editor-wrapper {
+    width: 100%;
+    height: 350px; /* Adjust height as needed */
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden; /* Hide textarea scrollbars, rely on wrapper */
+}
+
+#config-editor {
+    width: 100%;
+    height: 100%;
+    padding: 1rem;
+    font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    resize: none;
+    border: none;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    outline: none;
+}
+
+#cancel-config-change { background-color: var(--text-light); }
+#cancel-config-change:hover { background-color: var(--text-color); }
+#apply-config-change { background-color: var(--primary-color); }
+#apply-config-change:hover { background-color: var(--primary-dark); }

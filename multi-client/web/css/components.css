@@ -1,0 +1,273 @@
+/* web/css/components.css */
+/* Move styles for buttons, inputs, selects, toasts, spinners, etc. here */
+
+/* Buttons */
+button {
+    padding: 0.5rem 1rem;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s;
+}
+
+button:hover {
+    background-color: var(--primary-dark);
+}
+
+button i {
+    font-size: 0.875rem;
+}
+
+#clear-button {
+    background-color: var(--text-light);
+}
+
+#clear-button:hover {
+    background-color: var(--danger-color);
+}
+
+.icon-button {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-light);
+    cursor: pointer;
+    padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+    font-size: 0.875rem;
+}
+
+.icon-button:hover {
+    background-color: var(--background-color);
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.action-button {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.2s;
+    font-size: 0.875rem;
+}
+
+.action-button:hover {
+    background-color: rgba(37, 99, 235, 0.1);
+}
+
+.small-button {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+.small-button:hover {
+    background-color: var(--border-color);
+}
+
+/* Inputs & Selects */
+textarea {
+    width: 100%;
+    padding: 0.75rem;
+    height: 120px; /* Consider making this dynamic or larger */
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    resize: none;
+    font-family: inherit;
+    font-size: 0.9rem;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+textarea:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background-color: var(--background-color);
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.filter-input {
+    width: 100%;
+    padding: 0.5rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+}
+
+/* Input groups */
+.input-group {
+    display: flex;
+    position: relative;
+    width: 100%;
+}
+
+.input-group input {
+    flex-grow: 1;
+    padding-right: 2.5rem; /* Make space for button */
+    /* Inherit general input styles if defined elsewhere */
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background-color: var(--background-color);
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.input-group button {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    color: var(--text-light);
+    transition: color 0.2s;
+    padding: 0; /* Override default button padding */
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0; /* Adjust radius */
+}
+
+.input-group button:hover {
+    color: var(--primary-color);
+    background: none; /* Ensure no background on hover */
+}
+
+/* Spinner */
+.spinner {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    border-left-color: var(--spinner-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.spinner.hidden {
+    display: none;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    background-color: var(--panel-bg);
+    color: var(--text-color);
+    padding: 1rem;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    max-width: 300px;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: transform 0.3s, opacity 0.3s;
+}
+
+.toast.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.toast.success { border-left: 4px solid var(--success-color); }
+.toast.error { border-left: 4px solid var(--danger-color); }
+.toast.warning { border-left: 4px solid var(--warning-color); }
+.toast.info { border-left: 4px solid var(--primary-color); } /* Added info style */
+
+.toast-icon { font-size: 1.25rem; }
+.toast.success .toast-icon { color: var(--success-color); }
+.toast.error .toast-icon { color: var(--danger-color); }
+.toast.warning .toast-icon { color: var(--warning-color); }
+.toast.info .toast-icon { color: var(--primary-color); } /* Added info style */
+
+.toast-content { flex-grow: 1; }
+.toast-title { font-weight: 600; margin-bottom: 0.25rem; }
+.toast-message { font-size: 0.875rem; }
+
+.toast-close {
+    background: none;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.25rem;
+    transition: color 0.2s;
+    margin-left: auto; /* Push close button to the right */
+}
+
+.toast-close:hover { color: var(--danger-color); }
+
+/* Status Indicators */
+.server-status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+
+.server-status-connected { background-color: var(--success-color); }
+.server-status-disconnected { background-color: var(--text-light); }
+.server-status-error { background-color: var(--danger-color); }
+
+/* Helper Text */
+.help-text {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    margin-top: 0.5rem;
+    line-height: 1.4;
+}
+
+/* Hidden class */
+.hidden {
+    display: none !important; /* Use important to override potential conflicts */
+}

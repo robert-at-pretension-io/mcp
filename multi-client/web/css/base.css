@@ -1,0 +1,48 @@
+/* web/css/base.css */
+/* Move :root, *, body styles here */
+
+:root {
+    /* Copy :root variables from styles.css here */
+    --primary-color: #2563eb; /* Blue 600 */
+    --primary-dark: #1d4ed8; /* Blue 700 */
+    --secondary-color: #7c3aed; /* Violet 600 */
+    --background-color: #f8fafc; /* Slate 50 */
+    --panel-bg: #ffffff; /* White */
+    --text-color: #334155; /* Slate 700 */
+    --text-light: #94a3b8; /* Slate 400 */
+    --border-color: #e2e8f0; /* Slate 200 */
+    --user-message-bg: #dbeafe; /* Blue 100 */
+    --user-message-border: #bfdbfe; /* Blue 200 */
+    --ai-message-bg: #f1f5f9; /* Slate 100 */
+    --ai-message-border: #e2e8f0; /* Slate 200 */
+    --tool-message-bg: #f0fdf4; /* Green 50 */
+    --tool-message-border: #dcfce7; /* Green 100 */
+    --error-bg: #fee2e2; /* Red 100 */
+    --error-border: #fecaca; /* Red 200 */
+    --success-color: #22c55e; /* Green 500 */
+    --warning-color: #f59e0b; /* Amber 500 */
+    --danger-color: #ef4444; /* Red 500 */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    --radius-sm: 0.25rem;
+    --radius: 0.375rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --spinner-color: var(--primary-color);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    font-size: 16px;
+}
