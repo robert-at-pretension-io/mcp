@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express'; // Add Request, Response types
+import { Router, type Request, type Response, type RequestHandler } from 'express'; // Add Request, Response, RequestHandler types
 import type { ServerManager } from '../../ServerManager.js';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs'; // For existsSync
@@ -17,7 +17,7 @@ export function createServersRouter(serverManager: ServerManager): Router {
     const serversConfigPath = path.join(baseDir, 'servers.json');
 
     // --- Get Connected Server Status & Tools ---
-    router.get('/', async (req, res) => { // Remove explicit types
+    router.get('/', (async (req, res) => { // Remove explicit types, add RequestHandler cast
         try {
             // Get status from ServerManager (assuming it has a method like getServerStatuses)
             // For now, just return connected names as before, but ideally return status objects
@@ -29,9 +29,9 @@ export function createServersRouter(serverManager: ServerManager): Router {
         } catch (error) {
             res.status(500).json({ error: `Failed to get server status: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
-    router.get('/tools', async (req, res) => { // Remove explicit types
+    router.get('/tools', (async (req, res) => { // Remove explicit types, add RequestHandler cast
         try {
             const tools = await serverManager.getAllTools();
             // Group tools by server here
@@ -54,11 +54,11 @@ export function createServersRouter(serverManager: ServerManager): Router {
         } catch (error) {
             res.status(500).json({ error: `Failed to get tools: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
     // --- Get Server Configuration File (servers.json) ---
     // This is used by the modal to populate the editor
-    router.get('/config', async (req, res) => { // Remove explicit types
+    router.get('/config', (async (req, res) => { // Remove explicit types, add RequestHandler cast
         try {
             if (!fsSync.existsSync(serversConfigPath)) {
                 // Return empty structure if file doesn't exist
@@ -70,11 +70,11 @@ export function createServersRouter(serverManager: ServerManager): Router {
         } catch (error) {
             res.status(500).json({ error: `Failed to get server configurations: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
     // --- Update Server Configuration File (servers.json) ---
     // This is called when saving changes in the modal
-    router.post('/config', async (req, res) => { // Remove explicit types
+    router.post('/config', (async (req, res) => { // Remove explicit types, add RequestHandler cast
         try {
             const { config } = req.body; // Expecting the full { mcpServers: {...} } structure
 
@@ -110,7 +110,7 @@ export function createServersRouter(serverManager: ServerManager): Router {
         } catch (error) {
             res.status(500).json({ error: `Failed to update server configurations: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
 
     return router;

@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express'; // Add Request, Response types
+import { Router, type Request, type Response, type RequestHandler } from 'express'; // Add Request, Response, RequestHandler types
 import type { ConversationManager } from '../../conversation/ConversationManager.js';
 import type { ServerManager } from '../../ServerManager.js';
 import * as fs from 'node:fs/promises';
@@ -81,7 +81,7 @@ export function createAiRouter(
     });
 
     // --- AI Providers Info ---
-    router.get('/providers', async (req, res) => { // Remove explicit types
+    router.get('/providers', (async (req, res) => { // Remove explicit types, add RequestHandler cast
         try {
             // Load config and models inside the handler
             const aiConfigData = await readAiConfig();
@@ -95,11 +95,11 @@ export function createAiRouter(
         } catch (error) {
             res.status(500).json({ error: `Failed to get AI providers info: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
     // --- Switch AI Provider ---
     // Note: This endpoint might be deprecated in favor of /model endpoint handling provider change
-    router.post('/provider', async (req, res) => { // Remove explicit types
+    router.post('/provider', (async (req, res) => { // Remove explicit types, add RequestHandler cast
         try {
             const { provider } = req.body;
             if (!provider) {
@@ -129,10 +129,10 @@ export function createAiRouter(
         } catch (error) {
             res.status(500).json({ error: `Failed to switch provider: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
     // --- Switch AI Model (can also handle provider change) ---
-    router.post('/model', async (req, res) => { // Remove explicit types
+    router.post('/model', (async (req, res) => { // Remove explicit types, add RequestHandler cast
         try {
             const { model, provider } = req.body; // Provider is optional, defaults to current
             if (!model) {
@@ -166,10 +166,10 @@ export function createAiRouter(
         } catch (error) {
             res.status(500).json({ error: `Failed to switch model: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
     // --- Update API Keys ---
-    router.post('/keys', async (req, res) => { // Remove explicit types
+    router.post('/keys', (async (req, res) => { // Remove explicit types, add RequestHandler cast
         try {
             const { provider, apiKey } = req.body;
             if (!provider || !apiKey) {
@@ -225,7 +225,7 @@ export function createAiRouter(
         } catch (error) {
             res.status(500).json({ error: `Failed to update API key: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
 
     return router;

@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express'; // Add Request, Response types
+import { Router, type Request, type Response, type RequestHandler } from 'express'; // Add Request, Response, RequestHandler types
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';
 import * as path from 'node:path';
@@ -15,7 +15,7 @@ export function createConfigRouter(): Router {
     const allowedFiles = ['ai_config.json', 'servers.json', 'provider_models.toml'];
 
     // --- Get Config File Content ---
-    router.get('/:file', async (req, res) => { // Remove explicit types
+    router.get('/:file', (async (req, res) => { // Remove explicit types, add RequestHandler cast
         try {
             const { file } = req.params;
 
@@ -40,10 +40,10 @@ export function createConfigRouter(): Router {
         } catch (error) {
             res.status(500).json({ error: `Failed to read configuration file: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
     // --- Save Config File Content ---
-    router.post('/:file', async (req, res) => { // Remove explicit types
+    router.post('/:file', (async (req, res) => { // Remove explicit types, add RequestHandler cast
         try {
             const { file } = req.params;
             const { content } = req.body;
@@ -94,7 +94,7 @@ export function createConfigRouter(): Router {
         } catch (error) {
             res.status(500).json({ error: `Failed to save configuration file: ${error instanceof Error ? error.message : String(error)}` });
         }
-    });
+    }) as RequestHandler);
 
     return router;
 }
