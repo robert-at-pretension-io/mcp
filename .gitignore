@@ -4,3 +4,4 @@
 *.json
 debug_config.json
 
+node_modules/
