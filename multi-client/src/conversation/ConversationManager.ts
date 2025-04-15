@@ -515,28 +515,30 @@ Important:
 
         // Store the result with its ID
         results.set(toolCallId, resultContent);
-        
-        // Add tool result to conversation state for history tracking
-        this.state.addMessage(new ToolMessage(
-          resultContent,
-          toolCallId,
-          toolCall.name
-        ));
 
-        return { toolCallId, name: toolCall.name, result: resultContent };
+        // DO NOT add ToolMessage to state here. Return the result instead.
+        // this.state.addMessage(new ToolMessage(
+        //   resultContent,
+        //   toolCallId,
+        //   toolCall.name
+        // ));
+
+        // Return enough info to create the ToolMessage later
+        return { toolCallId, name: toolCall.name, result: resultContent }; 
       } catch (error) {
         const errorMessage = `Failed to execute tool '${toolCall.name}': ${error instanceof Error ? error.message : String(error)}`;
         console.error(errorMessage);
         results.set(toolCallId, errorMessage);
+
+        // DO NOT add ToolMessage to state here. Return the error result instead.
+        // this.state.addMessage(new ToolMessage(
+        //   errorMessage,
+        //   toolCallId,
+        //   toolCall.name
+        // ));
         
-        // Add error message to state
-        this.state.addMessage(new ToolMessage(
-          errorMessage,
-          toolCallId,
-          toolCall.name
-        ));
-        
-        return { toolCallId, name: toolCall.name, result: errorMessage };
+        // Return enough info to create the ToolMessage later
+        return { toolCallId, name: toolCall.name, result: errorMessage }; 
       }
     });
 
@@ -861,16 +863,23 @@ Important:
       this.state.addMessage(aiMessageRequestingTools);
       
       // Execute tool calls, passing the calls with the generated IDs
-      const toolResults = await this.executeToolCalls(toolCallsWithIds);
+      // toolResults is now Map<string, string> (toolCallId -> result string)
+      const toolResultsMap = await this.executeToolCalls(toolCallsWithIds); 
       
       // Mark the tool calls in the previous AI message as no longer pending
       aiMessageRequestingTools.pendingToolCalls = false;
       
-      // Build the tool results message for the next AI call
-      // Note: The tool results themselves were added to history inside executeToolCalls
-      const toolResultsPrompt = this.createToolResultsMessage(toolResults);
+      // Add the ToolMessages to the state *after* the AIMessage
+      for (const toolCall of toolCallsWithIds) {
+          const result = toolResultsMap.get(toolCall.id) || `Error: Result not found for tool call ${toolCall.id}`;
+          this.state.addMessage(new ToolMessage(
+              result,
+              toolCall.id, // Use the same ID generated earlier
+              toolCall.name
+          ));
+      }
       
-      // Get the updated message history including the tool results
+      // Get the updated message history including the AIMessage and the ToolMessages
       const messagesForFollowUp = this.state.getMessages();
       
       // Make the next AI call with the tool results context
