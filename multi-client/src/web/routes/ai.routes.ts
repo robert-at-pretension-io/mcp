@@ -1,4 +1,4 @@
-import { Router } from 'express'; // Remove Request, Response, NextFunction imports if unused elsewhere
+import { Router, type Request, type Response } from 'express'; // Add Request, Response types
 import type { ConversationManager } from '../../conversation/ConversationManager.js';
 import type { ServerManager } from '../../ServerManager.js';
 import * as fs from 'node:fs/promises';
@@ -69,7 +69,7 @@ export function createAiRouter(
 
 
     // --- AI Model Info ---
-    router.get('/model', (req: Request, res: Response) => { // Add types
+    router.get('/model', (req, res) => { // Remove explicit types, they are inferred
         try {
             const model = conversationManager.getAiClientModelName();
             const provider = conversationManager.getAiProviderName(); // Use the new getter

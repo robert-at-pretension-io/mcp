@@ -1,4 +1,4 @@
-import { Router } from 'express'; // Remove Request, Response, NextFunction imports if unused elsewhere
+import { Router, type Request, type Response } from 'express'; // Add Request, Response types
 import type { ServerManager } from '../../ServerManager.js';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs'; // For existsSync
