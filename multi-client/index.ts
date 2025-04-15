@@ -218,7 +218,8 @@ async function main() {
   
   if (useWeb && conversationManager) {
     webServer = new WebServer(conversationManager, serverManager, webPort);
-    webServer.start();
+    await webServer.init(); // Initialize asynchronously
+    webServer.start(); // Start after initialization
     console.log(`Web interface available at http://localhost:${webPort}`);
   }
 

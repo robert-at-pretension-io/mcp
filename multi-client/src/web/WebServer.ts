@@ -47,8 +47,13 @@ export class WebServer {
         methods: ['GET', 'POST']
       }
     });
+  }
 
-    // Import routers
+  /**
+   * Asynchronously initializes routes and socket events after dynamic imports.
+   */
+  async init() {
+    // Import routers within the async method
     const { createAiRouter } = await import('./routes/ai.routes.js');
     const { createServersRouter } = await import('./routes/servers.routes.js');
     const { createConfigRouter } = await import('./routes/config.routes.js');
