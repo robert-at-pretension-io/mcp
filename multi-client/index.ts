@@ -1,156 +1,105 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-// SSEClientTransport is imported but not used, consider removing if not needed
-// import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import type { StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio.js';
-import type { Implementation, ListToolsResult } from '@modelcontextprotocol/sdk/types.js'; // Import Implementation and ListToolsResult types
-
-// Define types for the configuration structure
-
-// Configuration for a single stdio server
-interface StdioServerConfig extends Omit<StdioServerParameters, 'env'> { // Omit env if StdioServerParameters includes it, otherwise just extend
-    env?: Record<string, string>;
-}
-
-// Structure of the servers.json file
-interface ConfigFileStructure {
-    mcpServers: Record<string, StdioServerConfig>;
-}
-
+import { ServerManager } from './src/ServerManager.js';
+import { Repl } from './src/Repl.js';
+import { ConfigFileStructure } from './src/types.js';
 
 // Helper to get the directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function main() {
-    const configPath = path.join(__dirname, 'servers.json');
-    let configData: ConfigFileStructure;
-
-    // Read and parse the configuration file
-    try {
-        const configFile = fs.readFileSync(configPath, 'utf-8');
-        configData = JSON.parse(configFile) as ConfigFileStructure;
-        if (!configData || typeof configData.mcpServers !== 'object') {
-            throw new Error("Invalid config format: 'mcpServers' object not found.");
-        }
-        const serverNames = Object.keys(configData.mcpServers);
-        console.log(`Loaded ${serverNames.length} server configurations from ${configPath}: ${serverNames.join(', ')}`);
-    } catch (error) {
-        console.error(`Error reading or parsing configuration file ${configPath}:`, error instanceof Error ? error.message : error);
-        process.exit(1);
-    }
-
-    // Array to hold connection promises
-    const connectionPromises: Promise<void>[] = [];
-    // Store clients and their transports for graceful shutdown
-    const serverConnections: Record<string, { client: Client; transport: Transport }> = {};
-
-    // Iterate over configurations and initiate connections
-    for (const [serverName, config] of Object.entries(configData.mcpServers)) {
-        console.log(`\nAttempting to connect to server: ${serverName}`);
-
-        let transport: Transport;
-        try {
-            // All servers are assumed stdio type based on the new config structure
-            const transportOptions: StdioServerParameters & { env?: Record<string, string> } = {
-                command: config.command,
-                args: config.args,
-                // NOTE: The SDK's StdioClientTransport might not directly support 'env'.
-                // This property is included for potential future SDK updates.
-                // The environment variables from the config are NOT currently passed to the child process.
-                env: config.env,
-            };
-            transport = new StdioClientTransport(transportOptions);
-            console.log(`  -> Using stdio transport: ${config.command} ${config.args?.join(' ') ?? ''}`);
-            if (config.env) {
-                 console.log(`  -> Configured environment variables (NOTE: currently not passed by SDK): ${Object.keys(config.env).join(', ')}`);
-            }
-
-
-            // Create the MCP client instance
-            const clientInfo: Implementation = {
-                name: `multi-client-${serverName.replace(/\s+/g, '-')}`, // Use server name from config key
-                version: '1.0.0',
-            };
-            const client = new Client(clientInfo);
-            // Store client and transport together
-            serverConnections[serverName] = { client, transport };
-
-            // Add error handling for the transport
-            transport.onerror = (error) => {
-                console.error(`[${serverName}] Transport error:`, error.message);
-            };
-            transport.onclose = () => {
-                 console.log(`[${serverName}] Connection closed.`);
-            };
-
-
-            // Initiate connection and add the promise to the array
-            const connectPromise = client.connect(transport)
-                .then(async () => { // Make async to await listTools
-                    console.log(`[${serverName}] Successfully connected!`);
-                    // Example: List tools after connection
-                    try {
-                        const res: ListToolsResult = await client.listTools();
-                        console.log(`[${serverName}] Tools:`, res.tools.map(t => t.name));
-                    } catch (err) {
-                        console.error(`[${serverName}] Error listing tools:`, err instanceof Error ? err.message : err);
-                    }
-                })
-                .catch(error => {
-                    console.error(`[${serverName}] Failed to connect:`, error instanceof Error ? error.message : error);
-                });
-
-            connectionPromises.push(connectPromise);
-
-        } catch (error) {
-             console.error(`[${serverName}] Error setting up client:`, error instanceof Error ? error.message : error);
-        }
-    }
-
-    // Wait for all initial connection attempts to settle
-    await Promise.allSettled(connectionPromises);
-
-    console.log("\nAll server connection attempts finished.");
-    console.log("\nAll server connection attempts finished.");
-    console.log("Client is running. Press Ctrl+C to exit gracefully.");
-
-    // Setup graceful shutdown
-    setupShutdownHandler(serverConnections);
-
-    // No need for setInterval anymore, the process will stay alive
-    // due to open connections or wait for signals.
-}
-
 /**
- * Sets up signal handlers for graceful shutdown.
- * @param connections Record mapping server names to their client and transport.
+ * Main entry point for the MCP Multi-Client
  */
-function setupShutdownHandler(connections: Record<string, { client: Client; transport: Transport }>) {
-    const shutdown = async (signal: string) => {
-        console.log(`\nReceived ${signal}. Shutting down servers...`);
-        const closePromises = Object.entries(connections).map(([name, { transport }]) => {
-            console.log(`  Closing connection to ${name}...`);
-            return transport.close().catch(err => {
-                console.error(`  Error closing transport for ${name}:`, err instanceof Error ? err.message : err);
-            });
-        });
-
-        await Promise.allSettled(closePromises);
-        console.log("All server connections closed.");
-        process.exit(0); // Exit cleanly
-    };
-
-    process.on('SIGINT', () => shutdown('SIGINT')); // Ctrl+C
-    process.on('SIGTERM', () => shutdown('SIGTERM')); // Termination signal
+async function main() {
+  console.log('Starting MCP Multi-Client...');
+  
+  // Load configuration file
+  const configPath = path.join(__dirname, 'servers.json');
+  let configData: ConfigFileStructure;
+  
+  try {
+    const configFile = fs.readFileSync(configPath, 'utf-8');
+    configData = JSON.parse(configFile) as ConfigFileStructure;
+    
+    if (!configData || typeof configData.mcpServers !== 'object') {
+      throw new Error("Invalid config format: 'mcpServers' object not found.");
+    }
+    
+    const serverNames = Object.keys(configData.mcpServers);
+    console.log(`Loaded ${serverNames.length} server configurations: ${serverNames.join(', ')}`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      // Create example servers.json if it doesn't exist
+      const exampleConfig: ConfigFileStructure = {
+        mcpServers: {
+          example: {
+            command: 'npx',
+            args: ['-y', '@example/mcp-server@latest'],
+            env: {}
+          }
+        },
+        timeouts: {
+          request: 120,
+          tool: 300
+        }
+      };
+      
+      fs.writeFileSync(configPath, JSON.stringify(exampleConfig, null, 2), 'utf-8');
+      console.error(`Configuration file not found. An example has been created at ${configPath}.`);
+      console.error('Please edit this file and restart the application.');
+      process.exit(1);
+    } else {
+      console.error('Error loading configuration:', error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  }
+  
+  // Create server manager
+  const serverManager = new ServerManager(configData);
+  
+  // Connect to all servers
+  try {
+    console.log('Connecting to configured servers...');
+    const connectedServers = await serverManager.connectAll();
+    console.log(`Successfully connected to ${connectedServers.length} servers.`);
+    
+    if (connectedServers.length === 0) {
+      console.warn('Warning: No servers connected. Check your configuration and server status.');
+    }
+  } catch (error) {
+    console.error('Error connecting to servers:', error instanceof Error ? error.message : String(error));
+    // Continue even if some servers failed to connect
+  }
+  
+  // Set up REPL
+  const repl = new Repl(serverManager);
+  
+  // Set up graceful shutdown
+  const shutdown = async (signal: string) => {
+    console.log(`\nReceived ${signal}. Shutting down...`);
+    
+    // Stop REPL
+    repl.stop();
+    
+    // Close server connections
+    await serverManager.closeAll();
+    
+    console.log('All server connections closed.');
+    process.exit(0);
+  };
+  
+  // Handle termination signals
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  
+  // Start REPL
+  repl.start();
 }
 
-
+// Run the main function
 main().catch(error => {
-    console.error("Unhandled error in main function:", error);
-    process.exit(1);
+  console.error('Unhandled error in main function:', error instanceof Error ? error.message : String(error));
+  process.exit(1);
 });
