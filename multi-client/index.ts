@@ -3,9 +3,12 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+// SSEClientTransport is imported but not used, consider removing if not needed
+// import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio.js';
+import type { Implementation } from '@modelcontextprotocol/sdk/types.js'; // Import Implementation type
+import type { ListToolsResult } from '@modelcontextprotocol/sdk/client/index.js'; // Import ListToolsResult type
 
 // Define types for the configuration structure
 
@@ -69,10 +72,11 @@ async function main() {
 
 
             // Create the MCP client instance
-            const client = new Client({
+            const clientInfo: Implementation = {
                 name: `multi-client-${serverName.replace(/\s+/g, '-')}`, // Use server name from config key
                 version: '1.0.0',
-            });
+            };
+            const client = new Client(clientInfo);
             clients[serverName] = client; // Store the client
 
             // Add error handling for the transport
@@ -86,10 +90,15 @@ async function main() {
 
             // Initiate connection and add the promise to the array
             const connectPromise = client.connect(transport)
-                .then(() => {
+                .then(async () => { // Make async to await listTools
                     console.log(`[${serverName}] Successfully connected!`);
                     // Example: List tools after connection
-                    client.listTools().then(res => console.log(`[${serverName}] Tools:`, res.tools.map(t => t.name))).catch(err => console.error(`[${serverName}] Error listing tools:`, err.message));
+                    try {
+                        const res: ListToolsResult = await client.listTools();
+                        console.log(`[${serverName}] Tools:`, res.tools.map(t => t.name));
+                    } catch (err) {
+                        console.error(`[${serverName}] Error listing tools:`, err instanceof Error ? err.message : err);
+                    }
                 })
                 .catch(error => {
                     console.error(`[${serverName}] Failed to connect:`, error instanceof Error ? error.message : error);
