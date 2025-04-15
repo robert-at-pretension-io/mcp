@@ -59,3 +59,13 @@ export interface Command {
   description: string;
   execute: (args: string[]) => Promise<string | void>;
 }
+
+
+/**
+ * Structure for the provider_models.toml file content
+ */
+export interface ProviderModelList {
+    models: string[];
+}
+
+export type ProviderModelsStructure = Record<string, ProviderModelList>;

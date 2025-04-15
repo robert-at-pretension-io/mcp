@@ -1,9 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import TOML from '@ltd/j-toml'; // Import TOML parser
 import { ServerManager } from './src/ServerManager.js';
 import { Repl } from './src/Repl.js';
-import { ConfigFileStructure } from './src/types.js';
+import type { ConfigFileStructure, ProviderModelsStructure } from './src/types.js'; // Import ProviderModelsStructure
 
 // Helper to get the directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -14,15 +15,21 @@ const __dirname = path.dirname(__filename);
  */
 async function main() {
   console.log('Starting MCP Multi-Client...');
-  
-  // Load configuration file
-  const configPath = path.join(__dirname, 'servers.json');
+
+  // --- Configuration Loading ---
+  // Determine base directory (assuming index.js is in dist/)
+  const baseDir = path.join(__dirname); // Adjust if index.js is elsewhere relative to config files
+  const configPath = path.join(baseDir, 'servers.json');
+  const providerModelsPath = path.join(baseDir, 'provider_models.toml'); // Path to the TOML file
+
   let configData: ConfigFileStructure;
+  let providerModels: ProviderModelsStructure = {}; // Initialize empty model suggestions
   
   try {
+    // Read main config file (servers.json)
     const configFile = fs.readFileSync(configPath, 'utf-8');
     configData = JSON.parse(configFile) as ConfigFileStructure;
-    
+
     if (!configData || typeof configData.mcpServers !== 'object') {
       throw new Error("Invalid config format: 'mcpServers' object not found.");
     }
@@ -55,7 +62,47 @@ async function main() {
       process.exit(1);
     }
   }
-  
+
+  // --- Load Provider Model Suggestions (provider_models.toml) ---
+  try {
+    if (fs.existsSync(providerModelsPath)) {
+      const providerModelsFile = fs.readFileSync(providerModelsPath, 'utf-8');
+      // Use TOML.parse, ensuring it handles the structure correctly
+      // The library might return a Table object, convert if necessary
+      const parsedToml = TOML.parse(providerModelsFile, { joiner: '\n', bigint: false });
+
+      // Assuming the TOML structure is { provider: { models: [...] } }
+      // We need to ensure the parsed structure matches ProviderModelsStructure
+      if (typeof parsedToml === 'object' && parsedToml !== null) {
+          providerModels = Object.entries(parsedToml).reduce((acc, [key, value]) => {
+              // Ensure value is an object and has a 'models' array property
+              if (typeof value === 'object' && value !== null && Array.isArray((value as any).models)) {
+                  // Ensure models in the array are strings
+                  const modelsArray = (value as any).models;
+                  if (modelsArray.every((m: unknown) => typeof m === 'string')) {
+                     acc[key.toLowerCase()] = { models: modelsArray as string[] };
+                  } else {
+                     console.warn(`Invalid model list for provider "${key}" in ${providerModelsPath}. Contains non-string elements. Skipping.`);
+                  }
+              } else {
+                  console.warn(`Invalid structure for provider "${key}" in ${providerModelsPath}. Expected object with 'models' array. Skipping.`);
+              }
+              return acc;
+          }, {} as ProviderModelsStructure);
+          console.log(`Loaded model suggestions from ${providerModelsPath} for providers: ${Object.keys(providerModels).join(', ')}`);
+      } else {
+          console.warn(`Could not parse ${providerModelsPath} into a valid object.`);
+      }
+
+    } else {
+      console.warn(`Provider models file not found at ${providerModelsPath}. Model suggestions will not be used.`);
+    }
+  } catch (error) {
+    console.error(`Error loading or parsing ${providerModelsPath}:`, error instanceof Error ? error.message : String(error));
+    // Continue without model suggestions
+  }
+
+
   // Create server manager
   const serverManager = new ServerManager(configData);
   
