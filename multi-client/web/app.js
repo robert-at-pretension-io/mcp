@@ -433,7 +433,7 @@ function renameConversation(conversationId, newTitle) {
     })
     .catch(error => {
         console.error('Error renaming conversation:', error);
-        showToast('error', 'Error', 'Failed to rename conversation: ' + error.message);
+        showToast('error', 'Error', `Failed to rename conversation: ${error.message}`);
     });
 }
 
@@ -469,7 +469,7 @@ function deleteConversation(conversationId) {
     })
     .catch(error => {
         console.error('Error deleting conversation:', error);
-        showToast('error', 'Error', 'Failed to delete conversation: ' + error.message);
+        showToast('error', 'Error', `Failed to delete conversation: ${error.message}`);
     });
 }
 
@@ -630,7 +630,7 @@ function saveConfigFile() {
     .catch(error => {
         console.error(`Error saving ${currentConfigFile}:`, error);
         showToast('error', 'Error', `Failed to save ${currentConfigFile}: ${error.message}`);
-        updateStatus('Ready');
+        updateStatus('Error saving config'); // Corrected status message
     });
 }
 
@@ -1053,6 +1053,8 @@ function updateApiKey(provider, apiKey) {
     });
 }
 
+// Remove switchProvider and switchModel as they are combined now
+/*
 function switchProvider(providerName) {
     fetch('/api/provider', {
         method: 'POST',
@@ -1432,9 +1434,13 @@ function saveServerConfigurations() {
         closeServersModal();
         showToast('success', 'Success', data.message || 'Server configuration saved successfully');
     })
+        // Add status update
+        updateStatus('Saving server configurations...');
+    })
     .catch(error => {
         console.error('Error saving server configuration:', error);
-        showToast('error', 'Error', 'Failed to save server configuration: ' + error.message);
+        showToast('error', 'Error', `Failed to save server configuration: ${error.message}`);
+        updateStatus('Error saving server config'); // Corrected status message
     });
 }
 

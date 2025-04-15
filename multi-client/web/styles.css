@@ -227,6 +227,28 @@ button i {
     background-color: var(--danger-color);
 }
 
+/* Thinking Spinner */
+.spinner {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    border-left-color: var(--spinner-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.spinner.hidden {
+    display: none;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+
 /* Right panel */
 .right-panel {
     display: flex;
@@ -909,6 +931,19 @@ select:focus {
     background-color: rgba(37, 99, 235, 0.1);
     font-weight: 500;
 }
+
+.server-status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+
+.server-status-connected { background-color: var(--success-color); }
+.server-status-disconnected { background-color: var(--text-light); }
+.server-status-error { background-color: var(--danger-color); }
 
 .server-delete-btn {
     color: var(--text-light);
