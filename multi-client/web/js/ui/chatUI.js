@@ -180,6 +180,11 @@ export function updateThinkingIndicator(thinking, statusMessage = 'AI is thinkin
 function scrollToBottom() {
     if (conversationElement) {
         conversationElement.scrollTop = conversationElement.scrollHeight;
+        // Ensure the last message is fully visible
+        const lastMessage = conversationElement.lastElementChild;
+        if (lastMessage) {
+            lastMessage.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
     }
 }
 
