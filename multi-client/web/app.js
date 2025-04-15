@@ -11,6 +11,8 @@ const aiModelElement = document.getElementById('ai-model');
 const toolsListElement = document.getElementById('tools-list');
 const providersListElement = document.getElementById('providers-list');
 const statusElement = document.getElementById('status');
+const conversationsListElement = document.getElementById('conversations-list');
+const newConversationBtn = document.getElementById('new-conversation-btn');
 
 // Model modal elements
 const modelModal = document.getElementById('model-modal');
@@ -40,6 +42,16 @@ const addEnvBtn = document.getElementById('add-env-btn');
 const cancelServersChangeBtn = document.getElementById('cancel-servers-change');
 const applyServersChangeBtn = document.getElementById('apply-servers-change');
 
+// Config editor modal elements
+const configModal = document.getElementById('config-modal');
+const configCloseBtn = configModal.querySelector('.close');
+const configFileNameElement = document.getElementById('config-file-name');
+const configEditor = document.getElementById('config-editor');
+const cancelConfigChangeBtn = document.getElementById('cancel-config-change');
+const applyConfigChangeBtn = document.getElementById('apply-config-change');
+const editConfigsBtn = document.getElementById('edit-configs-btn');
+const configOptionButtons = document.querySelectorAll('.config-option');
+
 // Application state
 let isThinking = false;
 let currentProvider = '';
@@ -49,6 +61,9 @@ let serverConfig = { mcpServers: {} };
 let selectedServerName = null;
 let currentApiKey = '';
 let toastTimeout = null;
+let conversations = [];
+let currentConversationId = null;
+let currentConfigFile = null;
 
 // Event Listeners
 sendButton.addEventListener('click', sendMessage);
@@ -88,6 +103,30 @@ addEnvBtn.addEventListener('click', addEnvironmentVariable);
 window.addEventListener('click', (e) => {
     if (e.target === serversModal) {
         closeServersModal();
+    }
+});
+
+// Conversations event listeners
+newConversationBtn.addEventListener('click', createNewConversation);
+
+// Config editor event listeners
+editConfigsBtn.addEventListener('click', showConfigOptions);
+configCloseBtn.addEventListener('click', closeConfigModal);
+cancelConfigChangeBtn.addEventListener('click', closeConfigModal);
+applyConfigChangeBtn.addEventListener('click', saveConfigFile);
+
+// Add click event to config option buttons
+configOptionButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        const fileName = button.dataset.file;
+        openConfigEditor(fileName);
+    });
+});
+
+// Close config modal when clicking outside of it
+window.addEventListener('click', (e) => {
+    if (e.target === configModal) {
+        closeConfigModal();
     }
 });
 
@@ -144,6 +183,30 @@ socket.on('model-changed', (data) => {
     displayModelChangedMessage(data.provider, data.model);
 });
 
+socket.on('conversations-list', (data) => {
+    conversations = data.conversations || [];
+    renderConversationsList();
+});
+
+socket.on('conversation-loaded', (data) => {
+    currentConversationId = data.id;
+    updateConversationSelection();
+    renderConversationHistory(data.messages);
+});
+
+socket.on('conversation-saved', (data) => {
+    showToast('success', 'Success', 'Conversation saved');
+    // Update conversation in list if exists
+    const index = conversations.findIndex(c => c.id === data.id);
+    if (index >= 0) {
+        conversations[index] = data;
+    } else {
+        conversations.push(data);
+    }
+    currentConversationId = data.id;
+    renderConversationsList();
+});
+
 // Functions
 function sendMessage() {
     const message = userInputElement.value.trim();
@@ -163,6 +226,41 @@ function sendMessage() {
     }
 }
 
+// Initialize by loading conversation list on startup
+function initializeApp() {
+    fetchConversations();
+}
+
+// Fetch conversations list from the server
+function fetchConversations() {
+    fetch('/api/conversations')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to fetch conversations');
+            }
+            return response.json();
+        })
+        .then(data => {
+            conversations = data.conversations || [];
+            renderConversationsList();
+            
+            // If no current conversation, and we have conversations, load the most recent one
+            if (!currentConversationId && conversations.length > 0) {
+                // Sort conversations by updatedAt, descending
+                const sortedConversations = [...conversations].sort((a, b) => {
+                    return new Date(b.updatedAt) - new Date(a.updatedAt);
+                });
+                
+                // Load the most recent conversation
+                loadConversation(sortedConversations[0].id);
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching conversations:', error);
+            showToast('error', 'Error', 'Failed to load conversations: ' + error.message);
+        });
+}
+
 function clearConversation() {
     if (confirm('Are you sure you want to clear the conversation?')) {
         socket.emit('clear-conversation');
@@ -171,6 +269,341 @@ function clearConversation() {
 
 function clearConversationDisplay() {
     conversationElement.innerHTML = '';
+}
+
+function renderConversationsList() {
+    if (!conversations || conversations.length === 0) {
+        conversationsListElement.innerHTML = '<div class="empty-list">No saved conversations</div>';
+        return;
+    }
+    
+    // Sort conversations by most recently updated
+    const sortedConversations = [...conversations].sort((a, b) => {
+        return new Date(b.updatedAt) - new Date(a.updatedAt);
+    });
+    
+    let html = '';
+    for (const conversation of sortedConversations) {
+        const isActive = conversation.id === currentConversationId;
+        const updatedDate = new Date(conversation.updatedAt);
+        const formattedDate = updatedDate.toLocaleDateString() + ' ' + updatedDate.toLocaleTimeString();
+        
+        html += `
+            <div class="conversation-item ${isActive ? 'active' : ''}" data-id="${escapeHtml(conversation.id)}">
+                <div class="conversation-title">${escapeHtml(conversation.title || 'Untitled Conversation')}</div>
+                <div class="conversation-meta">
+                    <span class="conversation-model">${escapeHtml(conversation.provider || '')} - ${escapeHtml(conversation.modelName || '')}</span>
+                    <span class="conversation-date" title="${formattedDate}">${formatRelativeTime(updatedDate)}</span>
+                </div>
+                <div class="conversation-actions">
+                    <button class="conversation-rename-btn" title="Rename conversation"><i class="fas fa-edit"></i></button>
+                    <button class="conversation-delete-btn" title="Delete conversation"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        `;
+    }
+    
+    conversationsListElement.innerHTML = html;
+    
+    // Add event listeners to conversation items
+    document.querySelectorAll('.conversation-item').forEach(item => {
+        // Load conversation when clicked
+        item.addEventListener('click', (e) => {
+            if (!e.target.closest('.conversation-actions')) {
+                const conversationId = item.dataset.id;
+                loadConversation(conversationId);
+            }
+        });
+        
+        // Rename conversation
+        const renameBtn = item.querySelector('.conversation-rename-btn');
+        if (renameBtn) {
+            renameBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const conversationId = item.dataset.id;
+                const conversation = conversations.find(c => c.id === conversationId);
+                if (conversation) {
+                    const newTitle = prompt('Enter a new title for this conversation:', conversation.title || 'Untitled Conversation');
+                    if (newTitle !== null) {
+                        renameConversation(conversationId, newTitle.trim());
+                    }
+                }
+            });
+        }
+        
+        // Delete conversation
+        const deleteBtn = item.querySelector('.conversation-delete-btn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const conversationId = item.dataset.id;
+                if (confirm('Are you sure you want to delete this conversation? This cannot be undone.')) {
+                    deleteConversation(conversationId);
+                }
+            });
+        }
+    });
+}
+
+function updateConversationSelection() {
+    // Update the UI to highlight the currently selected conversation
+    document.querySelectorAll('.conversation-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.id === currentConversationId);
+    });
+}
+
+function createNewConversation() {
+    // Request a new conversation from the server
+    socket.emit('new-conversation');
+    
+    // Clear the conversation display in the UI
+    clearConversationDisplay();
+    
+    // Reset currentConversationId
+    currentConversationId = null;
+    
+    // Show a loading message
+    addSystemMessage('Starting a new conversation...');
+}
+
+function loadConversation(conversationId) {
+    if (!conversationId) return;
+    
+    // Show loading indicator
+    updateStatus('Loading conversation...');
+    
+    // Request conversation load from server
+    socket.emit('load-conversation', { id: conversationId });
+}
+
+function renameConversation(conversationId, newTitle) {
+    if (!conversationId || !newTitle) return;
+    
+    fetch(`/api/conversations/${conversationId}/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => {
+                throw new Error(data.error || 'Failed to rename conversation');
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Update local conversation data
+        const conversation = conversations.find(c => c.id === conversationId);
+        if (conversation) {
+            conversation.title = newTitle;
+        }
+        
+        // Update UI
+        renderConversationsList();
+        showToast('success', 'Success', 'Conversation renamed');
+    })
+    .catch(error => {
+        console.error('Error renaming conversation:', error);
+        showToast('error', 'Error', 'Failed to rename conversation: ' + error.message);
+    });
+}
+
+function deleteConversation(conversationId) {
+    if (!conversationId) return;
+    
+    fetch(`/api/conversations/${conversationId}`, {
+        method: 'DELETE'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => {
+                throw new Error(data.error || 'Failed to delete conversation');
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Remove conversation from local list
+        const index = conversations.findIndex(c => c.id === conversationId);
+        if (index >= 0) {
+            conversations.splice(index, 1);
+        }
+        
+        // If the deleted conversation was the current one, create a new one
+        if (currentConversationId === conversationId) {
+            createNewConversation();
+        }
+        
+        // Update UI
+        renderConversationsList();
+        showToast('success', 'Success', 'Conversation deleted');
+    })
+    .catch(error => {
+        console.error('Error deleting conversation:', error);
+        showToast('error', 'Error', 'Failed to delete conversation: ' + error.message);
+    });
+}
+
+// Helper function to add a system message
+function addSystemMessage(message) {
+    const messageElement = document.createElement('div');
+    messageElement.className = 'message system-message';
+    
+    const now = new Date();
+    const timeString = now.toLocaleTimeString();
+    
+    messageElement.innerHTML = `
+        <div class="message-header">
+            <span>System</span>
+            <span class="message-time">${timeString}</span>
+        </div>
+        <div class="message-content">${escapeHtml(message)}</div>
+    `;
+    
+    conversationElement.appendChild(messageElement);
+    conversationElement.scrollTop = conversationElement.scrollHeight;
+}
+
+// Format relative time (e.g. "2 hours ago")
+function formatRelativeTime(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+    
+    if (diffSec < 60) {
+        return 'Just now';
+    } else if (diffMin < 60) {
+        return `${diffMin} min${diffMin !== 1 ? 's' : ''} ago`;
+    } else if (diffHour < 24) {
+        return `${diffHour} hour${diffHour !== 1 ? 's' : ''} ago`;
+    } else if (diffDay < 7) {
+        return `${diffDay} day${diffDay !== 1 ? 's' : ''} ago`;
+    } else {
+        return date.toLocaleDateString();
+    }
+}
+
+// Configuration file editing functions
+function showConfigOptions() {
+    document.querySelectorAll('.config-option').forEach(btn => {
+        btn.classList.add('highlight');
+    });
+    showToast('info', 'Info', 'Select a configuration file to edit');
+    
+    // Remove highlight after 3 seconds
+    setTimeout(() => {
+        document.querySelectorAll('.config-option').forEach(btn => {
+            btn.classList.remove('highlight');
+        });
+    }, 3000);
+}
+
+function openConfigEditor(fileName) {
+    if (!fileName) return;
+    
+    currentConfigFile = fileName;
+    configFileNameElement.textContent = fileName;
+    
+    // Update status and show loading in editor
+    updateStatus(`Loading ${fileName}...`);
+    configEditor.value = 'Loading...';
+    
+    // Fetch the file content
+    fetch(`/api/config/${fileName}`)
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(data => {
+                    throw new Error(data.error || `Failed to load ${fileName}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Format content nicely if it's JSON
+            let formattedContent = data.content;
+            if (fileName.endsWith('.json')) {
+                try {
+                    const jsonObj = JSON.parse(data.content);
+                    formattedContent = JSON.stringify(jsonObj, null, 2);
+                } catch (e) {
+                    console.warn('Failed to parse and format JSON:', e);
+                }
+            }
+            
+            // Set the editor content
+            configEditor.value = formattedContent;
+            
+            // Show the modal
+            configModal.style.display = 'block';
+            updateStatus('Ready');
+        })
+        .catch(error => {
+            console.error(`Error loading ${fileName}:`, error);
+            showToast('error', 'Error', `Failed to load ${fileName}: ${error.message}`);
+            updateStatus('Ready');
+            closeConfigModal();
+        });
+}
+
+function closeConfigModal() {
+    configModal.style.display = 'none';
+    currentConfigFile = null;
+}
+
+function saveConfigFile() {
+    if (!currentConfigFile) return;
+    
+    const content = configEditor.value.trim();
+    if (!content) {
+        showToast('error', 'Error', 'Configuration content cannot be empty');
+        return;
+    }
+    
+    // Validate JSON if it's a JSON file
+    if (currentConfigFile.endsWith('.json')) {
+        try {
+            JSON.parse(content);
+        } catch (error) {
+            showToast('error', 'Error', `Invalid JSON: ${error.message}`);
+            return;
+        }
+    }
+    
+    // Save the file
+    updateStatus(`Saving ${currentConfigFile}...`);
+    
+    fetch(`/api/config/${currentConfigFile}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => {
+                throw new Error(data.error || `Failed to save ${currentConfigFile}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        closeConfigModal();
+        showToast('success', 'Success', `${currentConfigFile} saved successfully`);
+        updateStatus('Ready');
+        
+        // If we updated servers.json, refresh the server configuration
+        if (currentConfigFile === 'servers.json') {
+            fetchServerConfig();
+        }
+    })
+    .catch(error => {
+        console.error(`Error saving ${currentConfigFile}:`, error);
+        showToast('error', 'Error', `Failed to save ${currentConfigFile}: ${error.message}`);
+        updateStatus('Ready');
+    });
 }
 
 function updateServerInfo(servers) {
@@ -1041,3 +1474,8 @@ function escapeHtml(unsafe) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
+
+// Initialize the application when the page is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    initializeApp();
+});

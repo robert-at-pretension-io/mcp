@@ -237,6 +237,198 @@ button i {
     color: var(--primary-color);
 }
 
+.panel-section h3 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.action-button {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.2s;
+    font-size: 0.875rem;
+}
+
+.action-button:hover {
+    background-color: rgba(37, 99, 235, 0.1);
+}
+
+.conversations-panel {
+    flex-shrink: 0;
+}
+
+.conversations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.conversation-item {
+    padding: 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background-color: var(--background-color);
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.conversation-item.active {
+    border-color: var(--primary-color);
+    background-color: rgba(37, 99, 235, 0.05);
+}
+
+.conversation-item:hover {
+    border-color: var(--primary-color);
+}
+
+.conversation-title {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    padding-right: 60px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.conversation-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+
+.conversation-model {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 70%;
+}
+
+.conversation-date {
+    flex-shrink: 0;
+}
+
+.conversation-actions {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: none;
+    gap: 0.25rem;
+}
+
+.conversation-item:hover .conversation-actions {
+    display: flex;
+}
+
+.conversation-rename-btn,
+.conversation-delete-btn {
+    background: none;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    padding: 0.25rem;
+    font-size: 0.8rem;
+    border-radius: var(--radius-sm);
+    transition: color 0.2s, background-color 0.2s;
+}
+
+.conversation-rename-btn:hover {
+    color: var(--primary-color);
+    background-color: rgba(37, 99, 235, 0.1);
+}
+
+.conversation-delete-btn:hover {
+    color: var(--danger-color);
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+.empty-list {
+    padding: 0.75rem;
+    text-align: center;
+    color: var(--text-light);
+    font-size: 0.875rem;
+}
+
+.config-panel {
+    flex-shrink: 0;
+}
+
+.config-options {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+}
+
+.config-option {
+    padding: 0.75rem;
+    text-align: center;
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.config-option i {
+    font-size: 1.25rem;
+    color: var(--primary-color);
+}
+
+.config-option:hover {
+    border-color: var(--primary-color);
+}
+
+.config-option.highlight {
+    animation: pulse 1s infinite;
+    border-color: var(--primary-color);
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 5px rgba(37, 99, 235, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+    }
+}
+
+.code-editor-wrapper {
+    width: 100%;
+    height: 350px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+#config-editor {
+    width: 100%;
+    height: 100%;
+    padding: 1rem;
+    font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    resize: none;
+    border: none;
+    background-color: var(--background-color);
+    color: var(--text-color);
+}
+
 .providers-panel {
     flex-shrink: 0;
 }

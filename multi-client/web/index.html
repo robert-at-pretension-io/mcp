@@ -45,6 +45,14 @@
             </div>
 
             <div class="right-panel">
+                <div class="panel-section conversations-panel">
+                    <h3>
+                        <i class="fas fa-comments"></i> Conversations
+                        <button id="new-conversation-btn" class="action-button" title="New conversation"><i class="fas fa-plus"></i></button>
+                    </h3>
+                    <div id="conversations-list" class="conversations-list">Loading...</div>
+                </div>
+                
                 <div class="panel-section providers-panel" id="providers-panel">
                     <h3><i class="fas fa-plug"></i> AI Providers</h3>
                     <div id="providers-list" class="providers-list">Loading...</div>
@@ -53,6 +61,24 @@
                 <div class="panel-section tools-panel">
                     <h3><i class="fas fa-tools"></i> Available Tools</h3>
                     <div id="tools-list" class="tools-list">Loading...</div>
+                </div>
+                
+                <div class="panel-section config-panel">
+                    <h3>
+                        <i class="fas fa-cog"></i> Configuration
+                        <button id="edit-configs-btn" class="action-button" title="Edit configuration files"><i class="fas fa-edit"></i></button>
+                    </h3>
+                    <div class="config-options">
+                        <button class="config-option" data-file="ai_config.json">
+                            <i class="fas fa-robot"></i> AI Config
+                        </button>
+                        <button class="config-option" data-file="servers.json">
+                            <i class="fas fa-server"></i> Servers
+                        </button>
+                        <button class="config-option" data-file="provider_models.toml">
+                            <i class="fas fa-list"></i> Models
+                        </button>
+                    </div>
                 </div>
             </div>
         </main>
@@ -156,6 +182,29 @@
             <div class="modal-buttons">
                 <button id="cancel-servers-change">Cancel</button>
                 <button id="apply-servers-change">Save Changes</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Config Editor Modal -->
+    <div id="config-modal" class="modal">
+        <div class="modal-content wide-modal">
+            <span class="close">&times;</span>
+            <h2>Edit Configuration File</h2>
+            
+            <div class="modal-section">
+                <h3 id="config-file-name">Configuration File</h3>
+                <div class="code-editor-wrapper">
+                    <textarea id="config-editor" placeholder="Loading configuration..."></textarea>
+                </div>
+                <div class="help-text">
+                    <b>Warning:</b> Be careful when editing configuration files. Invalid JSON or TOML syntax may cause the application to malfunction.
+                </div>
+            </div>
+            
+            <div class="modal-buttons">
+                <button id="cancel-config-change">Cancel</button>
+                <button id="apply-config-change">Save Changes</button>
             </div>
         </div>
     </div>
