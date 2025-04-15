@@ -46,7 +46,8 @@ async function main() {
 
     // Array to hold connection promises
     const connectionPromises: Promise<void>[] = [];
-    const clients: Record<string, Client> = {}; // Store clients by name
+    // Store clients and their transports for graceful shutdown
+    const serverConnections: Record<string, { client: Client; transport: Transport }> = {};
 
     // Iterate over configurations and initiate connections
     for (const [serverName, config] of Object.entries(configData.mcpServers)) {
@@ -76,7 +77,8 @@ async function main() {
                 version: '1.0.0',
             };
             const client = new Client(clientInfo);
-            clients[serverName] = client; // Store the client
+            // Store client and transport together
+            serverConnections[serverName] = { client, transport };
 
             // Add error handling for the transport
             transport.onerror = (error) => {
@@ -114,12 +116,39 @@ async function main() {
     await Promise.allSettled(connectionPromises);
 
     console.log("\nAll server connection attempts finished.");
-    console.log("Client is running. Press Ctrl+C to exit.");
+    console.log("\nAll server connection attempts finished.");
+    console.log("Client is running. Press Ctrl+C to exit gracefully.");
 
-    // Keep the process running to maintain connections
-    // You might want more sophisticated logic here depending on the application's needs
-    setInterval(() => {}, 1 << 30); // Keep Node.js event loop alive
+    // Setup graceful shutdown
+    setupShutdownHandler(serverConnections);
+
+    // No need for setInterval anymore, the process will stay alive
+    // due to open connections or wait for signals.
 }
+
+/**
+ * Sets up signal handlers for graceful shutdown.
+ * @param connections Record mapping server names to their client and transport.
+ */
+function setupShutdownHandler(connections: Record<string, { client: Client; transport: Transport }>) {
+    const shutdown = async (signal: string) => {
+        console.log(`\nReceived ${signal}. Shutting down servers...`);
+        const closePromises = Object.entries(connections).map(([name, { transport }]) => {
+            console.log(`  Closing connection to ${name}...`);
+            return transport.close().catch(err => {
+                console.error(`  Error closing transport for ${name}:`, err instanceof Error ? err.message : err);
+            });
+        });
+
+        await Promise.allSettled(closePromises);
+        console.log("All server connections closed.");
+        process.exit(0); // Exit cleanly
+    };
+
+    process.on('SIGINT', () => shutdown('SIGINT')); // Ctrl+C
+    process.on('SIGTERM', () => shutdown('SIGTERM')); // Termination signal
+}
+
 
 main().catch(error => {
     console.error("Unhandled error in main function:", error);
