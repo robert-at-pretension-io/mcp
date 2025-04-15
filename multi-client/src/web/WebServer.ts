@@ -32,7 +32,9 @@ export class WebServer {
     this.app.use(express.json());
     
     // Serve static files from the web directory
-    this.app.use(express.static(path.join(__dirname, '../../web')));
+    // Correct path: Go up three levels from dist/src/web to multi-client/, then into web/
+    const webDirPath = path.join(__dirname, '../../../web'); 
+    this.app.use(express.static(webDirPath));
 
     // Create HTTP server
     this.server = http.createServer(this.app);
@@ -51,9 +53,12 @@ export class WebServer {
   }
 
   private setupRoutes() {
+    // Correct path: Go up three levels from dist/src/web to multi-client/, then into web/
+    const webDirPath = path.join(__dirname, '../../../web'); 
+    
     // Root route - serve the main HTML file
     this.app.get('/', (req, res) => {
-      res.sendFile(path.join(__dirname, '../../web/index.html'));
+      res.sendFile(path.join(webDirPath, 'index.html'));
     });
 
     // API route for server information
