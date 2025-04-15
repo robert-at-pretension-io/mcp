@@ -459,15 +459,16 @@ Important:
   }
 
   /**
-   * Executes a set of parsed tool calls in parallel.
-   * @param toolCalls Array of parsed tool calls (including IDs) to execute.
+   * Executes a set of parsed tool calls (now including generated IDs) in parallel.
+   * @param toolCallsWithIds Array of parsed tool calls, each augmented with a generated ID.
    * @returns Promise that resolves to a map of tool call IDs to their string results.
    */
-  private async executeToolCalls(toolCalls: ParsedToolCall[]): Promise<Map<string, string>> {
+  // Update parameter name for clarity
+  private async executeToolCalls(toolCallsWithIds: (ParsedToolCall & { id: string })[]): Promise<Map<string, string>> { 
     const results = new Map<string, string>();
-    // Use the toolCall object directly, which now includes the pre-generated ID
-    const executions = toolCalls.map(async (toolCall) => { 
-      const toolCallId = toolCall.id; // Use the ID generated during parsing
+    // Use the toolCall object directly, which now includes the generated ID
+    const executions = toolCallsWithIds.map(async (toolCall) => { 
+      const toolCallId = toolCall.id; // Use the ID passed in
 
       try {
         // Find which server provides this tool
@@ -815,37 +816,42 @@ Important:
       toolRound++;
       console.log(`--- Tool Call Round ${toolRound} ---`);
 
-      // Extract and parse tool calls from the current response
-      const parsedToolCalls = ToolParser.parseToolCalls(currentResponse);
+      // Extract and parse tool calls (without IDs)
+      const parsedToolCallsRaw = ToolParser.parseToolCalls(currentResponse);
       
-      if (parsedToolCalls.length === 0) {
+      if (parsedToolCallsRaw.length === 0) {
         console.warn("Tool call delimiters detected but no valid tool calls parsed. Exiting loop.");
         break; // Exit loop if parsing fails despite delimiters
       }
       
-      console.log(`Found ${parsedToolCalls.length} tool calls in AI response.`);
+      console.log(`Found ${parsedToolCallsRaw.length} tool calls in AI response.`);
       
+      // Generate unique IDs for this batch of tool calls *before* creating the AIMessage
+      const toolCallsWithIds = parsedToolCallsRaw.map(tc => ({
+        ...tc,
+        id: `tool_${uuidv4()}` // Generate ID here
+      }));
       
       // Add the AI response that *requested* the tools
-      // Pass the parsed tool calls with IDs to additional_kwargs for correct formatting by LangChain
+      // Pass the tool calls *with generated IDs* to additional_kwargs
       const aiMessageRequestingTools = new AIMessage(currentResponse, {
         hasToolCalls: true,
         pendingToolCalls: true,
-        // LangChain integrations (like ChatAnthropic) often expect tool call info here
-        // Structure typically includes id, name, and input/arguments
         additional_kwargs: {
-          tool_calls: parsedToolCalls.map(tc => ({
-            id: tc.id,
-            type: "tool_use", // Explicitly marking type might help Anthropic integration
+          // Ensure this structure matches what ChatAnthropic expects
+          // It might look for 'tool_calls' or similar
+          tool_calls: toolCallsWithIds.map(tc => ({
+            id: tc.id, // Use the generated ID
+            type: "tool_use", // Anthropic uses 'tool_use' type
             name: tc.name,
-            input: tc.arguments, // Map our 'arguments' to 'input' if needed by the integration
+            input: tc.arguments, 
           }))
         }
       });
       this.state.addMessage(aiMessageRequestingTools);
       
-      // Execute tool calls (passing the calls with IDs)
-      const toolResults = await this.executeToolCalls(parsedToolCalls);
+      // Execute tool calls, passing the calls with the generated IDs
+      const toolResults = await this.executeToolCalls(toolCallsWithIds);
       
       // Mark the tool calls in the previous AI message as no longer pending
       aiMessageRequestingTools.pendingToolCalls = false;
