@@ -803,10 +803,15 @@ Important:
         console.warn("Tool call delimiters detected but no valid tool calls parsed.");
       }
     }
+    
+    // Initialize variables for the tool call loop
+    let currentResponse = aiResponseContent; // Start with the initial AI response
+    let toolRound = 0;
+    const maxToolRounds = 5; // Limit recursive tool calls
 
     // If no tool calls were involved in the first place, add the initial response
     // This ensures the message is in history before verification if the loop didn't run.
-    if (toolRound === 0) {
+    if (!ToolParser.containsToolCalls(currentResponse)) { // Check the initial response directly
         this.state.addMessage(new AIMessage(currentResponse)); 
     }
 
