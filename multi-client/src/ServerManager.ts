@@ -14,13 +14,13 @@ import type { Implementation, Tool } from '@modelcontextprotocol/sdk/types.js'; 
  */
 export class ServerManager {
   private servers: Record<string, ServerConnection> = {};
-  private config: ConfigFileStructure;
-  private defaultToolTimeout: number; // seconds
+  private config: ConfigFileStructure; // Keep config to access mcpServers easily
+  private defaultToolTimeout: number; // milliseconds
 
   constructor(config: ConfigFileStructure) {
     this.config = config;
-    // Default timeout from config or 300 seconds (5 minutes)
-    this.defaultToolTimeout = (config.timeouts?.tool ?? 300) * 1000; // Store in ms
+    // Use a hardcoded default timeout since it's removed from config
+    this.defaultToolTimeout = 300 * 1000; // 300 seconds in ms
   }
 
   /**

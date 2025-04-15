@@ -28,14 +28,16 @@ export interface AiProviderConfig {
  */
 export interface ConfigFileStructure {
   mcpServers: Record<string, StdioServerConfig>;
-  timeouts?: {
-    request: number;
-    tool: number;
-  };
-  ai?: { // New section for AI configuration
-    defaultProvider?: string; // Name of the default provider key below
-    providers: Record<string, AiProviderConfig>; // Map of provider configurations
-  };
+  // timeouts removed
+  // AI configuration moved to AiConfigFileStructure
+}
+
+/**
+ * Structure for the ai_config.json file
+ */
+export interface AiConfigFileStructure {
+  defaultProvider?: string; // Name of the default provider key below
+  providers: Record<string, AiProviderConfig>; // Map of provider configurations
 }
 
 /**

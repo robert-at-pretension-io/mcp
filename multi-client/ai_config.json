@@ -1,0 +1,31 @@
+{
+  "defaultProvider": "anthropic",
+  "providers": {
+    "anthropic": {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20240620",
+      "apiKeyEnvVar": "ANTHROPIC_API_KEY",
+      "temperature": 0.7
+    },
+    "openai": {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "apiKeyEnvVar": "OPENAI_API_KEY"
+    },
+    "google-genai": {
+      "provider": "google-genai",
+      "model": "gemini-1.5-flash",
+      "apiKeyEnvVar": "GOOGLE_API_KEY"
+    },
+    "mistralai": {
+      "provider": "mistralai",
+      "model": "mistral-small-latest",
+      "apiKeyEnvVar": "MISTRAL_API_KEY"
+    },
+    "fireworks": {
+      "provider": "fireworks",
+      "model": "accounts/fireworks/models/llama-v3-8b-instruct",
+      "apiKeyEnvVar": "FIREWORKS_API_KEY"
+    }
+  }
+}

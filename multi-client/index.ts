@@ -1,13 +1,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import TOML from '@ltd/j-toml'; // Import TOML parser
+import TOML from '@ltd/j-toml';
 import { ServerManager } from './src/ServerManager.js';
 import { Repl } from './src/Repl.js';
-import type { ConfigFileStructure, AiProviderConfig, ProviderModelsStructure } from './src/types.js'; // Import AiProviderConfig
-import { AiClientFactory } from './src/ai/AiClientFactory.js'; // Import Factory
-import type { IAiClient } from './src/ai/IAiClient.js'; // Import Interface
-import { ConversationManager } from './src/conversation/ConversationManager.js'; // Import ConversationManager
+// Import AiConfigFileStructure and remove AiProviderConfig import from here
+import type { ConfigFileStructure, AiConfigFileStructure, ProviderModelsStructure, AiProviderConfig } from './src/types.js';
+import { AiClientFactory } from './src/ai/AiClientFactory.js';
+import type { IAiClient } from './src/ai/IAiClient.js';
+import { ConversationManager } from './src/conversation/ConversationManager.js';
 import { WebServer } from './src/web/WebServer.js'; // Import WebServer
 
 // Helper to get the directory name in ES modules
@@ -21,51 +22,109 @@ async function main() {
   console.log('Starting MCP Multi-Client...');
 
   // --- Configuration Loading ---
-  // Determine base directory (assuming index.js is in dist/)
-  const baseDir = path.join(__dirname); // Adjust if index.js is elsewhere relative to config files
-  const configPath = path.join(baseDir, 'servers.json');
-  const providerModelsPath = path.join(baseDir, 'provider_models.toml'); // Path to the TOML file
+  const baseDir = path.join(__dirname);
+  const serversConfigPath = path.join(baseDir, 'servers.json');
+  const aiConfigPath = path.join(baseDir, 'ai_config.json'); // Path for AI config
+  const providerModelsPath = path.join(baseDir, 'provider_models.toml');
 
-  let configData: ConfigFileStructure;
-  let providerModels: ProviderModelsStructure = {}; // Initialize empty model suggestions
-  
+  let serversConfigData: ConfigFileStructure;
+  let aiConfigData: AiConfigFileStructure;
+  let providerModels: ProviderModelsStructure = {};
+
+  // --- Load Server Configuration (servers.json) ---
   try {
-    // Read main config file (servers.json)
-    const configFile = fs.readFileSync(configPath, 'utf-8');
-    configData = JSON.parse(configFile) as ConfigFileStructure;
+    const serversConfigFile = fs.readFileSync(serversConfigPath, 'utf-8');
+    serversConfigData = JSON.parse(serversConfigFile) as ConfigFileStructure;
 
-    if (!configData || typeof configData.mcpServers !== 'object') {
-      throw new Error("Invalid config format: 'mcpServers' object not found.");
+    // Basic validation
+    if (!serversConfigData || typeof serversConfigData.mcpServers !== 'object') {
+      throw new Error("Invalid servers.json format: 'mcpServers' object not found.");
     }
-    
-    const serverNames = Object.keys(configData.mcpServers);
-    console.log(`Loaded ${serverNames.length} server configurations: ${serverNames.join(', ')}`);
+
+    // Ensure only 'mcpServers' key exists
+    const allowedKeys = ['mcpServers'];
+    const actualKeys = Object.keys(serversConfigData);
+    if (actualKeys.length !== 1 || actualKeys[0] !== 'mcpServers') {
+         const invalidKeys = actualKeys.filter(k => !allowedKeys.includes(k));
+         throw new Error(`Invalid keys found in servers.json: ${invalidKeys.join(', ')}. Only 'mcpServers' is allowed.`);
+    }
+
+    const serverNames = Object.keys(serversConfigData.mcpServers);
+    console.log(`Loaded ${serverNames.length} server configurations from servers.json: ${serverNames.join(', ')}`);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      // Create example servers.json if it doesn't exist
-      const exampleConfig: ConfigFileStructure = {
+      // Create example servers.json
+      const exampleServersConfig: ConfigFileStructure = {
         mcpServers: {
           example: {
             command: 'npx',
             args: ['-y', '@example/mcp-server@latest'],
             env: {}
           }
-        },
-        timeouts: {
-          request: 120,
-          tool: 300
         }
+        // timeouts removed
       };
-      
-      fs.writeFileSync(configPath, JSON.stringify(exampleConfig, null, 2), 'utf-8');
-      console.error(`Configuration file not found. An example has been created at ${configPath}.`);
+      fs.writeFileSync(serversConfigPath, JSON.stringify(exampleServersConfig, null, 2), 'utf-8');
+      console.error(`Server configuration file not found. An example has been created at ${serversConfigPath}.`);
       console.error('Please edit this file and restart the application.');
       process.exit(1);
     } else {
-      console.error('Error loading configuration:', error instanceof Error ? error.message : String(error));
+      console.error('Error loading server configuration (servers.json):', error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
   }
+
+  // --- Load AI Configuration (ai_config.json) ---
+  try {
+    const aiConfigFile = fs.readFileSync(aiConfigPath, 'utf-8');
+    aiConfigData = JSON.parse(aiConfigFile) as AiConfigFileStructure;
+
+    // Basic validation
+    if (!aiConfigData || typeof aiConfigData.providers !== 'object') {
+      throw new Error("Invalid ai_config.json format: 'providers' object not found.");
+    }
+    if (aiConfigData.defaultProvider && typeof aiConfigData.defaultProvider !== 'string') {
+        throw new Error("Invalid ai_config.json format: 'defaultProvider' must be a string if present.");
+    }
+     // Ensure no other top-level keys exist
+    const allowedAiKeys = ['defaultProvider', 'providers'];
+    for (const key in aiConfigData) {
+        if (!allowedAiKeys.includes(key)) {
+            console.warn(`Warning: Unexpected key "${key}" found in ai_config.json. It will be ignored.`);
+        }
+    }
+
+    console.log(`Loaded AI configuration from ai_config.json for providers: ${Object.keys(aiConfigData.providers).join(', ')}`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      // Create example ai_config.json
+      const exampleAiConfig: AiConfigFileStructure = {
+        defaultProvider: "anthropic", // Example default
+        providers: {
+          anthropic: {
+            provider: "anthropic",
+            model: "claude-3-5-sonnet-20240620",
+            apiKeyEnvVar: "ANTHROPIC_API_KEY",
+            temperature: 0.7
+          },
+          openai: {
+            provider: "openai",
+            model: "gpt-4o-mini",
+            apiKeyEnvVar: "OPENAI_API_KEY"
+            // temperature defaults if omitted
+          }
+        }
+      };
+      fs.writeFileSync(aiConfigPath, JSON.stringify(exampleAiConfig, null, 2), 'utf-8');
+      console.error(`AI configuration file not found. An example has been created at ${aiConfigPath}.`);
+      console.error('Please edit this file (especially API keys/models) and restart.');
+      process.exit(1);
+    } else {
+      console.error('Error loading AI configuration (ai_config.json):', error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  }
+
 
   // --- Load Provider Model Suggestions (provider_models.toml) ---
   try {
@@ -110,19 +169,19 @@ async function main() {
   // --- AI Client Initialization ---
   let aiClient: IAiClient | null = null;
   let conversationManager: ConversationManager | null = null;
-  const providerNames = Object.keys(configData.ai?.providers || {});
+  const providerNames = Object.keys(aiConfigData.providers || {}); // Use aiConfigData
 
-  const defaultProviderName = configData.ai?.defaultProvider;
-  const aiProviders = configData.ai?.providers;
+  const defaultProviderName = aiConfigData.defaultProvider; // Use aiConfigData
+  const aiProviders = aiConfigData.providers; // Use aiConfigData
 
   if (defaultProviderName && aiProviders && aiProviders[defaultProviderName]) {
       try {
-          const defaultProviderConfig = aiProviders[defaultProviderName];
+          const defaultProviderConfig: AiProviderConfig = aiProviders[defaultProviderName]; // Explicit type
           // Pass the loaded model suggestions to the factory
           aiClient = AiClientFactory.createClient(defaultProviderConfig, providerModels);
           console.log(`Initialized default AI client: ${defaultProviderName} (${aiClient.getModelName()})`);
       } catch (error) {
-          console.error(`Failed to initialize default AI provider "${defaultProviderName}":`, error instanceof Error ? error.message : String(error));
+          console.error(`Failed to initialize default AI provider "${defaultProviderName}" from ai_config.json:`, error instanceof Error ? error.message : String(error));
           console.error("Chat functionality will be disabled. Check your AI configuration and API keys.");
           // Continue without AI client
       }
@@ -134,7 +193,7 @@ async function main() {
 
 
   // --- Server Manager Initialization ---
-  const serverManager = new ServerManager(configData);
+  const serverManager = new ServerManager(serversConfigData); // Use serversConfigData
 
   // --- Conversation Manager Initialization (if AI client is available) ---
   if (aiClient) {

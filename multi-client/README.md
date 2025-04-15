@@ -21,7 +21,7 @@ An improved MCP (Model Context Protocol) client that connects to multiple server
 npm install
 ```
 
-2. Configure your servers and AI providers in `servers.json`:
+2. Configure your MCP servers in `servers.json`:
 
 ```json
 {
@@ -36,34 +36,37 @@ npm install
       "args": ["-y", "@mcp/server-search@latest"],
       "env": {}
     }
-  },
-  "timeouts": {
-    "request": 120,
-    "tool": 300
-  },
-  "ai": {
-    "defaultProvider": "anthropic",
-    "providers": {
-      "anthropic": {
-        "provider": "anthropic",
-        "model": "claude-3-5-sonnet-20240620",
-        "apiKeyEnvVar": "ANTHROPIC_API_KEY",
-        "temperature": 0.7
-      },
-      "openai": {
-        "provider": "openai",
-        "model": "gpt-4o-mini",
-        "apiKeyEnvVar": "OPENAI_API_KEY",
-        "temperature": 0.7
-      }
+    // Add more servers here
+  }
+  // timeouts removed
+}
+```
+
+3. Configure your AI providers in `ai_config.json`:
+
+```json
+{
+  "defaultProvider": "anthropic",
+  "providers": {
+    "anthropic": {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20240620",
+      "apiKeyEnvVar": "ANTHROPIC_API_KEY",
+      "temperature": 0.7
+    },
+    "openai": {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "apiKeyEnvVar": "OPENAI_API_KEY"
     }
+    // Add more providers here
   }
 }
 ```
 
-3. Set up your API keys as environment variables (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.)
+4. Set up your API keys as environment variables (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc., corresponding to the `apiKeyEnvVar` values in `ai_config.json`).
 
-4. Configure model suggestions in `provider_models.toml`
+5. Configure model suggestions in `provider_models.toml` (Optional, used as fallback if `model` is not specified in `ai_config.json`).
 
 ## Usage
 
