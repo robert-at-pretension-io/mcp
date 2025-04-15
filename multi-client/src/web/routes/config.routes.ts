@@ -1,4 +1,4 @@
-import { Router, type Request, type Response, type NextFunction } from 'express'; // Import NextFunction
+import { Router } from 'express'; // Remove Request, Response, NextFunction imports if unused elsewhere
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';
 import * as path from 'node:path';
@@ -15,7 +15,7 @@ export function createConfigRouter(): Router {
     const allowedFiles = ['ai_config.json', 'servers.json', 'provider_models.toml'];
 
     // --- Get Config File Content ---
-    router.get('/:file', async (req: Request, res: Response, next: NextFunction) => { // Add next
+    router.get('/:file', async (req, res) => { // Remove explicit types
         try {
             const { file } = req.params;
 
@@ -43,7 +43,7 @@ export function createConfigRouter(): Router {
     });
 
     // --- Save Config File Content ---
-    router.post('/:file', async (req: Request, res: Response, next: NextFunction) => { // Add next
+    router.post('/:file', async (req, res) => { // Remove explicit types
         try {
             const { file } = req.params;
             const { content } = req.body;

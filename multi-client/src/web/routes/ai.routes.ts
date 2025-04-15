@@ -1,4 +1,4 @@
-import { Router, type Request, type Response, type NextFunction } from 'express'; // Import NextFunction
+import { Router } from 'express'; // Remove Request, Response, NextFunction imports if unused elsewhere
 import type { ConversationManager } from '../../conversation/ConversationManager.js';
 import type { ServerManager } from '../../ServerManager.js';
 import * as fs from 'node:fs/promises';
@@ -81,7 +81,7 @@ export function createAiRouter(
     });
 
     // --- AI Providers Info ---
-    router.get('/providers', async (req: Request, res: Response, next: NextFunction) => { // Add next
+    router.get('/providers', async (req, res) => { // Remove explicit types
         try {
             // Load config and models inside the handler
             const aiConfigData = await readAiConfig();
@@ -99,7 +99,7 @@ export function createAiRouter(
 
     // --- Switch AI Provider ---
     // Note: This endpoint might be deprecated in favor of /model endpoint handling provider change
-    router.post('/provider', async (req: Request, res: Response, next: NextFunction) => { // Add next
+    router.post('/provider', async (req, res) => { // Remove explicit types
         try {
             const { provider } = req.body;
             if (!provider) {
@@ -132,7 +132,7 @@ export function createAiRouter(
     });
 
     // --- Switch AI Model (can also handle provider change) ---
-    router.post('/model', async (req: Request, res: Response, next: NextFunction) => { // Add next
+    router.post('/model', async (req, res) => { // Remove explicit types
         try {
             const { model, provider } = req.body; // Provider is optional, defaults to current
             if (!model) {
@@ -169,7 +169,7 @@ export function createAiRouter(
     });
 
     // --- Update API Keys ---
-    router.post('/keys', async (req: Request, res: Response, next: NextFunction) => { // Add next
+    router.post('/keys', async (req, res) => { // Remove explicit types
         try {
             const { provider, apiKey } = req.body;
             if (!provider || !apiKey) {
