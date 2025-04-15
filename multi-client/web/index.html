@@ -64,33 +64,48 @@
                         <i class="fas fa-comments"></i> Conversations
                         <button id="new-conversation-btn" class="action-button" title="New conversation"><i class="fas fa-plus"></i></button>
                     </h3>
-                    <div id="conversations-list" class="conversations-list">Loading...</div>
+                    <div class="panel-content">
+                        <div id="conversations-list" class="conversations-list">Loading...</div>
+                    </div>
                 </div>
                 
                 <div class="panel-section providers-panel" id="providers-panel">
                     <h3><i class="fas fa-plug"></i> AI Providers</h3>
-                    <div id="providers-list" class="providers-list">Loading...</div>
+                    <div class="panel-content">
+                        <div id="providers-list" class="providers-list">Loading...</div>
+                    </div>
                 </div>
                 <div class="panel-section tools-panel">
                     <h3><i class="fas fa-tools"></i> Available Tools</h3>
-                    <input type="text" id="tool-filter-input" placeholder="Filter tools..." class="filter-input">
-                    <div id="tools-list" class="tools-list">Loading...</div>
+                    <div class="panel-content">
+                        <input type="text" id="tool-filter-input" placeholder="Filter tools..." class="filter-input">
+                        <div id="tools-list" class="tools-list">Loading...</div>
+                    </div>
                 </div>
                 <div class="panel-section config-panel">
                     <h3>
                         <i class="fas fa-cog"></i> Configuration
                         <button id="edit-configs-btn" class="action-button" title="Edit configuration files"><i class="fas fa-edit"></i></button>
                     </h3>
-                    <div class="config-options">
-                        <button class="config-option" data-file="ai_config.json">
-                            <i class="fas fa-robot"></i> AI Config
-                        </button>
+                    <div class="panel-content">
+                        <div class="config-options">
+                            <button class="config-option" data-file="ai_config.json">
+                                <i class="fas fa-robot"></i> AI Config
+                            </button>
+                            <button class="config-option" data-file="servers.json">
+                                <i class="fas fa-server"></i> Servers
+                            </button>
+                            <button class="config-option" data-file="provider_models.toml">
+                                <i class="fas fa-list"></i> Models
+                            </button>
+                        </div>
                         <button class="config-option" data-file="servers.json">
                             <i class="fas fa-server"></i> Servers
                         </button>
                         <button class="config-option" data-file="provider_models.toml">
                             <i class="fas fa-list"></i> Models
                         </button>
+                        </div>
                     </div>
                 </div>
             </div>

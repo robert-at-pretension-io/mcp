@@ -68,7 +68,8 @@ export function init(eventHandlers) {
 
     socket.on('tools-info', (data) => {
         // console.log('Received tools-info:', data);
-        if (handlers.onToolsInfo) handlers.onToolsInfo(data.tools);
+        // Pass the data object directly, as the server emits the toolsByServer object itself
+        if (handlers.onToolsInfo) handlers.onToolsInfo(data); 
     });
 
     socket.on('status-update', (data) => {

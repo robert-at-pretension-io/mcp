@@ -17,6 +17,7 @@ let toolsListElement;
 let toolFilterInput;
 let editConfigsBtn;
 let configOptionButtons;
+let panelSections; // To store all panel sections
 
 export function init() {
     mainElement = document.querySelector('main');
@@ -28,8 +29,9 @@ export function init() {
     toolFilterInput = document.getElementById('tool-filter-input');
     editConfigsBtn = document.getElementById('edit-configs-btn');
     configOptionButtons = document.querySelectorAll('.config-option');
+    panelSections = document.querySelectorAll('.right-panel .panel-section'); // Get all sections
 
-    if (!mainElement || !toggleRightPanelBtn || !conversationsListElement || !newConversationBtn || !providersListElement || !toolsListElement || !toolFilterInput || !editConfigsBtn) {
+    if (!mainElement || !toggleRightPanelBtn || !conversationsListElement || !newConversationBtn || !providersListElement || !toolsListElement || !toolFilterInput || !editConfigsBtn || !panelSections) {
         console.error("Sidebar UI elements not found!");
         return;
     }
@@ -49,7 +51,33 @@ export function init() {
         });
     });
 
+    // Accordion listeners
+    panelSections.forEach(section => {
+        const header = section.querySelector('h3');
+        if (header) {
+            header.addEventListener('click', () => {
+                toggleAccordionSection(section);
+            });
+        }
+    });
+
+    // Set initial state (e.g., open Conversations by default)
+    const initialSection = document.querySelector('.conversations-panel');
+    if (initialSection) {
+        initialSection.classList.add('active');
+    }
+
     console.log("Sidebar UI initialized.");
+}
+
+function toggleAccordionSection(sectionToToggle) {
+    panelSections.forEach(section => {
+        if (section === sectionToToggle) {
+            section.classList.toggle('active'); // Toggle the clicked section
+        } else {
+            section.classList.remove('active'); // Close all other sections
+        }
+    });
 }
 
 function toggleRightPanel() {
