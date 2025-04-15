@@ -48,732 +48,84 @@ export class WebServer {
       }
     });
 
+    // Import routers
+    const { createAiRouter } = await import('./routes/ai.routes.js');
+    const { createServersRouter } = await import('./routes/servers.routes.js');
+    const { createConfigRouter } = await import('./routes/config.routes.js');
+    const { createConversationRouter } = await import('./routes/conversation.routes.js');
+
     // Set up routes and socket events
-    this.setupRoutes();
+    this.setupRoutes(
+      createAiRouter(this.conversationManager, this.serverManager),
+      createServersRouter(this.serverManager),
+      createConfigRouter(),
+      createConversationRouter(this.conversationManager, this.io) // Pass io for emitting events
+    );
     this.setupSocketEvents();
   }
 
-  private setupRoutes() {
+  private setupRoutes(aiRouter, serversRouter, configRouter, conversationRouter) {
     // Correct path: Go up three levels from dist/src/web to multi-client/, then into web/
-    const webDirPath = path.join(__dirname, '../../../web'); 
-    
+    const webDirPath = path.join(__dirname, '../../../web');
+
     // Root route - serve the main HTML file
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(webDirPath, 'index.html'));
     });
 
-    // API route for server information
-    this.app.get('/api/servers', (req, res) => {
-      const connectedServers = this.serverManager.getConnectedServers();
-      res.json({ servers: connectedServers });
-    });
+    // Mount API routers under /api prefix
+    this.app.use('/api/ai', aiRouter);
+    this.app.use('/api/servers', serversRouter);
+    this.app.use('/api/config', configRouter);
+    this.app.use('/api/conversations', conversationRouter);
 
-    // API route for conversation history
-    this.app.get('/api/history', (req, res) => {
-      const history = this.conversationManager.getHistory();
-      res.json({ 
-        history: history.map(msg => ({
-          role: msg._getType(),
-          content: msg.content,
-          hasToolCalls: msg.hasToolCalls,
-          pendingToolCalls: msg.pendingToolCalls
-        })) 
-      });
-    });
+    // --- Deprecated/Moved Routes (Remove or keep for backward compatibility if needed) ---
+    // These are now handled by the specific routers
 
-    // API route for available tools
-    this.app.get('/api/tools', async (req, res) => {
-      try {
-        // Format tools as { serverName: toolsArray }
-        const connectedServers = this.serverManager.getConnectedServers();
-        const toolsByServer = {};
-        
-        for (const serverName of connectedServers) {
-          try {
-            const serverTools = this.serverManager.getServerTools(serverName);
-            toolsByServer[serverName] = serverTools;
-          } catch (error) {
-            console.warn(`Error getting tools for server ${serverName}:`, error);
-            toolsByServer[serverName] = [];
-          }
-        }
-        
-        res.json(toolsByServer);
-      } catch (error) {
-        res.status(500).json({ error: `Failed to get tools: ${error}` });
-      }
-    });
-    
-    // API route for AI model info
-    this.app.get('/api/model', (req, res) => {
-      try {
-        const model = this.conversationManager.getAiClientModelName();
-        res.json({ model });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to get AI model info: ${error}` });
-      }
-    });
-    
-    // API routes for conversation management
-    this.app.get('/api/conversations', (req, res) => {
-      try {
-        const conversations = this.conversationManager.listConversations();
-        res.json({ conversations });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to list conversations: ${error}` });
-      }
-    });
-    
-    this.app.post('/api/conversations/new', (req, res) => {
-      try {
-        this.conversationManager.newConversation();
-        
-        // Get the new conversation
-        const currentConversation = this.conversationManager.getCurrentConversation();
-        
-        // Send updated history
-        const history = this.conversationManager.getHistory();
-        this.io.emit('history-update', { 
-          history: history.map(msg => ({
-            role: msg._getType(),
-            content: msg.content,
-            hasToolCalls: (msg as any).hasToolCalls,
-            pendingToolCalls: (msg as any).pendingToolCalls
-          }))
-        });
-        
-        // Emit the conversation-loaded event
-        this.io.emit('conversation-loaded', {
-          id: currentConversation.id,
-          messages: history.map(msg => ({
-            role: msg._getType(),
-            content: msg.content,
-            hasToolCalls: msg.hasToolCalls,
-            pendingToolCalls: msg.pendingToolCalls
-          }))
-        });
-        
-        // Send the updated conversations list
-        const conversations = this.conversationManager.listConversations();
-        this.io.emit('conversations-list', { conversations });
-        
-        res.json({ success: true, id: currentConversation.id });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to create new conversation: ${error}` });
-      }
-    });
-    
-    this.app.post('/api/conversations/load', (req, res) => {
-      try {
-        const { id } = req.body;
-        
-        if (!id) {
-          return res.status(400).json({ error: 'Conversation ID is required' });
-        }
-        
-        const success = this.conversationManager.loadConversation(id);
-        
-        if (!success) {
-          return res.status(404).json({ error: `Conversation with ID ${id} not found` });
-        }
-        
-        // Send updated history
-        const history = this.conversationManager.getHistory();
-        
-        // Emit the conversation-loaded event
-        this.io.emit('conversation-loaded', {
-          id,
-          messages: history.map(msg => ({
-            role: msg._getType(),
-            content: msg.content,
-            hasToolCalls: msg.hasToolCalls,
-            pendingToolCalls: msg.pendingToolCalls
-          }))
-        });
-        
-        res.json({ success: true, id });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to load conversation: ${error}` });
-      }
-    });
-    
-    // API route for deleting a conversation
-    this.app.delete('/api/conversations/:id', (req, res) => {
-      try {
-        const { id } = req.params;
-        
-        if (!id) {
-          return res.status(400).json({ error: 'Conversation ID is required' });
-        }
-        
-        const success = this.conversationManager.deleteConversation(id);
-        
-        if (!success) {
-          return res.status(404).json({ error: `Conversation with ID ${id} not found` });
-        }
-        
-        // Send the updated conversations list
-        const conversations = this.conversationManager.listConversations();
-        this.io.emit('conversations-list', { conversations });
-        
-        res.json({ success: true });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to delete conversation: ${error}` });
-      }
-    });
-    
-    // API route for renaming a conversation
-    this.app.post('/api/conversations/:id/rename', (req, res) => {
-      try {
-        const { id } = req.params;
-        const { title } = req.body;
-        
-        if (!id) {
-          return res.status(400).json({ error: 'Conversation ID is required' });
-        }
-        
-        if (!title) {
-          return res.status(400).json({ error: 'Title is required' });
-        }
-        
-        const success = this.conversationManager.renameConversation(id, title);
-        
-        if (!success) {
-          return res.status(404).json({ error: `Conversation with ID ${id} not found` });
-        }
-        
-        // Send the updated conversations list
-        const conversations = this.conversationManager.listConversations();
-        this.io.emit('conversations-list', { conversations });
-        
-        res.json({ success: true });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to rename conversation: ${error}` });
-      }
-    });
-    
-    // API route for managing server configurations
-    this.app.get('/api/servers', async (req, res) => {
-      try {
-        // Load servers.json file
-        const configPath = path.join(__dirname, '../../../servers.json');
-        const serversConfigFile = await fs.promises.readFile(configPath, 'utf-8');
-        const serversConfig = JSON.parse(serversConfigFile);
-        
-        res.json(serversConfig);
-      } catch (error) {
-        res.status(500).json({ error: `Failed to get server configurations: ${error}` });
-      }
-    });
-    
-    // API route for updating server configurations
-    this.app.post('/api/servers', async (req, res) => {
-      try {
-        const { config } = req.body;
-        
-        if (!config || typeof config !== 'object' || !config.mcpServers) {
-          return res.status(400).json({ error: 'Invalid server configuration format. Must include mcpServers object.' });
-        }
-        
-        // Validate basic structure
-        if (typeof config.mcpServers !== 'object') {
-          return res.status(400).json({ error: 'mcpServers must be an object.' });
-        }
-        
-        // Validate each server entry
-        for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
-          if (!serverConfig || typeof serverConfig !== 'object') {
-            return res.status(400).json({ error: `Server configuration for "${serverName}" is invalid.` });
-          }
-          
-          if (!serverConfig.command || typeof serverConfig.command !== 'string') {
-            return res.status(400).json({ error: `Server "${serverName}" must have a command property.` });
-          }
-          
-          if (serverConfig.args && !Array.isArray(serverConfig.args)) {
-            return res.status(400).json({ error: `Server "${serverName}" args must be an array.` });
-          }
-          
-          if (serverConfig.env && typeof serverConfig.env !== 'object') {
-            return res.status(400).json({ error: `Server "${serverName}" env must be an object.` });
-          }
-        }
-        
-        // Save the configuration
-        const configPath = path.join(__dirname, '../../../servers.json');
-        await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
-        
-        // Signal that server needs to be restarted
-        res.json({ 
-          success: true, 
-          message: 'Server configuration updated. Restart the application to apply changes.' 
-        });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to update server configurations: ${error}` });
-      }
-    });
-    
-    // API route for updating API keys
-    this.app.post('/api/keys', async (req, res) => {
-      try {
-        const { provider, apiKey } = req.body;
-        
-        if (!provider || typeof provider !== 'string') {
-          return res.status(400).json({ error: 'Provider name is required' });
-        }
-        
-        if (!apiKey || typeof apiKey !== 'string') {
-          return res.status(400).json({ error: 'API key is required' });
-        }
-        
-        // Load AI config
-        const configPath = path.join(__dirname, '../../../ai_config.json');
-        const aiConfigFile = await fs.promises.readFile(configPath, 'utf-8');
-        const aiConfigData = JSON.parse(aiConfigFile);
-        
-        // Check if provider exists
-        if (!aiConfigData.providers[provider]) {
-          return res.status(404).json({ error: `Provider "${provider}" not found` });
-        }
-        
-        // Update the API key for the provider
-        aiConfigData.providers[provider].apiKey = apiKey;
-        
-        // If there's an apiKeyEnvVar, remove it as we're now using a direct key
-        if (aiConfigData.providers[provider].apiKeyEnvVar) {
-          delete aiConfigData.providers[provider].apiKeyEnvVar;
-        }
-        
-        // Save the updated config
-        await fs.promises.writeFile(configPath, JSON.stringify(aiConfigData, null, 2), 'utf-8');
-        
-        // Try to update the environment variable for the current session
-        const defaultProviderKey = provider.toLowerCase();
-        const envVarMap = {
-          'openai': 'OPENAI_API_KEY',
-          'anthropic': 'ANTHROPIC_API_KEY',
-          'google-genai': 'GOOGLE_API_KEY',
-          'mistralai': 'MISTRAL_API_KEY',
-          'fireworks': 'FIREWORKS_API_KEY'
-        };
-        
-        const envVar = envVarMap[defaultProviderKey];
-        if (envVar) {
-          process.env[envVar] = apiKey;
-        }
-        
-        // Reload the AI client if this is the current provider
-        if (provider === aiConfigData.defaultProvider) {
-          try {
-            // Load provider models
-            const providerModelsPath = path.join(__dirname, '../../../provider_models.toml');
-            const providerModelsContent = await fs.promises.readFile(providerModelsPath, 'utf-8');
-            
-            // Parse TOML
-            const TOML = (await import('@ltd/j-toml')).default;
-            let providerModels = {};
-            
-            try {
-              const parsedToml = TOML.parse(providerModelsContent, { joiner: '\n', bigint: false });
-              
-              if (typeof parsedToml === 'object' && parsedToml !== null) {
-                providerModels = Object.entries(parsedToml).reduce((acc, [key, value]) => {
-                  if (typeof value === 'object' && value !== null && Array.isArray((value as any).models)) {
-                    acc[key.toLowerCase()] = { models: (value as any).models };
-                  }
-                  return acc;
-                }, {});
-              }
-            } catch (tomlError) {
-              console.error('Error parsing TOML:', tomlError);
-              // Continue without models if parsing fails
-            }
-            
-            // Switch the client with the new API key
-            const providerConfig = aiConfigData.providers[provider];
-            const model = this.conversationManager.switchAiClient(providerConfig, providerModels);
-            
-            // Emit model changed event (even though model may be the same, the API key changed)
-            this.io.emit('model-changed', { provider, model });
-            
-            res.json({ 
-              success: true, 
-              message: 'API key updated and applied.',
-              provider,
-              model
-            });
-          } catch (clientError) {
-            // If switching client fails, still return success for updating the config
-            console.error('Error switching client after API key update:', clientError);
-            res.json({ 
-              success: true, 
-              warning: 'API key was saved but could not be applied immediately. You may need to restart the application.',
-              error: String(clientError)
-            });
-          }
-        } else {
-          res.json({ 
-            success: true, 
-            message: 'API key updated for provider: ' + provider
-          });
-        }
-      } catch (error) {
-        res.status(500).json({ error: `Failed to update API key: ${error}` });
-      }
-    });
-    
-    // API route for getting AI providers info
-    this.app.get('/api/providers', async (req, res) => {
-      try {
-        // Load AI config file
-        const configPath = path.join(__dirname, '../../../ai_config.json');
-        const aiConfigFile = await fs.promises.readFile(configPath, 'utf-8');
-        const aiConfigData = JSON.parse(aiConfigFile);
-        
-        // Load provider models file
-        const providerModelsPath = path.join(__dirname, '../../../provider_models.toml');
-        const providerModelsFile = await fs.promises.readFile(providerModelsPath, 'utf-8');
-        
-        // Import TOML dynamically (since we're already using it in the project)
-        const TOML = (await import('@ltd/j-toml')).default;
-        let providerModels = {};
-        
-        try {
-          // Try to parse with the proper TOML parser first
-          const parsedToml = TOML.parse(providerModelsFile, { joiner: '\n', bigint: false });
-          
-          if (typeof parsedToml === 'object' && parsedToml !== null) {
-            providerModels = Object.entries(parsedToml).reduce((acc, [key, value]) => {
-              if (typeof value === 'object' && value !== null && Array.isArray((value as any).models)) {
-                acc[key.toLowerCase()] = { models: (value as any).models };
-              }
-              return acc;
-            }, {});
-          }
-        } catch (tomlError) {
-          console.error('Error parsing TOML with parser, falling back to regex:', tomlError);
-          
-          // Fallback to regex-based parsing if TOML parser fails
-          providerModels = {};
-          const providerSections = providerModelsFile.split(/\[\w+\]/g).filter(Boolean);
-          const sectionNames = providerModelsFile.match(/\[(\w+)\]/g);
-          
-          if (sectionNames) {
-            sectionNames.forEach((name, index) => {
-              const providerName = name.replace(/\[|\]/g, '');
-              const section = providerSections[index];
-              const modelsMatch = section.match(/models\s*=\s*\[([\s\S]*?)\]/);
-              
-              if (modelsMatch) {
-                const modelsText = modelsMatch[1];
-                const models = modelsText.match(/"([^"]+)"/g)?.map(m => m.replace(/"/g, '')) || [];
-                providerModels[providerName] = { models };
-              }
-            });
-          }
-        }
-        res.json({ 
-          current: aiConfigData.defaultProvider,
-          providers: aiConfigData.providers,
-          models: providerModels
-        });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to get AI providers info: ${error}` });
-      }
-    });
-    
-    // API route for switching the AI provider
-    this.app.post('/api/provider', async (req, res) => {
-      try {
-        const { provider } = req.body;
-        if (!provider) {
-          return res.status(400).json({ error: 'Provider name is required' });
-        }
-        
-        // Load AI config
-        const configPath = path.join(__dirname, '../../../ai_config.json');
-        const aiConfigFile = await fs.promises.readFile(configPath, 'utf-8');
-        const aiConfigData = JSON.parse(aiConfigFile);
-        
-        // Check if provider exists
-        if (!aiConfigData.providers[provider]) {
-          return res.status(404).json({ error: `Provider "${provider}" not found` });
-        }
-        
-        // Load provider models
-        const providerModelsPath = path.join(__dirname, '../../../provider_models.toml');
-        const providerModelsContent = await fs.promises.readFile(providerModelsPath, 'utf-8');
-        
-        // Import TOML dynamically
-        const TOML = (await import('@ltd/j-toml')).default;
-        let providerModels = {};
-        
-        try {
-          // Try to parse with the proper TOML parser first
-          const parsedToml = TOML.parse(providerModelsContent, { joiner: '\n', bigint: false });
-          
-          if (typeof parsedToml === 'object' && parsedToml !== null) {
-            providerModels = Object.entries(parsedToml).reduce((acc, [key, value]) => {
-              if (typeof value === 'object' && value !== null && Array.isArray((value as any).models)) {
-                acc[key.toLowerCase()] = { models: (value as any).models };
-              }
-              return acc;
-            }, {});
-          }
-        } catch (tomlError) {
-          console.error('Error parsing TOML with parser, falling back to regex:', tomlError);
-          
-          // Fallback to regex-based parsing if TOML parser fails
-          providerModels = {};
-          const providerSections = providerModelsContent.split(/\[\w+\]/g).filter(Boolean);
-          const sectionNames = providerModelsContent.match(/\[(\w+)\]/g);
-          
-          if (sectionNames) {
-            sectionNames.forEach((name, index) => {
-              const providerName = name.replace(/\[|\]/g, '');
-              const section = providerSections[index];
-              const modelsMatch = section.match(/models\s*=\s*\[([\s\S]*?)\]/);
-              
-              if (modelsMatch) {
-                const modelsText = modelsMatch[1];
-                const models = modelsText.match(/"([^"]+)"/g)?.map(m => m.replace(/"/g, '')) || [];
-                providerModels[providerName] = { models };
-              }
-            });
-          }
-        }
-        
-        // Update default provider
-        aiConfigData.defaultProvider = provider;
-        
-        // Save the updated config
-        await fs.promises.writeFile(configPath, JSON.stringify(aiConfigData, null, 2), 'utf-8');
-        
-        // Switch the provider
-        const providerConfig = aiConfigData.providers[provider];
-        const model = this.conversationManager.switchAiClient(providerConfig, providerModels);
-        
-        // Send updated history after switching since it clears conversation
-        const history = this.conversationManager.getHistory();
-        this.io.emit('history-update', { 
-          history: history.map(msg => ({
-            role: msg._getType(),
-            content: msg.content,
-            hasToolCalls: msg.hasToolCalls,
-            pendingToolCalls: msg.pendingToolCalls
-          }))
-        });
-        
-        // Emit model changed event
-        this.io.emit('model-changed', { provider, model });
-        
-        res.json({ provider, model });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to switch provider: ${error}` });
-      }
-    });
-    
-    // API route for switching the model
-    this.app.post('/api/model', async (req, res) => {
-      try {
-        const { model, provider } = req.body;
-        if (!model) {
-          return res.status(400).json({ error: 'Model name is required' });
-        }
-        
-        // Load AI config
-        const configPath = path.join(__dirname, '../../../ai_config.json');
-        const aiConfigFile = await fs.promises.readFile(configPath, 'utf-8');
-        const aiConfigData = JSON.parse(aiConfigFile);
-        
-        // Determine which provider to use
-        const providerName = provider || aiConfigData.defaultProvider;
-        if (!providerName || !aiConfigData.providers[providerName]) {
-          return res.status(404).json({ error: `Provider "${providerName}" not found` });
-        }
-        
-        // Update the provider's model
-        aiConfigData.providers[providerName].model = model;
-        
-        // Save the updated config
-        await fs.promises.writeFile(configPath, JSON.stringify(aiConfigData, null, 2), 'utf-8');
-        
-        // Load provider models for validation
-        const providerModelsPath = path.join(__dirname, '../../../provider_models.toml');
-        const providerModelsContent = await fs.promises.readFile(providerModelsPath, 'utf-8');
-        
-        // Import TOML dynamically
-        const TOML = (await import('@ltd/j-toml')).default;
-        let providerModels = {};
-        
-        try {
-          // Try to parse with the proper TOML parser first
-          const parsedToml = TOML.parse(providerModelsContent, { joiner: '\n', bigint: false });
-          
-          if (typeof parsedToml === 'object' && parsedToml !== null) {
-            providerModels = Object.entries(parsedToml).reduce((acc, [key, value]) => {
-              if (typeof value === 'object' && value !== null && Array.isArray((value as any).models)) {
-                acc[key.toLowerCase()] = { models: (value as any).models };
-              }
-              return acc;
-            }, {});
-          }
-        } catch (tomlError) {
-          console.error('Error parsing TOML with parser, falling back to regex:', tomlError);
-          
-          // Fallback to regex-based parsing if TOML parser fails
-          providerModels = {};
-          const providerSections = providerModelsContent.split(/\[\w+\]/g).filter(Boolean);
-          const sectionNames = providerModelsContent.match(/\[(\w+)\]/g);
-          
-          if (sectionNames) {
-            sectionNames.forEach((name, index) => {
-              const providerName = name.replace(/\[|\]/g, '');
-              const section = providerSections[index];
-              const modelsMatch = section.match(/models\s*=\s*\[([\s\S]*?)\]/);
-              
-              if (modelsMatch) {
-                const modelsText = modelsMatch[1];
-                const models = modelsText.match(/"([^"]+)"/g)?.map(m => m.replace(/"/g, '')) || [];
-                providerModels[providerName] = { models };
-              }
-            });
-          }
-        }
-        
-        // Switch the model
-        const providerConfig = aiConfigData.providers[providerName];
-        const actualModel = this.conversationManager.switchAiClient(providerConfig, providerModels);
-        
-        // Send updated history after switching since it clears conversation
-        const history = this.conversationManager.getHistory();
-        this.io.emit('history-update', { 
-          history: history.map(msg => ({
-            role: msg._getType(),
-            content: msg.content,
-            hasToolCalls: msg.hasToolCalls,
-            pendingToolCalls: msg.pendingToolCalls
-          }))
-        });
-        
-        // Emit model changed event
-        this.io.emit('model-changed', { provider: providerName, model: actualModel });
-        
-        res.json({ provider: providerName, model: actualModel });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to switch model: ${error}` });
-      }
-    });
+    // Example: Remove old /api/servers route if handled by serversRouter
+    // this.app.get('/api/servers', (req, res) => { ... });
 
-    // API route for submitting a message
-    this.app.post('/api/message', (req, res) => {
-      try {
-        const { message } = req.body;
-        if (!message) {
-          return res.status(400).json({ error: 'Message is required' });
-        }
+    // Example: Remove old /api/history route if handled by conversationRouter
+    // this.app.get('/api/history', (req, res) => { ... });
 
-        // Process the message in a non-blocking way
-        this.processUserMessage(message);
-        
-        // Return immediately to not block the request
-        res.json({ status: 'processing' });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to process message: ${error}` });
-      }
-    });
-    
-    // API routes for inline configuration file editing
-    this.app.get('/api/config/:file', (req, res) => {
-      try {
-        const { file } = req.params;
-        
-        // Only allow specific config files for security
-        const allowedFiles = ['ai_config.json', 'servers.json', 'provider_models.toml'];
-        
-        if (!allowedFiles.includes(file)) {
-          return res.status(403).json({ error: `Access to file "${file}" is not allowed` });
-        }
-        
-        const filePath = path.join(__dirname, '../../../', file);
-        
-        if (!fs.existsSync(filePath)) {
-          return res.status(404).json({ error: `File "${file}" not found` });
-        }
-        
-        // Read the file content
-        const content = fs.readFileSync(filePath, 'utf-8');
-        
-        // Return the content with file metadata
-        res.json({
-          file,
-          path: filePath,
-          content,
-          // Add file type for editor syntax highlighting
-          type: file.endsWith('.json') ? 'json' : file.endsWith('.toml') ? 'toml' : 'text'
-        });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to read configuration file: ${error}` });
-      }
-    });
-    
-    this.app.post('/api/config/:file', async (req, res) => {
-      try {
-        const { file } = req.params;
-        const { content } = req.body;
-        
-        if (content === undefined) {
-          return res.status(400).json({ error: 'File content is required' });
-        }
-        
-        // Only allow specific config files for security
-        const allowedFiles = ['ai_config.json', 'servers.json', 'provider_models.toml'];
-        
-        if (!allowedFiles.includes(file)) {
-          return res.status(403).json({ error: `Access to file "${file}" is not allowed` });
-        }
-        
-        const filePath = path.join(__dirname, '../../../', file);
-        
-        // Validate content based on file type
-        if (file.endsWith('.json')) {
-          try {
-            // Check that it's valid JSON
-            JSON.parse(content);
-          } catch (jsonError) {
-            return res.status(400).json({ error: `Invalid JSON: ${jsonError.message}` });
-          }
-        }
-        
-        // Save the file
-        await fs.promises.writeFile(filePath, content, 'utf-8');
-        
-        // If this is the active config, notify that a restart might be needed
-        const needsRestart = file !== 'provider_models.toml'; // provider_models.toml changes don't need restart
-        
-        // Return success
-        res.json({ 
-          success: true, 
-          message: needsRestart 
-            ? 'Configuration saved. A restart may be required for changes to take effect.' 
-            : 'Configuration saved successfully.',
-          needsRestart
-        });
-      } catch (error) {
-        res.status(500).json({ error: `Failed to save configuration file: ${error}` });
-      }
-    });
+    // Example: Remove old /api/tools route if handled by serversRouter
+    // this.app.get('/api/tools', async (req, res) => { ... });
 
-    // API route for clearing the conversation
-    this.app.post('/api/clear', (req, res) => {
-      try {
-        this.conversationManager.clearConversation();
-        res.json({ status: 'success' });
-        this.io.emit('conversation-cleared');
-      } catch (error) {
-        res.status(500).json({ error: `Failed to clear conversation: ${error}` });
-      }
-    });
+    // Example: Remove old /api/model route if handled by aiRouter
+    // this.app.get('/api/model', (req, res) => { ... });
+
+    // Example: Remove old /api/conversations routes if handled by conversationRouter
+    // this.app.get('/api/conversations', (req, res) => { ... });
+    // this.app.post('/api/conversations/new', (req, res) => { ... });
+    // this.app.post('/api/conversations/load', (req, res) => { ... });
+    // this.app.delete('/api/conversations/:id', (req, res) => { ... });
+    // this.app.post('/api/conversations/:id/rename', (req, res) => { ... });
+
+    // Example: Remove old /api/servers config routes if handled by serversRouter or configRouter
+    // this.app.get('/api/servers/config', async (req, res) => { ... }); // Moved to serversRouter
+    // this.app.post('/api/servers/config', async (req, res) => { ... }); // Moved to serversRouter
+
+    // Example: Remove old /api/keys route if handled by aiRouter
+    // this.app.post('/api/keys', async (req, res) => { ... });
+
+    // Example: Remove old /api/providers route if handled by aiRouter
+    // this.app.get('/api/providers', async (req, res) => { ... });
+
+    // Example: Remove old /api/provider route if handled by aiRouter
+    // this.app.post('/api/provider', async (req, res) => { ... });
+
+    // Example: Remove old /api/model POST route if handled by aiRouter
+    // this.app.post('/api/model', async (req, res) => { ... });
+
+    // Example: Remove old /api/message route if handled by conversationRouter or socket
+    // this.app.post('/api/message', (req, res) => { ... });
+
+    // Example: Remove old /api/config/:file routes if handled by configRouter
+    // this.app.get('/api/config/:file', (req, res) => { ... });
+    // this.app.post('/api/config/:file', async (req, res) => { ... });
+
+    // Example: Remove old /api/clear route if handled by conversationRouter or socket
+    // this.app.post('/api/clear', (req, res) => { ... });
   }
 
   private setupSocketEvents() {

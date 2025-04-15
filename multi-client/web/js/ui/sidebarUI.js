@@ -3,8 +3,9 @@
 import { escapeHtml, formatRelativeTime } from '../utils/helpers.js';
 import * as appState from '../state/appState.js';
 import { emitNewConversation, emitLoadConversation } from '../socket/socketClient.js';
-import { renameConversation as apiRenameConversation, deleteConversation as apiDeleteConversation } from '../api/apiClient.js';
+import * as apiClient from '../api/apiClient.js'; // Import the whole module
 import { openConfigEditor } from './modalUI.js'; // Import modal function
+import { showToast } from './toast.js'; // Import toast for errors
 
 // DOM Elements
 let mainElement;
@@ -141,13 +142,14 @@ function addConversationItemListeners() {
                 e.stopPropagation(); // Prevent triggering load
                 const conversationId = item.dataset.id;
                 const conversation = appState.getConversations().find(c => c.id === conversationId);
+                const conversation = appState.getConversations().find(c => c.id === conversationId);
                 if (conversation) {
                     const newTitle = prompt('Enter new title:', conversation.title || '');
-                    if (newTitle !== null && newTitle.trim() !== conversation.title) {
-                        apiRenameConversation(conversationId, newTitle.trim()).then(success => {
+                    if (newTitle !== null && newTitle.trim() !== (conversation.title || '')) { // Compare with potentially empty title
+                        apiClient.renameConversation(conversationId, newTitle.trim()).then(success => { // Use apiClient namespace
                             if (success) {
                                 // Update state and re-render (or wait for socket event)
-                                appState.updateConversationInList({ ...conversation, title: newTitle.trim(), updatedAt: new Date().toISOString() });
+                                appState.updateConversationInList({ ...conversation, title: newTitle.trim(), updatedAt: new Date().toISOString() }); // Update timestamp
                                 renderConversationsList();
                             }
                         });
@@ -163,7 +165,7 @@ function addConversationItemListeners() {
                 e.stopPropagation(); // Prevent triggering load
                 const conversationId = item.dataset.id;
                 if (confirm('Are you sure you want to delete this conversation?')) {
-                    apiDeleteConversation(conversationId).then(success => {
+                    apiClient.deleteConversation(conversationId).then(success => { // Use apiClient namespace
                         if (success) {
                             // Update state and re-render (or wait for socket event)
                             const wasCurrent = appState.getCurrentConversationId() === conversationId;
@@ -236,13 +238,13 @@ function addProviderItemListeners() {
                 const targetModel = appState.getProviders()[providerName]?.model || models[0] || ''; // Use configured or first suggested
 
                 if (targetModel) {
-                     appState.setStatus(`Switching to ${providerName}...`);
-                     // Use API client to switch
-                     apiClient.switchProviderAndModel(providerName, targetModel)
-                        .catch(err => appState.setStatus('Ready')); // Reset status on error
-                     // UI updates are handled by the 'model-changed' socket event
-                } else {
-                    showToast('error', 'Error', `No model configured or suggested for provider ${providerName}. Cannot switch.`);
+                         appState.setStatus(`Switching to ${providerName}...`);
+                         // Use API client to switch
+                         apiClient.switchProviderAndModel(providerName, targetModel)
+                            .catch(err => appState.setStatus('Ready')); // Reset status on error
+                         // UI updates are handled by the 'model-changed' socket event
+                    } else {
+                        showToast('error', 'Error', `No model configured or suggested for provider ${providerName}. Cannot switch.`);
                 }
             }
         });
