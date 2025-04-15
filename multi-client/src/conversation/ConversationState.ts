@@ -159,10 +159,17 @@ export class ConversationState {
 
     try {
       // Use the same AI client to generate a summary
-      const summaryMessage = new SystemMessage(`[Previous conversation summary: ${prompt}]`);
+      const summaryContent = await aiClient.generateResponse([new SystemMessage(prompt)]);
       
-      // Replace older messages with summary
-      this.history = [summaryMessage, ...recentMessages];
+      // Update the main system prompt with the summary prepended
+      const originalSystemPrompt = this.systemPromptMessage?.content || '';
+      const combinedSystemPrompt = `[Previous conversation summary: ${summaryContent}]\n\n${originalSystemPrompt}`;
+      this.setSystemPrompt(combinedSystemPrompt);
+      
+      // Replace older messages with just the recent ones
+      this.history = recentMessages;
+      
+      console.log('Compacted conversation history.');
     } catch (error) {
       console.error('Failed to compact conversation history:', error);
       // If summarization fails, just keep the recent messages
