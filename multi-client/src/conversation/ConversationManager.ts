@@ -869,17 +869,16 @@ Important:
       // Mark the tool calls in the previous AI message as no longer pending
       aiMessageRequestingTools.pendingToolCalls = false;
       
-      // Add the ToolMessages to the state *after* the AIMessage
+      // Add the tool results back as plain AIMessages *after* the AIMessage that requested them
       for (const toolCall of toolCallsWithIds) {
           const result = toolResultsMap.get(toolCall.id) || `Error: Result not found for tool call ${toolCall.id}`;
-          this.state.addMessage(new ToolMessage(
-              result,
-              toolCall.id, // Use the same ID generated earlier
-              toolCall.name
-          ));
+          // Format the result clearly as coming from a tool
+          const toolResultMessageContent = `Tool Result for "${toolCall.name}":\n${result}`;
+          // Add as an AIMessage
+          this.state.addMessage(new AIMessage(toolResultMessageContent)); 
       }
       
-      // Get the updated message history including the AIMessage and the ToolMessages
+      // Get the updated message history including the AIMessage requesting tools and the AIMessages containing results
       const messagesForFollowUp = this.state.getMessages();
       
       // Make the next AI call with the tool results context
