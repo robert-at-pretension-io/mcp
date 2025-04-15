@@ -1,7 +1,7 @@
 .aider*
 .env
 *target*
-*.json
+servers.json
 debug_config.json
 
 node_modules/
