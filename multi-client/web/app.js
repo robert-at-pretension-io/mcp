@@ -10,9 +10,13 @@ const connectedServersElement = document.getElementById('connected-servers');
 const aiModelElement = document.getElementById('ai-model');
 const toolsListElement = document.getElementById('tools-list');
 const providersListElement = document.getElementById('providers-list');
-const statusElement = document.getElementById('status');
+const statusElement = document.getElementById('status'); // Footer status
 const conversationsListElement = document.getElementById('conversations-list');
 const newConversationBtn = document.getElementById('new-conversation-btn');
+const toggleRightPanelBtn = document.getElementById('toggle-right-panel'); // Panel toggle button
+const mainElement = document.querySelector('main'); // Main grid container
+const toolFilterInput = document.getElementById('tool-filter-input'); // Tool filter input
+const thinkingSpinner = document.getElementById('thinking-spinner'); // New spinner
 
 // Model modal elements
 const modelModal = document.getElementById('model-modal');
@@ -64,6 +68,7 @@ let toastTimeout = null;
 let conversations = [];
 let currentConversationId = null;
 let currentConfigFile = null;
+let allToolsData = {}; // Store tools data for filtering { server: [tools] }
 
 // Event Listeners
 sendButton.addEventListener('click', sendMessage);
@@ -74,6 +79,17 @@ userInputElement.addEventListener('keydown', (e) => {
         sendMessage();
     }
 });
+
+// Panel toggle listener
+toggleRightPanelBtn.addEventListener('click', () => {
+    mainElement.classList.toggle('panel-collapsed');
+});
+
+// Tool filter listener
+toolFilterInput.addEventListener('input', () => {
+    renderToolsList(allToolsData); // Re-render with filter applied
+});
+
 
 // Model modal event listeners
 changeModelBtn.addEventListener('click', openModelModal);
@@ -162,12 +178,20 @@ socket.on('ai-response', (data) => {
 
 socket.on('thinking', (data) => {
     isThinking = data.status;
-    updateThinkingIndicator();
+    updateThinkingIndicator(data.message); // Pass optional message
 });
 
 socket.on('tools-info', (data) => {
-    renderToolsList(data.tools);
+    // Assuming data.tools is now { server1: [tools], server2: [tools] }
+    allToolsData = data.tools || {};
+    renderToolsList(allToolsData);
 });
+
+// Listen for more granular status updates (requires backend changes)
+socket.on('status-update', (data) => {
+    updateStatus(data.message);
+});
+
 
 socket.on('error', (data) => {
     displayError(data.message);
@@ -180,7 +204,9 @@ socket.on('conversation-cleared', () => {
 socket.on('model-changed', (data) => {
     updateModelInfo(data.provider, data.model);
     closeModelModal();
-    displayModelChangedMessage(data.provider, data.model);
+    // Use toast instead of system message
+    showToast('success', 'Model Changed', `Switched to ${data.model} (${data.provider})`);
+    // displayModelChangedMessage(data.provider, data.model); // Keep if you want both
 });
 
 socket.on('conversations-list', (data) => {
@@ -220,9 +246,9 @@ function sendMessage() {
         // Clear the input field
         userInputElement.value = '';
         
-        // Show thinking indicator
+        // Show thinking indicator with specific message
         isThinking = true;
-        updateThinkingIndicator();
+        updateThinkingIndicator(true, 'Sending message...'); // Indicate sending
     }
 }
 
@@ -257,14 +283,16 @@ function fetchConversations() {
         })
         .catch(error => {
             console.error('Error fetching conversations:', error);
-            showToast('error', 'Error', 'Failed to load conversations: ' + error.message);
+            showToast('error', 'Error', `Failed to load conversations: ${error.message}`);
         });
 }
 
 function clearConversation() {
-    if (confirm('Are you sure you want to clear the conversation?')) {
+    // Use toast for confirmation feedback later if needed
+    // if (confirm('Are you sure you want to clear the conversation?')) {
         socket.emit('clear-conversation');
-    }
+        showToast('info', 'Conversation Cleared', 'Started a new chat session.');
+    // }
 }
 
 function clearConversationDisplay() {
@@ -544,7 +572,7 @@ function openConfigEditor(fileName) {
         .catch(error => {
             console.error(`Error loading ${fileName}:`, error);
             showToast('error', 'Error', `Failed to load ${fileName}: ${error.message}`);
-            updateStatus('Ready');
+            updateStatus('Error loading config');
             closeConfigModal();
         });
 }
@@ -606,12 +634,28 @@ function saveConfigFile() {
     });
 }
 
-function updateServerInfo(servers) {
-    connectedServersElement.textContent = servers.length > 0 
-        ? `${servers.length} server${servers.length > 1 ? 's' : ''} connected` 
-        : 'No servers connected';
-    
-    // Get the AI model info
+function updateServerInfo(serversData) {
+    // Assuming serversData is now an array like [{ name: 's1', status: 'connected' }, { name: 's2', status: 'error' }]
+    const connectedCount = serversData.filter(s => s.status === 'connected').length;
+    const errorCount = serversData.filter(s => s.status === 'error').length;
+
+    let statusText = `${connectedCount} server${connectedCount !== 1 ? 's' : ''} connected`;
+    if (errorCount > 0) {
+        statusText += ` (${errorCount} error${errorCount !== 1 ? 's' : ''})`;
+    } else if (connectedCount === 0 && serversData.length > 0) {
+        statusText = 'No servers connected';
+    } else if (serversData.length === 0) {
+        statusText = 'No servers configured';
+    }
+
+    connectedServersElement.textContent = statusText;
+
+    // Update server status in the modal if it's open
+    if (serversModal.style.display === 'block') {
+        renderServerList(serversData); // Pass the detailed data
+    }
+
+    // Get the AI model info (remains the same)
     fetch('/api/model')
         .then(response => response.json())
         .then(data => {
@@ -632,12 +676,12 @@ function updateModelInfo(provider, model) {
     aiModelElement.textContent = model;
     
     // Update the displayed providers in the sidebar
-    renderProvidersList();
+    renderProvidersList(); // Update sidebar display
 }
 
 function renderProvidersList() {
     if (!providers || Object.keys(providers).length === 0) {
-        providersListElement.innerHTML = '<p>No AI providers available</p>';
+        providersListElement.innerHTML = '<div class="empty-list">No AI providers configured</div>';
         return;
     }
     
@@ -647,10 +691,13 @@ function renderProvidersList() {
         html += `
             <div class="provider-item ${isActive ? 'active' : ''}" data-provider="${escapeHtml(name)}">
                 <div class="provider-name">
-                    ${escapeHtml(name)}
-                    ${isActive ? '<i class="fas fa-check-circle"></i>' : ''}
+                    <span>${escapeHtml(name)}</span>
+                    ${isActive ? '<i class="fas fa-check-circle" title="Active Provider"></i>' : ''}
                 </div>
-                <div class="provider-model">${escapeHtml(config.model || 'No model specified')}</div>
+                <div class="provider-model" title="${escapeHtml(config.model || '')}">
+                    ${escapeHtml(config.model || 'Default model')}
+                    ${isActive ? ' (Active)' : ''}
+                </div>
             </div>
         `;
     }
@@ -666,22 +713,43 @@ function renderProvidersList() {
     });
 }
 
-function renderToolsList(tools) {
-    if (!tools || tools.length === 0) {
-        toolsListElement.innerHTML = '<p>No tools available</p>';
-        return;
-    }
-    
+function renderToolsList(toolsByServer) {
+    // toolsByServer is expected to be { serverName: [tools] }
+    const filterText = toolFilterInput.value.toLowerCase().trim();
     let html = '';
-    tools.forEach(tool => {
-        html += `
-            <div class="tool-item">
-                <h4>${escapeHtml(tool.name)}</h4>
-                <div class="tool-description">${escapeHtml(tool.description || 'No description')}</div>
-            </div>
-        `;
-    });
-    
+    let foundTools = false;
+
+    for (const [serverName, tools] of Object.entries(toolsByServer)) {
+        const filteredTools = tools.filter(tool =>
+            tool.name.toLowerCase().includes(filterText) ||
+            (tool.description && tool.description.toLowerCase().includes(filterText))
+        );
+
+        if (filteredTools.length > 0) {
+            foundTools = true;
+            html += `<div class="tool-server-group"><h4>${escapeHtml(serverName)}</h4>`;
+            filteredTools.forEach(tool => {
+                html += `
+                    <div class="tool-item">
+                        <h5>${escapeHtml(tool.name)}</h5>
+                        <div class="tool-description">${escapeHtml(tool.description || 'No description')}</div>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+        }
+    }
+
+    if (!foundTools) {
+        if (Object.keys(toolsByServer).length === 0) {
+            html = '<div class="empty-list">No tools available from connected servers.</div>';
+        } else if (filterText) {
+            html = `<div class="empty-list">No tools match filter "${escapeHtml(filterText)}".</div>`;
+        } else {
+             html = '<div class="empty-list">No tools found.</div>'; // Should not happen if servers have tools
+        }
+    }
+
     toolsListElement.innerHTML = html;
 }
 
@@ -774,35 +842,23 @@ function formatToolCalls(content) {
     });
 }
 
-function updateThinkingIndicator() {
-    // Remove any existing thinking indicator
-    const existingIndicator = document.querySelector('.thinking-indicator');
-    if (existingIndicator) {
-        existingIndicator.remove();
-    }
-    
+function updateThinkingIndicator(thinking, statusMessage = 'AI is thinking...') {
+    isThinking = thinking; // Update global state
+
     if (isThinking) {
-        // Create and add the thinking indicator
-        const indicator = document.createElement('div');
-        indicator.className = 'thinking-indicator';
-        indicator.innerHTML = `
-            <div class="dot"></div>
-            <div class="dot"></div>
-            <div class="dot"></div>
-        `;
-        conversationElement.appendChild(indicator);
-        
-        // Scroll to the bottom
-        conversationElement.scrollTop = conversationElement.scrollHeight;
-        
-        // Update status
-        updateStatus('AI is thinking...');
+        thinkingSpinner.classList.remove('hidden');
+        updateStatus(statusMessage); // Use provided status or default
+        sendButton.disabled = true; // Disable send button while thinking
     } else {
-        updateStatus('Ready');
+        thinkingSpinner.classList.add('hidden');
+        updateStatus('Ready'); // Reset status when done thinking
+        sendButton.disabled = false; // Re-enable send button
     }
 }
 
+
 function updateStatus(message) {
+    // Add timestamp for clarity? Maybe later.
     statusElement.textContent = message;
 }
 
@@ -825,26 +881,7 @@ function displayError(message) {
     conversationElement.scrollTop = conversationElement.scrollHeight;
 }
 
-function displayModelChangedMessage(provider, model) {
-    const messageElement = document.createElement('div');
-    messageElement.className = 'message system-message';
-    
-    const now = new Date();
-    const timeString = now.toLocaleTimeString();
-    
-    messageElement.innerHTML = `
-        <div class="message-header">
-            <span>System</span>
-            <span class="message-time">${timeString}</span>
-        </div>
-        <div class="message-content">
-            <i class="fas fa-exchange-alt"></i> Model changed to: ${escapeHtml(model)} (${escapeHtml(provider)})
-        </div>
-    `;
-    
-    conversationElement.appendChild(messageElement);
-    conversationElement.scrollTop = conversationElement.scrollHeight;
-}
+// Removed displayModelChangedMessage as we now use toasts
 
 // Modal functions for Model/API Key
 function openModelModal() {
@@ -946,30 +983,58 @@ function applyModelChange() {
                 } else if (providers[provider]?.model !== model) {
                     // Only model changed
                     switchModel(provider, model);
-                } else {
-                    // Nothing changed except API key, which is already updated
-                    closeModelModal();
-                    showToast('success', 'Success', 'API key updated successfully');
+                    showToast('success', 'Success', 'API key updated and applied.');
                 }
             })
             .catch(error => {
                 console.error('Error updating API key:', error);
-                showToast('error', 'Error', 'Failed to update API key: ' + error.message);
-                updateStatus('Ready');
+                showToast('error', 'Error', `Failed to update API key: ${error.message}`);
+                updateStatus('Ready'); // Reset status on error
             });
     } else {
         // No API key provided, just switch model if needed
-        if (provider !== currentProvider) {
-            switchProvider(provider);
-        } else if (providers[provider]?.model !== model) {
-            // Only model changed
-            switchModel(provider, model);
-        } else {
+        let modelChanged = false;
+        if (provider !== currentProvider || providers[provider]?.model !== model) {
+            modelChanged = true;
+            switchProviderAndModel(provider, model); // Use combined function
+        }
+
+        if (!modelChanged) {
             // Nothing changed
             closeModelModal();
             showToast('info', 'Info', 'No changes to apply');
         }
+        // Success toast is handled by the socket event listener or switch function
     }
+}
+
+// Combined function to switch provider and/or model
+function switchProviderAndModel(provider, model) {
+    updateStatus(`Switching to ${provider} - ${model}...`);
+    fetch('/api/model', { // Use the model endpoint, which can handle provider change too
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, model })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(data => {
+                throw new Error(data.error || 'Failed to switch model/provider');
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Model/Provider switched successfully:', data);
+        // UI update is handled by the 'model-changed' socket event
+        // Toast is also handled by the 'model-changed' socket event handler
+        closeModelModal(); // Close modal on success
+    })
+    .catch(error => {
+        console.error('Error switching model/provider:', error);
+        showToast('error', 'Error', `Failed to switch: ${error.message}`);
+        updateStatus('Ready'); // Reset status on error
+    });
 }
 
 function updateApiKey(provider, apiKey) {
@@ -1034,11 +1099,11 @@ function switchModel(provider, model) {
     .catch(error => {
         console.error('Error switching model:', error);
         displayError(`Failed to switch model: ${error.message}`);
-        updateStatus('Ready');
-    });
 }
+*/
 
 function fetchProviders() {
+    updateStatus('Loading AI providers...');
     return fetch('/api/providers')
         .then(response => {
             if (!response.ok) {
@@ -1056,18 +1121,29 @@ function fetchProviders() {
             
             return data;
         })
+            updateStatus('Ready'); // Reset status even on success
+            return data;
+        })
         .catch(error => {
             console.error('Error fetching providers:', error);
-            providersListElement.innerHTML = `<p>Error loading providers: ${error.message}</p>`;
+            providersListElement.innerHTML = `<div class="empty-list">Error loading providers</div>`;
+            showToast('error', 'Error', `Failed to load AI providers: ${error.message}`);
+            updateStatus('Error loading providers');
         });
 }
 
 // Modal functions for Server Configuration
 function openServersModal() {
-    // Fetch the latest server config before opening
-    fetchServerConfig().then(() => {
-        renderServerList();
-        serversModal.style.display = 'block';
+    updateStatus('Loading server configurations...');
+    // Fetch the latest server config with status before opening
+    fetchServerConfig(true).then((serversData) => { // Pass true to indicate modal context
+        if (serversData) {
+            renderServerList(serversData); // Render with status
+            serversModal.style.display = 'block';
+            updateStatus('Ready');
+        } else {
+            updateStatus('Error loading server config');
+        }
     });
 }
 
@@ -1077,57 +1153,84 @@ function closeServersModal() {
     hideServerForm();
 }
 
-function fetchServerConfig() {
+function fetchServerConfig(isModalContext = false) {
+    // Use the /api/servers endpoint which should now return status
     return fetch('/api/servers')
         .then(response => {
             if (!response.ok) {
-                throw new Error('Failed to fetch server configuration');
+                throw new Error('Failed to fetch server status');
             }
             return response.json();
         })
         .then(data => {
-            serverConfig = data;
-            return data;
+            // Assuming data is now [{ name: 's1', status: 'connected' }, ...]
+            // We still need the full config for the modal editor
+            // Let's fetch the config file content separately if needed for the modal
+            if (isModalContext) {
+                return fetch('/api/config/servers.json')
+                    .then(configResponse => {
+                        if (!configResponse.ok) throw new Error('Failed to fetch servers.json');
+                        return configResponse.json();
+                    })
+                    .then(configFileData => {
+                        serverConfig = JSON.parse(configFileData.content); // Store full config
+                        return data.servers; // Return the status data for rendering
+                    });
+            } else {
+                // For header update, just return the status data
+                return data.servers;
+            }
         })
         .catch(error => {
-            console.error('Error fetching server configuration:', error);
-            showToast('error', 'Error', 'Failed to load server configuration: ' + error.message);
+            console.error('Error fetching server data:', error);
+            showToast('error', 'Error', `Failed to load server data: ${error.message}`);
+            return null; // Indicate error
         });
 }
 
-function renderServerList() {
+
+function renderServerList(serversData) { // Accepts [{ name, status, error? }]
     serverListItems.innerHTML = '';
-    
-    if (!serverConfig || !serverConfig.mcpServers) {
-        return;
-    }
-    
-    const servers = Object.keys(serverConfig.mcpServers);
-    
-    if (servers.length === 0) {
+
+    if (!serversData || serversData.length === 0) {
         const message = document.createElement('li');
         message.textContent = 'No servers configured';
         message.className = 'server-list-item empty';
         serverListItems.appendChild(message);
         return;
     }
-    
-    servers.forEach(serverName => {
+
+    serversData.forEach(serverInfo => {
+        const serverName = serverInfo.name;
+        const status = serverInfo.status || 'disconnected'; // Default status
+        const errorMessage = serverInfo.error;
+
         const item = document.createElement('li');
         item.className = `server-list-item ${selectedServerName === serverName ? 'active' : ''}`;
         item.dataset.serverName = serverName;
-        
+
+        // Status indicator
+        const statusIndicator = document.createElement('span');
+        statusIndicator.className = `server-status-indicator server-status-${status}`;
+        statusIndicator.title = status.charAt(0).toUpperCase() + status.slice(1) + (errorMessage ? `: ${errorMessage}` : '');
+
         const nameSpan = document.createElement('span');
         nameSpan.textContent = serverName;
-        
+
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'server-delete-btn';
         deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
-        deleteBtn.title = 'Delete server';
-        
-        item.appendChild(nameSpan);
+        deleteBtn.title = 'Delete server configuration';
+
+        const leftSide = document.createElement('div'); // Group indicator and name
+        leftSide.style.display = 'flex';
+        leftSide.style.alignItems = 'center';
+        leftSide.appendChild(statusIndicator);
+        leftSide.appendChild(nameSpan);
+
+        item.appendChild(leftSide);
         item.appendChild(deleteBtn);
-        
+
         // Add click event to select server
         item.addEventListener('click', (e) => {
             if (!e.target.closest('.server-delete-btn')) {
@@ -1159,8 +1262,8 @@ function selectServer(serverName) {
     // Show form and populate with server config
     showServerForm();
     
-    // Populate form with server data
-    const serverData = serverConfig.mcpServers[serverName];
+    // Populate form with server data from the stored full config
+    const serverData = serverConfig?.mcpServers?.[serverName];
     if (serverData) {
         // Set server name and command
         serverNameInput.value = serverName;
@@ -1455,7 +1558,12 @@ function showToast(type, title, message) {
     // Auto-hide after 4 seconds
     toastTimeout = setTimeout(() => {
         toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 300);
+        // Ensure removal even if transition fails
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.remove();
+            }
+        }, 500); // Slightly longer than transition
     }, 4000);
 }
 

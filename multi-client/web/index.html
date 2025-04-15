@@ -14,6 +14,9 @@
                 <h1>MCP Multi-Client</h1>
             </div>
             <div class="info-controls">
+                <button id="toggle-right-panel" class="icon-button" title="Toggle Sidebar">
+                    <i class="fas fa-columns"></i>
+                </button>
                 <div class="server-info">
                     <div class="info-item">
                         <i class="fas fa-server"></i>
@@ -36,6 +39,7 @@
                 </div>
 
                 <div class="input-area">
+                    <div id="thinking-spinner" class="spinner hidden"></div>
                     <textarea id="user-input" placeholder="Type your message here..."></textarea>
                     <div class="button-group">
                         <button id="send-button"><i class="fas fa-paper-plane"></i> Send</button>
@@ -57,12 +61,11 @@
                     <h3><i class="fas fa-plug"></i> AI Providers</h3>
                     <div id="providers-list" class="providers-list">Loading...</div>
                 </div>
-                
                 <div class="panel-section tools-panel">
                     <h3><i class="fas fa-tools"></i> Available Tools</h3>
+                    <input type="text" id="tool-filter-input" placeholder="Filter tools..." class="filter-input">
                     <div id="tools-list" class="tools-list">Loading...</div>
                 </div>
-                
                 <div class="panel-section config-panel">
                     <h3>
                         <i class="fas fa-cog"></i> Configuration

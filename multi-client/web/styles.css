@@ -26,6 +26,7 @@
     --radius: 0.375rem;
     --radius-md: 0.5rem;
     --radius-lg: 0.75rem;
+    --spinner-color: var(--primary-color);
 }
 
 * {
@@ -72,6 +73,7 @@ header {
 .info-controls {
     display: flex;
     align-items: center;
+    gap: 0.5rem; /* Add gap for toggle button */
 }
 
 .server-info {
@@ -116,9 +118,27 @@ header {
     background-color: rgba(37, 99, 235, 0.1);
 }
 
+.icon-button {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-light);
+    cursor: pointer;
+    padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+    font-size: 0.875rem;
+}
+
+.icon-button:hover {
+    background-color: var(--background-color);
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
 /* Main area styles */
 main {
     display: grid;
+    /* Default: panel visible */
     grid-template-columns: 1fr 320px;
     gap: 1rem;
     padding: 1rem;
@@ -147,6 +167,7 @@ main {
     border-radius: var(--radius);
     padding: 1rem;
     box-shadow: var(--shadow);
+    position: relative; /* Needed for spinner positioning */
 }
 
 textarea {
@@ -464,6 +485,16 @@ button i {
     align-items: center;
 }
 
+/* Make active provider name bolder */
+.provider-item.active .provider-name {
+    font-weight: 600;
+    color: var(--primary-dark);
+}
+
+.provider-item.active .provider-name i {
+    color: var(--success-color); /* Make checkmark green */
+}
+
 .provider-model {
     font-size: 0.8rem;
     color: var(--text-light);
@@ -475,23 +506,44 @@ button i {
     overflow-y: auto;
 }
 
+.filter-input {
+    width: 100%;
+    padding: 0.5rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+}
+
 .tools-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 1rem; /* Increased gap for server groups */
+}
+
+.tool-server-group {
+    margin-bottom: 1rem;
+}
+
+.tool-server-group h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-light);
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px dashed var(--border-color);
 }
 
 .tool-item {
-    padding: 0.75rem;
+    padding: 0.5rem 0.75rem; /* Slightly reduced padding */
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-color);
     background-color: var(--background-color);
-}
-
-.tool-item h4 {
+.tool-item h5 { /* Changed from h4 to h5 for hierarchy */
     color: var(--primary-color);
     margin-bottom: 0.25rem;
     font-size: 0.9rem;
+    font-weight: 500; /* Slightly less bold */
 }
 
 .tool-description {
@@ -523,6 +575,21 @@ footer {
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+.system-message {
+    background-color: #fffbeb; /* Light yellow */
+    border: 1px solid #fef3c7; /* Lighter yellow */
+    color: #a16207; /* Dark yellow/brown */
+    margin: 0.5rem auto; /* Center it slightly */
+    max-width: 90%;
+    font-size: 0.85rem;
+    border-radius: var(--radius-sm);
+}
+
+.system-message .message-header {
+    font-weight: 500;
+    color: #a16207;
 }
 
 .user-message {
@@ -596,44 +663,10 @@ footer {
     opacity: 0.7;
 }
 
-.thinking-indicator {
-    display: flex;
-    justify-content: flex-start;
-    align-items: center;
-    padding: 1rem;
-    color: var(--text-light);
-    margin-bottom: 1rem;
-}
-
-.dot {
-    width: 8px;
-    height: 8px;
-    background-color: var(--text-light);
-    border-radius: 50%;
-    margin: 0 3px;
-    animation: bounce 1.4s infinite ease-in-out;
-}
-
-.dot:nth-child(1) {
-    animation-delay: 0s;
-}
-
-.dot:nth-child(2) {
-    animation-delay: 0.2s;
-}
-
-.dot:nth-child(3) {
-    animation-delay: 0.4s;
-}
-
-@keyframes bounce {
-    0%, 80%, 100% {
-        transform: translateY(0);
-    }
-    40% {
-        transform: translateY(-8px);
-    }
-}
+/* Remove old thinking indicator styles */
+/* .thinking-indicator { ... } */
+/* .dot { ... } */
+/* @keyframes bounce { ... } */
 
 .tool-call {
     background-color: rgba(124, 58, 237, 0.1);
@@ -1077,6 +1110,15 @@ select:focus {
     
     .wide-modal {
         max-width: 90%;
+    }
+
+    /* Styles for collapsed panel */
+    main.panel-collapsed {
+        grid-template-columns: 1fr 0; /* Hide panel column */
+    }
+
+    main.panel-collapsed .right-panel {
+        display: none; /* Ensure it's fully hidden */
     }
 }
 
