@@ -561,6 +561,7 @@ button i {
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-color);
     background-color: var(--background-color);
+} /* Added missing closing brace */
 .tool-item h5 { /* Changed from h4 to h5 for hierarchy */
     color: var(--primary-color);
     margin-bottom: 0.25rem;
@@ -1185,4 +1186,4 @@ select:focus {
         margin: 5% auto;
         padding: 1rem;
     }
-}
+/* Removed extra closing brace */

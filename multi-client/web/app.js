@@ -1121,8 +1121,6 @@ function fetchProviders() {
             // Render the providers list in the sidebar
             renderProvidersList();
             
-            return data;
-        })
             updateStatus('Ready'); // Reset status even on success
             return data;
         })
@@ -1433,7 +1431,6 @@ function saveServerConfigurations() {
         console.log('Server configuration saved:', data);
         closeServersModal();
         showToast('success', 'Success', data.message || 'Server configuration saved successfully');
-    })
         // Add status update
         updateStatus('Saving server configurations...');
     })
