@@ -6,6 +6,9 @@ import * as fsSync from 'node:fs'; // For existsSync
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AiConfigFileStructure, ProviderModelsStructure } from '../../types.js';
+// Using the full namespace import for TOML
+import * as TOML_MODULE from '@ltd/j-toml';
+const TOML = TOML_MODULE.default;
 
 // Helper for paths
 const __filename = fileURLToPath(import.meta.url);
@@ -39,7 +42,6 @@ export function createAiRouter(
             // Use fsSync.existsSync for a quick check before async read
             if (fsSync.existsSync(providerModelsPath)) {
                 const providerModelsFile = await fs.readFile(providerModelsPath, 'utf-8');
-                const TOML = (await import('@ltd/j-toml')).default; // Dynamic import inside async function
                 const parsedToml = TOML.parse(providerModelsFile, { joiner: '\n', bigint: false });
 
                 if (typeof parsedToml === 'object' && parsedToml !== null) {
