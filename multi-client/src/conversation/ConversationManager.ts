@@ -838,21 +838,25 @@ Important:
         id: `tool_${uuidv4()}` // Generate ID here
       }));
       
+      
+      // Prepare the tool call structure expected by LangChain AIMessage
+      const langchainToolCalls = toolCallsWithIds.map(tc => ({
+        name: tc.name,
+        args: tc.arguments, // LangChain often uses 'args'
+        id: tc.id,         // The crucial ID
+        // type: "tool_use" // Type might be inferred by LangChain
+      }));
+
       // Add the AI response that *requested* the tools
-      // Pass the tool calls *with generated IDs* to additional_kwargs
+      // Pass the structured tool calls to the standard 'tool_calls' property
       const aiMessageRequestingTools = new AIMessage(currentResponse, {
-        hasToolCalls: true,
-        pendingToolCalls: true,
-        additional_kwargs: {
-          // Ensure this structure matches what ChatAnthropic expects
-          // It might look for 'tool_calls' or similar
-          tool_calls: toolCallsWithIds.map(tc => ({
-            id: tc.id, // Use the generated ID
-            type: "tool_use", // Anthropic uses 'tool_use' type
-            name: tc.name,
-            input: tc.arguments, 
-          }))
-        }
+        hasToolCalls: true, // Keep our flag
+        pendingToolCalls: true, // Keep our flag
+        tool_calls: langchainToolCalls, // Use the standard property
+        additional_kwargs: { 
+          // Keep additional_kwargs if needed for other purposes, 
+          // but tool_calls is the primary mechanism
+        } 
       });
       this.state.addMessage(aiMessageRequestingTools);
       

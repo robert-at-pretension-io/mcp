@@ -34,18 +34,26 @@ export class AIMessage extends LCAIMessage {
   // Ensure additional_kwargs are passed to the super constructor
 
   constructor(
-    content: string, 
+    content: string | Record<string, any>[], // Content can be complex for tool calls
     options?: { 
       hasToolCalls?: boolean, 
       pendingToolCalls?: boolean,
-      additional_kwargs?: Record<string, any> // Add additional_kwargs here
+      additional_kwargs?: Record<string, any>,
+      tool_calls?: any[] // Add the standard tool_calls property
     }
   ) {
-    // Pass content and additional_kwargs to the super constructor
-    // LangChain's BaseMessage constructor accepts an object or just content.
-    // We need to pass the object form to include additional_kwargs.
-    super({ content: content, additional_kwargs: options?.additional_kwargs || {} }); 
-    this.hasToolCalls = options?.hasToolCalls || false;
+    // LangChain's AIMessage constructor expects an AIMessageInput object
+    // which can include content, tool_calls, additional_kwargs etc.
+    const input = typeof content === 'string' ? { content } : content; // Handle simple string or complex content
+    
+    super({ 
+      ...input, // Spread potential complex content structure
+      additional_kwargs: options?.additional_kwargs || {},
+      tool_calls: options?.tool_calls || [] // Pass tool_calls to super
+    }); 
+    
+    // Keep our custom properties
+    this.hasToolCalls = options?.hasToolCalls ?? (options?.tool_calls && options.tool_calls.length > 0);
     this.pendingToolCalls = options?.pendingToolCalls || false;
   }
 }
