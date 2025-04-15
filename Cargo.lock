@@ -2177,6 +2177,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
+ "chrono",
  "console",
  "dirs 5.0.1",
  "dotenvy",
@@ -2185,6 +2186,7 @@ dependencies = [
  "image",
  "lazy_static",
  "log",
+ "nix 0.29.0",
  "once_cell",
  "regex",
  "reqwest",
@@ -2230,10 +2232,12 @@ dependencies = [
  "lazy_static",
  "llm",
  "mime_guess",
+ "nix 0.29.0",
  "oracle",
  "parking_lot",
  "petgraph",
  "pretty_assertions",
+ "pty-process",
  "rand",
  "regex",
  "reqwest",
@@ -2245,6 +2249,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "shellwords",
  "tempfile",
  "test-log",
  "thiserror 2.0.12",
@@ -2814,6 +2819,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pty-process"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8277b026e63da5d2cc435f842b52bedb1d050dfd7d633bba009c3c8e1883a21e"
+dependencies = [
+ "rustix 0.38.44",
+ "tokio",
+]
+
+[[package]]
 name = "qoi"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3227,6 +3242,7 @@ checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
 dependencies = [
  "bitflags 2.9.0",
  "errno",
+ "itoa",
  "libc",
  "linux-raw-sys 0.4.15",
  "windows-sys 0.59.0",

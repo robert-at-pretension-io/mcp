@@ -50,7 +50,7 @@ impl BashExecutor {
             std::fs::create_dir_all(&cwd)?;
         }
 
-        let output = Command::new("sh")
+        let output = Command::new("bash")
             .arg("-c")
             .arg(&params.command)
             .current_dir(&cwd)

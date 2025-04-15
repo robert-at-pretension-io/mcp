@@ -22,7 +22,7 @@ use mcp_tools::long_running_task::{
 use mcp_tools::aider::{AiderTool, AiderParams};
 use mcp_tools::mermaid_chart::{MermaidChartTool, MermaidChartParams};
 use mcp_tools::netlify::{NetlifyTool, NetlifyParams, NetlifyHelpParams};
-use mcp_tools::supabase::{SupabaseTool, SupabaseParams, SupabaseHelpParams};
+// use mcp_tools::supabase::{SupabaseTool, SupabaseParams, SupabaseHelpParams};
 // use mcp_tools::interactive_terminal::{ // Disabled interactive terminal imports
 //     InteractiveTerminalTool, StartTerminalParams, RunInTerminalParams, GetOutputParams, StopTerminalParams
 // };
@@ -83,7 +83,7 @@ async fn main() {
         aider_tool: AiderTool,
         mermaid_chart_tool: MermaidChartTool,
         netlify_tool: NetlifyTool,
-        supabase_tool: SupabaseTool,
+        // supabase_tool: SupabaseTool,
         // interactive_terminal_tool: InteractiveTerminalTool, // Disabled interactive terminal field
         // planner_tool: PlannerTool,
         // gmail_tool: GmailTool,
@@ -111,7 +111,7 @@ async fn main() {
                 aider_tool: AiderTool::new(),
                 mermaid_chart_tool: MermaidChartTool::new(),
                 netlify_tool: NetlifyTool::new(),
-                supabase_tool: SupabaseTool::new(),
+                // supabase_tool: SupabaseTool::new(),
                 // interactive_terminal_tool: InteractiveTerminalTool::new(), // Disabled interactive terminal instantiation
                 // planner_tool: PlannerTool::new(),
                 // gmail_tool: GmailTool::new(),
@@ -239,23 +239,23 @@ async fn main() {
         }
  
         // Supabase tool implementations
-        #[tool(description = "Executes authenticated Supabase CLI commands. Provide the command arguments *after* 'supabase' (e.g., 'projects list', 'functions deploy my-func'). Authentication is handled automatically.\n\nEssential Supabase CLI Commands:\nInitialize & Local Dev: supabase init creates config files, then supabase start launches local services.\nDatabase Development: Create migrations with supabase migration new name or generate them from changes with supabase db diff -f name.\nLocal Testing: Check service status with supabase status, reset database with supabase db reset, and stop services with supabase stop.\nRemote Connection: Authenticate with supabase login, link to project with supabase link --project-ref YOUR_REF, and pull remote schema with supabase db pull.\nDeployment: Push migrations to production with supabase db push (use --dry-run to preview changes).\nEdge Functions: Create with supabase functions new name, serve locally with supabase functions serve, and deploy with supabase functions deploy name.\nType Generation: Generate TypeScript types with supabase gen types typescript --linked > types/supabase.ts.\nProduction Management: Add secrets with supabase secrets set KEY=VALUE, manage database with supabase db lint for errors, and use supabase db diff to check drift between environments.")]
-        pub async fn supabase(
-            &self,
-            #[tool(aggr)] params: SupabaseParams,
-        ) -> String {
-            // Delegate to SupabaseTool's implementation
-            self.supabase_tool.supabase(params).await
-        }
+        // #[tool(description = "Executes authenticated Supabase CLI commands. Provide the command arguments *after* 'supabase' (e.g., 'projects list', 'functions deploy my-func'). Authentication is handled automatically.\n\nEssential Supabase CLI Commands:\nInitialize & Local Dev: supabase init creates config files, then supabase start launches local services.\nDatabase Development: Create migrations with supabase migration new name or generate them from changes with supabase db diff -f name.\nLocal Testing: Check service status with supabase status, reset database with supabase db reset, and stop services with supabase stop.\nRemote Connection: Authenticate with supabase login, link to project with supabase link --project-ref YOUR_REF, and pull remote schema with supabase db pull.\nDeployment: Push migrations to production with supabase db push (use --dry-run to preview changes).\nEdge Functions: Create with supabase functions new name, serve locally with supabase functions serve, and deploy with supabase functions deploy name.\nType Generation: Generate TypeScript types with supabase gen types typescript --linked > types/supabase.ts.\nProduction Management: Add secrets with supabase secrets set KEY=VALUE, manage database with supabase db lint for errors, and use supabase db diff to check drift between environments.")]
+        // pub async fn supabase(
+        //     &self,
+        //     #[tool(aggr)] params: SupabaseParams,
+        // ) -> String {
+        //     // Delegate to SupabaseTool's implementation
+        //     self.supabase_tool.supabase(params).await
+        // }
 
-        #[tool(description = "Gets help for the Supabase CLI or a specific command.")]
-        pub async fn supabase_help(
-            &self,
-            #[tool(aggr)] params: SupabaseHelpParams,
-        ) -> String {
-            // Delegate to SupabaseTool's implementation
-            self.supabase_tool.supabase_help(params).await
-        }
+        // #[tool(description = "Gets help for the Supabase CLI or a specific command.")]
+        // pub async fn supabase_help(
+        //     &self,
+        //     #[tool(aggr)] params: SupabaseHelpParams,
+        // ) -> String {
+        //     // Delegate to SupabaseTool's implementation
+        //     self.supabase_tool.supabase_help(params).await
+        // }
 
         // // Interactive Terminal tool implementations (Disabled)
         // #[tool(description = "Starts a new persistent interactive terminal session (e.g., bash). Returns a unique session ID.")]

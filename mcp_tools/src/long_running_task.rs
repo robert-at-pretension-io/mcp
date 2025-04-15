@@ -422,7 +422,7 @@ impl LongRunningTaskTool {
             Some("stopped") => Some(TaskStatus::Stopped),
             None => None,        // no filter => all tasks
             _ => None,           // unrecognized => return all (or maybe error?)
-        };
+        }; */
 
         manager.list_tasks(filter_status).await
     }
