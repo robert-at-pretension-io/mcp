@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express'; // Import Request and Response types
+import { Router, type Request, type Response, type NextFunction } from 'express'; // Import NextFunction
 import type { ServerManager } from '../../ServerManager.js';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs'; // For existsSync
@@ -17,7 +17,7 @@ export function createServersRouter(serverManager: ServerManager): Router {
     const serversConfigPath = path.join(baseDir, 'servers.json');
 
     // --- Get Connected Server Status & Tools ---
-    router.get('/', async (req: Request, res: Response) => { // Add types
+    router.get('/', async (req: Request, res: Response, next: NextFunction) => { // Add next
         try {
             // Get status from ServerManager (assuming it has a method like getServerStatuses)
             // For now, just return connected names as before, but ideally return status objects
@@ -31,7 +31,7 @@ export function createServersRouter(serverManager: ServerManager): Router {
         }
     });
 
-    router.get('/tools', async (req: Request, res: Response) => { // Add types
+    router.get('/tools', async (req: Request, res: Response, next: NextFunction) => { // Add next
         try {
             const tools = await serverManager.getAllTools();
             // Group tools by server here
@@ -58,7 +58,7 @@ export function createServersRouter(serverManager: ServerManager): Router {
 
     // --- Get Server Configuration File (servers.json) ---
     // This is used by the modal to populate the editor
-    router.get('/config', async (req: Request, res: Response) => { // Add types
+    router.get('/config', async (req: Request, res: Response, next: NextFunction) => { // Add next
         try {
             if (!fsSync.existsSync(serversConfigPath)) {
                 // Return empty structure if file doesn't exist
@@ -74,7 +74,7 @@ export function createServersRouter(serverManager: ServerManager): Router {
 
     // --- Update Server Configuration File (servers.json) ---
     // This is called when saving changes in the modal
-    router.post('/config', async (req: Request, res: Response) => { // Add types
+    router.post('/config', async (req: Request, res: Response, next: NextFunction) => { // Add next
         try {
             const { config } = req.body; // Expecting the full { mcpServers: {...} } structure
 
