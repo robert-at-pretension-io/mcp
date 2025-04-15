@@ -272,32 +272,50 @@ async function promptForInput(promptText: string, hideInput: boolean = false): P
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+    terminal: true // Ensure terminal features are enabled
   });
 
   // Hacky way to hide input in standard readline
-  const originalWrite = (rl.output as NodeJS.WriteStream).write;
+  // Use rl.output which is NodeJS.WritableStream
+  const outputStream = rl.output as NodeJS.WritableStream;
+  const originalWrite = outputStream.write;
+
   if (hideInput) {
-    (rl.output as NodeJS.WriteStream).write = (chunk: any, encoding?: BufferEncoding | ((err?: Error | null) => void), cb?: (err?: Error | null) => void): boolean => {
-       if (typeof chunk === 'string') {
-           switch (chunk) {
-               case '\r\n':
-               case '\n':
-                   break; // Keep newlines
-               default:
-                   (rl.output as NodeJS.WriteStream).write('*', encoding, cb); // Replace chars with '*'
-                   return true; // Indicate success
-           }
-       }
-       // Fallback for non-string chunks or if write returns false
-       return originalWrite.call(rl.output, chunk, encoding, cb);
+    // Override the write method with the correct signature
+    outputStream.write = (chunk: any, encodingOrCb?: BufferEncoding | ((err?: Error | null | undefined) => void), cb?: (err?: Error | null | undefined) => void): boolean => {
+      let encoding: BufferEncoding | undefined;
+      let callback: ((err?: Error | null | undefined) => void) | undefined;
+
+      if (typeof encodingOrCb === 'function') {
+        callback = encodingOrCb;
+        encoding = undefined;
+      } else {
+        encoding = encodingOrCb;
+        callback = cb;
+      }
+
+      if (typeof chunk === 'string') {
+        switch (chunk) {
+          case '\r\n':
+          case '\n':
+            // Keep newlines - call original write
+            return originalWrite.call(outputStream, chunk, encoding, callback);
+          default:
+            // Replace other characters with '*'
+            const starChunk = '*'.repeat(chunk.length); // Ensure same length for cursor positioning
+            return originalWrite.call(outputStream, starChunk, encoding, callback);
+        }
+      }
+      // Fallback for non-string chunks or if write returns false
+      return originalWrite.call(outputStream, chunk, encoding, callback);
     };
   }
 
   return new Promise((resolve) => {
     rl.question(promptText, (answer) => {
       if (hideInput) {
-         (rl.output as NodeJS.WriteStream).write = originalWrite; // Restore original write
-         process.stdout.write('\n'); // Add newline after hidden input
+        outputStream.write = originalWrite; // Restore original write method
+        process.stdout.write('\n'); // Add newline after hidden input
       }
       rl.close();
       resolve(answer.trim());
