@@ -145,7 +145,7 @@ export class AiClientFactory {
         throw new Error(`Failed to initialize chat model for provider: ${config.provider}`);
     }
 
-    // Pass the actual model being used for identification purposes
-    return new LangchainClient(chatModel, modelToUse);
+    // Pass the actual model being used and provider name for identification purposes
+    return new LangchainClient(chatModel, modelToUse, config.provider);
   }
 }
