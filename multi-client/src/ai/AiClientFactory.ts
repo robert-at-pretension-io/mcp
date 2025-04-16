@@ -74,7 +74,8 @@ export class AiClientFactory {
         'anthropic': 'ANTHROPIC_API_KEY',
         'google-genai': 'GOOGLE_API_KEY',
         'mistralai': 'MISTRAL_API_KEY',
-        'fireworks': 'FIREWORKS_API_KEY'
+        'fireworks': 'FIREWORKS_API_KEY',
+        'openrouter': 'OPENROUTER_API_KEY' // Added OpenRouter default env var
       };
       
       const defaultEnvVar = envVarMap[providerKey];
