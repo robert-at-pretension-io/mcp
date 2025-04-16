@@ -1,4 +1,4 @@
-import { SystemMessage, HumanMessage } from './Message.js'; // Import specific types if needed
+import { SystemMessage, HumanMessage } from './Message.js';
 export class ConversationState {
     // Store messages in the order they occurred
     history = [];
@@ -145,6 +145,7 @@ export class ConversationState {
             ];
             // Call the AI client to generate the summary
             const summaryContent = await aiClient.generateResponse(compactionMessages);
+            // --- Only modify state *after* successful summarization ---
             // Prepend the summary to the *existing* system prompt content
             const originalSystemPromptContent = this.systemPromptMessage?.content || '';
             // Ensure a clear separation between summary and original prompt
@@ -152,14 +153,13 @@ export class ConversationState {
             this.setSystemPrompt(combinedSystemPromptContent); // Update the system prompt message
             // Replace the history with only the recent messages
             this.history = recentMessages;
+            // --- End modification block ---
             console.log('[State] Successfully compacted conversation history.');
         }
         catch (error) {
             console.error('[State] Failed to compact conversation history:', error);
-            // Decide on fallback: Keep original history? Or just recent messages?
-            // Keeping just recent messages might lose context but prevents unbounded growth.
-            console.warn('[State] Compaction failed. Keeping only recent messages.');
-            this.history = recentMessages;
+            // Do NOT modify history if compaction fails, log the error and continue with full history.
+            console.warn('[State] Compaction failed. History remains unchanged.');
         }
     }
     /**
@@ -170,6 +170,20 @@ export class ConversationState {
         // If it's a human message, increment the turn counter
         if (message._getType() === 'human') {
             this.incrementTurn();
+        }
+    }
+    /**
+     * Removes the last message from history ONLY if it's an AI message marked as pending a tool call.
+     * Used to clean up state when a tool loop is detected and broken.
+     */
+    removeLastMessageIfPendingAiToolCall() {
+        const lastMessage = this.history[this.history.length - 1];
+        if (lastMessage &&
+            lastMessage._getType() === 'ai' &&
+            lastMessage.pendingToolCalls === true // Check our custom property
+        ) {
+            this.history.pop();
+            console.log('[State] Removed last pending AI tool call message due to loop break.');
         }
     }
 }

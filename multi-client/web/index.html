@@ -3,15 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4361ee">
     <title>MCP Multi-Client</title>
-    <!-- Single Tailwind CSS build -->
+    <!-- CSS files -->
+    <!-- Consolidated Tailwind build (includes all former standalone CSS) -->
     <link rel="stylesheet" href="build/tailwind.css">
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <!-- Inter font -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
     <div class="min-h-screen flex flex-col">
-        <header class="bg-gradient-to-r from-secondary to-primary text-white py-4 px-6 shadow-md sticky top-0 z-40">
+        <header class="header-gradient text-white py-4 px-6 shadow-md sticky top-0 z-40">
             <div class="container mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
                 <div class="flex items-center">
                     <h1 class="text-2xl font-bold">MCP Multi-Client</h1>
@@ -51,28 +55,15 @@
                     </div>
                 </div>
 
+                <!-- Input Area -->
                 <div class="input-area bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 relative">
                     <div id="thinking-spinner" class="spinner hidden"></div>
                     <textarea id="user-input" class="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary resize-none dark:bg-gray-700 dark:text-white" placeholder="Type your message here..."></textarea>
                     <div class="button-group flex justify-between mt-4">
-                        <button id="send-button" class="bg-primary hover:bg-primary/90 text-white py-2.5 px-5 rounded-lg transition-colors font-medium">
+                        <button id="send-button" class="btn btn-primary py-2.5 px-5 rounded-lg font-medium">
                             <i class="fas fa-paper-plane mr-2"></i> Send
                         </button>
-                        <button id="clear-button" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 py-2.5 px-5 rounded-lg transition-colors font-medium">
-                            <i class="fas fa-trash mr-2"></i> Clear
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Input Area -->
-                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 relative">
-                    <div id="thinking-spinner" class="spinner hidden"></div>
-                    <textarea id="user-input" class="form-textarea block w-full p-4 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary resize-none dark:bg-gray-700 dark:text-white" placeholder="Type your message here..."></textarea>
-                    <div class="flex justify-between mt-4">
-                        <button id="send-button" class="btn btn-primary">
-                            <i class="fas fa-paper-plane mr-2"></i> Send
-                        </button>
-                        <button id="clear-button" class="btn btn-secondary">
+                        <button id="clear-button" class="btn btn-secondary py-2.5 px-5 rounded-lg font-medium">
                             <i class="fas fa-trash mr-2"></i> Clear
                         </button>
                     </div>
@@ -87,8 +78,8 @@
                  </button>
 
                 <!-- Conversations Panel -->
-                <div class="panel-section active"> <!-- Start with conversations open -->
-                    <h3 class="panel-header">
+                <div class="panel-section rounded-xl shadow-md bg-white dark:bg-gray-800 overflow-hidden active"> <!-- Start with conversations open -->
+                    <h3 class="px-5 py-3 bg-gray-50 dark:bg-gray-700 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
                         <span class="flex items-center gap-2">
                             <i class="fas fa-comments text-primary"></i> Conversations
                         </span>

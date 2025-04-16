@@ -106,8 +106,8 @@ async function main() {
                     openai: {
                         provider: "openai",
                         model: "gpt-4o-mini",
-                        apiKeyEnvVar: "OPENAI_API_KEY"
-                        // temperature defaults if omitted
+                        apiKeyEnvVar: "OPENAI_API_KEY",
+                        temperature: 1.0
                     }
                 }
             };
@@ -286,54 +286,57 @@ main().catch(error => {
  * Prompts the user for input, optionally hiding the input (for passwords/keys).
  */
 async function promptForInput(promptText, hideInput = false) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-        terminal: true // Ensure terminal features are enabled
-    });
-    // Hacky way to hide input in standard readline
-    // Use process.stdout directly as it's the stream being used by the interface
-    const outputStream = process.stdout;
-    const originalWrite = outputStream.write;
-    if (hideInput) {
-        // Override the write method with the correct signature
-        outputStream.write = (chunk, encodingOrCb, cb) => {
-            let encoding;
-            let callback;
-            if (typeof encodingOrCb === 'function') {
-                callback = encodingOrCb;
-                encoding = undefined;
-            }
-            else {
-                encoding = encodingOrCb;
-                callback = cb;
-            }
-            if (typeof chunk === 'string') {
-                switch (chunk) {
-                    case '\r\n':
-                    case '\n':
-                        // Keep newlines - call original write
-                        return originalWrite.call(outputStream, chunk, encoding, callback);
-                    default:
-                        // Replace other characters with '*'
-                        const starChunk = '*'.repeat(chunk.length); // Ensure same length for cursor positioning
-                        return originalWrite.call(outputStream, starChunk, encoding, callback);
-                }
-            }
-            // Fallback for non-string chunks or if write returns false
-            return originalWrite.call(outputStream, chunk, encoding, callback);
-        };
-    }
     return new Promise((resolve) => {
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+            terminal: true // Ensure terminal features are enabled
+        });
+        // Hacky way to hide input in standard readline
+        const outputStream = process.stdout;
+        const originalWrite = outputStream.write;
+        let hiddenWriteActive = false;
+        if (hideInput) {
+            hiddenWriteActive = true;
+            // Define the overriding function matching one of the stdout.write signatures
+            const hiddenWrite = (chunk, encodingOrCb, // Adjusted callback type
+            cb // Adjusted callback type
+            ) => {
+                let encoding;
+                let callback; // Adjusted callback type
+                if (typeof encodingOrCb === 'function') {
+                    callback = encodingOrCb;
+                    encoding = undefined;
+                }
+                else {
+                    encoding = encodingOrCb;
+                    callback = cb;
+                }
+                // Only intercept string chunks
+                if (typeof chunk === 'string') {
+                    // Allow newlines and carriage returns through
+                    if (chunk === '\n' || chunk === '\r' || chunk === '\r\n') {
+                        return originalWrite.call(outputStream, chunk, encoding, callback);
+                    }
+                    // Replace other characters with '*'
+                    const maskedChunk = '*'.repeat(chunk.length);
+                    return originalWrite.call(outputStream, maskedChunk, encoding, callback);
+                }
+                // Pass through non-string chunks (like Buffers) directly
+                return originalWrite.call(outputStream, chunk, encoding, callback);
+            };
+            // Assign the correctly typed function - Use 'any' to bypass strict signature check here as it's complex
+            outputStream.write = hiddenWrite;
+        }
         rl.question(promptText, (answer) => {
-            if (hideInput) {
-                outputStream.write = originalWrite; // Restore original write method
-                process.stdout.write('\n'); // Add newline after hidden input
+            if (hiddenWriteActive) {
+                outputStream.write = originalWrite; // Restore original write method ONLY if it was overridden
+                process.stdout.write('\n'); // Ensure newline after hidden input
             }
             rl.close();
             resolve(answer.trim());
         });
-    });
+    }); // End of Promise constructor
 }
 /**
  * Initializes the AI client, prompting for missing API keys if necessary.
@@ -359,6 +362,7 @@ async function initializeAiClientWithPrompting(aiConfigData, providerModels, aiC
         try {
             // Pass the tools to the factory
             aiClient = AiClientFactory.createClient(defaultProviderConfig, providerModels, tools);
+            // At this point aiClient is non-null after successful createClient
             console.log(`Initialized default AI client: ${defaultProviderName} (${aiClient.getModelName()})`);
         }
         catch (error) {

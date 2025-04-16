@@ -109,25 +109,115 @@ export class ServerManager {
                 isConnected: false,
                 config: serverConfig,
             };
-            throw error; // Re-throw the error to be caught by connectAll
+            // Ensure server entry exists but is marked as not connected on failure
+            if (!this.servers[serverName]) {
+                this.servers[serverName] = {
+                    // @ts-ignore - Client/Transport might be undefined here
+                    client: undefined, transport: undefined,
+                    isConnected: false,
+                    config: serverConfig,
+                };
+            }
+            else {
+                // If entry exists (e.g., from a previous failed attempt), mark as not connected
+                this.servers[serverName].isConnected = false;
+                // Optionally clear client/transport if they exist from a previous attempt?
+                // this.servers[serverName].client = undefined;
+                // this.servers[serverName].transport = undefined;
+            }
+            throw error; // Re-throw the error to be caught by connectAll or caller
         }
     }
     /**
-     * List all connected servers
+     * List names of servers currently marked as connected.
      */
     getConnectedServers() {
         return Object.entries(this.servers)
-            .filter(([_, connection]) => connection.isConnected)
+            .filter(([_, connection]) => connection?.isConnected) // Check connection exists and isConnected
             .map(([name]) => name);
+    }
+    /**
+     * Get the status of all configured servers.
+     * @returns Record mapping server name to its status ('connected', 'disconnected', 'error', 'connecting').
+     */
+    getServerStatuses() {
+        const statuses = {};
+        for (const serverName in this.config.mcpServers) {
+            const connection = this.servers[serverName];
+            if (connection?.isConnected) {
+                statuses[serverName] = { status: 'connected' };
+            }
+            else if (connection) {
+                // Entry exists but not connected - could be error or just disconnected
+                // TODO: Differentiate between explicit disconnect and connection error if needed
+                statuses[serverName] = { status: 'disconnected' }; // Or 'error' if we store error state
+            }
+            else {
+                // No connection entry yet - implies disconnected or never attempted
+                statuses[serverName] = { status: 'disconnected' };
+            }
+        }
+        return statuses;
+    }
+    /**
+     * Attempts to reconnect to all servers currently marked as disconnected or errored.
+     */
+    async retryAllFailedConnections() {
+        console.log('Attempting to reconnect to failed/disconnected servers...');
+        const retryPromises = [];
+        const failedServerNames = Object.entries(this.servers)
+            .filter(([_, connection]) => !connection?.isConnected)
+            .map(([name]) => name);
+        // Include servers from config that never had a connection attempt
+        for (const serverName in this.config.mcpServers) {
+            if (!this.servers[serverName]) {
+                failedServerNames.push(serverName);
+            }
+        }
+        const uniqueFailedNames = [...new Set(failedServerNames)]; // Ensure unique names
+        if (uniqueFailedNames.length === 0) {
+            console.log('No servers need reconnection.');
+            return this.getConnectedServers();
+        }
+        console.log(`Retrying connections for: ${uniqueFailedNames.join(', ')}`);
+        for (const serverName of uniqueFailedNames) {
+            const serverConfig = this.config.mcpServers[serverName];
+            if (serverConfig) {
+                // Clear existing failed state before retrying
+                delete this.servers[serverName];
+                retryPromises.push(this.connectToServer(serverName, serverConfig));
+            }
+            else {
+                console.warn(`Config not found for server ${serverName} during retry.`);
+            }
+        }
+        const results = await Promise.allSettled(retryPromises);
+        // Log results of retries
+        results.forEach((result, index) => {
+            const serverName = uniqueFailedNames[index];
+            if (result.status === 'fulfilled') {
+                console.log(`[${serverName}] Reconnection successful.`);
+            }
+            else {
+                console.error(`[${serverName}] Reconnection failed: ${result.reason}`);
+            }
+        });
+        return this.getConnectedServers(); // Return the updated list of connected servers
     }
     /**
      * List all tools for a specific server
      */
     getServerTools(serverName) {
         const server = this.servers[serverName];
-        if (!server || !server.isConnected) {
-            throw new Error(`Server ${serverName} is not connected.`);
+        // Allow getting tools even if temporarily disconnected, if they were fetched previously
+        if (!server) {
+            throw new Error(`Server ${serverName} is not configured.`);
         }
+        if (!server.isConnected && !server.tools) {
+            // Only throw if not connected AND tools were never fetched
+            throw new Error(`Server ${serverName} is not connected and tools are unavailable.`);
+        }
+        // Return cached tools if available, even if currently disconnected
         return server.tools || [];
     }
     /**

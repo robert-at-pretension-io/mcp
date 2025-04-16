@@ -8,8 +8,8 @@ import { openConfigEditor } from './modalUI.js'; // Import modal function
 import { showToast } from './toast.js'; // Import toast for errors
 
 // DOM Elements
-// DOM Elements
 let rightPanel; // The actual panel element
+let mainElement; // Main content element
 let toggleRightPanelBtn; // Button in header
 let closeRightPanelBtn; // Button inside panel (for mobile)
 let conversationsListElement;
@@ -21,9 +21,12 @@ let editConfigsBtn;
 let configOptionButtons;
 let panelSections; // To store all panel sections
 
+// Initialize UI
 export function init() {
+    rightPanel = document.getElementById('right-panel');
     mainElement = document.querySelector('main');
     toggleRightPanelBtn = document.getElementById('toggle-right-panel');
+    closeRightPanelBtn = document.getElementById('close-right-panel-btn');
     conversationsListElement = document.getElementById('conversations-list');
     newConversationBtn = document.getElementById('new-conversation-btn');
     providersListElement = document.getElementById('providers-list');
@@ -33,13 +36,16 @@ export function init() {
     configOptionButtons = document.querySelectorAll('.config-option');
     panelSections = document.querySelectorAll('.right-panel .panel-section'); // Get all sections
 
-    if (!mainElement || !toggleRightPanelBtn || !conversationsListElement || !newConversationBtn || !providersListElement || !toolsListElement || !toolFilterInput || !editConfigsBtn || !panelSections) {
+    if (!rightPanel || !mainElement || !toggleRightPanelBtn || !conversationsListElement || !newConversationBtn || !providersListElement || !toolsListElement || !toolFilterInput || !editConfigsBtn || !panelSections) {
         console.error("Sidebar UI elements not found!");
         return;
     }
 
     // Event Listeners
     toggleRightPanelBtn.addEventListener('click', toggleRightPanel);
+    if (closeRightPanelBtn) {
+        closeRightPanelBtn.addEventListener('click', toggleRightPanel); // Close button also toggles
+    }
     newConversationBtn.addEventListener('click', handleNewConversation);
     toolFilterInput.addEventListener('input', handleToolFilterChange);
     editConfigsBtn.addEventListener('click', showConfigOptions);
@@ -80,20 +86,20 @@ function toggleAccordionSection(sectionToToggle) {
             section.classList.remove('active'); // Close all other sections
         }
     });
-    rightPanel = document.getElementById('right-panel');
-    closeRightPanelBtn = document.getElementById('close-right-panel-btn');
+}
 
-    if (!rightPanel || !toggleRightPanelBtn || !closeRightPanelBtn || !conversationsListElement || !newConversationBtn || !providersListElement || !toolsListElement || !toolFilterInput || !editConfigsBtn || !panelSections) {
-        console.error("Sidebar UI elements not found!");
-        return;
+// Toggle right panel visibility
+function toggleRightPanel() {
+    if (!rightPanel || !mainElement) return;
+    
+    const isOpen = rightPanel.classList.contains('open');
+    rightPanel.classList.toggle('open');
+    
+    // Optional: Also toggle a class on main element for responsive layouts
+    if (mainElement) {
+        mainElement.classList.toggle('panel-open', !isOpen);
     }
-
-    // Event Listeners
-    toggleRightPanelBtn.addEventListener('click', toggleRightPanel);
-    closeRightPanelBtn.addEventListener('click', toggleRightPanel); // Close button also toggles
-    newConversationBtn.addEventListener('click', handleNewConversation);
-    toolFilterInput.addEventListener('input', handleToolFilterChange);
-    editConfigsBtn.addEventListener('click', showConfigOptions);
+}
 
 function handleNewConversation() {
     emitNewConversation();

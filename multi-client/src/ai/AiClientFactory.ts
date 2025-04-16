@@ -14,7 +14,7 @@ import type { BaseMessageChunk } from "@langchain/core/messages";
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'; // Import MCP Tool type
 import type { StructuredToolInterface } from '@langchain/core/tools'; // Import LangChain Tool type
-import { convertToLangChainTool } from '../utils/toolConverter.js'; // We'll create this utility
+import { convertToLangChainTool } from '../utils/toolConverter.js';
 import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
 import { LangchainClient } from './LangchainClient.js';
 import type { IAiClient } from './IAiClient.js';
@@ -45,7 +45,8 @@ export class AiClientFactory {
   ): IAiClient {
     let chatModel: BaseChatModel;
     let apiKeyToUse: string | undefined = undefined;
-    const temperature = config.temperature ?? 0.7; // Default temperature
+    // Use temperature from config if provided; otherwise, do not set (use model default)
+    const temperature = config.temperature;
     const providerKey = config.provider.toLowerCase();
 
     // --- Determine API Key ---
@@ -107,53 +108,64 @@ export class AiClientFactory {
     console.log(`Creating AI client for provider: ${providerKey}, model: ${modelToUse}`);
 
     switch (providerKey) {
-      case 'openai':
-        chatModel = new ChatOpenAI({
+      case 'openai': {
+        // Build options, include temperature only if specified
+        const options: any = {
           modelName: modelToUse,
-          temperature: temperature,
-          openAIApiKey: apiKeyToUse, // Pass the determined key
-        });
+          openAIApiKey: apiKeyToUse,
+        };
+        if (temperature !== undefined) options.temperature = temperature;
+        chatModel = new ChatOpenAI(options);
         break;
-      case 'anthropic':
-        chatModel = new ChatAnthropic({
+      }
+      case 'anthropic': {
+        const options: any = {
           modelName: modelToUse,
-          temperature: temperature,
-          anthropicApiKey: apiKeyToUse, // Pass the determined key
-        });
+          anthropicApiKey: apiKeyToUse,
+        };
+        if (temperature !== undefined) options.temperature = temperature;
+        chatModel = new ChatAnthropic(options);
         break;
+      }
       case 'google-genai':
-      case 'google': // Allow alias
-        chatModel = new ChatGoogleGenerativeAI({
+      case 'google': { // Allow alias
+        const options: any = {
           modelName: modelToUse,
-          temperature: temperature,
-          apiKey: apiKeyToUse, // Pass the determined key
-        });
+          apiKey: apiKeyToUse,
+        };
+        if (temperature !== undefined) options.temperature = temperature;
+        chatModel = new ChatGoogleGenerativeAI(options);
         break;
+      }
       case 'mistralai':
-      case 'mistral': // Allow alias
-        chatModel = new ChatMistralAI({
+      case 'mistral': { // Allow alias
+        const options: any = {
           modelName: modelToUse,
-          temperature: temperature,
-          apiKey: apiKeyToUse, // Pass the determined key
-        });
+          apiKey: apiKeyToUse,
+        };
+        if (temperature !== undefined) options.temperature = temperature;
+        chatModel = new ChatMistralAI(options);
         break;
-      case 'fireworks':
-        chatModel = new ChatFireworks({
+      }
+      case 'fireworks': {
+        const options: any = {
           modelName: modelToUse,
-          temperature: temperature,
-          fireworksApiKey: apiKeyToUse, // Pass the determined key
-        });
+          fireworksApiKey: apiKeyToUse,
+        };
+        if (temperature !== undefined) options.temperature = temperature;
+        chatModel = new ChatFireworks(options);
         break;
-      case 'openrouter':
-        chatModel = new ChatOpenAI({
+      }
+      case 'openrouter': {
+        const options: any = {
           modelName: modelToUse,
-          temperature: temperature,
-          openAIApiKey: apiKeyToUse, // Pass the determined key
-          configuration: {
-            baseURL: 'https://openrouter.ai/api/v1',
-          },
-        });
+          openAIApiKey: apiKeyToUse,
+          configuration: { baseURL: 'https://openrouter.ai/api/v1' },
+        };
+        if (temperature !== undefined) options.temperature = temperature;
+        chatModel = new ChatOpenAI(options);
         break;
+      }
       // Add cases for other providers (Groq, Cohere, Ollama, etc.) here
       // Example:
       // case 'groq':

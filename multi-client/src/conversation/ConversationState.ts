@@ -1,5 +1,5 @@
 import type { ConversationMessage } from './Message.js';
-import { SystemMessage, HumanMessage } from './Message.js'; // Import specific types if needed
+import { SystemMessage, HumanMessage } from './Message.js';
 
 export interface VerificationState {
   originalRequest: string; // The original user request that generated criteria

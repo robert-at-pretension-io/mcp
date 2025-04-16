@@ -20,17 +20,17 @@ export class ToolParser {
                 break; // No more tool calls found
             // Find the end of the tool call
             const endIndex = text.indexOf(this.TOOL_CALL_END, startIndex);
-            if (endIndex === -1)
-                break; // No end delimiter found
-            // Extract the full tool call text
-            const fullText = text.substring(startIndex, endIndex + this.TOOL_CALL_END.length);
-            // Extract the JSON content between the delimiters
+            if (endIndex === -1) {
+                console.warn(`[ToolParser] Found start delimiter but no end delimiter after position ${startIndex}.`);
+                break; // No end delimiter found for this start
+            }
+            // Extract the potential JSON content between the delimiters
             const jsonStart = startIndex + this.TOOL_CALL_START.length;
             const jsonEnd = endIndex;
-            const jsonContent = text.substring(jsonStart, jsonEnd).trim();
+            const potentialJsonContent = text.substring(jsonStart, jsonEnd).trim();
+            // Attempt to parse the JSON content
             try {
-                // Parse the JSON content
-                const toolCallData = JSON.parse(jsonContent);
+                const toolCallData = JSON.parse(potentialJsonContent);
                 // Validate structure (name and arguments fields)
                 if (typeof toolCallData === 'object' &&
                     toolCallData !== null &&
@@ -42,17 +42,24 @@ export class ToolParser {
                     toolCalls.push({
                         name: toolCallData.name,
                         arguments: toolCallData.arguments,
-                        fullText: fullText // Keep full text for potential replacement logic
+                        // Capture the actual text including delimiters for this parsed call
+                        fullText: text.substring(startIndex, endIndex + this.TOOL_CALL_END.length)
                     });
                 }
                 else {
-                    console.warn('Invalid tool call structure:', jsonContent);
+                    console.warn('[ToolParser] Invalid tool call JSON structure:', potentialJsonContent);
                 }
             }
             catch (error) {
-                console.warn('Error parsing tool call JSON:', error instanceof Error ? error.message : String(error));
+                // If JSON parsing fails, it might be due to nested delimiters or invalid JSON.
+                // Log the error and the raw content that failed to parse.
+                console.warn(`[ToolParser] Error parsing tool call JSON between indices ${jsonStart} and ${jsonEnd}:`, error instanceof Error ? error.message : String(error));
+                console.warn('[ToolParser] Raw content that failed parsing:', potentialJsonContent);
+                // We still capture the fullText including delimiters even on parse failure if needed elsewhere,
+                // but the call itself won't be added to the valid `toolCalls` array.
             }
-            // Move past this tool call
+            // Move search position past the *current end delimiter* to find the next potential start,
+            // regardless of whether parsing succeeded or failed for this segment.
             currentPos = endIndex + this.TOOL_CALL_END.length;
         }
         return toolCalls;

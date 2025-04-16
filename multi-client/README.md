@@ -119,6 +119,7 @@ The web interface is available at `http://localhost:3000` when running in web mo
 - Conversation history
 - Tool call visualization
 - Thinking indicators
+- Responsive design with Tailwind CSS
 
 ## Architecture
 
@@ -129,6 +130,7 @@ The multi-client implementation follows a modular architecture:
 - **AI Client Layer**: Provides a unified interface to different AI providers
 - **REPL**: Command-line interface for user interaction
 - **WebServer**: Web interface with REST API and WebSocket for real-time updates
+- **UI Layer**: Responsive web interface using Tailwind CSS
 
 ## Custom AI Providers
 

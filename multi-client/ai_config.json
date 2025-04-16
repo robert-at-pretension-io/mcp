@@ -9,27 +9,18 @@
     },
     "openai": {
       "provider": "openai",
-      "model": "gpt-4.1",
+      "model": "o3",
+      "temperature": 1,
       "apiKeyEnvVar": "OPENAI_API_KEY"
     },
     "google-genai": {
       "provider": "google-genai",
       "model": "gemini-2.5-pro-preview-03-25",
-      "apiKeyEnvVar": "GOOGLE_API_KEY"
-    },
-    "mistralai": {
-      "provider": "mistralai",
-      "model": "mistral-small-latest",
-      "apiKeyEnvVar": "MISTRAL_API_KEY"
-    },
-    "fireworks": {
-      "provider": "fireworks",
-      "model": "accounts/fireworks/models/llama-v3-8b-instruct",
-      "apiKeyEnvVar": "FIREWORKS_API_KEY"
+      "apiKeyEnvVar": "GEMINI_API_KEY"
     },
     "openrouter": {
       "provider": "openrouter",
-      "model": "openai/gpt-4o",
+      "model": "openai/gpt-4.1",
       "apiKeyEnvVar": "OPENROUTER_API_KEY",
       "temperature": 0.7
     }

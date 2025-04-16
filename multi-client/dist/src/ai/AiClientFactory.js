@@ -3,7 +3,7 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatMistralAI } from '@langchain/mistralai';
 import { ChatFireworks } from '@langchain/community/chat_models/fireworks';
-import { convertToLangChainTool } from '../utils/toolConverter.js'; // We'll create this utility
+import { convertToLangChainTool } from '../utils/toolConverter.js';
 import { LangchainClient } from './LangchainClient.js';
 /**
  * Custom error for missing API keys that require user prompting.
@@ -25,7 +25,8 @@ export class AiClientFactory {
     ) {
         let chatModel;
         let apiKeyToUse = undefined;
-        const temperature = config.temperature ?? 0.7; // Default temperature
+        // Use temperature from config if provided; otherwise, do not set (use model default)
+        const temperature = config.temperature;
         const providerKey = config.provider.toLowerCase();
         // --- Determine API Key ---
         // 1. Check for direct apiKey in config
@@ -52,9 +53,10 @@ export class AiClientFactory {
             const envVarMap = {
                 'openai': 'OPENAI_API_KEY',
                 'anthropic': 'ANTHROPIC_API_KEY',
-                'google-genai': 'GOOGLE_API_KEY',
+                'google-genai': 'GEMINI_API_KEY',
                 'mistralai': 'MISTRAL_API_KEY',
-                'fireworks': 'FIREWORKS_API_KEY'
+                'fireworks': 'FIREWORKS_API_KEY',
+                'openrouter': 'OPENROUTER_API_KEY' // Added OpenRouter default env var
             };
             const defaultEnvVar = envVarMap[providerKey];
             if (defaultEnvVar && process.env[defaultEnvVar]) {
@@ -82,43 +84,70 @@ export class AiClientFactory {
         // --- End Model Determination ---
         console.log(`Creating AI client for provider: ${providerKey}, model: ${modelToUse}`);
         switch (providerKey) {
-            case 'openai':
-                chatModel = new ChatOpenAI({
+            case 'openai': {
+                // Build options, include temperature only if specified
+                const options = {
                     modelName: modelToUse,
-                    temperature: temperature,
-                    openAIApiKey: apiKeyToUse, // Pass the determined key
-                });
+                    openAIApiKey: apiKeyToUse,
+                };
+                if (temperature !== undefined)
+                    options.temperature = temperature;
+                chatModel = new ChatOpenAI(options);
                 break;
-            case 'anthropic':
-                chatModel = new ChatAnthropic({
+            }
+            case 'anthropic': {
+                const options = {
                     modelName: modelToUse,
-                    temperature: temperature,
-                    anthropicApiKey: apiKeyToUse, // Pass the determined key
-                });
+                    anthropicApiKey: apiKeyToUse,
+                };
+                if (temperature !== undefined)
+                    options.temperature = temperature;
+                chatModel = new ChatAnthropic(options);
                 break;
+            }
             case 'google-genai':
-            case 'google': // Allow alias
-                chatModel = new ChatGoogleGenerativeAI({
+            case 'google': { // Allow alias
+                const options = {
                     modelName: modelToUse,
-                    temperature: temperature,
-                    apiKey: apiKeyToUse, // Pass the determined key
-                });
+                    apiKey: apiKeyToUse,
+                };
+                if (temperature !== undefined)
+                    options.temperature = temperature;
+                chatModel = new ChatGoogleGenerativeAI(options);
                 break;
+            }
             case 'mistralai':
-            case 'mistral': // Allow alias
-                chatModel = new ChatMistralAI({
+            case 'mistral': { // Allow alias
+                const options = {
                     modelName: modelToUse,
-                    temperature: temperature,
-                    apiKey: apiKeyToUse, // Pass the determined key
-                });
+                    apiKey: apiKeyToUse,
+                };
+                if (temperature !== undefined)
+                    options.temperature = temperature;
+                chatModel = new ChatMistralAI(options);
                 break;
-            case 'fireworks':
-                chatModel = new ChatFireworks({
+            }
+            case 'fireworks': {
+                const options = {
                     modelName: modelToUse,
-                    temperature: temperature,
-                    fireworksApiKey: apiKeyToUse, // Pass the determined key
-                });
+                    fireworksApiKey: apiKeyToUse,
+                };
+                if (temperature !== undefined)
+                    options.temperature = temperature;
+                chatModel = new ChatFireworks(options);
                 break;
+            }
+            case 'openrouter': {
+                const options = {
+                    modelName: modelToUse,
+                    openAIApiKey: apiKeyToUse,
+                    configuration: { baseURL: 'https://openrouter.ai/api/v1' },
+                };
+                if (temperature !== undefined)
+                    options.temperature = temperature;
+                chatModel = new ChatOpenAI(options);
+                break;
+            }
             // Add cases for other providers (Groq, Cohere, Ollama, etc.) here
             // Example:
             // case 'groq':
@@ -136,14 +165,22 @@ export class AiClientFactory {
         // Bind the tools to the chat model instance if the method exists
         // This ensures LangChain includes tool definitions in API calls when needed
         let modelForClient = chatModel;
-        if (typeof chatModel.bindTools === 'function') {
-            modelForClient = chatModel.bindTools(langchainTools);
-            console.log(`[AiClientFactory] Tools bound to model ${modelToUse}`);
+        if (langchainTools.length > 0) { // Only attempt binding if tools exist
+            if (typeof chatModel.bindTools === 'function') {
+                modelForClient = chatModel.bindTools(langchainTools);
+                console.log(`[AiClientFactory] Tools bound to model ${modelToUse}`);
+            }
+            else {
+                // If tools are available but the model doesn't support binding, log a warning but continue.
+                console.warn(`[AiClientFactory] Warning: Model ${modelToUse} does not support standard tool binding (bindTools), but tools were provided. Tool usage might rely on custom parsing (e.g., MCP delimiters).`);
+                // Proceed with the original model; tool usage depends on ConversationManager's parsing
+                modelForClient = chatModel;
+            }
         }
         else {
-            console.warn(`[AiClientFactory] Model ${modelToUse} does not support bindTools. Tool usage might be limited.`);
-            // If bindTools doesn't exist, we pass the original chatModel.
-            // This might limit tool usage depending on how LangchainClient handles it.
+            // No tools provided, proceed with the original model
+            console.log(`[AiClientFactory] No tools provided. Proceeding without tool binding.`);
+            modelForClient = chatModel; // Use the original model
         }
         // Pass the potentially tool-bound model to the LangchainClient
         return new LangchainClient(modelForClient, modelToUse, config.provider);

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ConversationState } from '../ConversationState.js';
-import type { ConversationMessage } from '../Message.js'; // Assuming Message types are needed for serialization structure
+import type { ConversationMessage } from '../Message.js';
 
 // Interface for serialized conversations (can be moved to types.ts later)
 export interface SerializedConversation {

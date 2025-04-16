@@ -52,3 +52,12 @@ models = [
   "meta-llama/Llama-2-70b-chat-hf",
   "togethercomputer/llama-2-70b-chat"
 ]
+[openrouter]
+models = [
+  "openai/gpt-4o",
+  "anthropic/claude-3-opus-20240229",
+  "anthropic/claude-3-5-sonnet-20240620",
+  "meta-llama/llama-3-70b-instruct",
+  "mistral/mistral-large-latest",
+  "google/gemini-pro"
+]

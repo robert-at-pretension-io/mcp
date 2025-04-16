@@ -1,5 +1,5 @@
 import type { ServerManager } from '../../ServerManager.js';
-import type { ToolExecutionResult } from '../../types.js'; // Import result type
+import type { ToolExecutionResult } from '../../types.js';
 
 // Type for the tool calls expected by this executor
 export type ToolCallRequest = {

@@ -88,8 +88,16 @@ export class WebServer {
             });
             // Handle clear conversation request
             socket.on('clear-conversation', () => {
-                this.conversationManager.clearConversation();
-                this.io.emit('conversation-cleared');
+                try {
+                    this.conversationManager.clearConversation();
+                    this.io.emit('conversation-cleared'); // Notify all clients
+                }
+                catch (error) {
+                    console.error('[WebServer] Error clearing conversation:', error);
+                    socket.emit('error', {
+                        message: `Error clearing conversation: ${error instanceof Error ? error.message : String(error)}`
+                    });
+                }
             });
             // Handle new conversation request
             socket.on('new-conversation', () => {
@@ -112,7 +120,7 @@ export class WebServer {
                     this.io.emit('conversations-list', { conversations });
                 }
                 catch (error) {
-                    console.error('Error creating new conversation:', error);
+                    console.error('[WebServer] Error creating new conversation:', error);
                     socket.emit('error', {
                         message: `Error creating new conversation: ${error instanceof Error ? error.message : String(error)}`
                     });
@@ -142,7 +150,7 @@ export class WebServer {
                     });
                 }
                 catch (error) {
-                    console.error('Error loading conversation:', error);
+                    console.error('[WebServer] Error loading conversation:', error);
                     socket.emit('error', {
                         message: `Error loading conversation: ${error instanceof Error ? error.message : String(error)}`
                     });
@@ -169,18 +177,20 @@ export class WebServer {
             const allTools = await this.serverManager.getAllTools();
             const serverNames = this.serverManager.getConnectedServers();
             // Format tools as { serverName: toolsArray }
-            const toolsByServer = {};
+            const toolsByServer = {}; // Ensure correct type and declare only once
             for (const serverName of serverNames) {
                 try {
+                    // Attempt to get tools, but handle potential errors gracefully
                     const serverTools = this.serverManager.getServerTools(serverName);
                     toolsByServer[serverName] = serverTools;
                 }
                 catch (error) {
-                    console.warn(`Error getting tools for server ${serverName}:`, error);
-                    toolsByServer[serverName] = [];
+                    // Log the error but continue fetching from other servers
+                    console.warn(`[WebServer] Error getting tools for server ${serverName} during initial data send:`, error instanceof Error ? error.message : String(error));
+                    toolsByServer[serverName] = []; // Assign empty array for this server on error
                 }
             }
-            console.log('[WebServer] Emitting tools-info:', JSON.stringify(toolsByServer, null, 2)); // Add logging
+            console.log('[WebServer] Emitting tools-info:', JSON.stringify(Object.keys(toolsByServer))); // Log server names with tools
             socket.emit('tools-info', toolsByServer);
             // Send the list of conversations
             try {

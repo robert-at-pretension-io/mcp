@@ -17,9 +17,21 @@ export declare class ServerManager {
      */
     connectToServer(serverName: string, serverConfig: StdioServerConfig): Promise<string>;
     /**
-     * List all connected servers
+     * List names of servers currently marked as connected.
      */
     getConnectedServers(): string[];
+    /**
+     * Get the status of all configured servers.
+     * @returns Record mapping server name to its status ('connected', 'disconnected', 'error', 'connecting').
+     */
+    getServerStatuses(): Record<string, {
+        status: 'connected' | 'disconnected' | 'error' | 'connecting';
+        error?: string;
+    }>;
+    /**
+     * Attempts to reconnect to all servers currently marked as disconnected or errored.
+     */
+    retryAllFailedConnections(): Promise<string[]>;
     /**
      * List all tools for a specific server
      */

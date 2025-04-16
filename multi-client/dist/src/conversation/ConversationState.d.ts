@@ -61,4 +61,9 @@ export declare class ConversationState {
      * Adds a message to the conversation history and tracks turns.
      */
     addMessage(message: ConversationMessage): void;
+    /**
+     * Removes the last message from history ONLY if it's an AI message marked as pending a tool call.
+     * Used to clean up state when a tool loop is detected and broken.
+     */
+    removeLastMessageIfPendingAiToolCall(): void;
 }

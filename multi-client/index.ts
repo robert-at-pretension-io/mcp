@@ -117,8 +117,8 @@ async function main() {
           openai: {
             provider: "openai",
             model: "gpt-4o-mini",
-            apiKeyEnvVar: "OPENAI_API_KEY"
-            // temperature defaults if omitted
+            apiKeyEnvVar: "OPENAI_API_KEY",
+            temperature: 1.0
           }
         }
       };
@@ -424,7 +424,8 @@ async function initializeAiClientWithPrompting(
     try {
       // Pass the tools to the factory
       aiClient = AiClientFactory.createClient(defaultProviderConfig, providerModels, tools);
-      console.log(`Initialized default AI client: ${defaultProviderName} (${aiClient.getModelName()})`);
+      // At this point aiClient is non-null after successful createClient
+      console.log(`Initialized default AI client: ${defaultProviderName} (${aiClient!.getModelName()})`);
     } catch (error) {
       if (error instanceof MissingApiKeyError) {
         console.warn(`Configuration requires environment variable "${error.apiKeyEnvVar}" for provider "${error.providerName}", but it's not set.`);
