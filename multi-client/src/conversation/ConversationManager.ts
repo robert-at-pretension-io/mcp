@@ -962,13 +962,26 @@ Important:
           console.log('Generated corrected response after verification failure');
 
           // Update the content to be returned and added later
-          finalAiResponseContent = correctedResponse;
+          finalAiResponseContent = correctedResponse; // This might be complex content now
 
-          // Add the corrected response to history *immediately* so it's part of the state
-          // before the final addMessage check later (this replaces the failed one implicitly)
-          this.state.addMessage(new AIMessage(correctedResponse));
+          // Add the potentially complex corrected response to history
+          // AIMessage constructor handles string or array content
+          const correctedAiMessage = new AIMessage(correctedResponse);
+          this.state.addMessage(correctedAiMessage);
 
-          // We will save and return finalAiResponseContent later
+          // Extract the user-facing text part from the corrected response for return
+          if (typeof correctedResponse === 'string') {
+              finalAiResponseContent = correctedResponse;
+          } else if (Array.isArray(correctedResponse)) {
+              finalAiResponseContent = correctedResponse
+                  .filter(item => typeof item === 'object' && item !== null && item.type === 'text' && typeof item.text === 'string')
+                  .map(item => item.text)
+                  .join('\n') || "[AI response contained non-text elements after correction]";
+          } else {
+              finalAiResponseContent = JSON.stringify(correctedResponse); // Fallback
+          }
+
+          // We will save and return the extracted finalAiResponseContent later
         } catch (error) {
           console.error('Error generating corrected response:', error);
           // Fall back to the uncorrected response content if correction fails
@@ -978,18 +991,37 @@ Important:
       }
     }
     
-    // Add the single, definitive final AI message for this turn to the state
-    // Use the potentially corrected content from verification
+    // Add the single, definitive final AI message for this turn to the state.
+    // Use the potentially corrected *string* content derived from verification/retry.
     const finalAiMessage = new AIMessage(finalAiResponseContent, { hasToolCalls: false });
-    // Check if the last message added was already this exact response (e.g., from failed verification retry)
+
+    // Check if the last message added was already the complex AIMessage from a failed verification retry.
+    // If so, we don't need to add the simplified string version again.
     const history = this.state.getHistoryWithoutSystemPrompt();
-    const lastMessage = history[history.length - 1];
-    if (!(lastMessage instanceof AIMessage && lastMessage.content === finalAiMessage.content)) {
-         this.state.addMessage(finalAiMessage);
-    } else {
-        console.log("Skipping adding duplicate final AI message after verification handling.");
+    const lastMessage = history.length > 0 ? history[history.length - 1] : null;
+
+    let skipFinalAdd = false;
+    if (lastMessage instanceof AIMessage && typeof lastMessage.content !== 'string') {
+        // If the last message has complex content (likely from the retry block),
+        // check if the derived finalAiResponseContent matches its text part.
+        const lastMessageText = Array.isArray(lastMessage.content)
+            ? lastMessage.content
+                .filter(item => typeof item === 'object' && item !== null && item.type === 'text' && typeof item.text === 'string')
+                .map(item => item.text)
+                .join('\n')
+            : JSON.stringify(lastMessage.content); // Fallback compare
+
+        if (lastMessageText === finalAiResponseContent) {
+            skipFinalAdd = true;
+            console.log("Skipping adding final string AI message as complex version already exists from retry.");
+        }
     }
 
+    if (!skipFinalAdd) {
+        // If the last message wasn't the complex one, or if verification passed/was skipped,
+        // add the final (potentially simple string) AI message.
+        this.state.addMessage(finalAiMessage);
+    }
 
     // Save the conversation after adding the final AI response
     this.saveConversation();

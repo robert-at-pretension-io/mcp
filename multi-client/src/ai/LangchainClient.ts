@@ -50,14 +50,37 @@ export class LangchainClient implements IAiClient {
     try {
       // Ensure messages are in the format LangChain expects (they should be if using BaseMessage)
       const response = await this.chatModel.invoke(messages);
-
+      
+      // Handle different types of response content
       if (typeof response.content === 'string') {
+        // Simple string response
         return response.content;
+      } else if (Array.isArray(response.content)) {
+        // Handle array content (common with Anthropic tool usage)
+        // Find the first text block, if any
+        const textContent = response.content
+          .filter(item => typeof item === 'object' && item !== null && item.type === 'text' && typeof item.text === 'string')
+          .map(item => item.text)
+          .join('\n');
+          
+        if (textContent) {
+          // Return concatenated text parts if found
+          console.log('[LangchainClient] Extracted text from complex response:', textContent);
+          return textContent;
+        } else if (response.content.length === 0) {
+           // Handle empty array response specifically
+           console.warn('[LangchainClient] AI response content was an empty array.');
+           return "[AI response was empty]"; // Placeholder for empty array
+        } else {
+          // If array contains non-text elements (like tool_calls) but no text
+          console.warn('[LangchainClient] AI response content is a non-empty array without text:', response.content);
+          // Return a placeholder or stringify the structure for debugging
+          return `[AI response contained non-text elements: ${JSON.stringify(response.content)}]`;
+        }
       } else {
-        // Handle potential non-string content (e.g., structured output)
-        console.warn('AI response content is not a simple string:', response.content);
-        // Attempt to stringify, or handle based on expected complex types later
-        return JSON.stringify(response.content);
+        // Handle other unexpected non-string, non-array content
+        console.warn('[LangchainClient] AI response content is not a string or array:', response.content);
+        return JSON.stringify(response.content); // Fallback stringify
       }
     } catch (error) {
       console.error(`Langchain AI request failed for model ${this.modelIdentifier}:`, error);
