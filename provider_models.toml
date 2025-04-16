@@ -85,44 +85,6 @@ models = [
   "google/gemini-pro"
 ]
 
-# [openrouter] # This section is being replaced, remove the old one below
-# models = [
-#     "openrouter/optimus-alpha",
-    # OpenAI
-    "openai/gpt-4o",
-    "openai/gpt-4o-mini",
-    # Anthropic
-    "anthropic/claude-3-opus",
-    "anthropic/claude-3.5-sonnet",
-    "anthropic/claude-3.7-sonnet",
-    "anthropic/claude-3.7-sonnet:thinking",
-    # Google
-    "google/gemini-2.5-pro",
-    "google/gemini-2.5-pro-exp-03-25:free",
-    "google/gemini-1.5-flash",
-    "google/gemini-flash-1.5-8b",
-    "google/gemini-flash-2.0",
-    "google/gemini-2.0-flash-001",
-    "google/gemini-flash-2.0-lite",
-    # Mistral
-    "mistralai/mistral-large",
-    "mistralai/mistral-nemo",
-    # Meta
-    "meta-llama/llama-3-70b-instruct",
-    "meta-llama/llama-3.1-8b-instruct",
-    "meta-llama/llama-3.3-70b-instruct",
-    
-    # DeepSeek
-    "deepseek/deepseek-chat",
-    "deepseek/deepseek-chat-v3-0324",
-    "deepseek/deepseek-chat-v3-0324:free",
-    "deepseek/deepseek-r1",
-    "deepseek/deepseek-r1:free",
-    "deepseek/deepseek-r1-distill-llama-70b",
-    # Other
-    "openrouter/quasar-alpha"
-]
-
 # [xai]
 # models = [
 #     "grok-1",
