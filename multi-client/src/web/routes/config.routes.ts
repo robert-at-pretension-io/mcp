@@ -3,6 +3,8 @@ import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// Import necessary types for validation
+import type { ConfigFileStructure, AiConfigFileStructure, ProviderModelsStructure, StdioServerConfig, AiProviderConfig } from '../../types.js';
 
 // Helper for paths
 const __filename = fileURLToPath(import.meta.url);
