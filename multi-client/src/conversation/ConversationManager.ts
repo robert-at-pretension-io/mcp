@@ -359,20 +359,22 @@ export class ConversationManager {
           toolRound++;
           console.log(`[ConversationManager] --- Tool/Response Round ${toolRound} ---`);
 
-          const aiMessage = new AIMessage(currentResponseContent);
-          const standardToolCalls = (aiMessage.tool_calls || [])
+          // Create the AIMessage object representing the AI's request for this round
+          const aiMessageRequestingTools = new AIMessage(currentResponseContent);
+          const standardToolCalls = (aiMessageRequestingTools.tool_calls || [])
               .filter((tc): tc is { id: string; name: string; args: Record<string, any> } => tc.id !== undefined);
           const mcpToolCalls = ToolParser.parseToolCalls(typeof currentResponseContent === 'string' ? currentResponseContent : JSON.stringify(currentResponseContent));
 
           if (standardToolCalls.length === 0 && mcpToolCalls.length === 0) {
-              console.log("[ConversationManager] No tool calls found in AI response. Exiting tool loop.");
-              break; // Exit loop
+              console.log("[ConversationManager] No tool calls (standard or MCP) found in AI response. Exiting tool loop.");
+              break; // Exit loop if neither type is found
           }
 
           // Add the AI message *requesting* the tools to history
-          aiMessageForHistory.hasToolCalls = true; // Mark that a request was made
-          aiMessageForHistory.pendingToolCalls = true;
-          this.state.addMessage(aiMessageForHistory);
+          // We will modify this specific object later
+          aiMessageRequestingTools.hasToolCalls = true; // Mark that a request was made
+          aiMessageRequestingTools.pendingToolCalls = true;
+          this.state.addMessage(aiMessageRequestingTools); // Add the object to state
           this.saveConversation();
 
           let toolCallsToExecute: ToolCallRequest[] = [];
@@ -396,7 +398,8 @@ export class ConversationManager {
 
           // Execute tools
           const toolResultsMap = await this.toolExecutor.executeToolCalls(toolCallsToExecute);
-          aiMessageForHistory.pendingToolCalls = false; // Mark as done in the history message
+          // Now update the *specific message object* we added earlier
+          aiMessageRequestingTools.pendingToolCalls = false; // Mark as done
 
           // --- Add results back to history ---
           if (isUsingStandardCalls) {
