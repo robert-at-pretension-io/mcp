@@ -1,15 +1,26 @@
 import {
   BaseChatModel,
 } from '@langchain/core/language_models/chat_models';
+// Import necessary types for RunnableInterface
+import type { RunnableInterface } from "@langchain/core/runnables";
+import type { BaseLanguageModelInput } from "@langchain/core/language_models/base";
+import type { BaseMessageChunk } from "@langchain/core/messages";
+
 import type { IAiClient } from './IAiClient.js';
 import type { ConversationMessage } from '../conversation/Message.js';
-
+    
 export class LangchainClient implements IAiClient {
-  private chatModel: BaseChatModel;
+  // Accept a RunnableInterface which might be the result of model.bindTools()
+  private chatModel: RunnableInterface<BaseLanguageModelInput, BaseMessageChunk>;
   private modelIdentifier: string; // The specific model identifier being used
   private providerName: string; // The provider name (e.g., "openai", "anthropic")
-
-  constructor(chatModel: BaseChatModel, modelIdentifier: string, providerName?: string) {
+    
+  // Update constructor parameter type
+  constructor(
+    chatModel: RunnableInterface<BaseLanguageModelInput, BaseMessageChunk>,
+    modelIdentifier: string,
+    providerName?: string
+  ) {
     this.chatModel = chatModel;
     this.modelIdentifier = modelIdentifier;
     
