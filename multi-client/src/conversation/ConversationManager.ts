@@ -369,35 +369,57 @@ export class ConversationManager {
               break; // Exit loop
           }
 
-          // Add AI message requesting tools
-          aiMessage.hasToolCalls = true;
-          aiMessage.pendingToolCalls = true;
-          this.state.addMessage(aiMessage);
+          // Add the AI message *requesting* the tools to history
+          aiMessageForHistory.hasToolCalls = true; // Mark that a request was made
+          aiMessageForHistory.pendingToolCalls = true;
+          this.state.addMessage(aiMessageForHistory);
           this.saveConversation();
 
           let toolCallsToExecute: ToolCallRequest[] = [];
+          let isUsingStandardCalls = false;
+
           if (standardToolCalls.length > 0) {
-              console.log(`[ConversationManager] Found ${standardToolCalls.length} standard tool calls.`);
+              // Prioritize standard calls if available
+              console.log(`[ConversationManager] Found ${standardToolCalls.length} standard tool calls. Using standard mechanism.`);
               toolCallsToExecute = standardToolCalls.map(tc => ({ id: tc.id, name: tc.name, args: tc.args }));
+              isUsingStandardCalls = true;
           } else {
-              console.log(`[ConversationManager] Found ${mcpToolCalls.length} MCP-style tool calls.`);
+              // Fallback to MCP calls if no standard calls found
+              console.log(`[ConversationManager] Found ${mcpToolCalls.length} MCP-style tool calls. Using manual result formatting.`);
               toolCallsToExecute = mcpToolCalls.map(call => ({
-                  id: `mcpcall-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                  id: `mcpcall-${Date.now()}-${Math.floor(Math.random() * 1000)}`, // Generate ID
                   name: call.name,
                   args: call.arguments
               }));
+              isUsingStandardCalls = false;
           }
 
           // Execute tools
           const toolResultsMap = await this.toolExecutor.executeToolCalls(toolCallsToExecute);
-          aiMessage.pendingToolCalls = false; // Mark as done
+          aiMessageForHistory.pendingToolCalls = false; // Mark as done in the history message
 
-          // Add tool results to history
-          for (const executedCall of toolCallsToExecute) {
-              const result = toolResultsMap.get(executedCall.id) || `Error: Result not found for tool call ${executedCall.id}`;
-              this.state.addMessage(new ToolMessage(result, executedCall.id, executedCall.name));
+          // --- Add results back to history ---
+          if (isUsingStandardCalls) {
+              // Use standard ToolMessage for standard calls
+              console.log("[ConversationManager] Adding results using standard ToolMessage.");
+              for (const executedCall of toolCallsToExecute) {
+                  const result = toolResultsMap.get(executedCall.id) || `Error: Result not found for tool call ${executedCall.id}`;
+                  this.state.addMessage(new ToolMessage(result, executedCall.id, executedCall.name));
+              }
+          } else {
+              // Format results into a string and add as a *new* AIMessage for MCP calls
+              console.log("[ConversationManager] Adding results as a formatted AIMessage.");
+              let resultsString = "Tool results received:\n";
+              for (const executedCall of toolCallsToExecute) {
+                  const result = toolResultsMap.get(executedCall.id) || `Error: Result not found for tool call ${executedCall.id}`;
+                  resultsString += `\n--- Tool: ${executedCall.name} ---\n`;
+                  resultsString += result;
+                  resultsString += `\n--- End Tool: ${executedCall.name} ---\n`;
+              }
+              // Add this formatted string as a new AI message turn
+              this.state.addMessage(new AIMessage(resultsString.trim()));
           }
-          this.saveConversation();
+          this.saveConversation(); // Save after adding results
 
           // Make follow-up AI call
           try {
