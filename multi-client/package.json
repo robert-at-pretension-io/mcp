@@ -6,10 +6,12 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "build:css": "npx tailwindcss -i ./web/css/base.css -o ./web/build/tailwind.css || node web/build/build-css.js",
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
-    "web": "tsc && node --unhandled-rejections=strict dist/index.js --web",
-    "both": "tsc && node --unhandled-rejections=strict dist/index.js --web --repl",
+    "web": "npm run build:css && tsc && node --unhandled-rejections=strict dist/index.js --web",
+    "both": "npm run build:css && tsc && node --unhandled-rejections=strict dist/index.js --web --repl",
+    "watch:css": "npx tailwindcss -i ./web/css/base.css -o ./web/build/tailwind.css --watch || node web/build/build-css.js",
     "lint": "tsc --noEmit"
   },
   "keywords": [
@@ -31,6 +33,8 @@
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "socket.io": "^4.8.1",
+    "tailwind": "^4.0.0",
+    "tailwindcss": "^4.1.4",
     "typescript": "^5.3.3",
     "uuid": "^9.0.1"
   },
@@ -38,7 +42,6 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/socket.io": "^3.0.1",
-    "@types/uuid": "^9.0.8",
-    "tailwindcss": "^4.1.4"
+    "@types/uuid": "^9.0.8"
   }
 }

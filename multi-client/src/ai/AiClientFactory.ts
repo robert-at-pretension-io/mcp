@@ -72,7 +72,7 @@ export class AiClientFactory {
       const envVarMap: Record<string, string> = {
         'openai': 'OPENAI_API_KEY',
         'anthropic': 'ANTHROPIC_API_KEY',
-        'google-genai': 'GOOGLE_API_KEY',
+        'google-genai': 'GEMINI_API_KEY',
         'mistralai': 'MISTRAL_API_KEY',
         'fireworks': 'FIREWORKS_API_KEY',
         'openrouter': 'OPENROUTER_API_KEY' // Added OpenRouter default env var
