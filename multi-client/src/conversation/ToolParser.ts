@@ -67,13 +67,15 @@ export class ToolParser {
         }
       } catch (error) {
         // If JSON parsing fails, it might be due to nested delimiters or invalid JSON.
-        // Log the error but continue searching from *after* the start delimiter
-        // to potentially find later valid calls. This isn't perfect for nesting.
+        // Log the error and the raw content that failed to parse.
         console.warn(`[ToolParser] Error parsing tool call JSON between indices ${jsonStart} and ${jsonEnd}:`, error instanceof Error ? error.message : String(error));
-        console.warn('[ToolParser] Raw content:', potentialJsonContent);
+        console.warn('[ToolParser] Raw content that failed parsing:', potentialJsonContent);
+        // We still capture the fullText including delimiters even on parse failure if needed elsewhere,
+        // but the call itself won't be added to the valid `toolCalls` array.
       }
 
-      // Move search position past the *current end delimiter* to find the next potential start
+      // Move search position past the *current end delimiter* to find the next potential start,
+      // regardless of whether parsing succeeded or failed for this segment.
       currentPos = endIndex + this.TOOL_CALL_END.length;
     }
 

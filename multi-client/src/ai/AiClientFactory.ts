@@ -175,16 +175,19 @@ export class AiClientFactory {
     // Bind the tools to the chat model instance if the method exists
     // This ensures LangChain includes tool definitions in API calls when needed
     let modelForClient: BaseChatModel | RunnableInterface<BaseLanguageModelInput, BaseMessageChunk> = chatModel;
-    if (typeof (chatModel as any).bindTools === 'function') {
-        modelForClient = (chatModel as any).bindTools(langchainTools);
-        console.log(`[AiClientFactory] Tools bound to model ${modelToUse}`);
-    } else if (langchainTools.length > 0) {
-        // If tools are available but the model doesn't support binding, it's an issue.
-        console.error(`[AiClientFactory] Error: Model ${modelToUse} does not support bindTools, but tools were provided. Standard tool calling will not work.`);
-        throw new Error(`Model ${modelToUse} does not support bindTools, cannot use tools effectively.`);
+    if (langchainTools.length > 0) { // Only attempt binding if tools exist
+        if (typeof (chatModel as any).bindTools === 'function') {
+            modelForClient = (chatModel as any).bindTools(langchainTools);
+            console.log(`[AiClientFactory] Tools bound to model ${modelToUse}`);
+        } else {
+            // If tools are available but the model doesn't support binding, log a warning but continue.
+            console.warn(`[AiClientFactory] Warning: Model ${modelToUse} does not support standard tool binding (bindTools), but tools were provided. Tool usage might rely on custom parsing (e.g., MCP delimiters).`);
+            // Proceed with the original model; tool usage depends on ConversationManager's parsing
+            modelForClient = chatModel;
+        }
     } else {
-        // No tools provided, or model doesn't support binding (and no tools needed) - proceed with original model
-        console.log(`[AiClientFactory] No tools provided or model ${modelToUse} does not support bindTools. Proceeding without tool binding.`);
+        // No tools provided, proceed with the original model
+        console.log(`[AiClientFactory] No tools provided. Proceeding without tool binding.`);
         modelForClient = chatModel; // Use the original model
     }
 

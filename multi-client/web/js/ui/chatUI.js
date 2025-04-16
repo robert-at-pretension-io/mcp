@@ -174,9 +174,16 @@ function addMessageToConversation(role, content, hasToolCalls = false, isPending
 
     // Format content: escape HTML and format tool calls if necessary
     let contentHtml = '';
+    // Check if it's an AI message AND has tool calls flag OR if it's a tool message itself
     if (role === 'ai' && hasToolCalls) {
-        contentHtml = formatToolCalls(content); // Use helper
-    } else {
+        // If it's an AI message that *contains* tool calls (MCP style), format them
+        contentHtml = formatToolCalls(content); // Use helper to format embedded calls
+    } else if (role === 'tool') {
+         // If it's a ToolMessage result, display as preformatted text
+         contentHtml = `<pre class="tool-result-content text-xs font-mono whitespace-pre-wrap overflow-x-auto bg-gray-800/80 dark:bg-black/50 p-2 rounded">${escapeHtml(content)}</pre>`;
+    }
+     else {
+        // For regular human/ai/system/error messages without tool calls
         contentHtml = escapeHtml(content); // Use helper
     }
 

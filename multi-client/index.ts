@@ -327,55 +327,55 @@ main().catch(error => {
  * Prompts the user for input, optionally hiding the input (for passwords/keys).
  */
 async function promptForInput(promptText: string, hideInput: boolean = false): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: true // Ensure terminal features are enabled
-  });
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      terminal: true // Ensure terminal features are enabled
+    });
 
-  // Hacky way to hide input in standard readline
-  // Use process.stdout directly as it's the stream being used by the interface
-  const outputStream = process.stdout; // Use process.stdout directly
-  const originalWrite = outputStream.write;
-  let hiddenWriteActive = false;
+    // Hacky way to hide input in standard readline
+    const outputStream = process.stdout;
+    const originalWrite = outputStream.write;
+    let hiddenWriteActive = false;
 
-  if (hideInput) {
-    hiddenWriteActive = true;
-    // Define the overriding function with the correct signature
-    const hiddenWrite = (
-      chunk: Uint8Array | string,
-      encodingOrCb?: BufferEncoding | ((err?: Error | null) => void),
-      cb?: (err?: Error | null) => void
-    ): boolean => {
-      let encoding: BufferEncoding | undefined;
-      let callback: ((err?: Error | null) => void) | undefined;
+    if (hideInput) {
+      hiddenWriteActive = true;
+      // Define the overriding function with the correct signature
+      const hiddenWrite = (
+        chunk: Uint8Array | string,
+        encodingOrCb?: BufferEncoding | ((err?: Error | null) => void),
+        cb?: (err?: Error | null) => void
+      ): boolean => {
+        let encoding: BufferEncoding | undefined;
+        let callback: ((err?: Error | null) => void) | undefined;
 
-      if (typeof encodingOrCb === 'function') {
-        callback = encodingOrCb;
-        encoding = undefined;
-      } else {
-        encoding = encodingOrCb;
-        callback = cb;
-      }
-
-      // Only intercept string chunks
-      if (typeof chunk === 'string') {
-        // Allow newlines and carriage returns through
-        if (chunk === '\n' || chunk === '\r' || chunk === '\r\n') {
-          return originalWrite.call(outputStream, chunk, encoding, callback);
+        if (typeof encodingOrCb === 'function') {
+          callback = encodingOrCb;
+          encoding = undefined;
+        } else {
+          encoding = encodingOrCb;
+          callback = cb;
         }
-        // Replace other characters with '*'
-        const maskedChunk = '*'.repeat(chunk.length);
-        return originalWrite.call(outputStream, maskedChunk, encoding, callback);
-      }
 
-      // Pass through non-string chunks (like Buffers) directly
-      return originalWrite.call(outputStream, chunk, encoding, callback);
-    };
+        // Only intercept string chunks
+        if (typeof chunk === 'string') {
+          // Allow newlines and carriage returns through
+          if (chunk === '\n' || chunk === '\r' || chunk === '\r\n') {
+            return originalWrite.call(outputStream, chunk, encoding, callback);
+          }
+          // Replace other characters with '*'
+          const maskedChunk = '*'.repeat(chunk.length);
+          return originalWrite.call(outputStream, maskedChunk, encoding, callback);
+        }
 
-    // Assign the correctly typed function
-    outputStream.write = hiddenWrite;
-  }
+        // Pass through non-string chunks (like Buffers) directly
+        return originalWrite.call(outputStream, chunk, encoding, callback);
+      };
+
+      // Assign the correctly typed function
+      outputStream.write = hiddenWrite;
+    }
 
     rl.question(promptText, (answer) => {
       if (hiddenWriteActive) {
@@ -385,7 +385,7 @@ async function promptForInput(promptText: string, hideInput: boolean = false): P
       rl.close();
       resolve(answer.trim());
     });
-  });
+  }); // End of Promise constructor
 }
 
 

@@ -44,16 +44,16 @@ export class AIMessage extends LCAIMessage {
   ) {
     // LangChain's AIMessage constructor expects an AIMessageInput object.
     // Construct the input object ensuring 'content' is always present.
-    const superInput = {
+    const input = {
       content: content, // Assign the original content (string or array) directly
       additional_kwargs: options?.additional_kwargs || {},
-      tool_calls: options?.tool_calls || []
+      tool_calls: options?.tool_calls || [] // Pass tool_calls correctly
     };
-    
-    super(superInput); 
-    
+
+    super(input); // Pass the constructed input object
+
     // Keep our custom properties
-    this.hasToolCalls = options?.hasToolCalls ?? (options?.tool_calls && options.tool_calls.length > 0);
+    this.hasToolCalls = options?.hasToolCalls ?? (input.tool_calls && input.tool_calls.length > 0);
     this.pendingToolCalls = options?.pendingToolCalls || false;
   }
 }

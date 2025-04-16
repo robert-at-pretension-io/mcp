@@ -25,8 +25,10 @@ export function createConfigRouter(): Router {
 
             const filePath = path.join(baseDir, file);
 
-            if (!fsSync.existsSync(filePath)) {
-                return res.status(404).json({ error: `File "${file}" not found` });
+            try {
+                await fs.access(filePath, fs.constants.F_OK); // Check if file exists asynchronously
+            } catch (accessError) {
+                 return res.status(404).json({ error: `File "${file}" not found` });
             }
 
             const content = await fs.readFile(filePath, 'utf-8');

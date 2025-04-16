@@ -34,12 +34,11 @@ function initializeApp() {
         onThinking: chatUI.updateThinkingIndicator,
         onToolsInfo: (tools) => {
             // Assuming tools is { serverName: [tool] }
-            appState.setAllToolsData(tools);
-            console.log('[main.js] Received tools-info via socket:', tools); // Add logging
-            appState.setAllToolsData(tools);
-            sidebarUI.renderToolsList(tools); // Pass data directly
+            console.log('[main.js] Received tools-info via socket:', Object.keys(tools)); // Log server names
+            appState.setAllToolsData(tools); // Set state once
+            sidebarUI.renderToolsList(tools); // Pass data directly to UI
         },
-        onStatusUpdate: appState.setStatus,
+        // onStatusUpdate removed as per previous fix
         onError: (message) => {
             // Error toast is shown by socketClient, just update status maybe
             appState.setStatus('Error');

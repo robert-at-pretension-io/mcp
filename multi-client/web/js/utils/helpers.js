@@ -28,8 +28,7 @@ export function escapeHtml(unsafe) {
 
 
 /**
- * Formats a date object into a relative time string (e.g., "2 hours ago").
- * @param {Date} date The date object to format.
+ * Formats a date object, string, or timestamp into a relative time string (e.g., "2 hours ago").
  * @param {Date | string | number | null | undefined} dateInput The date object, string, or timestamp to format.
  * @returns {string} The relative time string or an error message.
  */

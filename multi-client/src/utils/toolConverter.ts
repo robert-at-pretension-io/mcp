@@ -32,19 +32,23 @@ export function convertToLangChainTool(mcpTool: McpTool): StructuredToolInterfac
                     }
                 });
             }
-            // Mark required fields
+            // Mark required fields - Zod schema needs to be built with optionality in mind.
+            // We can't easily modify a field to be non-optional after the fact.
+            // Best effort: Log which fields are required based on the schema.
+            // A more robust solution would use a dedicated JSON Schema -> Zod converter library.
             if (Array.isArray(schemaJson.required)) {
-                schemaJson.required.forEach((key: string) => {
-                    if (inputSchema.shape[key]) {
-                        // Make optional fields required - Zod doesn't directly modify optionality easily after creation
-                        // This might require rebuilding the schema object if strict optionality is needed.
-                        // For now, we rely on the LLM understanding the schema description.
-                    }
-                });
+                 console.log(`[ToolConverter] Tool "${mcpTool.name}" requires fields: ${schemaJson.required.join(', ')}`);
+                 // Attempt to make fields non-optional (might not work perfectly depending on base type)
+                 // schemaJson.required.forEach((key: string) => {
+                 //     if (inputSchema.shape[key] && inputSchema.shape[key].isOptional()) {
+                 //         // This is difficult with Zod's immutability. Rebuilding the schema is safer.
+                 //         // inputSchema.shape[key] = inputSchema.shape[key].unwrap().required(); // Example concept, may not work
+                 //     }
+                 // });
             }
 
         } else {
-             console.warn(`[ToolConverter] Non-JSON schema for tool "${mcpTool.name}". Using empty schema. Schema was: ${mcpTool.input_schema}`);
+             console.warn(`[ToolConverter] Non-JSON schema string for tool "${mcpTool.name}". Using empty schema. Schema was: ${mcpTool.input_schema}`);
              inputSchema = z.object({}); // Fallback for non-JSON string schemas
         }
 
@@ -59,14 +63,17 @@ export function convertToLangChainTool(mcpTool: McpTool): StructuredToolInterfac
                 }
             });
         }
-         if (Array.isArray((mcpTool.input_schema as any).required)) {
-            (mcpTool.input_schema as any).required.forEach((key: string) => {
-                 if (inputSchema.shape[key]) { /* Mark as required if possible */ }
-            });
+        // Handle required fields from object schema
+        if (Array.isArray((mcpTool.input_schema as any).required)) {
+             console.log(`[ToolConverter] Tool "${mcpTool.name}" requires fields: ${(mcpTool.input_schema as any).required.join(', ')}`);
+            // (mcpTool.input_schema as any).required.forEach((key: string) => {
+            //      if (inputSchema.shape[key]) { /* Mark as required if possible - see comment above */ }
+            // });
         }
 
     } else {
-      // Default to an empty schema if input_schema is missing or invalid
+      // Default to an empty schema if input_schema is missing or not a string/object
+      console.warn(`[ToolConverter] Invalid or missing input_schema for tool "${mcpTool.name}". Using empty schema.`);
       inputSchema = z.object({});
     }
   } catch (error) {
