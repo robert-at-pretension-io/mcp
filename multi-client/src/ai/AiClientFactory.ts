@@ -156,11 +156,19 @@ export class AiClientFactory {
     // Convert MCP Tools to LangChain StructuredTools
     const langchainTools: StructuredToolInterface[] = availableTools.map(convertToLangChainTool);
 
-    // Bind the tools to the chat model instance
+    // Bind the tools to the chat model instance if the method exists
     // This ensures LangChain includes tool definitions in API calls when needed
-    const modelWithTools = chatModel.bindTools(langchainTools);
+    let modelForClient: BaseChatModel | RunnableInterface<BaseLanguageModelInput, BaseMessageChunk> = chatModel;
+    if (typeof (chatModel as any).bindTools === 'function') {
+        modelForClient = (chatModel as any).bindTools(langchainTools);
+        console.log(`[AiClientFactory] Tools bound to model ${modelToUse}`);
+    } else {
+        console.warn(`[AiClientFactory] Model ${modelToUse} does not support bindTools. Tool usage might be limited.`);
+        // If bindTools doesn't exist, we pass the original chatModel.
+        // This might limit tool usage depending on how LangchainClient handles it.
+    }
 
-    // Pass the model *with tools bound* to the LangchainClient
-    return new LangchainClient(modelWithTools, modelToUse, config.provider);
+    // Pass the potentially tool-bound model to the LangchainClient
+    return new LangchainClient(modelForClient, modelToUse, config.provider);
   }
 }

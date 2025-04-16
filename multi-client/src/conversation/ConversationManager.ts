@@ -327,10 +327,10 @@ Concise Summary:`;
    * @param providerModels Available models for providers
    * @returns The new model name if switch was successful
    */
-  public switchAiClient(
-    providerConfig: AiProviderConfig, 
+  public async switchAiClient( // Mark function as async
+    providerConfig: AiProviderConfig,
     providerModels: ProviderModelsStructure
-  ): string {
+  ): Promise<string> { // Return a Promise<string>
     try {
       // Fetch tools before creating the client
       // Note: This assumes getAllTools() is efficient or cached.
