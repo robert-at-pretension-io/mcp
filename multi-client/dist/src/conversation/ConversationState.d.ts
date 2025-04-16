@@ -52,10 +52,11 @@ export declare class ConversationState {
      */
     getRelevantSequenceForVerification(): string;
     /**
-     * Compacts the conversation history when it gets too long
-     * by summarizing older messages
+     * Compacts the conversation history by summarizing older messages.
+     * @param compactionPromptTemplate The template for the summarization prompt (expecting {history_string}).
+     * @param aiClient The AI client instance to use for summarization.
      */
-    compactHistory(summarizePrompt: string, aiClient: any): Promise<void>;
+    compactHistory(compactionPromptTemplate: string, aiClient: any): Promise<void>;
     /**
      * Adds a message to the conversation history and tracks turns.
      */

@@ -1,53 +1,43 @@
 import type { IAiClient } from '../ai/IAiClient.js';
 import type { ServerManager } from '../ServerManager.js';
+import type { ConversationMessage } from './Message.js';
 import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
+import { ConversationPersistenceService, type SerializedConversation } from './persistence/ConversationPersistenceService.js';
+import { ToolExecutor } from './execution/ToolExecutor.js';
+import { VerificationService } from './verification/VerificationService.js';
 export declare class ConversationManager {
     private state;
     private aiClient;
     private serverManager;
+    private persistenceService;
+    private promptFactory;
+    private toolExecutor;
+    private verificationService;
     private allTools;
     private toolsLastUpdated;
     private readonly TOOLS_CACHE_TTL_MS;
     private aiClientFactory;
-    private conversationsDir;
     private currentConversationId;
-    private saveDebounceTimeout;
-    private readonly TOOL_RESULTS_PROMPT;
-    private readonly INVALID_TOOL_FORMAT_PROMPT;
-    private readonly VERIFICATION_CRITERIA_PROMPT;
-    private readonly VERIFICATION_PROMPT;
-    private readonly VERIFICATION_FAILURE_PROMPT;
-    private readonly CONVERSATION_COMPACTION_PROMPT;
-    constructor(aiClient: IAiClient, serverManager: ServerManager, providerModels: ProviderModelsStructure);
+    constructor(aiClient: IAiClient, serverManager: ServerManager, persistenceService: ConversationPersistenceService, toolExecutor: ToolExecutor, verificationService: VerificationService);
     /**
-     * Ensures the conversations directory exists
-     */
-    private ensureConversationsDir;
-    /**
-     * Saves the current conversation to disk
+     * Saves the current conversation state using the persistence service.
      */
     private saveConversation;
     /**
-     * Loads a conversation from disk
-     * @param conversationId The ID of the conversation to load
-     * @returns true if successful, false otherwise
+     * Loads a conversation from the persistence service and updates the state.
+     * @param conversationId The ID of the conversation to load.
+     * @returns true if successful, false otherwise.
      */
     loadConversation(conversationId: string): boolean;
     /**
-     * Lists all saved conversations
-     * @returns Array of conversation metadata
-     */
-    listConversations(): any[];
-    /**
-     * Creates a new empty conversation
+     * Creates a new empty conversation, clearing state and generating a new ID.
      */
     newConversation(): void;
     /**
-     * Switch the AI client to a different provider and model
-     * @param providerConfig The provider configuration to use
-     * @param providerModels Available models for providers
-     * @param providerModels Available models for providers
-     * @returns The new model name if switch was successful
+     * Switch the AI client to a different provider and model.
+     * @param providerConfig The provider configuration to use.
+     * @param providerModels Available models for providers (needed by factory).
+     * @returns The actual model name used by the new client.
      */
     switchAiClient(providerConfig: AiProviderConfig, providerModels: ProviderModelsStructure): string;
     /**
@@ -69,53 +59,52 @@ export declare class ConversationManager {
      */
     private getAllTools;
     /**
-     * Generates the system prompt including tool definitions.
-     */
-    private generateToolSystemPrompt;
-    /**
-     * Executes a set of parsed tool calls (now including generated IDs) in parallel.
-     * Executes a set of tool calls provided by the AI (using LangChain's standard format).
-     * @param toolCallsFromAI Array of tool calls, each including the AI-generated `id`.
-     * @returns Promise that resolves to a map of tool call IDs to their string results.
-     */
-    private executeToolCalls;
-    /**
      * Creates a message to send to the AI with tool results.
      * @param toolResults Map of tool call IDs to results.
      * @returns Human-readable message for the AI.
      */
     private createToolResultsMessage;
     /**
-     * Generates verification criteria for a user request
-     * @param userInput The original user input/request
-     * @returns The generated verification criteria
-     */
-    private generateVerificationCriteria;
-    /**
-     * Verifies an AI response against the criteria
-     * @param originalRequest The original user request
-     * @param criteria The verification criteria
-     * @param relevantSequence The formatted conversation sequence to verify
-     * @returns Object with verification result (passes) and feedback
-     */
-    private verifyResponse;
-    /**
-     * Processes a user's message, interacts with the AI, and potentially handles tool calls.
+     * Processes a user's message, interacts with the AI, handles tool calls, and performs verification.
      * @param userInput - The text input from the user.
-     * @returns The AI's final response for this turn.
+     * @returns The AI's final response content for this turn as a string.
      */
     processUserMessage(userInput: string): Promise<string>;
+    /** Prepares the conversation state for an AI call (criteria, system prompt, compaction). */
+    private _prepareForAiCall;
+    /** Makes a call to the AI client with the current conversation history. */
+    private _makeAiCall;
+    /** Handles the loop of detecting AI tool calls, executing them, and getting follow-up responses. */
+    private _handleToolLoop;
+    /** Handles the verification process and potential correction call. */
+    private _handleVerification;
     /**
-     * Renames a conversation
-     * @param conversationId The ID of the conversation to rename
-     * @param newTitle The new title for the conversation
-     * @returns true if successful, false otherwise
+     * Clears the conversation history and starts a new conversation ID.
+     */
+    clearConversation(): void;
+    /**
+     * Gets the current conversation history (including system prompt).
+     */
+    getHistory(): ConversationMessage[];
+    /**
+     * Gets metadata for the currently active conversation.
+     * Reads from persistence or returns default if not yet saved.
+     */
+    getCurrentConversation(): Omit<SerializedConversation, 'messages'>;
+    /**
+     * Lists all saved conversations using the persistence service.
+     * Adds `isActive` flag.
+     */
+    listConversations(): (Omit<SerializedConversation, 'messages'> & {
+        isActive: boolean;
+    })[];
+    /**
+     * Renames a conversation using the persistence service.
      */
     renameConversation(conversationId: string, newTitle: string): boolean;
     /**
-     * Deletes a conversation
-     * @param conversationId The ID of the conversation to delete
-     * @returns true if successful, false otherwise
+     * Deletes a conversation using the persistence service.
+     * If the deleted conversation was the current one, creates a new conversation.
      */
     deleteConversation(conversationId: string): boolean;
 }

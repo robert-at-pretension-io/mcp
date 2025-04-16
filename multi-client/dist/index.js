@@ -8,18 +8,24 @@ import * as readline from 'node:readline'; // Import readline for prompting
 import { AiClientFactory, MissingApiKeyError } from './src/ai/AiClientFactory.js'; // Import Factory and Error
 import { ConversationManager } from './src/conversation/ConversationManager.js';
 import { WebServer } from './src/web/WebServer.js';
+// Import new services
+import { ConversationPersistenceService } from './src/conversation/persistence/ConversationPersistenceService.js';
+import { ToolExecutor } from './src/conversation/execution/ToolExecutor.js';
+import { VerificationService } from './src/conversation/verification/VerificationService.js'; // Import VerificationService
+// PromptFactory is used statically, no instance needed usually
 // Helper to get the directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const baseDir = path.join(__dirname); // Define baseDir here for persistence service
 /**
  * Main entry point for the MCP Multi-Client
  */
 async function main() {
     console.log('Starting MCP Multi-Client...');
     // --- Configuration Loading ---
-    const baseDir = path.join(__dirname);
+    // baseDir defined above
     const serversConfigPath = path.join(baseDir, 'servers.json');
-    const aiConfigPath = path.join(baseDir, 'ai_config.json'); // Path for AI config
+    const aiConfigPath = path.join(baseDir, 'ai_config.json');
     const providerModelsPath = path.join(baseDir, 'provider_models.toml');
     let serversConfigData;
     let aiConfigData;
@@ -187,19 +193,29 @@ async function main() {
     const aiClient = await initializeAiClientWithPrompting(aiConfigData, providerModels, aiConfigPath, availableTools // Pass tools here
     );
     let conversationManager = null;
-    // --- Conversation Manager Initialization (if AI client is available) ---
-    if (aiClient) {
-        conversationManager = new ConversationManager(aiClient, serverManager, providerModels);
+    // --- Instantiate Services ---
+    const persistenceService = new ConversationPersistenceService(baseDir);
+    const toolExecutor = new ToolExecutor(serverManager);
+    let verificationService = null;
+    if (aiClient) { // VerificationService needs an AI client
+        verificationService = new VerificationService(aiClient);
+    }
+    // PromptFactory is used statically
+    // --- Conversation Manager Initialization (if AI client and verification service are available) ---
+    if (aiClient && verificationService) {
+        conversationManager = new ConversationManager(aiClient, serverManager, persistenceService, toolExecutor, verificationService // Inject VerificationService
+        );
     }
     else {
-        console.log("ConversationManager not created due to missing AI client.");
+        console.log("ConversationManager not created due to missing AI client or VerificationService.");
     }
     // --- REPL Setup ---
     if (!conversationManager) {
-        console.error("Cannot start REPL or Web UI in chat mode without a configured AI provider. Exiting.");
+        console.error("Cannot start REPL or Web UI without a configured AI provider and Conversation Manager. Exiting.");
         await serverManager.closeAll(); // Clean up connected servers
         process.exit(1);
     }
+    // Pass providerModels to REPL as it needs it for the 'providers' command
     const repl = new Repl(serverManager, conversationManager, providerModels);
     // --- Initialize Web Server (if enabled in command line args) ---
     let webServer = null;

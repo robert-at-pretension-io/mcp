@@ -3,8 +3,8 @@
   "title": "run ls la",
   "modelName": "claude-3-5-sonnet-20240620",
   "provider": "anthropic",
-  "createdAt": "2025-04-16T00:03:15.014Z",
-  "updatedAt": "2025-04-16T00:03:15.014Z",
+  "createdAt": "2025-04-16T00:14:55.247Z",
+  "updatedAt": "2025-04-16T00:14:55.247Z",
   "messages": [
     {
       "role": "human",
@@ -17,6 +17,14 @@
     {
       "role": "human",
       "content": "run ls -las"
+    },
+    {
+      "role": "human",
+      "content": "try again"
+    },
+    {
+      "role": "human",
+      "content": "ls -la"
     }
   ]
 }
