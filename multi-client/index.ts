@@ -373,8 +373,8 @@ async function promptForInput(promptText: string, hideInput: boolean = false): P
         return originalWrite.call(outputStream, chunk, encoding, callback);
       };
 
-      // Assign the correctly typed function
-      outputStream.write = hiddenWrite;
+      // Assign the correctly typed function - Use 'any' to bypass strict signature check here as it's complex
+      (outputStream as any).write = hiddenWrite;
     }
 
     rl.question(promptText, (answer) => {
