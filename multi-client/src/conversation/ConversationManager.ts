@@ -787,17 +787,18 @@ Important:
                 '{feedback}', 
                 verificationResult.feedback
               );
-              
-              // Create a system message with a brief instruction
-              const systemMessage = new SystemMessage("You are a helpful assistant that needs to correct your previous response.");
-              
-              // Create a user message with the correction prompt
-              const userMessage = new HumanMessage(correctionPrompt);
-              
-              // Add correction prompt to messages
-              const correctionMessages = [...this.state.getMessages(), systemMessage, userMessage];
-              
-              // Make one more AI call with the correction
+
+              // Create a user message containing the correction prompt
+              const correctionUserMessage = new HumanMessage(correctionPrompt);
+
+              // Get the current history (which includes the original system prompt at the start)
+              // and add the correction request as the latest human message.
+              const correctionMessages = [
+                  ...this.state.getMessages(),
+                  correctionUserMessage
+              ];
+
+              // Make one more AI call with the correction context
               try {
                 const correctedResponse = await this.aiClient.generateResponse(correctionMessages);
                 console.log('Generated corrected response after verification failure');
