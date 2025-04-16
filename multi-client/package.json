@@ -38,6 +38,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/socket.io": "^3.0.1",
-    "@types/uuid": "^9.0.8"
+    "@types/uuid": "^9.0.8",
+    "tailwindcss": "^4.1.4"
   }
 }

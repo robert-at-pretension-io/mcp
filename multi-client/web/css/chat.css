@@ -118,12 +118,15 @@
     color: rgba(255, 255, 255, 0.7);
 }
 
+/* Original styles retained for reference, but now overridden by Tailwind */
 .ai-message {
     background-color: var(--ai-message-bg);
     border: 1px solid var(--ai-message-border);
     margin-right: auto;
     border-bottom-left-radius: 0;
     position: relative;
+    display: inline-block; /* Help messages hug their content */
+    max-width: fit-content; /* Make bubbles hug content */
 }
 
 .ai-message:after {
@@ -148,6 +151,8 @@
     backdrop-filter: blur(4px);
     border-radius: var(--radius-md);
     padding: 0.5rem 0.75rem; /* Reduced padding */
+    display: inline-block; /* Help messages hug their content */
+    max-width: fit-content; /* Make bubbles hug content */
 }
 
 .error-message {

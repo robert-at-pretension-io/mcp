@@ -85,15 +85,15 @@ export function formatToolCalls(content) {
             const argsString = JSON.stringify(toolCall.arguments || {}, null, 2);
 
             return `
-                <div class="tool-call">
-                    <div class="tool-call-header">Tool Call: ${escapeHtml(toolName)}</div>
-                    <pre class="tool-call-content">${escapeHtml(argsString)}</pre>
+                <div class="tool-call bg-purple-100 dark:bg-purple-900/30 p-1 my-1 rounded border-l-2 border-purple-500 w-full">
+                    <div class="tool-call-header text-xs font-semibold text-purple-700 dark:text-purple-400 inline-block mr-2">Tool Call: ${escapeHtml(toolName)}</div>
+                    <pre class="tool-call-content text-xs font-mono whitespace-pre-wrap overflow-x-auto bg-white/50 dark:bg-gray-800/50 p-1 rounded text-gray-800 dark:text-gray-200">${escapeHtml(argsString)}</pre>
                 </div>
             `;
         } catch (error) {
             console.warn('Failed to parse tool call JSON:', error);
             // Fallback: display the raw content escaped
-            return `<pre class="tool-call error">${escapeHtml(match)}</pre>`;
+            return `<pre class="tool-call error inline-block bg-red-100 dark:bg-red-900/30 p-2 border-l-2 border-red-500 text-xs max-w-full">${escapeHtml(match)}</pre>`;
         }
     });
 }

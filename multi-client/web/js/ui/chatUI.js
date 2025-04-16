@@ -119,6 +119,10 @@ export function renderConversationHistory(history) {
 function addMessageToConversation(role, content, hasToolCalls = false, isPending = false) {
     if (!conversationElement) return;
 
+    // Create a wrapper div to better position messages
+    const wrapperElement = document.createElement('div');
+    wrapperElement.className = role === 'human' ? 'flex justify-end mb-3' : 'flex justify-start mb-3';
+    
     const messageElement = document.createElement('div');
     // Map roles to CSS classes (e.g., 'human' -> 'user-message')
     const roleClassMap = {
@@ -129,10 +133,25 @@ function addMessageToConversation(role, content, hasToolCalls = false, isPending
         error: 'error-message' // For displaying errors
     };
     const cssClass = roleClassMap[role] || 'system-message'; // Default to system/generic
-    messageElement.className = `message ${cssClass}`;
+    // Apply both traditional classes and Tailwind classes
+    messageElement.className = `message ${cssClass} px-3 py-2 rounded-lg shadow-sm relative transition-all hover:translate-y-[-2px] hover:shadow-md`;
 
     if (isPending) {
-        messageElement.classList.add('pending');
+        messageElement.classList.add('pending', 'opacity-70');
+    }
+    
+    // Add styling based on role - maintain width but reduce vertical space
+    if (role === 'human') {
+        messageElement.classList.add('bg-blue-500', 'text-white', 'rounded-br-none', 'max-w-[85%]');
+    } else if (role === 'ai') {
+        messageElement.classList.add('bg-gray-100', 'dark:bg-gray-700', 'border', 'border-gray-200', 'dark:border-gray-600', 'rounded-bl-none', 'w-full', 'max-w-[85%]');
+    } else if (role === 'system') {
+        wrapperElement.className = 'flex justify-center mb-4';
+        messageElement.classList.add('bg-amber-50', 'text-amber-800', 'border', 'border-amber-100', 'text-sm', 'max-w-[90%]');
+    } else if (role === 'tool') {
+        messageElement.classList.add('bg-gray-800', 'text-gray-100', 'font-mono', 'text-sm', 'whitespace-pre-wrap', 'w-full', 'py-2');
+    } else if (role === 'error') {
+        messageElement.classList.add('bg-red-50', 'text-red-800', 'border', 'border-red-200', 'w-full');
     }
 
     const now = new Date();
@@ -152,14 +171,16 @@ function addMessageToConversation(role, content, hasToolCalls = false, isPending
     }
 
     messageElement.innerHTML = `
-        <div class="message-header">
+        <div class="message-header flex justify-between items-center mb-1 text-sm font-semibold">
             <span>${escapeHtml(roleLabel)}</span>
-            <span class="message-time">${timeString}</span>
+            <span class="message-time text-xs opacity-75">${timeString}</span>
         </div>
-        <div class="message-content">${contentHtml}</div>
+        <div class="message-content whitespace-pre-wrap break-words text-sm leading-normal">${contentHtml}</div>
     `;
 
-    conversationElement.appendChild(messageElement);
+    // Add message to wrapper, then add wrapper to conversation
+    wrapperElement.appendChild(messageElement);
+    conversationElement.appendChild(wrapperElement);
     // Don't scroll here, let renderConversationHistory handle it once at the end
 }
 

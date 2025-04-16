@@ -16,6 +16,21 @@
     <!-- Keep additional styles if needed, or integrate them -->
     <link rel="stylesheet" href="styles-additional.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              primary: '#3b82f6',
+              secondary: '#6366f1'
+            }
+          }
+        }
+      }
+    </script>
 </head>
 <body>
     <div class="container">
@@ -44,16 +59,16 @@
 
         <main class="panel-collapsed">
             <div class="conversation-container">
-                <div class="conversation" id="conversation">
+                <div class="conversation rounded-lg shadow-md bg-white dark:bg-gray-800 p-4 overflow-y-scroll max-h-[calc(100vh-200px)] mb-4" id="conversation">
                     <!-- Messages will be added here dynamically -->
                 </div>
 
-                <div class="input-area">
+                <div class="input-area bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 relative">
                     <div id="thinking-spinner" class="spinner hidden"></div>
-                    <textarea id="user-input" placeholder="Type your message here..."></textarea>
-                    <div class="button-group">
-                        <button id="send-button"><i class="fas fa-paper-plane"></i> Send</button>
-                        <button id="clear-button"><i class="fas fa-trash"></i> Clear</button>
+                    <textarea id="user-input" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none dark:bg-gray-700 dark:text-white" placeholder="Type your message here..."></textarea>
+                    <div class="button-group flex justify-between mt-3">
+                        <button id="send-button" class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg transition-colors"><i class="fas fa-paper-plane mr-2"></i> Send</button>
+                        <button id="clear-button" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 py-2 px-4 rounded-lg transition-colors"><i class="fas fa-trash mr-2"></i> Clear</button>
                     </div>
                 </div>
             </div>
