@@ -65,13 +65,10 @@ export function init(eventHandlers) {
     socket.on('tools-info', (data) => {
         // console.log('Received tools-info:', data);
         // Pass the data object directly, as the server emits the toolsByServer object itself
-        if (handlers.onToolsInfo) handlers.onToolsInfo(data); 
+        if (handlers.onToolsInfo) handlers.onToolsInfo(data);
     });
 
-    socket.on('status-update', (data) => {
-        // console.log('Received status-update:', data);
-        if (handlers.onStatusUpdate) handlers.onStatusUpdate(data.message);
-    });
+    // Removed 'status-update' listener as it's not emitted by the server
 
     socket.on('error', (data) => {
         console.error('Received error event:', data.message);
