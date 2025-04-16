@@ -464,10 +464,15 @@ export class ConversationManager {
            if (!verificationResult.passes) {
                console.log('[ConversationManager] Response verification failed. Retrying with feedback.');
                try {
-                   // Pass the history *including* the failed response for context
+                   // Add the feedback itself as a system message to the history
+                   const feedbackMessage = `[System Feedback] Verification failed: ${verificationResult.feedback}`;
+                   this.state.addMessage(new SystemMessage(feedbackMessage));
+                   this.saveConversation(); // Save after adding feedback message
+
+                   // Pass the history *including* the failed response AND the feedback message for context
                    const historyForCorrection = this.state.getMessages();
                    const correctedResponseContent = await this.verificationService.generateCorrectedResponse(
-                       historyForCorrection,
+                       historyForCorrection, // History now includes the feedback message
                        finalResponseContent, // Pass the failed content
                        verificationResult.feedback
                    );
