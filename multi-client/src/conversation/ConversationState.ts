@@ -135,50 +135,61 @@ export class ConversationState {
   }
 
   /**
-   * Compacts the conversation history when it gets too long
-   * by summarizing older messages
+   * Compacts the conversation history by summarizing older messages.
+   * @param compactionPromptTemplate The template for the summarization prompt (expecting {history_string}).
+   * @param aiClient The AI client instance to use for summarization.
    */
-  async compactHistory(summarizePrompt: string, aiClient: any): Promise<void> {
-    if (this.history.length < 10) return; // Don't compact if too few messages
+  async compactHistory(compactionPromptTemplate: string, aiClient: any): Promise<void> {
+    // Only compact if there's a reasonable number of messages beyond the keep threshold
+    const messagesToKeep = 10; // Keep the last 5 exchanges (adjust as needed)
+    const minMessagesToCompact = 4; // Require at least 2 exchanges to summarize
 
-    // Keep the most recent messages (e.g., last 5 exchanges/10 messages)
-    const recentMessages = this.history.slice(-10);
-    const olderMessages = this.history.slice(0, -10);
+    if (this.history.length < messagesToKeep + minMessagesToCompact) {
+        console.log(`[State] Skipping compaction: History length (${this.history.length}) is below threshold.`);
+        return;
+    }
 
-    if (olderMessages.length === 0) return;
+    // Keep the most recent messages
+    const recentMessages = this.history.slice(-messagesToKeep);
+    const olderMessages = this.history.slice(0, -messagesToKeep);
 
-    // Format older messages for summarization
+    console.log(`[State] Compacting history: Keeping ${recentMessages.length}, summarizing ${olderMessages.length} messages.`);
+
+    // Format older messages for the summarization prompt
     const historyString = olderMessages.map(msg => {
       const role = msg._getType();
       const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
       return `${role.toUpperCase()}: ${content}`;
     }).join('\n\n');
 
-    // Replace placeholder in the summarization prompt
-    const promptText = summarizePrompt.replace('{history_string}', historyString);
+    // Fill the compaction prompt template
+    const promptText = compactionPromptTemplate.replace('{history_string}', historyString);
 
     try {
-      // Create proper message sequence with system message first
-      const messages = [
-        new SystemMessage("You are a helpful assistant that summarizes conversation history."),
+      // Create message list for the summarization call
+      const compactionMessages: ConversationMessage[] = [
+        new SystemMessage("You are an expert conversation summarizer."), // System context for this task
         new HumanMessage(promptText)
       ];
-      
-      // Use the AI client to generate a summary with proper message order
-      const summaryContent = await aiClient.generateResponse(messages);
-      
-      // Update the main system prompt with the summary prepended
-      const originalSystemPrompt = this.systemPromptMessage?.content || '';
-      const combinedSystemPrompt = `[Previous conversation summary: ${summaryContent}]\n\n${originalSystemPrompt}`;
-      this.setSystemPrompt(combinedSystemPrompt);
-      
-      // Replace older messages with just the recent ones
+
+      // Call the AI client to generate the summary
+      const summaryContent = await aiClient.generateResponse(compactionMessages);
+
+      // Prepend the summary to the *existing* system prompt content
+      const originalSystemPromptContent = this.systemPromptMessage?.content || '';
+      // Ensure a clear separation between summary and original prompt
+      const combinedSystemPromptContent = `[Previous conversation summary:\n${summaryContent}\n]\n\n${originalSystemPromptContent}`;
+      this.setSystemPrompt(combinedSystemPromptContent); // Update the system prompt message
+
+      // Replace the history with only the recent messages
       this.history = recentMessages;
-      
-      console.log('Compacted conversation history.');
+
+      console.log('[State] Successfully compacted conversation history.');
     } catch (error) {
-      console.error('Failed to compact conversation history:', error);
-      // If summarization fails, just keep the recent messages
+      console.error('[State] Failed to compact conversation history:', error);
+      // Decide on fallback: Keep original history? Or just recent messages?
+      // Keeping just recent messages might lose context but prevents unbounded growth.
+      console.warn('[State] Compaction failed. Keeping only recent messages.');
       this.history = recentMessages;
     }
   }
