@@ -13,6 +13,7 @@ import { WebServer } from './src/web/WebServer.js';
 // Import new services
 import { ConversationPersistenceService } from './src/conversation/persistence/ConversationPersistenceService.js';
 import { ToolExecutor } from './src/conversation/execution/ToolExecutor.js';
+import { VerificationService } from './src/conversation/verification/VerificationService.js'; // Import VerificationService
 // PromptFactory is used statically, no instance needed usually
 
 // Helper to get the directory name in ES modules
@@ -211,21 +212,25 @@ async function main() {
   let conversationManager: ConversationManager | null = null;
 
   // --- Instantiate Services ---
-  const persistenceService = new ConversationPersistenceService(baseDir); // Pass baseDir
+  const persistenceService = new ConversationPersistenceService(baseDir);
   const toolExecutor = new ToolExecutor(serverManager);
+  let verificationService: VerificationService | null = null;
+  if (aiClient) { // VerificationService needs an AI client
+      verificationService = new VerificationService(aiClient);
+  }
   // PromptFactory is used statically
 
-  // --- Conversation Manager Initialization (if AI client is available) ---
-  if (aiClient) {
+  // --- Conversation Manager Initialization (if AI client and verification service are available) ---
+  if (aiClient && verificationService) {
       conversationManager = new ConversationManager(
           aiClient,
           serverManager,
-          persistenceService, // Inject persistence service
-          toolExecutor        // Inject tool executor
-          // providerModels is no longer directly needed by ConversationManager constructor
+          persistenceService,
+          toolExecutor,
+          verificationService // Inject VerificationService
       );
   } else {
-      console.log("ConversationManager not created due to missing AI client.");
+      console.log("ConversationManager not created due to missing AI client or VerificationService.");
   }
 
   // --- REPL Setup ---

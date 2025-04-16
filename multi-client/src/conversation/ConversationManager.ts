@@ -11,6 +11,7 @@ import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
 import { ConversationPersistenceService, type SerializedConversation } from './persistence/ConversationPersistenceService.js';
 import { PromptFactory } from './prompts/PromptFactory.js';
 import { ToolExecutor, type ToolCallRequest } from './execution/ToolExecutor.js';
+import { VerificationService, type VerificationResult } from './verification/VerificationService.js'; // Import VerificationService
 
 // __filename, __dirname, baseDir removed
 
@@ -23,6 +24,7 @@ export class ConversationManager {
   private persistenceService: ConversationPersistenceService;
   private promptFactory: typeof PromptFactory; // Store static class/type
   private toolExecutor: ToolExecutor;
+  private verificationService: VerificationService; // Add VerificationService instance
   private allTools: Tool[] = []; // Cache of all available tools
   private toolsLastUpdated: number = 0; // Timestamp of when tools were last updated
   private readonly TOOLS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache TTL
@@ -36,16 +38,15 @@ export class ConversationManager {
   constructor(
     aiClient: IAiClient,
     serverManager: ServerManager,
-    // Inject new services
     persistenceService: ConversationPersistenceService,
-    toolExecutor: ToolExecutor
-    // providerModels is needed for switching client, keep it for now
-    // providerModels: ProviderModelsStructure
+    toolExecutor: ToolExecutor,
+    verificationService: VerificationService // Inject VerificationService
   ) {
     this.aiClient = aiClient;
     this.serverManager = serverManager;
     this.persistenceService = persistenceService;
     this.toolExecutor = toolExecutor;
+    this.verificationService = verificationService; // Store VerificationService instance
     this.promptFactory = PromptFactory; // Assign static class
     this.state = new ConversationState(); // Initialize with no system prompt initially
 
@@ -277,282 +278,181 @@ export class ConversationManager {
     return message;
   }
 
+  // generateVerificationCriteria removed (moved to VerificationService)
+  // verifyResponse removed (moved to VerificationService)
 
   /**
-   * Generates verification criteria for a user request.
-   * @param userInput The original user input/request.
-   * @returns The generated verification criteria string.
-   */
-  private async generateVerificationCriteria(userInput: string): Promise<string> {
-    console.log('[ConversationManager] Generating verification criteria...');
-    try {
-      // Create the criteria prompt using the factory
-      const promptText = this.promptFactory.fillVerificationCriteriaPrompt(userInput);
-
-      // Create a temporary message list for this specific AI call
-      const criteriaMessages: ConversationMessage[] = [
-        new SystemMessage("You are a helpful assistant that generates verification criteria."), // System context for this task
-        new HumanMessage(promptText)
-      ];
-
-      // Call the AI client
-      const criteriaResponse = await this.aiClient.generateResponse(criteriaMessages);
-      console.log('[ConversationManager] Generated criteria:', criteriaResponse);
-      return criteriaResponse;
-    } catch (error) {
-      console.error('[ConversationManager] Error generating verification criteria:', error);
-      // Provide a default fallback criteria on error
-      return '- Respond to the user\'s request accurately.\n- Provide relevant information.';
-    }
-  }
-  
-  /**
-   * Verifies an AI response against the criteria.
-   * @param originalRequest The original user request.
-   * @param criteria The verification criteria.
-   * @param relevantSequence The formatted conversation sequence to verify.
-   * @returns Object with verification result (`passes`) and `feedback`.
-   */
-  private async verifyResponse(
-    originalRequest: string,
-    criteria: string,
-    relevantSequence: string
-  ): Promise<{ passes: boolean, feedback: string }> {
-    console.log('[ConversationManager] Verifying response against criteria...');
-
-    try {
-      // Create the verification prompt using the factory
-      const promptText = this.promptFactory.fillVerificationPrompt(originalRequest, criteria, relevantSequence);
-
-      // Create a temporary message list for this specific AI call
-      const verificationMessages: ConversationMessage[] = [
-         new SystemMessage("You are a strict evaluator that verifies responses against criteria and returns JSON."), // System context for this task
-         new HumanMessage(promptText)
-      ];
-
-      // Call the AI client
-      const verificationResponse = await this.aiClient.generateResponse(verificationMessages);
-
-      // Attempt to parse the JSON response from the AI
-      try {
-        const result = JSON.parse(verificationResponse);
-        if (typeof result === 'object' && result !== null && 'passes' in result) {
-            console.log('[ConversationManager] Verification result:', result.passes ? 'PASSED' : 'FAILED');
-            if (!result.passes) {
-              console.log('[ConversationManager] Feedback:', result.feedback);
-            }
-            return {
-              passes: Boolean(result.passes),
-              feedback: result.feedback || ''
-            };
-          } else {
-            console.warn('[ConversationManager] Invalid verification response format:', verificationResponse);
-            return { passes: true, feedback: 'Invalid format from verifier' }; // Default to passing but note format issue
-          }
-      } catch (parseError) {
-        console.error('[ConversationManager] Error parsing verification response JSON:', parseError);
-        console.log('[ConversationManager] Raw verification response:', verificationResponse);
-        return { passes: true, feedback: 'Failed to parse verifier response' }; // Default to passing if JSON parsing fails
-      }
-    } catch (aiError) {
-      console.error('[ConversationManager] Error during AI verification call:', aiError);
-      return { passes: true, feedback: 'Verifier AI call failed' }; // Default to passing if the verification AI call itself fails
-    }
-  }
-  
-  /**
-   * Processes a user's message, interacts with the AI, and potentially handles tool calls and verification.
+   * Processes a user's message, interacts with the AI, handles tool calls, and performs verification.
    * @param userInput - The text input from the user.
    * @returns The AI's final response content for this turn as a string.
    */
   async processUserMessage(userInput: string): Promise<string> {
     console.log(`[ConversationManager] Processing user message: "${userInput}"`);
 
-    // 1. Add user message to state
+    // 1. Add user message and save
     this.state.addMessage(new HumanMessage(userInput));
-
-    // Save conversation state asynchronously via persistence service
-    this.saveConversation(); // Let the service handle debouncing
-
-    // 2. Generate verification criteria if needed
-    if (!this.state.getVerificationState()) {
-      const criteria = await this.generateVerificationCriteria(userInput);
-      this.state.setVerificationState(userInput, criteria);
-    }
-
-    // 3. Generate the dynamic system prompt using the factory
-    const tools = await this.getAllTools(); // Fetch tools (potentially cached)
-    const systemPrompt = this.promptFactory.createToolSystemPrompt(tools);
-    this.state.setSystemPrompt(systemPrompt); // Update state
-
-    // 4. Get the full message history for the AI (includes updated system prompt)
-    let messagesForAi = this.state.getMessages();
-
-    // 5. Compact history if needed
-    if (messagesForAi.length > 20) { // Example threshold
-      // Pass the compaction prompt from the factory
-      await this.state.compactHistory(this.promptFactory.CONVERSATION_COMPACTION_PROMPT, this.aiClient);
-      messagesForAi = this.state.getMessages(); // Get potentially compacted messages
-      console.log(`[ConversationManager] History compacted. Current length: ${messagesForAi.length}`);
-    }
-
-
-    // 6. Initial AI call
-    let aiResponseContent: string;
-    try {
-      aiResponseContent = await this.aiClient.generateResponse(messagesForAi);
-      console.log(`[ConversationManager] AI Response (${this.aiClient.getModelName()}):`, aiResponseContent.substring(0, 200) + (aiResponseContent.length > 200 ? '...' : ''));
-    } catch (error) {
-      console.error("[ConversationManager] Error during initial AI interaction:", error);
-      const errorMessage = `Sorry, I encountered an error: ${error instanceof Error ? error.message : String(error)}`;
-      // Add error as AI message to history? Or just return? Let's return for now.
-      // this.state.addMessage(new AIMessage(errorMessage));
-      // this.saveConversation();
-      return errorMessage;
-    }
-
-    // --- Tool Handling Loop ---
-    let currentResponseContent = aiResponseContent;
-    let toolRound = 0;
-    const maxToolRounds = 5; // Limit recursive tool calls
-
-    while (toolRound < maxToolRounds) {
-        toolRound++;
-        console.log(`[ConversationManager] --- Tool/Response Round ${toolRound} ---`);
-
-        // Create an AIMessage from the current response content.
-        // LangChain's AIMessage constructor might parse tool calls if the underlying model/provider supports it.
-        const aiMessage = new AIMessage(currentResponseContent);
-
-        // Check if the AIMessage contains standard tool calls (parsed by LangChain)
-        const standardToolCalls = (aiMessage.tool_calls || [])
-            .filter((tc): tc is { id: string; name: string; args: Record<string, any> } => tc.id !== undefined);
-
-        // Also check for MCP-style tool calls using the parser
-        const mcpToolCalls = ToolParser.parseToolCalls(typeof currentResponseContent === 'string' ? currentResponseContent : JSON.stringify(currentResponseContent));
-
-        if (standardToolCalls.length === 0 && mcpToolCalls.length === 0) {
-            console.log("[ConversationManager] No tool calls found in AI response. Exiting tool loop.");
-            break; // Exit the loop if no tool calls are found
-        }
-
-        // Add the AI message *requesting* the tools to history
-        aiMessage.hasToolCalls = true;
-        aiMessage.pendingToolCalls = true;
-        this.state.addMessage(aiMessage);
-        this.saveConversation(); // Save after adding AI request
-
-        let toolCallsToExecute: ToolCallRequest[] = [];
-
-        if (standardToolCalls.length > 0) {
-            console.log(`[ConversationManager] Found ${standardToolCalls.length} standard tool calls.`);
-            toolCallsToExecute = standardToolCalls.map(tc => ({ id: tc.id, name: tc.name, args: tc.args }));
-        } else {
-            // If no standard calls, use the MCP-parsed calls (generate IDs)
-            console.log(`[ConversationManager] Found ${mcpToolCalls.length} MCP-style tool calls.`);
-            toolCallsToExecute = mcpToolCalls.map(call => ({
-                id: `mcpcall-${Date.now()}-${Math.floor(Math.random() * 1000)}`, // Generate ID
-                name: call.name,
-                args: call.arguments // Map 'arguments' to 'args'
-            }));
-        }
-
-        // Execute tool calls using the ToolExecutor service
-        const toolResultsMap = await this.toolExecutor.executeToolCalls(toolCallsToExecute);
-
-        // Mark the tool calls in the AI message as no longer pending
-        aiMessage.pendingToolCalls = false;
-
-        // Add ToolMessage results to history, linked by ID
-        for (const executedCall of toolCallsToExecute) {
-            const result = toolResultsMap.get(executedCall.id) || `Error: Result not found for tool call ${executedCall.id}`;
-            this.state.addMessage(new ToolMessage(
-                result,
-                executedCall.id,
-                executedCall.name
-            ));
-        }
-        this.saveConversation(); // Save after adding tool results
-
-        // Get updated history for the next AI call
-        const messagesForFollowUp = this.state.getMessages();
-
-        // Make the next AI call
-        try {
-            currentResponseContent = await this.aiClient.generateResponse(messagesForFollowUp);
-            console.log(`[ConversationManager] AI Response (Round ${toolRound + 1}):`,
-                currentResponseContent.substring(0, 200) + (currentResponseContent.length > 200 ? '...' : ''));
-        } catch (error) {
-            console.error(`[ConversationManager] Error during AI follow-up interaction (Round ${toolRound + 1}):`, error);
-            const errorMessage = `Sorry, I encountered an error processing the tool results: ${error instanceof Error ? error.message : String(error)}`;
-            this.state.addMessage(new AIMessage(errorMessage)); // Add error message to history
-            this.saveConversation();
-            currentResponseContent = errorMessage; // Set response to error message
-            break; // Exit loop on error
-        }
-    } // End while loop
-
-    if (toolRound >= maxToolRounds) {
-        console.warn(`[ConversationManager] Reached maximum tool call rounds (${maxToolRounds}). Proceeding with last response.`);
-    }
-
-    // --- Verification ---
-    let finalResponseContent = currentResponseContent; // The response after the tool loop (or initial response if no tools)
-    const verificationState = this.state.getVerificationState();
-
-    if (verificationState) {
-        const { originalRequest, criteria } = verificationState;
-        // Get sequence *before* adding the final response for verification context
-        const relevantSequenceForVerification = this.state.getRelevantSequenceForVerification();
-
-        const verificationResult = await this.verifyResponse(
-            originalRequest,
-            criteria,
-            // Append the final response content to the sequence for the verifier AI
-            relevantSequenceForVerification + `\n\nAssistant: ${finalResponseContent}`
-        );
-
-        // TODO: Attach verification result to the *final* AI message later if needed for UI
-
-        if (!verificationResult.passes) {
-            console.log('[ConversationManager] Response verification failed. Retrying with feedback.');
-
-            // Generate correction prompt using the factory
-            const correctionPromptText = this.promptFactory.fillVerificationFailurePrompt(
-                verificationResult.feedback
-            );
-
-            // Create messages for the correction call:
-            // History up to the point *before* the failed final response + the failed response + the correction request
-            const correctionMessages = [
-                ...this.state.getMessages(), // History includes the failed response added in the loop
-                new HumanMessage(correctionPromptText) // Add the correction request
-            ];
-
-            try {
-                const correctedResponse = await this.aiClient.generateResponse(correctionMessages);
-                console.log('[ConversationManager] Generated corrected response after verification failure.');
-                finalResponseContent = correctedResponse; // Update the final response content
-            } catch (error) {
-                console.error('[ConversationManager] Error generating corrected response:', error);
-                // Keep the uncorrected response if retry fails
-            }
-        }
-    }
-
-    // --- Final State Update and Return ---
-
-    // Add the single, definitive final AI message for this turn to the state.
-    // This message incorporates the result after all tool calls and potential verification retries.
-    const finalAiMessage = new AIMessage(finalResponseContent, { hasToolCalls: false }); // Mark as not having tool calls itself
-    this.state.addMessage(finalAiMessage);
-
-    // Save the final state
     this.saveConversation();
 
-    // Return the final response content string
+    // 2. Prepare for AI call (criteria, system prompt, compaction)
+    await this._prepareForAiCall(userInput);
+
+    // 3. Initial AI call
+    let currentResponseContent: string;
+    try {
+        currentResponseContent = await this._makeAiCall();
+    } catch (error) {
+        console.error("[ConversationManager] Error during initial AI interaction:", error);
+        return `Sorry, I encountered an error: ${error instanceof Error ? error.message : String(error)}`;
+    }
+
+    // 4. Handle Tool Calls (Loop)
+    currentResponseContent = await this._handleToolLoop(currentResponseContent);
+
+    // 5. Handle Verification and Correction
+    let finalResponseContent = await this._handleVerification(currentResponseContent);
+
+    // 6. Add final AI response to state and save
+    const finalAiMessage = new AIMessage(finalResponseContent, { hasToolCalls: false });
+    this.state.addMessage(finalAiMessage);
+    this.saveConversation();
+
+    // 7. Return the final response content string
     return finalResponseContent;
   }
+
+  /** Prepares the conversation state for an AI call (criteria, system prompt, compaction). */
+  private async _prepareForAiCall(userInput: string): Promise<void> {
+      // Generate verification criteria if needed
+      if (!this.state.getVerificationState()) {
+          const criteria = await this.verificationService.generateVerificationCriteria(userInput);
+          this.state.setVerificationState(userInput, criteria);
+      }
+
+      // Generate the dynamic system prompt
+      const tools = await this.getAllTools();
+      const systemPrompt = this.promptFactory.createToolSystemPrompt(tools);
+      this.state.setSystemPrompt(systemPrompt);
+
+      // Compact history if needed
+      const messages = this.state.getMessages();
+      if (messages.length > 20) { // Example threshold
+          await this.state.compactHistory(this.promptFactory.CONVERSATION_COMPACTION_PROMPT, this.aiClient);
+          console.log(`[ConversationManager] History compacted. Current length: ${this.state.getMessages().length}`);
+      }
+  }
+
+  /** Makes a call to the AI client with the current conversation history. */
+  private async _makeAiCall(): Promise<string> {
+      const messagesForAi = this.state.getMessages();
+      const responseContent = await this.aiClient.generateResponse(messagesForAi);
+      console.log(`[ConversationManager] AI Response (${this.aiClient.getModelName()}):`, responseContent.substring(0, 200) + (responseContent.length > 200 ? '...' : ''));
+      return responseContent;
+  }
+
+  /** Handles the loop of detecting AI tool calls, executing them, and getting follow-up responses. */
+  private async _handleToolLoop(initialResponseContent: string): Promise<string> {
+      let currentResponseContent = initialResponseContent;
+      let toolRound = 0;
+      const maxToolRounds = 5; // Limit recursive tool calls
+
+      while (toolRound < maxToolRounds) {
+          toolRound++;
+          console.log(`[ConversationManager] --- Tool/Response Round ${toolRound} ---`);
+
+          const aiMessage = new AIMessage(currentResponseContent);
+          const standardToolCalls = (aiMessage.tool_calls || [])
+              .filter((tc): tc is { id: string; name: string; args: Record<string, any> } => tc.id !== undefined);
+          const mcpToolCalls = ToolParser.parseToolCalls(typeof currentResponseContent === 'string' ? currentResponseContent : JSON.stringify(currentResponseContent));
+
+          if (standardToolCalls.length === 0 && mcpToolCalls.length === 0) {
+              console.log("[ConversationManager] No tool calls found in AI response. Exiting tool loop.");
+              break; // Exit loop
+          }
+
+          // Add AI message requesting tools
+          aiMessage.hasToolCalls = true;
+          aiMessage.pendingToolCalls = true;
+          this.state.addMessage(aiMessage);
+          this.saveConversation();
+
+          let toolCallsToExecute: ToolCallRequest[] = [];
+          if (standardToolCalls.length > 0) {
+              console.log(`[ConversationManager] Found ${standardToolCalls.length} standard tool calls.`);
+              toolCallsToExecute = standardToolCalls.map(tc => ({ id: tc.id, name: tc.name, args: tc.args }));
+          } else {
+              console.log(`[ConversationManager] Found ${mcpToolCalls.length} MCP-style tool calls.`);
+              toolCallsToExecute = mcpToolCalls.map(call => ({
+                  id: `mcpcall-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                  name: call.name,
+                  args: call.arguments
+              }));
+          }
+
+          // Execute tools
+          const toolResultsMap = await this.toolExecutor.executeToolCalls(toolCallsToExecute);
+          aiMessage.pendingToolCalls = false; // Mark as done
+
+          // Add tool results to history
+          for (const executedCall of toolCallsToExecute) {
+              const result = toolResultsMap.get(executedCall.id) || `Error: Result not found for tool call ${executedCall.id}`;
+              this.state.addMessage(new ToolMessage(result, executedCall.id, executedCall.name));
+          }
+          this.saveConversation();
+
+          // Make follow-up AI call
+          try {
+              currentResponseContent = await this._makeAiCall();
+          } catch (error) {
+              console.error(`[ConversationManager] Error during AI follow-up interaction (Round ${toolRound + 1}):`, error);
+              const errorMessage = `Sorry, I encountered an error processing the tool results: ${error instanceof Error ? error.message : String(error)}`;
+              this.state.addMessage(new AIMessage(errorMessage));
+              this.saveConversation();
+              currentResponseContent = errorMessage;
+              break; // Exit loop on error
+          }
+      } // End while loop
+
+      if (toolRound >= maxToolRounds) {
+          console.warn(`[ConversationManager] Reached maximum tool call rounds (${maxToolRounds}). Proceeding with last response.`);
+      }
+
+      return currentResponseContent; // Return the last response content after the loop
+  }
+
+   /** Handles the verification process and potential correction call. */
+   private async _handleVerification(responseContent: string): Promise<string> {
+       const verificationState = this.state.getVerificationState();
+       let finalResponseContent = responseContent;
+
+       if (verificationState) {
+           const { originalRequest, criteria } = verificationState;
+           const relevantSequence = this.state.getRelevantSequenceForVerification();
+           const verificationResult = await this.verificationService.verifyResponse(
+               originalRequest,
+               criteria,
+               relevantSequence + `\n\nAssistant: ${finalResponseContent}` // Append final response for verification
+           );
+
+           // TODO: Attach verificationResult to the final AI message if needed for UI
+
+           if (!verificationResult.passes) {
+               console.log('[ConversationManager] Response verification failed. Retrying with feedback.');
+               try {
+                   // Pass the history *including* the failed response for context
+                   const historyForCorrection = this.state.getMessages();
+                   finalResponseContent = await this.verificationService.generateCorrectedResponse(
+                       historyForCorrection,
+                       finalResponseContent, // Pass the failed content
+                       verificationResult.feedback
+                   );
+               } catch (error) {
+                   console.error('[ConversationManager] Error generating corrected response:', error);
+                   // Keep the uncorrected response if retry fails
+               }
+           }
+       }
+       return finalResponseContent;
+   }
 
 
   /**
