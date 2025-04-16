@@ -935,11 +935,11 @@ Important:
         );
         
         // Create messages for the correction call
-        // Use a minimal system prompt for correction
+        // Use the *full* message history (which includes the original system prompt)
+        // and append the correction request as the latest human message.
         const correctionMessages = [
-            new SystemMessage("You are a helpful assistant. Correct your previous response based on the feedback."),
-            ...this.state.getHistoryWithoutSystemPrompt(), // Include history up to the failed response
-            new HumanMessage(correctionPrompt) // Add the correction request
+            ...this.state.getMessages(), // Get all messages including the original system prompt
+            new HumanMessage(correctionPrompt) // Add the correction request as the last message
         ];
         
         // Make one more AI call with the correction
