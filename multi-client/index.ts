@@ -341,14 +341,14 @@ async function promptForInput(promptText: string, hideInput: boolean = false): P
 
     if (hideInput) {
       hiddenWriteActive = true;
-      // Define the overriding function with the correct signature
+      // Define the overriding function matching one of the stdout.write signatures
       const hiddenWrite = (
         chunk: Uint8Array | string,
-        encodingOrCb?: BufferEncoding | ((err?: Error | null) => void),
-        cb?: (err?: Error | null) => void
+        encodingOrCb?: BufferEncoding | ((err?: Error) => void), // Adjusted callback type
+        cb?: (err?: Error) => void // Adjusted callback type
       ): boolean => {
         let encoding: BufferEncoding | undefined;
-        let callback: ((err?: Error | null) => void) | undefined;
+        let callback: ((err?: Error) => void) | undefined; // Adjusted callback type
 
         if (typeof encodingOrCb === 'function') {
           callback = encodingOrCb;

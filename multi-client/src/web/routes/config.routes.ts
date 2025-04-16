@@ -72,7 +72,8 @@ export function createConfigRouter(): Router {
                         throw new Error("Invalid servers.json structure: Must be an object with an 'mcpServers' object.");
                     }
                     // Further validation of StdioServerConfig structure within mcpServers
-                    for (const [name, cfg] of Object.entries(parsedConfig.mcpServers)) {
+                    for (const [name, serverCfgUntyped] of Object.entries(parsedConfig.mcpServers)) {
+                         const cfg = serverCfgUntyped as StdioServerConfig; // Cast to expected type
                          if (!cfg || typeof cfg !== 'object' || typeof cfg.command !== 'string' || !cfg.command) {
                              throw new Error(`Invalid config for server "${name}": Missing or invalid 'command'.`);
                          }
@@ -89,7 +90,8 @@ export function createConfigRouter(): Router {
                          throw new Error("Invalid ai_config.json structure: 'defaultProvider' must be a string if present.");
                      }
                      // Further validation of AiProviderConfig structure within providers
-                     for (const [name, cfg] of Object.entries(parsedConfig.providers)) {
+                     for (const [name, providerCfgUntyped] of Object.entries(parsedConfig.providers)) {
+                         const cfg = providerCfgUntyped as AiProviderConfig; // Cast to expected type
                          if (!cfg || typeof cfg !== 'object' || typeof cfg.provider !== 'string' || !cfg.provider) {
                              throw new Error(`Invalid config for provider "${name}": Missing or invalid 'provider' name.`);
                          }
