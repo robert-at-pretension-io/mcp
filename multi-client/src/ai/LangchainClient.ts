@@ -57,12 +57,14 @@ export class LangchainClient implements IAiClient {
         return response.content;
       } else if (Array.isArray(response.content)) {
         // Handle array content (common with Anthropic tool usage)
-        // Find the first text block, if any
-        const textContent = response.content
-          .filter(item => typeof item === 'object' && item !== null && item.type === 'text' && typeof item.text === 'string')
-          .map(item => item.text)
-          .join('\n');
-          
+        // Filter for text items first, then map to get the text content
+        const textItems = response.content
+          .filter((item): item is { type: "text"; text: string } => // Type guard for clarity
+            typeof item === 'object' && item !== null && item.type === 'text' && typeof item.text === 'string'
+          );
+         
+        const textContent = textItems.map(item => item.text).join('\n');
+           
         if (textContent) {
           // Return concatenated text parts if found
           console.log('[LangchainClient] Extracted text from complex response:', textContent);

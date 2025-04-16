@@ -5,7 +5,8 @@ import TOML from '@ltd/j-toml';
 import { ServerManager } from './src/ServerManager.js';
 import { Repl } from './src/Repl.js';
 import * as readline from 'node:readline'; // Import readline for prompting
-import type { ConfigFileStructure, AiConfigFileStructure, ProviderModelsStructure } from './src/types.js'; // Removed AiProviderConfig import
+// Re-add AiProviderConfig import
+import type { ConfigFileStructure, AiConfigFileStructure, ProviderModelsStructure, AiProviderConfig } from './src/types.js';
 import { AiClientFactory, MissingApiKeyError } from './src/ai/AiClientFactory.js'; // Import Factory and Error
 import type { IAiClient } from './src/ai/IAiClient.js';
 import { ConversationManager } from './src/conversation/ConversationManager.js';
