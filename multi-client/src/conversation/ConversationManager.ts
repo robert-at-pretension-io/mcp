@@ -354,6 +354,7 @@ export class ConversationManager {
       let currentResponseContent = initialResponseContent;
       let toolRound = 0;
       const maxToolRounds = 5; // Limit recursive tool calls
+      let previousToolCallsString = ''; // Track previous calls to detect loops
 
       while (toolRound < maxToolRounds) {
           toolRound++;
@@ -396,6 +397,21 @@ export class ConversationManager {
               }));
               isUsingStandardCalls = false;
           }
+
+          // --- Loop Detection ---
+          const currentToolCallsString = JSON.stringify(toolCallsToExecute.map(tc => ({ name: tc.name, args: tc.args })).sort((a, b) => a.name.localeCompare(b.name)));
+          if (currentToolCallsString === previousToolCallsString) {
+              console.warn(`[ConversationManager] Loop detected: AI requested the exact same tool calls again. Breaking tool loop.`);
+              // Remove the pending AI message requesting tools, as we won't execute them
+              this.state.removeLastMessageIfPendingAiToolCall(); // Need to add this method to ConversationState
+              this.saveConversation();
+              // Use the response content *before* this loop iteration as the final one
+              currentResponseContent = aiMessageRequestingTools.content as string; // Assuming content is string here
+              break; // Exit the tool loop
+          }
+          previousToolCallsString = currentToolCallsString;
+          // --- End Loop Detection ---
+
 
           // Execute tools
           const toolResultsMap = await this.toolExecutor.executeToolCalls(toolCallsToExecute);

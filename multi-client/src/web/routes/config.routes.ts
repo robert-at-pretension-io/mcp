@@ -62,21 +62,57 @@ export function createConfigRouter(): Router {
 
             const filePath = path.join(baseDir, file);
 
-            // Validate content based on file type
-            if (file.endsWith('.json')) {
-                try {
-                    JSON.parse(content);
-                } catch (jsonError) {
-                    return res.status(400).json({ error: `Invalid JSON: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}` });
+            // Validate content based on file type and structure
+            try {
+                if (file === 'servers.json') {
+                    const parsedConfig = JSON.parse(content) as ConfigFileStructure;
+                    if (typeof parsedConfig !== 'object' || parsedConfig === null || typeof parsedConfig.mcpServers !== 'object' || parsedConfig.mcpServers === null) {
+                        throw new Error("Invalid servers.json structure: Must be an object with an 'mcpServers' object.");
+                    }
+                    // Further validation of StdioServerConfig structure within mcpServers
+                    for (const [name, cfg] of Object.entries(parsedConfig.mcpServers)) {
+                         if (!cfg || typeof cfg !== 'object' || typeof cfg.command !== 'string' || !cfg.command) {
+                             throw new Error(`Invalid config for server "${name}": Missing or invalid 'command'.`);
+                         }
+                         if (cfg.args && !Array.isArray(cfg.args)) throw new Error(`Invalid config for server "${name}": 'args' must be an array.`);
+                         if (cfg.env && typeof cfg.env !== 'object') throw new Error(`Invalid config for server "${name}": 'env' must be an object.`);
+                         // Check for unexpected keys in StdioServerConfig if needed
+                    }
+                } else if (file === 'ai_config.json') {
+                    const parsedConfig = JSON.parse(content) as AiConfigFileStructure;
+                     if (typeof parsedConfig !== 'object' || parsedConfig === null || typeof parsedConfig.providers !== 'object' || parsedConfig.providers === null) {
+                        throw new Error("Invalid ai_config.json structure: Must be an object with a 'providers' object.");
+                    }
+                     if (parsedConfig.defaultProvider && typeof parsedConfig.defaultProvider !== 'string') {
+                         throw new Error("Invalid ai_config.json structure: 'defaultProvider' must be a string if present.");
+                     }
+                     // Further validation of AiProviderConfig structure within providers
+                     for (const [name, cfg] of Object.entries(parsedConfig.providers)) {
+                         if (!cfg || typeof cfg !== 'object' || typeof cfg.provider !== 'string' || !cfg.provider) {
+                             throw new Error(`Invalid config for provider "${name}": Missing or invalid 'provider' name.`);
+                         }
+                         // Add checks for model, apiKey, apiKeyEnvVar, temperature types if needed
+                     }
+                } else if (file === 'provider_models.toml') {
+                    const TOML = (await import('@ltd/j-toml')).default;
+                    const parsedToml = TOML.parse(content, { joiner: '\n', bigint: false });
+                    if (typeof parsedToml !== 'object' || parsedToml === null) {
+                        throw new Error("Invalid TOML structure: Must parse to an object.");
+                    }
+                    // Validate ProviderModelsStructure
+                    for (const [key, value] of Object.entries(parsedToml)) {
+                        if (typeof value !== 'object' || value === null || !Array.isArray((value as any).models)) {
+                            throw new Error(`Invalid structure for provider "${key}" in TOML: Expected object with 'models' array.`);
+                        }
+                        if (!(value as any).models.every((m: unknown) => typeof m === 'string')) {
+                             throw new Error(`Invalid model list for provider "${key}" in TOML: Contains non-string elements.`);
+                        }
+                    }
                 }
-            } else if (file.endsWith('.toml')) {
-                 try {
-                    const TOML = (await import('@ltd/j-toml')).default; // Dynamic import inside async function
-                    TOML.parse(content, { joiner: '\n', bigint: false });
-                } catch (tomlError) {
-                    return res.status(400).json({ error: `Invalid TOML: ${tomlError instanceof Error ? tomlError.message : String(tomlError)}` });
-                }
+            } catch (validationError) {
+                 return res.status(400).json({ error: `Invalid configuration format for ${file}: ${validationError instanceof Error ? validationError.message : String(validationError)}` });
             }
+
 
             // Save the file
             await fs.writeFile(filePath, content, 'utf-8');

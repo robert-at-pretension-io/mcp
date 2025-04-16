@@ -178,10 +178,14 @@ export class AiClientFactory {
     if (typeof (chatModel as any).bindTools === 'function') {
         modelForClient = (chatModel as any).bindTools(langchainTools);
         console.log(`[AiClientFactory] Tools bound to model ${modelToUse}`);
+    } else if (langchainTools.length > 0) {
+        // If tools are available but the model doesn't support binding, it's an issue.
+        console.error(`[AiClientFactory] Error: Model ${modelToUse} does not support bindTools, but tools were provided. Standard tool calling will not work.`);
+        throw new Error(`Model ${modelToUse} does not support bindTools, cannot use tools effectively.`);
     } else {
-        console.warn(`[AiClientFactory] Model ${modelToUse} does not support bindTools. Tool usage might be limited.`);
-        // If bindTools doesn't exist, we pass the original chatModel.
-        // This might limit tool usage depending on how LangchainClient handles it.
+        // No tools provided, or model doesn't support binding (and no tools needed) - proceed with original model
+        console.log(`[AiClientFactory] No tools provided or model ${modelToUse} does not support bindTools. Proceeding without tool binding.`);
+        modelForClient = chatModel; // Use the original model
     }
 
     // Pass the potentially tool-bound model to the LangchainClient

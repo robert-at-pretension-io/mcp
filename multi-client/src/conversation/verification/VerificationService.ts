@@ -91,11 +91,13 @@ export class VerificationService {
             } catch (parseError) {
                 console.error('[VerificationService] Error parsing verification response JSON:', parseError);
                 console.log('[VerificationService] Raw verification response:', verificationResponse);
-                return { passes: true, feedback: 'Failed to parse verifier response' }; // Default to passing if JSON parsing fails
+                // Fail verification if the response format is invalid
+                return { passes: false, feedback: 'Failed to parse verifier response JSON. Assuming failure.' };
             }
         } catch (aiError) {
             console.error('[VerificationService] Error during AI verification call:', aiError);
-            return { passes: true, feedback: 'Verifier AI call failed' }; // Default to passing if the verification AI call itself fails
+            // Fail verification if the verifier AI call fails
+            return { passes: false, feedback: `Verifier AI call failed: ${aiError instanceof Error ? aiError.message : String(aiError)}` };
         }
     }
 

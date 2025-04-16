@@ -27,7 +27,8 @@ export interface SerializedConversation {
 
 export class ConversationPersistenceService {
     private conversationsDir: string;
-    private saveDebounceTimeout: NodeJS.Timeout | null = null;
+    // Use a Map to store debounce timeouts per conversation ID
+    private saveDebounceTimeouts: Map<string, NodeJS.Timeout> = new Map();
     private readonly SAVE_DEBOUNCE_MS = 1000; // 1 second debounce
 
     constructor(baseDir: string) {
@@ -63,14 +64,21 @@ export class ConversationPersistenceService {
         modelName: string,
         provider: string
     ): void {
-        if (this.saveDebounceTimeout) {
-            clearTimeout(this.saveDebounceTimeout);
+        // Clear existing timeout for this specific conversation ID
+        const existingTimeout = this.saveDebounceTimeouts.get(conversationId);
+        if (existingTimeout) {
+            clearTimeout(existingTimeout);
         }
 
-        // Debounce save operations
-        this.saveDebounceTimeout = setTimeout(() => {
+        // Set a new debounce timeout for this conversation ID
+        const newTimeout = setTimeout(() => {
             this._performSave(conversationId, state, modelName, provider);
+            // Remove the timeout entry after execution
+            this.saveDebounceTimeouts.delete(conversationId);
         }, this.SAVE_DEBOUNCE_MS);
+
+        // Store the new timeout
+        this.saveDebounceTimeouts.set(conversationId, newTimeout);
     }
 
     /**
@@ -145,9 +153,8 @@ export class ConversationPersistenceService {
             console.log(`[Persistence] Saved conversation to: ${filePath}`);
         } catch (error) {
             console.error('[Persistence] Error saving conversation:', error);
-        } finally {
-            this.saveDebounceTimeout = null; // Clear timeout reference after execution
         }
+        // Timeout removal is handled in the setTimeout callback in saveConversation
     }
 
 

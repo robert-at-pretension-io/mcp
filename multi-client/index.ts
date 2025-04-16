@@ -335,14 +335,20 @@ async function promptForInput(promptText: string, hideInput: boolean = false): P
 
   // Hacky way to hide input in standard readline
   // Use process.stdout directly as it's the stream being used by the interface
-  const outputStream = process.stdout as NodeJS.WritableStream;
+  const outputStream = process.stdout; // Use process.stdout directly
   const originalWrite = outputStream.write;
+  let hiddenWriteActive = false;
 
   if (hideInput) {
-    // Override the write method with the correct signature
-    outputStream.write = (chunk: any, encodingOrCb?: BufferEncoding | ((err?: Error | null | undefined) => void), cb?: (err?: Error | null | undefined) => void): boolean => {
+    hiddenWriteActive = true;
+    // Define the overriding function with the correct signature
+    const hiddenWrite = (
+      chunk: Uint8Array | string,
+      encodingOrCb?: BufferEncoding | ((err?: Error | null) => void),
+      cb?: (err?: Error | null) => void
+    ): boolean => {
       let encoding: BufferEncoding | undefined;
-      let callback: ((err?: Error | null | undefined) => void) | undefined;
+      let callback: ((err?: Error | null) => void) | undefined;
 
       if (typeof encodingOrCb === 'function') {
         callback = encodingOrCb;
@@ -352,28 +358,29 @@ async function promptForInput(promptText: string, hideInput: boolean = false): P
         callback = cb;
       }
 
+      // Only intercept string chunks
       if (typeof chunk === 'string') {
-        switch (chunk) {
-          case '\r\n':
-          case '\n':
-            // Keep newlines - call original write
-            return originalWrite.call(outputStream, chunk, encoding, callback);
-          default:
-            // Replace other characters with '*'
-            const starChunk = '*'.repeat(chunk.length); // Ensure same length for cursor positioning
-            return originalWrite.call(outputStream, starChunk, encoding, callback);
+        // Allow newlines and carriage returns through
+        if (chunk === '\n' || chunk === '\r' || chunk === '\r\n') {
+          return originalWrite.call(outputStream, chunk, encoding, callback);
         }
+        // Replace other characters with '*'
+        const maskedChunk = '*'.repeat(chunk.length);
+        return originalWrite.call(outputStream, maskedChunk, encoding, callback);
       }
-      // Fallback for non-string chunks or if write returns false
+
+      // Pass through non-string chunks (like Buffers) directly
       return originalWrite.call(outputStream, chunk, encoding, callback);
     };
+
+    // Assign the correctly typed function
+    outputStream.write = hiddenWrite;
   }
 
-  return new Promise((resolve) => {
     rl.question(promptText, (answer) => {
-      if (hideInput) {
-        outputStream.write = originalWrite; // Restore original write method
-        process.stdout.write('\n'); // Add newline after hidden input
+      if (hiddenWriteActive) {
+        outputStream.write = originalWrite; // Restore original write method ONLY if it was overridden
+        process.stdout.write('\n'); // Ensure newline after hidden input
       }
       rl.close();
       resolve(answer.trim());

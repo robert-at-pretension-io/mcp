@@ -30,12 +30,23 @@ export function escapeHtml(unsafe) {
 /**
  * Formats a date object into a relative time string (e.g., "2 hours ago").
  * @param {Date} date The date object to format.
- * @returns {string} The relative time string.
+ * @param {Date | string | number | null | undefined} dateInput The date object, string, or timestamp to format.
+ * @returns {string} The relative time string or an error message.
  */
-export function formatRelativeTime(date) {
-    if (!(date instanceof Date) || isNaN(date.getTime())) {
-        return 'Invalid date'; // Handle invalid date input
+export function formatRelativeTime(dateInput) {
+    let date;
+    if (dateInput instanceof Date) {
+        date = dateInput;
+    } else if (typeof dateInput === 'string' || typeof dateInput === 'number') {
+        date = new Date(dateInput);
+    } else {
+        return 'Invalid date input';
     }
+
+    if (isNaN(date.getTime())) {
+        return 'Invalid date'; // Handle invalid date after parsing
+    }
+
     const now = new Date();
     const diffMs = now.getTime() - date.getTime(); // Use getTime() for reliable comparison
 

@@ -126,18 +126,37 @@ export function renderConversationsList() {
     let html = '';
     for (const conversation of conversations) {
         const isActive = conversation.id === currentConversationId;
-        // Ensure dates are parsed correctly
-        const updatedDate = new Date(conversation.updatedAt || Date.now()); // Fallback to now if date missing
-        const formattedDate = updatedDate.toLocaleDateString() + ' ' + updatedDate.toLocaleTimeString();
+        // Safely parse date, provide fallback
+        let updatedDate = new Date(conversation.updatedAt);
+        let formattedDate = 'Invalid date';
+        let relativeTime = 'unknown';
+
+        if (!isNaN(updatedDate.getTime())) {
+            formattedDate = updatedDate.toLocaleDateString() + ' ' + updatedDate.toLocaleTimeString();
+            relativeTime = formatRelativeTime(updatedDate);
+        } else {
+            // Handle cases where updatedAt might be missing or invalid
+            console.warn(`Invalid updatedAt date for conversation ${conversation.id}:`, conversation.updatedAt);
+            // Optionally try createdAt or provide a default
+            updatedDate = new Date(conversation.createdAt); // Try createdAt
+             if (!isNaN(updatedDate.getTime())) {
+                 formattedDate = updatedDate.toLocaleDateString() + ' ' + updatedDate.toLocaleTimeString();
+                 relativeTime = formatRelativeTime(updatedDate);
+             } else {
+                 formattedDate = 'Date unavailable';
+                 relativeTime = 'unknown time';
+             }
+        }
+
 
         html += `
             <div class="conversation-item ${isActive ? 'active' : ''}" data-id="${escapeHtml(conversation.id)}">
                 <div class="conversation-title">${escapeHtml(conversation.title || 'Untitled Conversation')}</div>
                 <div class="conversation-meta">
                     <span class="conversation-model" title="${escapeHtml(conversation.provider || '')} - ${escapeHtml(conversation.modelName || '')}">
-                        ${escapeHtml(conversation.provider?.substring(0, 10) || '')} - ${escapeHtml(conversation.modelName?.substring(0, 15) || '')}
+                        ${escapeHtml(conversation.provider?.substring(0, 10) || 'N/A')} - ${escapeHtml(conversation.modelName?.substring(0, 15) || 'N/A')}
                     </span>
-                    <span class="conversation-date" title="${formattedDate}">${formatRelativeTime(updatedDate)}</span>
+                    <span class="conversation-date" title="${formattedDate}">${relativeTime}</span>
                 </div>
                 <div class="conversation-actions">
                     <button class="conversation-rename-btn" title="Rename conversation"><i class="fas fa-edit"></i></button>

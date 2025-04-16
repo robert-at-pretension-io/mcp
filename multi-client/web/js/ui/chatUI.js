@@ -124,35 +124,45 @@ function addMessageToConversation(role, content, hasToolCalls = false, isPending
     wrapperElement.className = role === 'human' ? 'flex justify-end mb-3' : 'flex justify-start mb-3';
     
     const messageElement = document.createElement('div');
-    // Map roles to CSS classes (e.g., 'human' -> 'user-message')
+    // Map roles to CSS classes
     const roleClassMap = {
-        human: 'user-message',
+        human: 'user-message', // Use 'human' role from LangChain
         ai: 'ai-message',
         tool: 'tool-message',
-        system: 'system-message', // Should generally be hidden
-        error: 'error-message' // For displaying errors
+        system: 'system-message',
+        error: 'error-message'
     };
-    const cssClass = roleClassMap[role] || 'system-message'; // Default to system/generic
-    // Apply both traditional classes and Tailwind classes
-    messageElement.className = `message ${cssClass} px-3 py-2 rounded-lg shadow-sm relative transition-all hover:translate-y-[-2px] hover:shadow-md`;
+    // Map roles to Tailwind background/text colors
+    const tailwindClassMap = {
+        human: 'bg-blue-500 text-white rounded-br-none',
+        ai: 'bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-bl-none',
+        tool: 'bg-gray-800 text-gray-100 font-mono text-sm whitespace-pre-wrap py-2', // Keep tool styling distinct
+        system: 'bg-amber-50 text-amber-800 border border-amber-100 text-sm',
+        error: 'bg-red-50 text-red-800 border border-red-200'
+    };
+
+    const cssClass = roleClassMap[role] || 'system-message'; // Fallback class
+    const tailwindClasses = tailwindClassMap[role] || tailwindClassMap['system']; // Fallback style
+
+    // Apply base classes, role-specific class, and Tailwind classes
+    messageElement.className = `message ${cssClass} ${tailwindClasses} px-3 py-2 rounded-lg shadow-sm relative transition-all hover:translate-y-[-2px] hover:shadow-md`;
 
     if (isPending) {
         messageElement.classList.add('pending', 'opacity-70');
     }
-    
-    // Add styling based on role - maintain width but reduce vertical space
+
+    // Adjust wrapper and message width based on role
     if (role === 'human') {
-        messageElement.classList.add('bg-blue-500', 'text-white', 'rounded-br-none', 'max-w-[85%]');
+        messageElement.classList.add('max-w-[85%]');
     } else if (role === 'ai') {
-        messageElement.classList.add('bg-gray-100', 'dark:bg-gray-700', 'border', 'border-gray-200', 'dark:border-gray-600', 'rounded-bl-none', 'w-full', 'max-w-[85%]');
+        messageElement.classList.add('w-full', 'max-w-[85%]');
     } else if (role === 'system') {
-        wrapperElement.className = 'flex justify-center mb-4';
-        messageElement.classList.add('bg-amber-50', 'text-amber-800', 'border', 'border-amber-100', 'text-sm', 'max-w-[90%]');
-    } else if (role === 'tool') {
-        messageElement.classList.add('bg-gray-800', 'text-gray-100', 'font-mono', 'text-sm', 'whitespace-pre-wrap', 'w-full', 'py-2');
-    } else if (role === 'error') {
-        messageElement.classList.add('bg-red-50', 'text-red-800', 'border', 'border-red-200', 'w-full');
+        wrapperElement.className = 'flex justify-center mb-4'; // Center system messages
+        messageElement.classList.add('max-w-[90%]');
+    } else if (role === 'tool' || role === 'error') {
+        messageElement.classList.add('w-full'); // Full width for tool/error
     }
+
 
     const now = new Date();
     const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); // Simpler time format
