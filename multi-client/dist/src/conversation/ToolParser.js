@@ -38,10 +38,11 @@ export class ToolParser {
                     typeof toolCallData.arguments === 'object' &&
                     toolCallData.arguments !== null &&
                     !Array.isArray(toolCallData.arguments)) {
+                    // ID is no longer generated or stored here
                     toolCalls.push({
                         name: toolCallData.name,
                         arguments: toolCallData.arguments,
-                        fullText: fullText
+                        fullText: fullText // Keep full text for potential replacement logic
                     });
                 }
                 else {

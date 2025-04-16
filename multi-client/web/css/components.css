@@ -81,7 +81,9 @@ button i {
 textarea {
     width: 100%;
     padding: 0.75rem;
-    height: 120px; /* Consider making this dynamic or larger */
+    min-height: 40px; /* Minimum height */
+    max-height: 300px; /* Maximum height */
+    height: auto; /* Let JS control height based on content */
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     resize: none;
@@ -90,12 +92,33 @@ textarea {
     background-color: var(--background-color);
     color: var(--text-color);
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, height 0.2s ease;
+    overflow-y: auto; /* Add scrollbar for very long content */
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 textarea:focus {
     border-color: var(--primary-color);
     box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+/* Custom scrollbar for Webkit browsers */
+textarea::-webkit-scrollbar {
+    width: var(--scrollbar-width);
+}
+
+textarea::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+}
+
+textarea::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: var(--radius);
+}
+
+textarea::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
 }
 
 select {

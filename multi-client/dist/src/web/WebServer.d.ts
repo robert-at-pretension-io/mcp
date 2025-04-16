@@ -7,6 +7,10 @@ export declare class WebServer {
     private port;
     private isRunning;
     constructor(conversationManager: any, serverManager: any, port?: number);
+    /**
+     * Asynchronously initializes routes and socket events after dynamic imports.
+     */
+    init(): Promise<void>;
     private setupRoutes;
     private setupSocketEvents;
     private sendInitialData;
@@ -18,5 +22,5 @@ export declare class WebServer {
     /**
      * Stop the web server
      */
-    stop(): Promise<unknown>;
+    stop(): Promise<void>;
 }

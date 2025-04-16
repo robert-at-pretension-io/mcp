@@ -1,3 +1,4 @@
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
 import type { IAiClient } from './IAiClient.js';
 /**
@@ -9,5 +10,5 @@ export declare class MissingApiKeyError extends Error {
     constructor(providerName: string, apiKeyEnvVar: string);
 }
 export declare class AiClientFactory {
-    static createClient(config: AiProviderConfig, providerModels: ProviderModelsStructure): IAiClient;
+    static createClient(config: AiProviderConfig, providerModels: ProviderModelsStructure, availableTools: Tool[]): IAiClient;
 }

@@ -13,4 +13,10 @@ export interface IAiClient {
    * Gets the identifier (model name) of the underlying AI model being used.
    */
   getModelName(): string;
+  
+  /**
+   * Gets the provider name (e.g., "openai", "anthropic").
+   * This is optional for backwards compatibility.
+   */
+  getProvider?(): string;
 }

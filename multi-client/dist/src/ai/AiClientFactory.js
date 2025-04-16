@@ -3,6 +3,7 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatMistralAI } from '@langchain/mistralai';
 import { ChatFireworks } from '@langchain/community/chat_models/fireworks';
+import { convertToLangChainTool } from '../utils/toolConverter.js'; // We'll create this utility
 import { LangchainClient } from './LangchainClient.js';
 /**
  * Custom error for missing API keys that require user prompting.
@@ -20,7 +21,8 @@ export class MissingApiKeyError extends Error {
     }
 }
 export class AiClientFactory {
-    static createClient(config, providerModels) {
+    static createClient(config, providerModels, availableTools // Accept the list of available MCP tools
+    ) {
         let chatModel;
         let apiKeyToUse = undefined;
         const temperature = config.temperature ?? 0.7; // Default temperature
@@ -128,8 +130,23 @@ export class AiClientFactory {
         if (!chatModel) {
             throw new Error(`Failed to initialize chat model for provider: ${config.provider}`);
         }
-        // Pass the actual model being used for identification purposes
-        return new LangchainClient(chatModel, modelToUse);
+        // Pass the actual model being used and provider name for identification purposes
+        // Convert MCP Tools to LangChain StructuredTools
+        const langchainTools = availableTools.map(convertToLangChainTool);
+        // Convert MCP Tools to LangChain StructuredTools
+        const langchainTools = availableTools.map(convertToLangChainTool);
+        // Bind the tools to the chat model instance if the method exists
+        let runnable = chatModel; // Start with the original model
+        if (typeof chatModel.bindTools === 'function') {
+            console.log(`Binding ${langchainTools.length} tools to model ${modelToUse}...`);
+            runnable = chatModel.bindTools(langchainTools);
+        }
+        else {
+            console.warn(`Model ${modelToUse} does not seem to support bindTools. Proceeding without bound tools.`);
+            // runnable remains the original chatModel
+        }
+        // Pass the runnable (either original model or model with tools bound) to the LangchainClient
+        return new LangchainClient(runnable, modelToUse, config.provider);
     }
 }
 //# sourceMappingURL=AiClientFactory.js.map

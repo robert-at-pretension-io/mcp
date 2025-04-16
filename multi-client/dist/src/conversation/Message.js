@@ -19,9 +19,19 @@ export class AIMessage extends LCAIMessage {
     // Add optional properties for tracking tool calls
     hasToolCalls;
     pendingToolCalls;
-    constructor(content, options) {
-        super(content);
-        this.hasToolCalls = options?.hasToolCalls || false;
+    // Ensure additional_kwargs are passed to the super constructor
+    constructor(content, // Content can be complex for tool calls
+    options) {
+        // LangChain's AIMessage constructor expects an AIMessageInput object.
+        // Construct the input object ensuring 'content' is always present.
+        const superInput = {
+            content: content, // Assign the original content (string or array) directly
+            additional_kwargs: options?.additional_kwargs || {},
+            tool_calls: options?.tool_calls || []
+        };
+        super(superInput);
+        // Keep our custom properties
+        this.hasToolCalls = options?.hasToolCalls ?? (options?.tool_calls && options.tool_calls.length > 0);
         this.pendingToolCalls = options?.pendingToolCalls || false;
     }
 }

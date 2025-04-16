@@ -11,6 +11,18 @@ let sendButton;
 let clearButton;
 let thinkingSpinner; // Use the spinner element
 
+// Function to adjust textarea height based on content
+function adjustTextareaHeight() {
+    if (!userInputElement) return;
+    
+    // Reset height to auto to get accurate scrollHeight
+    userInputElement.style.height = 'auto';
+    
+    // Set new height based on content (with min/max values)
+    const newHeight = Math.max(Math.min(userInputElement.scrollHeight, 300), 40);
+    userInputElement.style.height = `${newHeight}px`;
+}
+
 export function init() {
     conversationElement = document.getElementById('conversation');
     userInputElement = document.getElementById('user-input');
@@ -32,6 +44,12 @@ export function init() {
             sendMessage();
         }
     });
+    
+    // Auto-expand textarea as user types
+    userInputElement.addEventListener('input', adjustTextareaHeight);
+    
+    // Initial adjustment
+    adjustTextareaHeight();
 
     console.log("Chat UI initialized.");
 }
@@ -49,6 +67,8 @@ function sendMessage() {
 
         // Clear the input field
         userInputElement.value = '';
+        // Reset textarea height
+        adjustTextareaHeight();
 
         // Update thinking indicator immediately (handled by socket 'thinking' event)
         // updateThinkingIndicator(true, 'Sending message...');

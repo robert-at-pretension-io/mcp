@@ -1,6 +1,5 @@
 import type { IAiClient } from '../ai/IAiClient.js';
 import type { ServerManager } from '../ServerManager.js';
-import type { ConversationMessage } from './Message.js';
 import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
 export declare class ConversationManager {
     private state;
@@ -10,6 +9,9 @@ export declare class ConversationManager {
     private toolsLastUpdated;
     private readonly TOOLS_CACHE_TTL_MS;
     private aiClientFactory;
+    private conversationsDir;
+    private currentConversationId;
+    private saveDebounceTimeout;
     private readonly TOOL_RESULTS_PROMPT;
     private readonly INVALID_TOOL_FORMAT_PROMPT;
     private readonly VERIFICATION_CRITERIA_PROMPT;
@@ -18,8 +20,32 @@ export declare class ConversationManager {
     private readonly CONVERSATION_COMPACTION_PROMPT;
     constructor(aiClient: IAiClient, serverManager: ServerManager, providerModels: ProviderModelsStructure);
     /**
+     * Ensures the conversations directory exists
+     */
+    private ensureConversationsDir;
+    /**
+     * Saves the current conversation to disk
+     */
+    private saveConversation;
+    /**
+     * Loads a conversation from disk
+     * @param conversationId The ID of the conversation to load
+     * @returns true if successful, false otherwise
+     */
+    loadConversation(conversationId: string): boolean;
+    /**
+     * Lists all saved conversations
+     * @returns Array of conversation metadata
+     */
+    listConversations(): any[];
+    /**
+     * Creates a new empty conversation
+     */
+    newConversation(): void;
+    /**
      * Switch the AI client to a different provider and model
      * @param providerConfig The provider configuration to use
+     * @param providerModels Available models for providers
      * @param providerModels Available models for providers
      * @returns The new model name if switch was successful
      */
@@ -28,6 +54,10 @@ export declare class ConversationManager {
      * Gets the model name identifier from the underlying AI client.
      */
     getAiClientModelName(): string;
+    /**
+     * Gets the provider name identifier from the underlying AI client.
+     */
+    getAiProviderName(): string;
     /**
      * Refreshes the tools cache by fetching all tools from connected servers.
      * @returns Promise that resolves when the cache is refreshed.
@@ -43,9 +73,10 @@ export declare class ConversationManager {
      */
     private generateToolSystemPrompt;
     /**
-     * Executes a set of parsed tool calls in parallel.
-     * @param toolCalls Array of parsed tool calls to execute.
-     * @returns Promise that resolves to an array of tool execution results.
+     * Executes a set of parsed tool calls (now including generated IDs) in parallel.
+     * Executes a set of tool calls provided by the AI (using LangChain's standard format).
+     * @param toolCallsFromAI Array of tool calls, each including the AI-generated `id`.
+     * @returns Promise that resolves to a map of tool call IDs to their string results.
      */
     private executeToolCalls;
     /**
@@ -75,11 +106,16 @@ export declare class ConversationManager {
      */
     processUserMessage(userInput: string): Promise<string>;
     /**
-     * Clears the conversation history.
+     * Renames a conversation
+     * @param conversationId The ID of the conversation to rename
+     * @param newTitle The new title for the conversation
+     * @returns true if successful, false otherwise
      */
-    clearConversation(): void;
+    renameConversation(conversationId: string, newTitle: string): boolean;
     /**
-     * Gets the current conversation history.
+     * Deletes a conversation
+     * @param conversationId The ID of the conversation to delete
+     * @returns true if successful, false otherwise
      */
-    getHistory(): ConversationMessage[];
+    deleteConversation(conversationId: string): boolean;
 }

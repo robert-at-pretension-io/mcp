@@ -1,0 +1,26 @@
+{
+  "id": "483bfcc6-23c7-423d-80c3-6b5c5e0f9f5c",
+  "title": "run ls -la",
+  "modelName": "claude-3-5-sonnet-20240620",
+  "provider": "anthropic",
+  "createdAt": "2025-04-15T23:56:58.185Z",
+  "updatedAt": "2025-04-15T23:56:58.185Z",
+  "messages": [
+    {
+      "role": "human",
+      "content": "run ls -la"
+    },
+    {
+      "role": "human",
+      "content": "run ls -la"
+    },
+    {
+      "role": "human",
+      "content": "run ls -la"
+    },
+    {
+      "role": "human",
+      "content": "run ls -la"
+    }
+  ]
+}

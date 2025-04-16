@@ -8,8 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
-    "web": "node dist/index.js --web",
-    "both": "node dist/index.js --web --repl",
+    "web": "tsc && node --unhandled-rejections=strict dist/index.js --web",
+    "both": "tsc && node --unhandled-rejections=strict dist/index.js --web --repl",
     "lint": "tsc --noEmit"
   },
   "keywords": [

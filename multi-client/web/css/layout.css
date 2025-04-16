@@ -11,8 +11,8 @@
 
 /* Header styles */
 header {
-    background-color: var(--panel-bg);
-    color: var(--text-color);
+    background-color: var(--secondary-color);
+    color: white;
     padding: 0.75rem 1.5rem;
     border-bottom: 1px solid var(--border-color);
     display: flex;
@@ -25,7 +25,7 @@ header {
 .logo-area h1 {
     font-size: 1.5rem;
     font-weight: 600;
-    color: var(--primary-color);
+    color: white;
 }
 
 .info-controls {
@@ -45,11 +45,11 @@ header {
     align-items: center;
     gap: 0.5rem;
     font-size: 0.875rem;
-    color: var(--text-light);
+    color: white;
 }
 
 .info-item i {
-    color: var(--primary-color);
+    color: white;
 }
 
 .model-info {

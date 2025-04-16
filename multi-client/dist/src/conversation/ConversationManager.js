@@ -1,8 +1,15 @@
 import { v4 as uuidv4 } from 'uuid'; // Import UUID for tool call IDs
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ConversationState } from './ConversationState.js';
 import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from './Message.js';
 import { ToolParser } from './ToolParser.js';
 import { AiClientFactory } from '../ai/AiClientFactory.js';
+// Use ES module approach for __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const baseDir = path.join(__dirname, '../../..');
 export class ConversationManager {
     state;
     aiClient;
@@ -11,6 +18,10 @@ export class ConversationManager {
     toolsLastUpdated = 0; // Timestamp of when tools were last updated
     TOOLS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache TTL
     aiClientFactory; // Store the factory reference for switching models
+    // Conversation persistence properties
+    conversationsDir;
+    currentConversationId;
+    saveDebounceTimeout = null;
     // Prompts from the design doc
     TOOL_RESULTS_PROMPT = `You have received results from the tool(s) you called previously (shown immediately above).
 Analyze these results carefully.
@@ -52,12 +63,10 @@ Instructions:
 4. Output ONLY the raw JSON object. Your entire response must start with \`{\` and end with \`}\`.
 5. The JSON object must have the following structure: \`{"passes": boolean, "feedback": "string (provide concise feedback ONLY if passes is false, explaining which criteria failed and why, referencing the assistant's actions/responses if relevant)"}\`
 6. ABSOLUTELY DO NOT include any other text, explanations, apologies, introductory phrases, or markdown formatting like \`\`\`json or \`\`\`.`;
-    VERIFICATION_FAILURE_PROMPT = `Correction Request:
-Your previous response failed verification.
-Feedback: {feedback}
+    VERIFICATION_FAILURE_PROMPT = `Your previous response failed verification based on the following feedback:
+{feedback}
 
-Please analyze this feedback carefully and revise your plan and response to fully address the original request and meet all success criteria. 
-You may need to use tools differently or provide more detailed information.`;
+Revise your response to fully address the original request and meet all success criteria based on this feedback. Provide only the corrected response.`;
     CONVERSATION_COMPACTION_PROMPT = `You are an expert conversation summarizer. Analyze the following conversation history and provide a concise summary. Focus on:
 - Key user requests and goals.
 - Important information discovered or generated.
@@ -78,21 +87,198 @@ Concise Summary:`;
         // System prompt will be generated dynamically based on tools
         // Store the factory reference for switching models
         this.aiClientFactory = AiClientFactory;
+        // Set up conversations directory
+        this.conversationsDir = path.join(baseDir, 'conversations');
+        this.ensureConversationsDir();
+        // Generate a new conversation ID for this session
+        this.currentConversationId = uuidv4();
         // Immediately fetch all tools to prime the cache
         this.refreshToolsCache().catch(err => {
             console.warn('Failed to initialize tools cache:', err);
         });
     }
     /**
+     * Ensures the conversations directory exists
+     */
+    ensureConversationsDir() {
+        try {
+            if (!fs.existsSync(this.conversationsDir)) {
+                fs.mkdirSync(this.conversationsDir, { recursive: true });
+                console.log(`Created conversations directory at: ${this.conversationsDir}`);
+            }
+        }
+        catch (error) {
+            console.error(`Error creating conversations directory:`, error);
+        }
+    }
+    /**
+     * Saves the current conversation to disk
+     */
+    saveConversation() {
+        if (this.saveDebounceTimeout) {
+            clearTimeout(this.saveDebounceTimeout);
+        }
+        // Debounce save operations to prevent excessive disk writes
+        this.saveDebounceTimeout = setTimeout(() => {
+            try {
+                const messages = this.state.getMessages();
+                // Don't save if there are no messages
+                if (messages.length === 0) {
+                    return;
+                }
+                // Generate a title from the first few user messages
+                let title = 'New Conversation';
+                const userMessages = messages.filter(m => m._getType() === 'human');
+                if (userMessages.length > 0) {
+                    // Use the first user message as the title, limited to 50 chars
+                    const firstMessage = userMessages[0].content.toString();
+                    title = firstMessage.length > 50
+                        ? firstMessage.substring(0, 47) + '...'
+                        : firstMessage;
+                }
+                // Create serialized conversation
+                const conversation = {
+                    id: this.currentConversationId,
+                    title,
+                    modelName: this.getAiClientModelName(),
+                    provider: this.aiClient.getProvider?.() || 'unknown',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    messages: messages.map(msg => ({
+                        role: msg._getType(),
+                        content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+                        hasToolCalls: msg.hasToolCalls,
+                        pendingToolCalls: msg.pendingToolCalls
+                    }))
+                };
+                // Write to file
+                const filePath = path.join(this.conversationsDir, `${this.currentConversationId}.json`);
+                fs.writeFileSync(filePath, JSON.stringify(conversation, null, 2), 'utf-8');
+                console.log(`Saved conversation to: ${filePath}`);
+            }
+            catch (error) {
+                console.error('Error saving conversation:', error);
+            }
+        }, 1000); // 1 second debounce
+    }
+    /**
+     * Loads a conversation from disk
+     * @param conversationId The ID of the conversation to load
+     * @returns true if successful, false otherwise
+     */
+    loadConversation(conversationId) {
+        try {
+            const filePath = path.join(this.conversationsDir, `${conversationId}.json`);
+            if (!fs.existsSync(filePath)) {
+                console.error(`Conversation file not found: ${filePath}`);
+                return false;
+            }
+            const conversationData = fs.readFileSync(filePath, 'utf-8');
+            const conversation = JSON.parse(conversationData);
+            // Clear current conversation
+            this.state.clearHistory();
+            // Set current conversation ID
+            this.currentConversationId = conversation.id;
+            // Reconstruct messages
+            for (const msg of conversation.messages) {
+                if (msg.role === 'system') {
+                    this.state.addMessage(new SystemMessage(msg.content));
+                }
+                else if (msg.role === 'human') {
+                    this.state.addMessage(new HumanMessage(msg.content));
+                }
+                else if (msg.role === 'ai') {
+                    this.state.addMessage(new AIMessage(msg.content, {
+                        hasToolCalls: msg.hasToolCalls,
+                        pendingToolCalls: msg.pendingToolCalls
+                    }));
+                }
+                else if (msg.role === 'tool') {
+                    // Tool messages need a proper tool call ID and name which we don't have
+                    // For now, we'll create them with placeholder values
+                    this.state.addMessage(new ToolMessage(msg.content, 'restored-tool-call-id', 'restored-tool'));
+                }
+            }
+            // Emit events or return the loaded state
+            console.log(`Loaded conversation: ${conversation.title}`);
+            return true;
+        }
+        catch (error) {
+            console.error('Error loading conversation:', error);
+            return false;
+        }
+    }
+    /**
+     * Lists all saved conversations
+     * @returns Array of conversation metadata
+     */
+    listConversations() {
+        try {
+            // Ensure conversations directory exists
+            this.ensureConversationsDir();
+            // Read conversation files
+            const files = fs.readdirSync(this.conversationsDir)
+                .filter(file => file.endsWith('.json'));
+            // Extract metadata
+            const conversations = files.map(file => {
+                try {
+                    const filePath = path.join(this.conversationsDir, file);
+                    const data = fs.readFileSync(filePath, 'utf-8');
+                    const conversation = JSON.parse(data);
+                    return {
+                        id: conversation.id,
+                        title: conversation.title,
+                        modelName: conversation.modelName,
+                        provider: conversation.provider,
+                        createdAt: conversation.createdAt,
+                        updatedAt: conversation.updatedAt,
+                        messageCount: conversation.messages.length,
+                        isActive: conversation.id === this.currentConversationId
+                    };
+                }
+                catch (error) {
+                    console.warn(`Error parsing conversation file: ${file}`, error);
+                    return null;
+                }
+            }).filter(Boolean); // Remove nulls
+            // Sort by updatedAt, most recent first
+            return conversations.sort((a, b) => {
+                if (!a || !b)
+                    return 0;
+                return new Date(b.updatedAt || '').getTime() - new Date(a.updatedAt || '').getTime();
+            });
+        }
+        catch (error) {
+            console.error('Error listing conversations:', error);
+            return [];
+        }
+    }
+    /**
+     * Creates a new empty conversation
+     */
+    newConversation() {
+        // Clear current state
+        this.state.clearHistory();
+        // Generate new ID
+        this.currentConversationId = uuidv4();
+        console.log(`Created new conversation with ID: ${this.currentConversationId}`);
+    }
+    /**
      * Switch the AI client to a different provider and model
      * @param providerConfig The provider configuration to use
+     * @param providerModels Available models for providers
      * @param providerModels Available models for providers
      * @returns The new model name if switch was successful
      */
     switchAiClient(providerConfig, providerModels) {
         try {
-            // Create the new client
-            const newClient = this.aiClientFactory.createClient(providerConfig, providerModels);
+            // Fetch current tools before creating the client
+            // Note: This assumes tools don't change frequently.
+            // If tools can change dynamically, this might need adjustment.
+            const currentTools = this.allTools; // Use cached tools for switching
+            // Create the new client, passing the tools
+            const newClient = this.aiClientFactory.createClient(providerConfig, providerModels, currentTools // Pass the tools
+            );
             // Store the old client temporarily in case we need to roll back
             const oldClient = this.aiClient;
             // Set the new client
@@ -112,6 +298,12 @@ Concise Summary:`;
      */
     getAiClientModelName() {
         return this.aiClient.getModelName();
+    }
+    /**
+     * Gets the provider name identifier from the underlying AI client.
+     */
+    getAiProviderName() {
+        return this.aiClient.getProvider?.() || 'unknown';
     }
     /**
      * Refreshes the tools cache by fetching all tools from connected servers.
@@ -200,26 +392,30 @@ Important:
         return prompt;
     }
     /**
-     * Executes a set of parsed tool calls in parallel.
-     * @param toolCalls Array of parsed tool calls to execute.
-     * @returns Promise that resolves to an array of tool execution results.
+     * Executes a set of parsed tool calls (now including generated IDs) in parallel.
+     * Executes a set of tool calls provided by the AI (using LangChain's standard format).
+     * @param toolCallsFromAI Array of tool calls, each including the AI-generated `id`.
+     * @returns Promise that resolves to a map of tool call IDs to their string results.
      */
-    async executeToolCalls(toolCalls) {
+    async executeToolCalls(
+    // Expect the standard LangChain tool_calls structure
+    toolCallsFromAI) {
         const results = new Map();
-        const executions = toolCalls.map(async (toolCall, index) => {
-            const toolCallId = `tool-${uuidv4().substring(0, 8)}-${index}`; // Generate a short unique ID
+        const executions = toolCallsFromAI.map(async (toolCall) => {
+            const toolCallId = toolCall.id; // Use the ID from the AI's request
+            const toolName = toolCall.name;
+            const toolArgs = toolCall.args;
             try {
-                // Find which server provides this tool
-                const serverName = this.serverManager.findToolProvider(toolCall.name);
+                const serverName = this.serverManager.findToolProvider(toolName);
                 if (!serverName) {
-                    const errorMessage = `No server found providing tool '${toolCall.name}'.`;
+                    const errorMessage = `No server found providing tool '${toolName}'.`;
                     console.warn(errorMessage);
                     results.set(toolCallId, errorMessage);
                     return;
                 }
-                console.log(`Executing tool '${toolCall.name}' on server '${serverName}'...`);
-                // Execute the tool
-                const executionResult = await this.serverManager.executeTool(serverName, toolCall.name, toolCall.arguments, { showProgress: true });
+                console.log(`Executing tool '${toolName}' on server '${serverName}'...`);
+                // Execute the tool using name and args from toolCall
+                const executionResult = await this.serverManager.executeTool(serverName, toolName, toolArgs, { showProgress: true });
                 // Format the result
                 let resultContent;
                 if (executionResult.isError) {
@@ -249,17 +445,27 @@ Important:
                 }
                 // Store the result with its ID
                 results.set(toolCallId, resultContent);
-                // Add tool result to conversation state for history tracking
-                this.state.addMessage(new ToolMessage(resultContent, toolCallId, toolCall.name));
+                // DO NOT add ToolMessage to state here. Return the result instead.
+                // this.state.addMessage(new ToolMessage(
+                //   resultContent,
+                //   toolCallId,
+                //   toolCall.name
+                // ));
+                // Return enough info to create the ToolMessage later
                 return { toolCallId, name: toolCall.name, result: resultContent };
             }
             catch (error) {
                 const errorMessage = `Failed to execute tool '${toolCall.name}': ${error instanceof Error ? error.message : String(error)}`;
                 console.error(errorMessage);
                 results.set(toolCallId, errorMessage);
-                // Add error message to state
-                this.state.addMessage(new ToolMessage(errorMessage, toolCallId, toolCall.name));
-                return { toolCallId, name: toolCall.name, result: errorMessage };
+                // DO NOT add ToolMessage to state here. Return the error result instead.
+                // this.state.addMessage(new ToolMessage(
+                //   errorMessage,
+                //   toolCallId,
+                //   toolName // Use toolName from the loop
+                // ));
+                // Return enough info to create the ToolMessage later
+                return { toolCallId, name: toolName, result: errorMessage };
             }
         });
         // Wait for all tool executions to complete
@@ -283,13 +489,15 @@ Important:
     async generateVerificationCriteria(userInput) {
         console.log('Generating verification criteria...');
         try {
-            // Create the criteria prompt as a system message
-            const systemMessage = new SystemMessage("You are a helpful assistant that generates verification criteria.");
-            // Create a user message with the criteria prompt template
+            // Create the criteria prompt
             const promptText = this.VERIFICATION_CRITERIA_PROMPT.replace('{user_request}', userInput);
-            const userMessage = new HumanMessage(promptText);
-            // Call the AI with both messages for criteria generation
-            const criteriaResponse = await this.aiClient.generateResponse([systemMessage, userMessage]);
+            // Create a temporary array with system message first, then user message
+            const messages = [
+                new SystemMessage("You are a helpful assistant that generates verification criteria."),
+                new HumanMessage(promptText)
+            ];
+            // Call the AI with the properly ordered messages for criteria generation
+            const criteriaResponse = await this.aiClient.generateResponse(messages);
             console.log('Generated criteria:', criteriaResponse);
             return criteriaResponse;
         }
@@ -308,17 +516,18 @@ Important:
     async verifyResponse(originalRequest, criteria, relevantSequence) {
         console.log('Verifying response against criteria...');
         try {
-            // Create a system message for the verification context
-            const systemMessage = new SystemMessage("You are a strict evaluator that verifies responses against criteria and returns JSON.");
             // Create the verification prompt with all placeholders filled
             const promptText = this.VERIFICATION_PROMPT
                 .replace('{original_request}', originalRequest)
                 .replace('{criteria}', criteria)
                 .replace('{relevant_history_sequence}', relevantSequence);
-            // Add as a user message (not system message)
-            const userMessage = new HumanMessage(promptText);
-            // Call the AI with both messages for verification
-            const verificationResponse = await this.aiClient.generateResponse([systemMessage, userMessage]);
+            // Create messages array with system message first
+            const messages = [
+                new SystemMessage("You are a strict evaluator that verifies responses against criteria and returns JSON."),
+                new HumanMessage(promptText)
+            ];
+            // Call the AI with properly ordered messages for verification
+            const verificationResponse = await this.aiClient.generateResponse(messages);
             try {
                 // Parse the JSON response
                 const result = JSON.parse(verificationResponse);
@@ -357,6 +566,8 @@ Important:
         console.log(`Processing user message: "${userInput}"`);
         // 1. Add user message to state
         this.state.addMessage(new HumanMessage(userInput));
+        // Save conversation after adding user message
+        this.saveConversation();
         // 2. Generate verification criteria if this is a new request
         // and there are no existing criteria for the conversation
         if (!this.state.getVerificationState()) {
@@ -387,143 +598,250 @@ Important:
         catch (error) {
             console.error("Error during AI interaction:", error);
             const errorMessage = `Sorry, I encountered an error: ${error instanceof Error ? error.message : String(error)}`;
-            return errorMessage;
-        }
-        // 7. Parse and execute tool calls if present
-        if (ToolParser.containsToolCalls(aiResponseContent)) {
-            // Extract and parse tool calls
-            const parsedToolCalls = ToolParser.parseToolCalls(aiResponseContent);
-            if (parsedToolCalls.length > 0) {
-                console.log(`Found ${parsedToolCalls.length} tool calls in AI response.`);
-                // Add AI response to conversation history with tool calls flag
-                const aiMessage = new AIMessage(aiResponseContent, {
-                    hasToolCalls: true,
-                    pendingToolCalls: true
+            // Initialize variables for the tool call loop
+            let currentResponse = aiResponseContent; // Start with the initial AI response
+            let toolRound = 0;
+            const maxToolRounds = 5; // Limit recursive tool calls
+            // We will determine the single final AI message later and add it once.
+            // Loop while the response contains tool calls and we haven't hit the limit
+            while (ToolParser.containsToolCalls(currentResponse) && toolRound < maxToolRounds) {
+                toolRound++;
+                console.log(`--- Tool Call Round ${toolRound} ---`);
+                // Add the AI response that *requested* the tools.
+                // LangChain's AIMessage should automatically parse tool calls from providers like Anthropic
+                // into the standard `tool_calls` property.
+                const aiMessageRequestingTools = new AIMessage(currentResponse, {
+                // Let LangChain handle populating tool_calls if the underlying model supports it
                 });
-                this.state.addMessage(aiMessage);
-                // Execute tool calls
-                const toolResults = await this.executeToolCalls(parsedToolCalls);
-                // Mark tool calls as no longer pending
-                aiMessage.pendingToolCalls = false;
-                // Build the tool results message
-                const toolResultsPrompt = this.createToolResultsMessage(toolResults);
-                // Create a new context with original messages plus tool results
-                const updatedMessages = this.state.getMessages();
-                // 8. Second AI call with tool results
+                // Check if the AIMessage actually contains tool calls (using the standard property)
+                // Filter out any tool calls that are missing an ID, as they cannot be processed.
+                const validToolCalls = (aiMessageRequestingTools.tool_calls || []).filter((call) => {
+                    if (typeof call.id !== 'string') {
+                        console.warn("Tool call missing required 'id'. Skipping:", call);
+                        return false;
+                    }
+                    return true;
+                });
+                if (validToolCalls.length === 0) {
+                    console.log("AI response did not contain any valid standard tool calls. Exiting tool loop.");
+                    // It might contain the <<<TOOL_CALL>>> delimiters but wasn't parsed correctly by LangChain,
+                    // or the AI decided not to call tools this round.
+                    break; // Exit the loop
+                }
+                console.log(`Found ${validToolCalls.length} valid standard tool calls in AI response.`);
+                // Add the message requesting tools to history *before* execution
+                // Mark as pending, using the original tool_calls array for the message
+                aiMessageRequestingTools.hasToolCalls = true;
+                aiMessageRequestingTools.pendingToolCalls = true;
+                this.state.addMessage(aiMessageRequestingTools);
+                // Execute tool calls using the *valid* calls with IDs
+                const toolResultsMap = await this.executeToolCalls(validToolCalls);
+                // Mark the tool calls in the previous AI message as no longer pending
+                aiMessageRequestingTools.pendingToolCalls = false;
+                // Add the tool results back using ToolMessage, linked by the correct ID
+                // Iterate over the *valid* calls again to ensure we only add results for executed tools
+                for (const toolCall of validToolCalls) {
+                    // toolCall.id is guaranteed to be a string here due to filtering
+                    const result = toolResultsMap.get(toolCall.id) || `Error: Result not found for tool call ${toolCall.id}`;
+                    this.state.addMessage(new ToolMessage(result, toolCall.id, // ID is guaranteed string
+                    toolCall.name));
+                }
+                // Get the updated message history including the AIMessage requesting tools and the ToolMessages containing results
+                const messagesForFollowUp = this.state.getMessages();
+                // Make the next AI call with the tool results context
                 try {
-                    const followUpResponse = await this.aiClient.generateResponse(updatedMessages);
-                    console.log(`Follow-up AI Response (after tool execution):`, followUpResponse.substring(0, 200) + (followUpResponse.length > 200 ? '...' : ''));
-                    // Check if the follow-up response contains more tool calls
-                    if (ToolParser.containsToolCalls(followUpResponse)) {
-                        // Add this as an AI message and recursively process the next round of tool calls
-                        const followUpMessage = new AIMessage(followUpResponse, { hasToolCalls: true });
-                        this.state.addMessage(followUpMessage);
-                        // Note: In a full implementation, we would recursively handle these tool calls
-                        // but for simplicity, we'll just add the message and not handle further tool calls
-                        console.log('Follow-up response contains more tool calls. In a complete implementation, these would be processed recursively.');
-                        // Add the message without the tool calls flag for now
-                        this.state.addMessage(new AIMessage(followUpResponse));
-                        // For verification purposes, we'll proceed with verification without handling the additional tool calls
-                        // In production, we would want to fully resolve all tool calls before verification
-                    }
-                    else {
-                        // Store the follow-up response in history
-                        this.state.addMessage(new AIMessage(followUpResponse));
-                    }
-                    // 9. Verify the final response (if verification is enabled)
-                    const verificationState = this.state.getVerificationState();
-                    if (verificationState) {
-                        const { originalRequest, criteria } = verificationState;
-                        const relevantSequence = this.state.getRelevantSequenceForVerification();
-                        const verificationResult = await this.verifyResponse(originalRequest, criteria, relevantSequence);
-                        // 10. If verification fails, retry with feedback
-                        if (!verificationResult.passes) {
-                            console.log('Response verification failed. Retrying with feedback.');
-                            // Generate a correction prompt
-                            const correctionPrompt = this.VERIFICATION_FAILURE_PROMPT.replace('{feedback}', verificationResult.feedback);
-                            // Create a system message with a brief instruction
-                            const systemMessage = new SystemMessage("You are a helpful assistant that needs to correct your previous response.");
-                            // Create a user message with the correction prompt
-                            const userMessage = new HumanMessage(correctionPrompt);
-                            // Add correction prompt to messages
-                            const correctionMessages = [...this.state.getMessages(), systemMessage, userMessage];
-                            // Make one more AI call with the correction
-                            try {
-                                const correctedResponse = await this.aiClient.generateResponse(correctionMessages);
-                                console.log('Generated corrected response after verification failure');
-                                // Add the corrected response to history
-                                this.state.addMessage(new AIMessage(correctedResponse));
-                                // Return the corrected response
-                                return correctedResponse;
-                            }
-                            catch (error) {
-                                console.error('Error generating corrected response:', error);
-                                return followUpResponse; // Fall back to the uncorrected response
-                            }
-                        }
-                    }
-                    // Return the final response
-                    return followUpResponse;
+                    currentResponse = await this.aiClient.generateResponse(messagesForFollowUp);
+                    console.log(`AI Response (Round ${toolRound + 1}):`, currentResponse.substring(0, 200) + (currentResponse.length > 200 ? '...' : ''));
                 }
                 catch (error) {
-                    console.error("Error during AI follow-up interaction:", error);
+                    console.error(`Error during AI follow-up interaction (Round ${toolRound + 1}):`, error);
                     const errorMessage = `Sorry, I encountered an error processing the tool results: ${error instanceof Error ? error.message : String(error)}`;
-                    this.state.addMessage(new AIMessage(errorMessage));
-                    return errorMessage;
+                    this.state.addMessage(new AIMessage(errorMessage)); // Add error message to history
+                    currentResponse = errorMessage; // Set response to error message
+                    break; // Exit loop on error
                 }
+            } // End while loop
+            if (toolRound >= maxToolRounds) {
+                console.warn(`Reached maximum tool call rounds (${maxToolRounds}). Proceeding with last response.`);
+                // The last response might still contain tool calls, which will be ignored now.
+            }
+            // We will add the final AI message *after* potential verification corrections.
+            let finalAiResponseContent = currentResponse; // Store the content string
+            // 9. Verify the final response (if verification is enabled)
+            const verificationState = this.state.getVerificationState();
+            if (verificationState) {
+                const { originalRequest, criteria } = verificationState;
+                const relevantSequence = this.state.getRelevantSequenceForVerification();
+                const verificationResult = await this.verifyResponse(originalRequest, criteria, relevantSequence);
+                // Attach verification result to the last AI message for potential UI display
+                const lastMessageIndex = this.state.getHistoryWithoutSystemPrompt().length - 1;
+                if (lastMessageIndex >= 0) {
+                    const lastMessage = this.state.getHistoryWithoutSystemPrompt()[lastMessageIndex];
+                    if (lastMessage instanceof AIMessage) {
+                        lastMessage.verificationResult = verificationResult; // Add verification result
+                    }
+                }
+                // 10. If verification fails, retry with feedback
+                if (!verificationResult.passes) {
+                    console.log('Response verification failed. Retrying with feedback.');
+                    // Generate a correction prompt
+                    const correctionPrompt = this.VERIFICATION_FAILURE_PROMPT.replace('{feedback}', verificationResult.feedback);
+                    // Create messages for the correction call
+                    // Use the *full* message history (which includes the original system prompt)
+                    // and append the correction request as the latest human message.
+                    const correctionMessages = [
+                        ...this.state.getMessages(), // Get all messages including the original system prompt
+                        new HumanMessage(correctionPrompt) // Add the correction request as the last message
+                    ];
+                    // Make one more AI call with the correction
+                    try {
+                        const correctedResponse = await this.aiClient.generateResponse(correctionMessages);
+                        console.log('Generated corrected response after verification failure');
+                        // Update the content to be returned and added later
+                        finalAiResponseContent = correctedResponse;
+                        // Add the corrected response to history *immediately* so it's part of the state
+                        // before the final addMessage check later (this replaces the failed one implicitly)
+                        this.state.addMessage(new AIMessage(correctedResponse));
+                        // We will save and return finalAiResponseContent later
+                    }
+                    catch (error) {
+                        console.error('Error generating corrected response:', error);
+                        // Fall back to the uncorrected response content if correction fails
+                        // finalAiResponseContent remains the uncorrected 'currentResponse'
+                        this.saveConversation(); // Save even if correction failed
+                    }
+                }
+            }
+            // Add the single, definitive final AI message for this turn to the state
+            // Use the potentially corrected content from verification
+            const finalAiMessage = new AIMessage(finalAiResponseContent, { hasToolCalls: false });
+            // Check if the last message added was already this exact response (e.g., from failed verification retry)
+            const history = this.state.getHistoryWithoutSystemPrompt();
+            const lastMessage = history[history.length - 1];
+            if (!(lastMessage instanceof AIMessage && lastMessage.content === finalAiMessage.content)) {
+                this.state.addMessage(finalAiMessage);
             }
             else {
-                console.warn("Tool call delimiters detected but no valid tool calls parsed.");
+                console.log("Skipping adding duplicate final AI message after verification handling.");
+            }
+            // Save the conversation after adding the final AI response
+            this.saveConversation();
+            // Return the final response content string
+            return finalAiResponseContent;
+        } // <-- This brace closes processUserMessage
+        /**
+         * Clears the conversation history.
+         */
+        clearConversation();
+        void {
+            this: .state.clearHistory(),
+            // Generate a new conversation ID for the cleared conversation
+            this: .currentConversationId = uuidv4(),
+            console, : .log("Conversation history cleared. New conversation ID: " + this.currentConversationId)
+        };
+        /**
+         * Gets the current conversation history.
+         */
+        getHistory();
+        ConversationMessage[];
+        {
+            // Return messages including the system prompt for context
+            return this.state.getMessages();
+        }
+        /**
+         * Gets the current conversation metadata
+         */
+        getCurrentConversation();
+        any;
+        {
+            try {
+                const filePath = path.join(this.conversationsDir, `${this.currentConversationId}.json`);
+                if (fs.existsSync(filePath)) {
+                    const conversationData = fs.readFileSync(filePath, 'utf-8');
+                    return JSON.parse(conversationData);
+                }
+                else {
+                    // If file doesn't exist yet, return basic metadata
+                    return {
+                        id: this.currentConversationId,
+                        title: 'New Conversation',
+                        modelName: this.getAiClientModelName(),
+                        provider: this.aiClient.getProvider?.() || 'unknown',
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        messageCount: this.state.getMessages().length,
+                    };
+                }
+            }
+            catch (error) {
+                console.error('Error getting current conversation:', error);
+                return {
+                    id: this.currentConversationId,
+                    title: 'New Conversation',
+                    error: 'Failed to load conversation data'
+                };
             }
         }
-        // 11. Verify non-tool responses before returning
-        this.state.addMessage(new AIMessage(aiResponseContent)); // Add to history for verification
-        const verificationState = this.state.getVerificationState();
-        if (verificationState) {
-            const { originalRequest, criteria } = verificationState;
-            const relevantSequence = this.state.getRelevantSequenceForVerification();
-            const verificationResult = await this.verifyResponse(originalRequest, criteria, relevantSequence);
-            // If verification fails, retry with feedback
-            if (!verificationResult.passes) {
-                console.log('Response verification failed. Retrying with feedback.');
-                // Generate a correction prompt
-                const correctionPrompt = this.VERIFICATION_FAILURE_PROMPT.replace('{feedback}', verificationResult.feedback);
-                // Create a system message with a brief instruction
-                const systemMessage = new SystemMessage("You are a helpful assistant that needs to correct your previous response.");
-                // Create a user message with the correction prompt
-                const userMessage = new HumanMessage(correctionPrompt);
-                // Add correction prompt to messages
-                const correctionMessages = [...this.state.getMessages(), systemMessage, userMessage];
-                // Make one more AI call with the correction
-                try {
-                    const correctedResponse = await this.aiClient.generateResponse(correctionMessages);
-                    console.log('Generated corrected response after verification failure');
-                    // Add the corrected response to history
-                    this.state.addMessage(new AIMessage(correctedResponse));
-                    // Return the corrected response
-                    return correctedResponse;
-                }
-                catch (error) {
-                    console.error('Error generating corrected response:', error);
-                }
+        /**
+         * Renames a conversation
+         * @param conversationId The ID of the conversation to rename
+         * @param newTitle The new title for the conversation
+         * @returns true if successful, false otherwise
+         */
+    }
+    /**
+     * Renames a conversation
+     * @param conversationId The ID of the conversation to rename
+     * @param newTitle The new title for the conversation
+     * @returns true if successful, false otherwise
+     */
+    renameConversation(conversationId, newTitle) {
+        try {
+            const filePath = path.join(this.conversationsDir, `${conversationId}.json`);
+            if (!fs.existsSync(filePath)) {
+                console.error(`Conversation file not found: ${filePath}`);
+                return false;
             }
+            const conversationData = fs.readFileSync(filePath, 'utf-8');
+            const conversation = JSON.parse(conversationData);
+            // Update title
+            conversation.title = newTitle;
+            conversation.updatedAt = new Date().toISOString();
+            // Write updated conversation back to file
+            fs.writeFileSync(filePath, JSON.stringify(conversation, null, 2), 'utf-8');
+            console.log(`Renamed conversation ${conversationId} to: ${newTitle}`);
+            return true;
         }
-        // If no tool calls or verification issues, return the original response
-        return aiResponseContent;
+        catch (error) {
+            console.error('Error renaming conversation:', error);
+            return false;
+        }
     }
     /**
-     * Clears the conversation history.
+     * Deletes a conversation
+     * @param conversationId The ID of the conversation to delete
+     * @returns true if successful, false otherwise
      */
-    clearConversation() {
-        this.state.clearHistory();
-        console.log("Conversation history cleared.");
-    }
-    /**
-     * Gets the current conversation history.
-     */
-    getHistory() {
-        // Return messages including the system prompt for context
-        return this.state.getMessages();
+    deleteConversation(conversationId) {
+        try {
+            const filePath = path.join(this.conversationsDir, `${conversationId}.json`);
+            if (!fs.existsSync(filePath)) {
+                console.error(`Conversation file not found: ${filePath}`);
+                return false;
+            }
+            // Delete the file
+            fs.unlinkSync(filePath);
+            console.log(`Deleted conversation: ${conversationId}`);
+            // If the deleted conversation was the current one, create a new conversation
+            if (conversationId === this.currentConversationId) {
+                this.newConversation();
+            }
+            return true;
+        }
+        catch (error) {
+            console.error('Error deleting conversation:', error);
+            return false;
+        }
     }
 }
 //# sourceMappingURL=ConversationManager.js.map

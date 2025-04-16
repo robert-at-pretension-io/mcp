@@ -1,4 +1,4 @@
-import { SystemMessage } from './Message.js'; // Import specific types if needed
+import { SystemMessage, HumanMessage } from './Message.js'; // Import specific types if needed
 export class ConversationState {
     // Store messages in the order they occurred
     history = [];
@@ -131,12 +131,22 @@ export class ConversationState {
             return `${role.toUpperCase()}: ${content}`;
         }).join('\n\n');
         // Replace placeholder in the summarization prompt
-        const prompt = summarizePrompt.replace('{history_string}', historyString);
+        const promptText = summarizePrompt.replace('{history_string}', historyString);
         try {
-            // Use the same AI client to generate a summary
-            const summaryMessage = new SystemMessage(`[Previous conversation summary: ${prompt}]`);
-            // Replace older messages with summary
-            this.history = [summaryMessage, ...recentMessages];
+            // Create proper message sequence with system message first
+            const messages = [
+                new SystemMessage("You are a helpful assistant that summarizes conversation history."),
+                new HumanMessage(promptText)
+            ];
+            // Use the AI client to generate a summary with proper message order
+            const summaryContent = await aiClient.generateResponse(messages);
+            // Update the main system prompt with the summary prepended
+            const originalSystemPrompt = this.systemPromptMessage?.content || '';
+            const combinedSystemPrompt = `[Previous conversation summary: ${summaryContent}]\n\n${originalSystemPrompt}`;
+            this.setSystemPrompt(combinedSystemPrompt);
+            // Replace older messages with just the recent ones
+            this.history = recentMessages;
+            console.log('Compacted conversation history.');
         }
         catch (error) {
             console.error('Failed to compact conversation history:', error);

@@ -11,8 +11,8 @@
     --text-color: #334155; /* Slate 700 */
     --text-light: #94a3b8; /* Slate 400 */
     --border-color: #e2e8f0; /* Slate 200 */
-    --user-message-bg: #dbeafe; /* Blue 100 */
-    --user-message-border: #bfdbfe; /* Blue 200 */
+    --user-message-bg: #2563eb; /* Blue 600 */
+    --user-message-text: #ffffff; /* White */
     --ai-message-bg: #f1f5f9; /* Slate 100 */
     --ai-message-border: #e2e8f0; /* Slate 200 */
     --tool-message-bg: #f0fdf4; /* Green 50 */
@@ -31,6 +31,12 @@
     --radius-md: 0.5rem;
     --radius-lg: 0.75rem;
     --spinner-color: var(--primary-color);
+    
+    /* Scrollbar styling */
+    --scrollbar-width: 8px;
+    --scrollbar-track: transparent;
+    --scrollbar-thumb: rgba(148, 163, 184, 0.5); /* Slate 400 at 50% opacity */
+    --scrollbar-thumb-hover: rgba(148, 163, 184, 0.8); /* Slate 400 at 80% opacity */
 }
 
 * {

@@ -155,11 +155,17 @@ export class ConversationState {
     }).join('\n\n');
 
     // Replace placeholder in the summarization prompt
-    const prompt = summarizePrompt.replace('{history_string}', historyString);
+    const promptText = summarizePrompt.replace('{history_string}', historyString);
 
     try {
-      // Use the same AI client to generate a summary
-      const summaryContent = await aiClient.generateResponse([new SystemMessage(prompt)]);
+      // Create proper message sequence with system message first
+      const messages = [
+        new SystemMessage("You are a helpful assistant that summarizes conversation history."),
+        new HumanMessage(promptText)
+      ];
+      
+      // Use the AI client to generate a summary with proper message order
+      const summaryContent = await aiClient.generateResponse(messages);
       
       // Update the main system prompt with the summary prepended
       const originalSystemPrompt = this.systemPromptMessage?.content || '';

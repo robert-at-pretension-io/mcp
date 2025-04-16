@@ -11,9 +11,12 @@ export declare class HumanMessage extends LCHumanMessage {
 export declare class AIMessage extends LCAIMessage {
     hasToolCalls?: boolean;
     pendingToolCalls?: boolean;
-    constructor(content: string, options?: {
+    constructor(content: string | Record<string, any>[], // Content can be complex for tool calls
+    options?: {
         hasToolCalls?: boolean;
         pendingToolCalls?: boolean;
+        additional_kwargs?: Record<string, any>;
+        tool_calls?: any[];
     });
 }
 export declare class ToolMessage extends LCToolMessage {

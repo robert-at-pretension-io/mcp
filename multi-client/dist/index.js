@@ -156,22 +156,9 @@ async function main() {
         console.error(`Error loading or parsing ${providerModelsPath}:`, error instanceof Error ? error.message : String(error));
         // Continue without model suggestions
     }
-    // --- AI Client Initialization ---
-    // Use the new function that handles prompting for keys
-    const aiClient = await initializeAiClientWithPrompting(aiConfigData, providerModels, aiConfigPath);
-    let conversationManager = null;
     // --- Server Manager Initialization ---
-    const serverManager = new ServerManager(serversConfigData); // Use serversConfigData
-    // --- Conversation Manager Initialization (if AI client is available) ---
-    if (aiClient) {
-        conversationManager = new ConversationManager(aiClient, serverManager, providerModels);
-    }
-    else {
-        // Create a dummy or null ConversationManager if needed by Repl, or handle in Repl
-        console.log("ConversationManager not created due to missing AI client.");
-        // conversationManager = new DummyConversationManager(); // Or handle null in Repl
-    }
-    // --- Connect to Servers ---
+    const serverManager = new ServerManager(serversConfigData);
+    // --- Connect to Servers & Fetch Tools ---
     try {
         console.log('Connecting to configured servers...');
         const connectedServers = await serverManager.connectAll();
@@ -184,42 +171,83 @@ async function main() {
         console.error('Error connecting to servers:', error instanceof Error ? error.message : String(error));
         // Continue even if some servers failed to connect
     }
+    // --- Fetch All Available Tools ---
+    let availableTools = [];
+    try {
+        console.log('Fetching available tools from connected servers...');
+        availableTools = await serverManager.getAllTools();
+        console.log(`Found ${availableTools.length} tools across all connected servers.`);
+    }
+    catch (error) {
+        console.error('Error fetching tools:', error instanceof Error ? error.message : String(error));
+        // Continue, but AI might not have tool access
+    }
+    // --- AI Client Initialization ---
+    // Pass the fetched tools to the initialization function
+    const aiClient = await initializeAiClientWithPrompting(aiConfigData, providerModels, aiConfigPath, availableTools // Pass tools here
+    );
+    let conversationManager = null;
+    // --- Conversation Manager Initialization (if AI client is available) ---
+    if (aiClient) {
+        conversationManager = new ConversationManager(aiClient, serverManager, providerModels);
+    }
+    else {
+        console.log("ConversationManager not created due to missing AI client.");
+    }
     // --- REPL Setup ---
-    // Handle the case where conversationManager might be null
     if (!conversationManager) {
-        console.error("Cannot start REPL in chat mode without a configured AI provider. Exiting.");
-        // Optionally, start REPL in a limited command-only mode
-        // For now, let's exit if the primary purpose (chat) isn't available.
+        console.error("Cannot start REPL or Web UI in chat mode without a configured AI provider. Exiting.");
         await serverManager.closeAll(); // Clean up connected servers
         process.exit(1);
     }
-    const repl = new Repl(serverManager, conversationManager, providerModels); // Pass conversationManager and providerModels
+    const repl = new Repl(serverManager, conversationManager, providerModels);
     // --- Initialize Web Server (if enabled in command line args) ---
     let webServer = null;
     const useWeb = process.argv.includes('--web') || process.argv.includes('-w');
     const webPort = 3000; // Default port for web server
     if (useWeb && conversationManager) {
         webServer = new WebServer(conversationManager, serverManager, webPort);
-        webServer.start();
+        await webServer.init(); // Initialize asynchronously
+        webServer.start(); // Start after initialization
         console.log(`Web interface available at http://localhost:${webPort}`);
     }
     // --- Graceful Shutdown ---
     const shutdown = async (signal) => {
         console.log(`\nReceived ${signal}. Shutting down...`);
-        // Stop REPL
-        repl.stop();
-        // Stop web server if running
-        if (webServer) {
-            await webServer.stop();
+        // Set a timeout for force exit in case shutdown hangs
+        const exitTimer = setTimeout(() => forceExit(signal), forceExitTimeout);
+        try {
+            // Stop REPL
+            repl.stop();
+            // Stop web server if running
+            if (webServer) {
+                await webServer.stop();
+            }
+            // Close server connections
+            await serverManager.closeAll();
+            // Clear force exit timer since shutdown completed successfully
+            clearTimeout(exitTimer);
+            console.log('All server connections closed.');
+            process.exit(0);
         }
-        // Close server connections
-        await serverManager.closeAll();
-        console.log('All server connections closed.');
-        process.exit(0);
+        catch (error) {
+            console.error('Error during shutdown:', error);
+            // Clear force exit timer since we're exiting now
+            clearTimeout(exitTimer);
+            // Exit with error code
+            process.exit(1);
+        }
     };
     // Handle termination signals
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGTSTP', () => shutdown('SIGTSTP')); // Handle Ctrl+Z
+    // Ensure we exit even if shutdown doesn't complete cleanly
+    const forceExitTimeout = 5000; // 5 seconds
+    const forceExit = (signal) => {
+        console.log(`\nForcing exit after ${forceExitTimeout / 1000} seconds (signal: ${signal}).`);
+        process.exit(1);
+    };
     // Start REPL if web interface is not enabled or if explicitly requested
     const useRepl = !useWeb || process.argv.includes('--repl') || process.argv.includes('-r');
     if (useRepl) {
@@ -294,7 +322,8 @@ async function promptForInput(promptText, hideInput = false) {
 /**
  * Initializes the AI client, prompting for missing API keys if necessary.
  */
-async function initializeAiClientWithPrompting(aiConfigData, providerModels, aiConfigPath) {
+async function initializeAiClientWithPrompting(aiConfigData, providerModels, aiConfigPath, tools // Accept the list of tools
+) {
     const providerNames = Object.keys(aiConfigData.providers || {});
     const defaultProviderName = aiConfigData.defaultProvider;
     const aiProviders = aiConfigData.providers;
@@ -312,7 +341,8 @@ async function initializeAiClientWithPrompting(aiConfigData, providerModels, aiC
     let retries = 3; // Limit retries for prompting
     while (retries > 0 && aiClient === null) {
         try {
-            aiClient = AiClientFactory.createClient(defaultProviderConfig, providerModels);
+            // Pass the tools to the factory
+            aiClient = AiClientFactory.createClient(defaultProviderConfig, providerModels, tools);
             console.log(`Initialized default AI client: ${defaultProviderName} (${aiClient.getModelName()})`);
         }
         catch (error) {

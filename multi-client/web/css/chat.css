@@ -9,12 +9,34 @@
 
 .conversation {
     flex-grow: 1;
-    overflow-y: auto;
+    overflow-y: scroll;
     padding: 1rem;
     background-color: var(--panel-bg);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     margin-bottom: 1rem;
+    max-height: calc(100vh - 200px);
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Custom scrollbar for Webkit browsers */
+.conversation::-webkit-scrollbar {
+    width: var(--scrollbar-width);
+}
+
+.conversation::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: var(--radius);
+}
+
+.conversation::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: var(--radius);
+}
+
+.conversation::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
 }
 
 .input-area {
@@ -35,11 +57,17 @@
 .message {
     margin-bottom: 1rem;
     padding: 0.75rem 1rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     max-width: 85%;
     position: relative;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
     animation: fadeIn 0.3s ease-out;
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.message:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
 }
 
 @keyframes fadeIn {
@@ -54,7 +82,7 @@
     margin: 0.5rem auto; /* Center it slightly */
     max-width: 90%;
     font-size: 0.85rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
 }
 
 .system-message .message-header {
@@ -64,16 +92,50 @@
 
 .user-message {
     background-color: var(--user-message-bg);
-    border: 1px solid var(--user-message-border);
+    color: var(--user-message-text);
     margin-left: auto;
-    border-bottom-right-radius: 0.25rem;
+    border-bottom-right-radius: 0;
+    position: relative;
+}
+
+.user-message:after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: -10px;
+    width: 20px;
+    height: 20px;
+    background: var(--user-message-bg);
+    border-bottom-left-radius: 10px;
+    z-index: -1;
+}
+
+.user-message .message-header {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.user-message .message-time {
+    color: rgba(255, 255, 255, 0.7);
 }
 
 .ai-message {
     background-color: var(--ai-message-bg);
     border: 1px solid var(--ai-message-border);
     margin-right: auto;
-    border-bottom-left-radius: 0.25rem;
+    border-bottom-left-radius: 0;
+    position: relative;
+}
+
+.ai-message:after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: -10px;
+    width: 20px;
+    height: 20px;
+    background: var(--ai-message-bg);
+    border-bottom-right-radius: 10px;
+    z-index: -1;
 }
 
 .tool-message {
@@ -83,12 +145,16 @@
     font-family: 'Jetbrains Mono', 'Consolas', monospace;
     white-space: pre-wrap;
     font-size: 0.85rem;
+    backdrop-filter: blur(4px);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.75rem; /* Reduced padding */
 }
 
 .error-message {
     background-color: var(--error-bg);
     border: 1px solid var(--error-border);
     margin-right: auto;
+    border-radius: var(--radius-md);
 }
 
 .message-header {
@@ -125,27 +191,27 @@
 /* Tool Call Formatting */
 .tool-call {
     background-color: rgba(124, 58, 237, 0.1); /* Use secondary color */
-    padding: 0.75rem;
+    padding: 0.4rem 0.5rem;
     border-radius: var(--radius-sm);
-    margin: 0.75rem 0;
+    margin: 0.5rem 0;
     border-left: 3px solid var(--secondary-color);
 }
 
 .tool-call-header {
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     color: var(--secondary-color);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
 }
 
 .tool-call-content {
     white-space: pre-wrap;
     font-family: 'Jetbrains Mono', 'Consolas', monospace;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     overflow-x: auto;
-    line-height: 1.5;
+    line-height: 1.4;
     color: var(--text-color);
     background-color: rgba(255, 255, 255, 0.5);
-    padding: 0.5rem;
+    padding: 0.25rem 0.4rem;
     border-radius: var(--radius-sm);
 }

@@ -57,7 +57,7 @@
 }
 
 .panel-section.active .panel-content {
-    max-height: 500px; /* Adjust as needed, should be larger than content */
+    max-height: max-content; /* Allow content to determine height */
     overflow-y: auto; /* Allow scrolling if content exceeds max-height */
     padding: 1rem; /* Restore padding when open */
     border-top: 1px solid var(--border-color); /* Separator */
