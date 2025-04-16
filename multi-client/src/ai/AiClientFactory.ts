@@ -7,6 +7,11 @@ import { ChatFireworks } from '@langchain/community/chat_models/fireworks';
 // Removing TogetherAI for now due to import issues
 
 import type { BaseChatModel, BaseChatModelCallOptions } from '@langchain/core/language_models/chat_models';
+// Import necessary types for RunnableInterface and its inputs/outputs
+import type { RunnableInterface } from "@langchain/core/runnables";
+import type { BaseLanguageModelInput } from "@langchain/core/language_models/base";
+import type { BaseMessageChunk } from "@langchain/core/messages";
+
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'; // Import MCP Tool type
 import type { StructuredToolInterface } from '@langchain/core/tools'; // Import LangChain Tool type
 import { convertToLangChainTool } from '../utils/toolConverter.js'; // We'll create this utility
