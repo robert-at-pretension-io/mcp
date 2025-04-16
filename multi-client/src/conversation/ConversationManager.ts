@@ -448,18 +448,65 @@ export class ConversationManager {
                try {
                    // Pass the history *including* the failed response for context
                    const historyForCorrection = this.state.getMessages();
-                   finalResponseContent = await this.verificationService.generateCorrectedResponse(
+                   const correctedResponseContent = await this.verificationService.generateCorrectedResponse(
                        historyForCorrection,
                        finalResponseContent, // Pass the failed content
                        verificationResult.feedback
                    );
+
+                   // --- Check if corrected response has tool calls ---
+                   const correctedAiMessage = new AIMessage(correctedResponseContent);
+                   const correctedToolCalls = (correctedAiMessage.tool_calls || [])
+                       .filter((tc): tc is { id: string; name: string; args: Record<string, any> } => tc.id !== undefined);
+
+                   if (correctedToolCalls.length > 0) {
+                       console.log(`[ConversationManager] Corrected response contains ${correctedToolCalls.length} tool calls. Executing them.`);
+
+                       // Add the corrected AI message (requesting tools) to history
+                       correctedAiMessage.hasToolCalls = true;
+                       correctedAiMessage.pendingToolCalls = true; // Will be set to false shortly
+                       this.state.addMessage(correctedAiMessage);
+                       this.saveConversation();
+
+                       // Prepare tool calls for execution
+                       const toolCallsToExecute: ToolCallRequest[] = correctedToolCalls.map(tc => ({
+                           id: tc.id,
+                           name: tc.name,
+                           args: tc.args
+                       }));
+
+                       // Execute tools
+                       const toolResultsMap = await this.toolExecutor.executeToolCalls(toolCallsToExecute);
+                       correctedAiMessage.pendingToolCalls = false; // Mark as done
+
+                       // Add tool results to history using standard ToolMessage
+                       console.log("[ConversationManager] Adding results from corrected response using standard ToolMessage.");
+                       for (const executedCall of toolCallsToExecute) {
+                           const result = toolResultsMap.get(executedCall.id) || `Error: Result not found for tool call ${executedCall.id}`;
+                           this.state.addMessage(new ToolMessage(result, executedCall.id, executedCall.name));
+                       }
+                       this.saveConversation(); // Save after adding results
+
+                       // Make the final AI call after executing tools from the corrected response
+                       console.log("[ConversationManager] Making final AI call after executing tools from corrected response.");
+                       finalResponseContent = await this._makeAiCall(); // Update final content
+
+                   } else {
+                       // No tool calls in corrected response, just use it as the final content
+                       console.log('[ConversationManager] Corrected response has no tool calls.');
+                       finalResponseContent = correctedResponseContent;
+                       // The main processUserMessage adds the final AIMessage at the end.
+                   }
+                   // --- End tool check for corrected response ---
+
                } catch (error) {
-                   console.error('[ConversationManager] Error generating corrected response:', error);
+                   console.error('[ConversationManager] Error during verification correction phase:', error);
                    // Keep the uncorrected response if retry fails
+                   // finalResponseContent remains the original responseContent before correction attempt
                }
            }
        }
-       return finalResponseContent;
+       return finalResponseContent; // Return the potentially corrected (and tool-processed) content
    }
 
 
