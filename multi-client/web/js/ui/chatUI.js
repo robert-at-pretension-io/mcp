@@ -134,7 +134,8 @@ function addMessageToConversation(role, content, hasToolCalls = false, isPending
         case 'error': bubbleClass += ' chat-bubble-error'; break;
         default: bubbleClass += ' chat-bubble-ai'; // Default to AI style
     }
-    messageElement.className = bubbleClass;
+    // Add base bubble class and hover effect class directly
+    messageElement.className = `${bubbleClass} hover:shadow-md`;
 
     if (isPending) {
         messageElement.classList.add('opacity-70'); // Use Tailwind opacity for pending
