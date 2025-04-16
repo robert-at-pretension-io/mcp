@@ -89,13 +89,17 @@ export function init() {
 // --- Common Modal Functions ---
 function openModal(modalElement) {
     if (modalElement) {
-        modalElement.style.display = 'block';
+        modalElement.classList.remove('hidden'); // Use Tailwind hidden class
+        // Add class to body to prevent scrolling behind modal?
+        // document.body.classList.add('overflow-hidden');
     }
 }
 
 function closeModal(modalElement) {
     if (modalElement) {
-        modalElement.style.display = 'none';
+        modalElement.classList.add('hidden'); // Use Tailwind hidden class
+        // Remove body class
+        // document.body.classList.remove('overflow-hidden');
     }
 }
 
@@ -394,13 +398,13 @@ function populateServerForm(serverName) {
 }
 
 function showServerForm() {
-    if (serverForm) serverForm.classList.remove('hidden');
-    if (noServerSelected) noServerSelected.classList.add('hidden');
+    if (serverForm) serverForm.classList.remove('hidden'); // Use Tailwind hidden
+    if (noServerSelected) noServerSelected.classList.add('hidden'); // Use Tailwind hidden
 }
 
 function hideServerForm() {
-    if (serverForm) serverForm.classList.add('hidden');
-    if (noServerSelected) noServerSelected.classList.remove('hidden');
+    if (serverForm) serverForm.classList.add('hidden'); // Use Tailwind hidden
+    if (noServerSelected) noServerSelected.classList.remove('hidden'); // Use Tailwind hidden
     // Optionally clear form fields
     if (serverNameInput) serverNameInput.value = '';
     if (serverCommandInput) serverCommandInput.value = '';
@@ -451,10 +455,11 @@ function deleteServer(serverName) {
 function addArgItem(value = '') {
     if (!serverArgsList) return;
     const item = document.createElement('div');
-    item.className = 'arg-item';
+    // Use Tailwind classes for layout and styling
+    item.className = 'flex items-center gap-2';
     item.innerHTML = `
-        <input type="text" class="arg-input" value="${escapeHtml(value)}" placeholder="Argument value">
-        <button class="remove-btn" title="Remove argument"><i class="fas fa-times"></i></button>
+        <input type="text" class="form-input flex-grow rounded-md text-sm" value="${escapeHtml(value)}" placeholder="Argument value">
+        <button class="remove-btn btn-icon text-danger hover:bg-danger/10 p-1" title="Remove argument"><i class="fas fa-times"></i></button>
     `;
     item.querySelector('.remove-btn').addEventListener('click', () => item.remove());
     serverArgsList.appendChild(item);
@@ -463,11 +468,12 @@ function addArgItem(value = '') {
 function addEnvItem(key = '', value = '') {
      if (!serverEnvList) return;
     const item = document.createElement('div');
-    item.className = 'env-item';
+    // Use Tailwind classes for layout and styling
+    item.className = 'flex items-center gap-2';
     item.innerHTML = `
-        <input type="text" class="key-input" value="${escapeHtml(key)}" placeholder="Key">
-        <input type="text" class="value-input" value="${escapeHtml(value)}" placeholder="Value">
-        <button class="remove-btn" title="Remove variable"><i class="fas fa-times"></i></button>
+        <input type="text" class="form-input w-1/3 rounded-md text-sm" value="${escapeHtml(key)}" placeholder="Key">
+        <input type="text" class="form-input flex-grow rounded-md text-sm" value="${escapeHtml(value)}" placeholder="Value">
+        <button class="remove-btn btn-icon text-danger hover:bg-danger/10 p-1" title="Remove variable"><i class="fas fa-times"></i></button>
     `;
     item.querySelector('.remove-btn').addEventListener('click', () => item.remove());
     serverEnvList.appendChild(item);

@@ -119,53 +119,29 @@ export function renderConversationHistory(history) {
 function addMessageToConversation(role, content, hasToolCalls = false, isPending = false) {
     if (!conversationElement) return;
 
-    // Create a wrapper div to better position messages
+    // Create a wrapper div for alignment
     const wrapperElement = document.createElement('div');
-    wrapperElement.className = role === 'human' ? 'flex justify-end mb-3' : 'flex justify-start mb-3';
-    
+    wrapperElement.className = role === 'human' ? 'flex justify-end mb-4' : 'flex justify-start mb-4'; // Increased margin
+
     const messageElement = document.createElement('div');
-    // Map roles to CSS classes
-    const roleClassMap = {
-        human: 'user-message', // Use 'human' role from LangChain
-        ai: 'ai-message',
-        tool: 'tool-message',
-        system: 'system-message',
-        error: 'error-message'
-    };
-    // Map roles to Tailwind background/text colors
-    const tailwindClassMap = {
-        human: 'bg-blue-500 text-white rounded-br-none',
-        ai: 'bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-bl-none',
-        tool: 'bg-gray-800 text-gray-100 font-mono text-sm whitespace-pre-wrap py-2', // Keep tool styling distinct
-        system: 'bg-amber-50 text-amber-800 border border-amber-100 text-sm',
-        error: 'bg-red-50 text-red-800 border border-red-200'
-    };
-
-    const cssClass = roleClassMap[role] || 'system-message'; // Fallback class
-    const tailwindClasses = tailwindClassMap[role] || tailwindClassMap['system']; // Fallback style
-
-    // Apply base classes, role-specific class, and Tailwind classes
-    messageElement.className = `message ${cssClass} ${tailwindClasses} px-3 py-2 rounded-lg shadow-sm relative transition-all hover:translate-y-[-2px] hover:shadow-md`;
+    // Apply base chat bubble styles and role-specific styles using @apply classes
+    let bubbleClass = 'chat-bubble'; // Base class defined in base.css @layer components
+    switch (role) {
+        case 'human': bubbleClass += ' chat-bubble-user'; break;
+        case 'ai': bubbleClass += ' chat-bubble-ai'; break;
+        case 'tool': bubbleClass += ' chat-bubble-tool'; break;
+        case 'system': bubbleClass += ' chat-bubble-system'; wrapperElement.className = 'flex justify-center mb-4'; break; // Center system messages
+        case 'error': bubbleClass += ' chat-bubble-error'; break;
+        default: bubbleClass += ' chat-bubble-ai'; // Default to AI style
+    }
+    messageElement.className = bubbleClass;
 
     if (isPending) {
-        messageElement.classList.add('pending', 'opacity-70');
+        messageElement.classList.add('opacity-70'); // Use Tailwind opacity for pending
     }
-
-    // Adjust wrapper and message width based on role
-    if (role === 'human') {
-        messageElement.classList.add('max-w-[85%]');
-    } else if (role === 'ai') {
-        messageElement.classList.add('w-full', 'max-w-[85%]');
-    } else if (role === 'system') {
-        wrapperElement.className = 'flex justify-center mb-4'; // Center system messages
-        messageElement.classList.add('max-w-[90%]');
-    } else if (role === 'tool' || role === 'error') {
-        messageElement.classList.add('w-full'); // Full width for tool/error
-    }
-
 
     const now = new Date();
-    const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); // Simpler time format
+    const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     let roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
     if (role === 'human') roleLabel = 'User';
@@ -188,11 +164,11 @@ function addMessageToConversation(role, content, hasToolCalls = false, isPending
     }
 
     messageElement.innerHTML = `
-        <div class="message-header flex justify-between items-center mb-1 text-sm font-semibold">
+        <div class="flex justify-between items-center mb-1 text-xs font-medium opacity-80">
             <span>${escapeHtml(roleLabel)}</span>
-            <span class="message-time text-xs opacity-75">${timeString}</span>
+            <span class="message-time">${timeString}</span>
         </div>
-        <div class="message-content whitespace-pre-wrap break-words text-sm leading-normal">${contentHtml}</div>
+        <div class="message-content whitespace-pre-wrap break-words text-sm leading-relaxed">${contentHtml}</div>
     `;
 
     // Add message to wrapper, then add wrapper to conversation
@@ -224,15 +200,15 @@ export function updateThinkingIndicator(thinking, statusMessage = 'AI is thinkin
     appState.setThinking(thinking); // Update shared state
 
     if (thinking) {
-        thinkingSpinner.classList.remove('hidden');
+        thinkingSpinner.classList.remove('hidden'); // Use Tailwind's hidden utility
         sendButton.disabled = true;
-        userInputElement.disabled = true; // Disable input while thinking
-        appState.setStatus(statusMessage); // Update footer status via state
+        userInputElement.disabled = true;
+        appState.setStatus(statusMessage);
     } else {
-        thinkingSpinner.classList.add('hidden');
+        thinkingSpinner.classList.add('hidden'); // Use Tailwind's hidden utility
         sendButton.disabled = false;
         userInputElement.disabled = false;
-        appState.setStatus('Ready'); // Reset footer status via state
+        appState.setStatus('Ready');
     }
 }
 

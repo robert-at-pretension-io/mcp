@@ -4,10 +4,12 @@ import { openModelModal } from './modalUI.js'; // To open modals
 import { openServersModal } from './modalUI.js';
 
 // DOM Elements
+// DOM Elements
 let connectedServersElement;
 let aiModelElement;
 let changeModelBtn;
 let manageServersBtn;
+// No need for toggle button reference here, handled in sidebarUI
 
 export function init() {
     connectedServersElement = document.getElementById('connected-servers');
@@ -23,6 +25,7 @@ export function init() {
     // Event Listeners
     changeModelBtn.addEventListener('click', openModelModal);
     manageServersBtn.addEventListener('click', openServersModal);
+    // Toggle button listener moved to sidebarUI
 
     console.log("Header UI initialized.");
 }

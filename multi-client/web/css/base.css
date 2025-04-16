@@ -1,16 +1,142 @@
-/* Simplified base styles with Tailwind */
+/* Define CSS Variables for Theme */
 :root {
-  /* Core color variables that might be needed for JS references */
-  --primary-color: #3b82f6;
-  --secondary-color: #6366f1;
-  --success-color: #22c55e;
-  --warning-color: #f59e0b;
-  --danger-color: #ef4444;
+  --color-primary: #3b82f6; /* blue-500 */
+  --color-secondary: #6366f1; /* indigo-500 */
+  --color-success: #22c55e; /* green-500 */
+  --color-warning: #f59e0b; /* amber-500 */
+  --color-danger: #ef4444; /* red-500 */
+
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-400: #fbbf24; /* Adjusted for warning */
+  --color-amber-600: #d97706;
+  --color-amber-800: #92400e;
+  --color-amber-900: #78350f;
+
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-800: #991b1b;
+  --color-red-900: #7f1d1d;
+
+  --color-purple-100: #f3e8ff;
+  --color-purple-400: #c084fc;
+  --color-purple-500: #a855f7;
+  --color-purple-700: #7e22ce;
+  --color-purple-900: #581c87;
+
+  /* Add spacing, radius, shadow variables if desired */
+  /* --space-4: 1rem; */
+  /* --radius-lg: 0.5rem; */
+  /* --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); */
 }
 
-/* Only apply basic resets if they're not covered by Tailwind */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* Import Tailwind base, components, and utilities */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Define custom components using @apply */
+@layer components {
+  /* Example: Reusable card style */
+  .card {
+    @apply rounded-xl shadow-md bg-white dark:bg-gray-800 overflow-hidden;
+  }
+
+  /* Example: Button styles */
+  .btn {
+    @apply px-4 py-2 rounded-lg transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800;
+  }
+  .btn-primary {
+    @apply btn bg-primary hover:bg-primary/90 text-white focus:ring-primary;
+  }
+  .btn-secondary {
+    @apply btn bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white focus:ring-gray-400;
+  }
+  .btn-icon {
+     @apply p-1.5 rounded-full hover:bg-primary/10 text-primary focus:ring-primary;
+  }
+  .btn-icon-sm {
+     @apply p-1 rounded hover:bg-white/10 text-white focus:ring-white;
+  }
+
+  /* Example: Chat bubble styles */
+  .chat-bubble {
+     @apply px-3 py-2 rounded-lg shadow-sm relative transition-all hover:-translate-y-0.5 hover:shadow-md max-w-[85%] animate-fadeIn;
+  }
+  .chat-bubble-user {
+    @apply chat-bubble bg-primary text-white rounded-br-none;
+  }
+  .chat-bubble-ai {
+    @apply chat-bubble bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-bl-none w-full;
+  }
+   .chat-bubble-tool {
+    @apply chat-bubble bg-gray-800 text-gray-100 font-mono text-sm whitespace-pre-wrap py-2 w-full;
+  }
+   .chat-bubble-system {
+    @apply chat-bubble bg-amber-50 text-amber-800 border border-amber-100 text-sm max-w-[90%];
+  }
+   .chat-bubble-error {
+    @apply chat-bubble bg-red-50 text-red-800 border border-red-200 w-full;
+  }
+
+  /* Example: Modal styles */
+  .modal {
+    @apply fixed inset-0 z-50 bg-black/60 backdrop-blur-sm overflow-y-auto p-5 animate-modalFadeIn;
+  }
+  .modal-content {
+    @apply bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 mx-auto my-8 animate-modalSlideIn max-h-[calc(100vh-4rem)] overflow-y-auto;
+  }
+  .modal-close {
+    @apply text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-2xl cursor-pointer transition-transform hover:rotate-90;
+  }
+
+  /* Example: Sidebar panel section */
+  .panel-section {
+     @apply card; /* Use card component */
+  }
+  .panel-header {
+     @apply px-5 py-3 bg-gray-50 dark:bg-gray-700 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors;
+  }
+  .panel-content {
+     @apply max-h-0 overflow-hidden transition-all duration-300 ease-out opacity-0 transform -translate-y-2;
+  }
+  .panel-section.active .panel-content {
+     @apply max-h-[500px] /* Adjust as needed */ overflow-y-auto opacity-100 transform translate-y-0;
+  }
+
+  /* Example: Toast notification */
+  .toast {
+    @apply fixed bottom-5 right-5 z-[150] flex items-center gap-3 p-4 rounded-lg shadow-xl border-l-4 transition-all duration-300 ease-out transform translate-x-full opacity-0;
+    min-width: 250px;
+    max-width: 400px;
+  }
+  .toast.show {
+    @apply translate-x-0 opacity-100;
+  }
+  .toast.success { @apply bg-green-50 dark:bg-green-900/50 border-success text-green-800 dark:text-green-200; }
+  .toast.error { @apply bg-red-50 dark:bg-red-900/50 border-danger text-red-800 dark:text-red-200; }
+  .toast.warning { @apply bg-amber-50 dark:bg-amber-900/50 border-warning text-amber-800 dark:text-amber-200; }
+  .toast.info { @apply bg-blue-50 dark:bg-blue-900/50 border-primary text-blue-800 dark:text-blue-200; }
+  .toast-icon { @apply text-xl; }
+  .toast-content { @apply flex-grow; }
+  .toast-title { @apply font-bold; }
+  .toast-message { @apply text-sm; }
+  .toast-close { @apply text-inherit opacity-70 hover:opacity-100; }
+
+  /* Spinner */
+  .spinner {
+    @apply absolute top-2 right-2 w-5 h-5 border-3 border-black/10 dark:border-white/10 border-l-primary rounded-full animate-spin;
+  }
 }

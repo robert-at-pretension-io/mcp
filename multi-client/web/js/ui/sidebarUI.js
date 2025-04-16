@@ -8,8 +8,10 @@ import { openConfigEditor } from './modalUI.js'; // Import modal function
 import { showToast } from './toast.js'; // Import toast for errors
 
 // DOM Elements
-let mainElement;
-let toggleRightPanelBtn;
+// DOM Elements
+let rightPanel; // The actual panel element
+let toggleRightPanelBtn; // Button in header
+let closeRightPanelBtn; // Button inside panel (for mobile)
 let conversationsListElement;
 let newConversationBtn;
 let providersListElement;
@@ -78,18 +80,20 @@ function toggleAccordionSection(sectionToToggle) {
             section.classList.remove('active'); // Close all other sections
         }
     });
-}
+    rightPanel = document.getElementById('right-panel');
+    closeRightPanelBtn = document.getElementById('close-right-panel-btn');
 
-function toggleRightPanel() {
-    mainElement.classList.toggle('panel-collapsed');
-    // Update icon (optional)
-    const icon = toggleRightPanelBtn.querySelector('i');
-    if (icon) {
-        icon.className = mainElement.classList.contains('panel-collapsed')
-            ? 'fas fa-columns' // Icon to show when collapsed (suggests expanding)
-            : 'fas fa-times'; // Icon to show when expanded (suggests closing) - Use fa-times or fa-chevron-right
+    if (!rightPanel || !toggleRightPanelBtn || !closeRightPanelBtn || !conversationsListElement || !newConversationBtn || !providersListElement || !toolsListElement || !toolFilterInput || !editConfigsBtn || !panelSections) {
+        console.error("Sidebar UI elements not found!");
+        return;
     }
-}
+
+    // Event Listeners
+    toggleRightPanelBtn.addEventListener('click', toggleRightPanel);
+    closeRightPanelBtn.addEventListener('click', toggleRightPanel); // Close button also toggles
+    newConversationBtn.addEventListener('click', handleNewConversation);
+    toolFilterInput.addEventListener('input', handleToolFilterChange);
+    editConfigsBtn.addEventListener('click', showConfigOptions);
 
 function handleNewConversation() {
     emitNewConversation();
@@ -149,18 +153,19 @@ export function renderConversationsList() {
         }
 
 
+        const activeClasses = isActive ? 'bg-primary/10 dark:bg-primary/20 border-primary' : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-700';
         html += `
-            <div class="conversation-item ${isActive ? 'active' : ''}" data-id="${escapeHtml(conversation.id)}">
-                <div class="conversation-title">${escapeHtml(conversation.title || 'Untitled Conversation')}</div>
-                <div class="conversation-meta">
-                    <span class="conversation-model" title="${escapeHtml(conversation.provider || '')} - ${escapeHtml(conversation.modelName || '')}">
-                        ${escapeHtml(conversation.provider?.substring(0, 10) || 'N/A')} - ${escapeHtml(conversation.modelName?.substring(0, 15) || 'N/A')}
+            <div class="conversation-item p-3 rounded-lg border ${activeClasses} cursor-pointer transition-colors group relative" data-id="${escapeHtml(conversation.id)}">
+                <div class="font-medium text-sm truncate mb-1">${escapeHtml(conversation.title || 'Untitled Conversation')}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400 flex justify-between items-center">
+                    <span class="truncate" title="${escapeHtml(conversation.provider || '')} - ${escapeHtml(conversation.modelName || '')}">
+                        ${escapeHtml(conversation.provider?.substring(0, 8) || 'N/A')} - ${escapeHtml(conversation.modelName?.substring(0, 12) || 'N/A')}
                     </span>
-                    <span class="conversation-date" title="${formattedDate}">${relativeTime}</span>
+                    <span class="conversation-date flex-shrink-0 ml-2" title="${formattedDate}">${relativeTime}</span>
                 </div>
-                <div class="conversation-actions">
-                    <button class="conversation-rename-btn" title="Rename conversation"><i class="fas fa-edit"></i></button>
-                    <button class="conversation-delete-btn" title="Delete conversation"><i class="fas fa-trash"></i></button>
+                <div class="conversation-actions absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                    <button class="conversation-rename-btn btn-icon p-1 text-xs" title="Rename"><i class="fas fa-edit"></i></button>
+                    <button class="conversation-delete-btn btn-icon p-1 text-xs text-danger hover:bg-danger/10" title="Delete"><i class="fas fa-trash"></i></button>
                 </div>
             </div>
         `;
@@ -256,15 +261,15 @@ export function renderProvidersList() {
     for (const name of sortedProviderNames) {
         const config = providers[name];
         const isActive = name === currentProvider;
+        const activeClasses = isActive ? 'bg-primary/10 dark:bg-primary/20 border-primary' : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-700';
         html += `
-            <div class="provider-item ${isActive ? 'active' : ''}" data-provider="${escapeHtml(name)}">
-                <div class="provider-name">
-                    <span>${escapeHtml(name)}</span>
-                    ${isActive ? '<i class="fas fa-check-circle" title="Active Provider"></i>' : ''}
+            <div class="provider-item p-3 rounded-lg border ${activeClasses} cursor-pointer transition-colors" data-provider="${escapeHtml(name)}">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="font-medium text-sm">${escapeHtml(name)}</span>
+                    ${isActive ? '<i class="fas fa-check-circle text-success" title="Active Provider"></i>' : ''}
                 </div>
-                <div class="provider-model" title="${escapeHtml(config.model || '')}">
-                    ${escapeHtml(config.model || 'Default model')}
-                    ${isActive ? ' (Active)' : ''}
+                <div class="text-xs text-gray-500 dark:text-gray-400 truncate" title="${escapeHtml(config.model || '')}">
+                    Model: ${escapeHtml(config.model || 'Default')}
                 </div>
             </div>
         `;
@@ -316,26 +321,30 @@ export function renderToolsList(toolsByServer) { // Expects { serverName: [tools
 
         if (filteredTools.length > 0) {
             foundTools = true;
-            html += `<div class="tool-server-group"><h4>${escapeHtml(serverName)}</h4>`;
+            html += `<div class="tool-server-group mb-4 last:mb-0">
+                        <h4 class="text-sm font-semibold mb-2 text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 pb-1">${escapeHtml(serverName)}</h4>
+                        <div class="space-y-2">`;
             filteredTools.forEach(tool => {
                 html += `
-                    <div class="tool-item">
-                        <h5>${escapeHtml(tool.name)}</h5>
-                        <div class="tool-description">${escapeHtml(tool.description || 'No description')}</div>
+                    <div class="tool-item p-2 rounded bg-gray-50 dark:bg-gray-700/50">
+                        <h5 class="text-sm font-medium">${escapeHtml(tool.name)}</h5>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">${escapeHtml(tool.description || 'No description')}</p>
                     </div>
                 `;
             });
-            html += `</div>`;
+            html += `   </div>
+                     </div>`;
         }
     }
 
+    const emptyListClasses = "text-center text-sm text-gray-500 dark:text-gray-400 py-4";
     if (!foundTools) {
         if (Object.keys(toolsByServer || {}).length === 0) {
-            html = '<div class="empty-list">No tools available from connected servers.</div>';
+            html = `<div class="${emptyListClasses}">No tools available from connected servers.</div>`;
         } else if (filterText) {
-            html = `<div class="empty-list">No tools match filter "${escapeHtml(filterText)}".</div>`;
+            html = `<div class="${emptyListClasses}">No tools match filter "${escapeHtml(filterText)}".</div>`;
         } else {
-             html = '<div class="empty-list">No tools found.</div>';
+             html = `<div class="${emptyListClasses}">No tools found.</div>`;
         }
     }
 

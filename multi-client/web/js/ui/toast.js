@@ -28,28 +28,28 @@ export function showToast(type, title, message) {
         clearTimeout(toastTimeout);
     }
 
-    // Create toast element
+    // Create toast element using Tailwind classes defined in base.css @layer components
     const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
+    toast.className = `toast ${type}`; // Base class + type for styling
 
-    // Set icon based on type
-    let icon = '';
+    // Set icon based on type using FontAwesome classes
+    let iconClass = '';
     switch (type) {
-        case 'success': icon = '<i class="fas fa-check-circle"></i>'; break;
-        case 'error': icon = '<i class="fas fa-exclamation-circle"></i>'; break;
-        case 'warning': icon = '<i class="fas fa-exclamation-triangle"></i>'; break;
-        case 'info': icon = '<i class="fas fa-info-circle"></i>'; break;
-        default: icon = '<i class="fas fa-bell"></i>'; // Default icon
+        case 'success': iconClass = 'fas fa-check-circle'; break;
+        case 'error': iconClass = 'fas fa-exclamation-circle'; break;
+        case 'warning': iconClass = 'fas fa-exclamation-triangle'; break;
+        case 'info': iconClass = 'fas fa-info-circle'; break;
+        default: iconClass = 'fas fa-bell'; // Default icon
     }
 
-    // Create toast content
+    // Create toast content using Tailwind structure
     toast.innerHTML = `
-        <div class="toast-icon">${icon}</div>
+        <div class="toast-icon"><i class="${iconClass}"></i></div>
         <div class="toast-content">
             <div class="toast-title">${escapeHtml(title)}</div>
             <div class="toast-message">${escapeHtml(message)}</div>
         </div>
-        <button class="toast-close"><i class="fas fa-times"></i></button>
+        <button class="toast-close ml-auto p-1"><i class="fas fa-times"></i></button>
     `;
 
     // Add close functionality

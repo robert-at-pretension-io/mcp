@@ -5,13 +5,15 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "build:css": "npx tailwindcss -i ./web/css/base.css -o ./web/build/tailwind.css || node web/build/build-css.js",
+    "build:css": "tailwindcss -i ./web/css/base.css -o ./web/build/tailwind.css --minify",
+    "build:ts": "tsc",
+    "build": "npm run build:css && npm run build:ts",
     "start": "node dist/index.js",
-    "dev": "tsc && node dist/index.js",
-    "web": "npm run build:css && tsc && node --unhandled-rejections=strict dist/index.js --web",
-    "both": "npm run build:css && tsc && node --unhandled-rejections=strict dist/index.js --web --repl",
-    "watch:css": "npx tailwindcss -i ./web/css/base.css -o ./web/build/tailwind.css --watch || node web/build/build-css.js",
+    "dev": "npm run build && node dist/index.js",
+    "web": "npm run build && node --unhandled-rejections=strict dist/index.js --web",
+    "both": "npm run build && node --unhandled-rejections=strict dist/index.js --web --repl",
+    "watch:css": "tailwindcss -i ./web/css/base.css -o ./web/build/tailwind.css --watch",
+    "watch:ts": "tsc --watch",
     "lint": "tsc --noEmit"
   },
   "keywords": [
@@ -38,8 +40,10 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@tailwindcss/forms": "^0.5.7",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
-    "@types/uuid": "^9.0.8"
+    "@types/uuid": "^9.0.8",
+    "tailwindcss-animate": "^1.0.7"
   }
 }
