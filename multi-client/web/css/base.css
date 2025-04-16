@@ -56,7 +56,7 @@
 
   /* Example: Button styles */
   .btn {
-    @apply px-4 py-2 rounded-lg transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800;
+    @apply rounded-lg transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800; /* Removed px-4 py-2 */
   }
   .btn-primary {
     @apply btn bg-primary hover:bg-primary/90 text-white focus:ring-primary;
