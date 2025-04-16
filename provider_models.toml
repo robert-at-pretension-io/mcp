@@ -96,3 +96,13 @@ models = [
 #     "Phind-70B",
 #     # Add other Phind models
 # ]
+
+[openrouter]
+models = [
+  "openai/gpt-4o",
+  "anthropic/claude-3-opus-20240229",
+  "anthropic/claude-3-5-sonnet-20240620",
+  "meta-llama/llama-3-70b-instruct",
+  "mistral/mistral-large-latest",
+  "google/gemini-pro"
+]
