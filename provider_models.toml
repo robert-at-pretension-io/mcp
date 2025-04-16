@@ -77,7 +77,17 @@ models = [
 
 [openrouter]
 models = [
-    "openrouter/optimus-alpha",
+  "openai/gpt-4o",
+  "anthropic/claude-3-opus-20240229",
+  "anthropic/claude-3-5-sonnet-20240620",
+  "meta-llama/llama-3-70b-instruct",
+  "mistral/mistral-large-latest",
+  "google/gemini-pro"
+]
+
+# [openrouter] # This section is being replaced, remove the old one below
+# models = [
+#     "openrouter/optimus-alpha",
     # OpenAI
     "openai/gpt-4o",
     "openai/gpt-4o-mini",
