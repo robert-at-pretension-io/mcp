@@ -26,6 +26,12 @@
       "provider": "fireworks",
       "model": "accounts/fireworks/models/llama-v3-8b-instruct",
       "apiKeyEnvVar": "FIREWORKS_API_KEY"
+    },
+    "openrouter": {
+      "provider": "openrouter",
+      "model": "openai/gpt-4o",
+      "apiKeyEnvVar": "OPENROUTER_API_KEY",
+      "temperature": 0.7
     }
   }
 }
