@@ -144,6 +144,16 @@ export class AiClientFactory {
           fireworksApiKey: apiKeyToUse, // Pass the determined key
         });
         break;
+      case 'openrouter':
+        chatModel = new ChatOpenAI({
+          modelName: modelToUse,
+          temperature: temperature,
+          openAIApiKey: apiKeyToUse, // Pass the determined key
+          configuration: {
+            baseURL: 'https://openrouter.ai/api/v1',
+          },
+        });
+        break;
       // Add cases for other providers (Groq, Cohere, Ollama, etc.) here
       // Example:
       // case 'groq':
