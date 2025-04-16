@@ -51,7 +51,7 @@
 @layer components {
   /* Example: Reusable card style */
   .card {
-    @apply rounded-xl shadow-md bg-white dark:bg-gray-800 overflow-hidden;
+    @apply shadow-md bg-white dark:bg-gray-800 overflow-hidden; /* Removed rounded-xl */
   }
 
   /* Example: Button styles */
@@ -104,7 +104,7 @@
 
   /* Example: Sidebar panel section */
   .panel-section {
-     @apply card; /* Use card component */
+     @apply card rounded-xl; /* Use card component AND add rounded-xl utility directly */
   }
   .panel-header {
      @apply px-5 py-3 bg-gray-50 dark:bg-gray-700 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors;
