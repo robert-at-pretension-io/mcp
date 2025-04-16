@@ -7,10 +7,32 @@ import type { ConversationMessage } from '../conversation/Message.js';
 export class LangchainClient implements IAiClient {
   private chatModel: BaseChatModel;
   private modelIdentifier: string; // The specific model identifier being used
+  private providerName: string; // The provider name (e.g., "openai", "anthropic")
 
-  constructor(chatModel: BaseChatModel, modelIdentifier: string) {
+  constructor(chatModel: BaseChatModel, modelIdentifier: string, providerName?: string) {
     this.chatModel = chatModel;
     this.modelIdentifier = modelIdentifier;
+    
+    // Determine provider name from chat model if not explicitly provided
+    if (providerName) {
+      this.providerName = providerName;
+    } else {
+      // Try to infer from the constructor name or model name
+      const constructorName = chatModel.constructor.name.toLowerCase();
+      if (constructorName.includes('openai')) {
+        this.providerName = 'openai';
+      } else if (constructorName.includes('anthropic') || modelIdentifier.includes('claude')) {
+        this.providerName = 'anthropic';
+      } else if (constructorName.includes('googlegenai') || constructorName.includes('gemini')) {
+        this.providerName = 'google-genai';
+      } else if (constructorName.includes('mistral')) {
+        this.providerName = 'mistralai';
+      } else if (constructorName.includes('fireworks')) {
+        this.providerName = 'fireworks';
+      } else {
+        this.providerName = 'unknown';
+      }
+    }
   }
 
   async generateResponse(messages: ConversationMessage[]): Promise<string> {
@@ -34,5 +56,9 @@ export class LangchainClient implements IAiClient {
 
   getModelName(): string {
     return this.modelIdentifier;
+  }
+  
+  getProvider(): string {
+    return this.providerName;
   }
 }
