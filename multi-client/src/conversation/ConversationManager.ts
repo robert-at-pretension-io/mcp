@@ -361,66 +361,49 @@ export class ConversationManager {
 
           // Create the AIMessage object representing the AI's request for this round
           const aiMessageRequestingTools = new AIMessage(currentResponseContent);
+
+          // --- Rely ONLY on standard tool calls parsed by LangChain/Model ---
           const standardToolCalls = (aiMessageRequestingTools.tool_calls || [])
               .filter((tc): tc is { id: string; name: string; args: Record<string, any> } => tc.id !== undefined);
-          const mcpToolCalls = ToolParser.parseToolCalls(typeof currentResponseContent === 'string' ? currentResponseContent : JSON.stringify(currentResponseContent));
 
-          if (standardToolCalls.length === 0 && mcpToolCalls.length === 0) {
-              console.log("[ConversationManager] No tool calls (standard or MCP) found in AI response. Exiting tool loop.");
-              break; // Exit loop if neither type is found
+          // --- REMOVE Manual MCP Tool Parsing Check ---
+          // const mcpToolCalls = ToolParser.parseToolCalls(typeof currentResponseContent === 'string' ? currentResponseContent : JSON.stringify(currentResponseContent));
+
+          if (standardToolCalls.length === 0) {
+              // If no standard calls are found (even if <<<TOOL_CALL>>> exists), exit the loop.
+              // The AI might have used the old format incorrectly, or LangChain didn't parse it.
+              // Mixing ID generation methods causes the API error.
+              console.log("[ConversationManager] No standard tool calls found in AI response. Exiting tool loop.");
+              break; // Exit loop
           }
 
+          console.log(`[ConversationManager] Found ${standardToolCalls.length} standard tool calls.`);
+
           // Add the AI message *requesting* the tools to history
-          // We will modify this specific object later
-          aiMessageRequestingTools.hasToolCalls = true; // Mark that a request was made
+          // Ensure the aiMessage object itself contains the parsed tool_calls
+          aiMessageRequestingTools.hasToolCalls = true; // Keep our custom flag if needed
           aiMessageRequestingTools.pendingToolCalls = true;
           this.state.addMessage(aiMessageRequestingTools); // Add the object to state
           this.saveConversation();
 
-          let toolCallsToExecute: ToolCallRequest[] = [];
-          let isUsingStandardCalls = false;
+          // Use the standard tool calls directly (they already have IDs from the AI)
+          const toolCallsToExecute: ToolCallRequest[] = standardToolCalls.map(tc => ({
+              id: tc.id, // Use the ID from the AI
+              name: tc.name,
+              args: tc.args
+          }));
 
-          if (standardToolCalls.length > 0) {
-              // Prioritize standard calls if available
-              console.log(`[ConversationManager] Found ${standardToolCalls.length} standard tool calls. Using standard mechanism.`);
-              toolCallsToExecute = standardToolCalls.map(tc => ({ id: tc.id, name: tc.name, args: tc.args }));
-              isUsingStandardCalls = true;
-          } else {
-              // Fallback to MCP calls if no standard calls found
-              console.log(`[ConversationManager] Found ${mcpToolCalls.length} MCP-style tool calls. Using manual result formatting.`);
-              toolCallsToExecute = mcpToolCalls.map(call => ({
-                  id: `mcpcall-${Date.now()}-${Math.floor(Math.random() * 1000)}`, // Generate ID
-                  name: call.name,
-                  args: call.arguments
-              }));
-              isUsingStandardCalls = false;
-          }
-
-          // Execute tools
+          // Execute tool calls using the ToolExecutor service
           const toolResultsMap = await this.toolExecutor.executeToolCalls(toolCallsToExecute);
           // Now update the *specific message object* we added earlier
           aiMessageRequestingTools.pendingToolCalls = false; // Mark as done
 
-          // --- Add results back to history ---
-          if (isUsingStandardCalls) {
-              // Use standard ToolMessage for standard calls
-              console.log("[ConversationManager] Adding results using standard ToolMessage.");
-              for (const executedCall of toolCallsToExecute) {
-                  const result = toolResultsMap.get(executedCall.id) || `Error: Result not found for tool call ${executedCall.id}`;
-                  this.state.addMessage(new ToolMessage(result, executedCall.id, executedCall.name));
-              }
-          } else {
-              // Format results into a string and add as a *new* AIMessage for MCP calls
-              console.log("[ConversationManager] Adding results as a formatted AIMessage.");
-              let resultsString = "Tool results received:\n";
-              for (const executedCall of toolCallsToExecute) {
-                  const result = toolResultsMap.get(executedCall.id) || `Error: Result not found for tool call ${executedCall.id}`;
-                  resultsString += `\n--- Tool: ${executedCall.name} ---\n`;
-                  resultsString += result;
-                  resultsString += `\n--- End Tool: ${executedCall.name} ---\n`;
-              }
-              // Add this formatted string as a new AI message turn
-              this.state.addMessage(new AIMessage(resultsString.trim()));
+          // --- Add results back to history using standard ToolMessage ---
+          console.log("[ConversationManager] Adding results using standard ToolMessage.");
+          for (const executedCall of toolCallsToExecute) {
+              const result = toolResultsMap.get(executedCall.id) || `Error: Result not found for tool call ${executedCall.id}`;
+              // IMPORTANT: Only add ToolMessage if we used standard calls
+              this.state.addMessage(new ToolMessage(result, executedCall.id, executedCall.name));
           }
           this.saveConversation(); // Save after adding results
 
