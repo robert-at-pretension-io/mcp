@@ -6,7 +6,10 @@ import { ChatFireworks } from '@langchain/community/chat_models/fireworks';
 // Import other necessary chat models (e.g., Groq, Cohere) if needed
 // Removing TogetherAI for now due to import issues
 
-import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import type { BaseChatModel, BaseChatModelCallOptions } from '@langchain/core/language_models/chat_models';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js'; // Import MCP Tool type
+import type { StructuredToolInterface } from '@langchain/core/tools'; // Import LangChain Tool type
+import { convertToLangChainTool } from '../utils/toolConverter.js'; // We'll create this utility
 import type { AiProviderConfig, ProviderModelsStructure } from '../types.js';
 import { LangchainClient } from './LangchainClient.js';
 import type { IAiClient } from './IAiClient.js';
@@ -30,7 +33,11 @@ export class MissingApiKeyError extends Error {
 
 
 export class AiClientFactory {
-  static createClient(config: AiProviderConfig, providerModels: ProviderModelsStructure): IAiClient {
+  static createClient(
+    config: AiProviderConfig,
+    providerModels: ProviderModelsStructure,
+    availableTools: Tool[] // Accept the list of available MCP tools
+  ): IAiClient {
     let chatModel: BaseChatModel;
     let apiKeyToUse: string | undefined = undefined;
     const temperature = config.temperature ?? 0.7; // Default temperature
@@ -146,6 +153,14 @@ export class AiClientFactory {
     }
 
     // Pass the actual model being used and provider name for identification purposes
-    return new LangchainClient(chatModel, modelToUse, config.provider);
+    // Convert MCP Tools to LangChain StructuredTools
+    const langchainTools: StructuredToolInterface[] = availableTools.map(convertToLangChainTool);
+
+    // Bind the tools to the chat model instance
+    // This ensures LangChain includes tool definitions in API calls when needed
+    const modelWithTools = chatModel.bindTools(langchainTools);
+
+    // Pass the model *with tools bound* to the LangchainClient
+    return new LangchainClient(modelWithTools, modelToUse, config.provider);
   }
 }

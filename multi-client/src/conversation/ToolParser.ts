@@ -3,11 +3,10 @@
  * This is similar to the ToolParser in the Rust implementation.
  */
 
-// Remove UUID import if no longer needed elsewhere in this file
-// import { v4 as uuidv4 } from 'uuid'; 
+// UUID import removed
 
 export interface ParsedToolCall {
-  // Remove the ID field, it will be generated and managed externally
+  // ID field removed - it will be handled by LangChain's AIMessage.tool_calls
   name: string;
   arguments: Record<string, any>;
   fullText: string; // The full text of the tool call including delimiters
@@ -56,12 +55,11 @@ export class ToolParser {
           toolCallData.arguments !== null && 
           !Array.isArray(toolCallData.arguments)
         ) {
-          // Don't generate ID here
+          // ID is no longer generated or stored here
           toolCalls.push({
-            // id: toolCallId, // Remove ID
             name: toolCallData.name,
             arguments: toolCallData.arguments,
-            fullText: fullText
+            fullText: fullText // Keep full text for potential replacement logic
           });
         } else {
           console.warn('Invalid tool call structure:', jsonContent);

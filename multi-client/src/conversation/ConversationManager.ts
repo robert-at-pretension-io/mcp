@@ -460,33 +460,36 @@ Important:
 
   /**
    * Executes a set of parsed tool calls (now including generated IDs) in parallel.
-   * @param toolCallsWithIds Array of parsed tool calls, each augmented with a generated ID.
+   * Executes a set of tool calls provided by the AI (using LangChain's standard format).
+   * @param toolCallsFromAI Array of tool calls, each including the AI-generated `id`.
    * @returns Promise that resolves to a map of tool call IDs to their string results.
    */
-  // Update parameter name for clarity
-  private async executeToolCalls(toolCallsWithIds: (ParsedToolCall & { id: string })[]): Promise<Map<string, string>> { 
+  private async executeToolCalls(
+    // Expect the standard LangChain tool_calls structure
+    toolCallsFromAI: { id: string; name: string; args: Record<string, any> }[] 
+  ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
-    // Use the toolCall object directly, which now includes the generated ID
-    const executions = toolCallsWithIds.map(async (toolCall) => { 
-      const toolCallId = toolCall.id; // Use the ID passed in
+    const executions = toolCallsFromAI.map(async (toolCall) => {
+      const toolCallId = toolCall.id; // Use the ID from the AI's request
+      const toolName = toolCall.name;
+      const toolArgs = toolCall.args;
 
       try {
-        // Find which server provides this tool
-        const serverName = this.serverManager.findToolProvider(toolCall.name);
+        const serverName = this.serverManager.findToolProvider(toolName);
         if (!serverName) {
-          const errorMessage = `No server found providing tool '${toolCall.name}'.`;
+          const errorMessage = `No server found providing tool '${toolName}'.`;
           console.warn(errorMessage);
           results.set(toolCallId, errorMessage);
           return;
         }
 
-        console.log(`Executing tool '${toolCall.name}' on server '${serverName}'...`);
-        
-        // Execute the tool
+        console.log(`Executing tool '${toolName}' on server '${serverName}'...`);
+
+        // Execute the tool using name and args from toolCall
         const executionResult = await this.serverManager.executeTool(
-          serverName, 
-          toolCall.name, 
-          toolCall.arguments,
+          serverName,
+          toolName,
+          toolArgs,
           { showProgress: true }
         );
 
@@ -534,11 +537,11 @@ Important:
         // this.state.addMessage(new ToolMessage(
         //   errorMessage,
         //   toolCallId,
-        //   toolCall.name
+        //   toolName // Use toolName from the loop
         // ));
-        
+
         // Return enough info to create the ToolMessage later
-        return { toolCallId, name: toolCall.name, result: errorMessage }; 
+        return { toolCallId, name: toolName, result: errorMessage };
       }
     });
 
@@ -824,58 +827,43 @@ Important:
       toolRound++;
       console.log(`--- Tool Call Round ${toolRound} ---`);
 
-      // Extract and parse tool calls (without IDs)
-      const parsedToolCallsRaw = ToolParser.parseToolCalls(currentResponse);
-      
-      if (parsedToolCallsRaw.length === 0) {
-        console.warn("Tool call delimiters detected but no valid tool calls parsed. Exiting loop.");
-        break; // Exit loop if parsing fails despite delimiters
-      }
-      
-      console.log(`Found ${parsedToolCallsRaw.length} tool calls in AI response.`);
-      
-      // Generate unique IDs for this batch of tool calls *before* creating the AIMessage
-      const toolCallsWithIds = parsedToolCallsRaw.map(tc => ({
-        ...tc,
-        id: `tool_${uuidv4()}` // Generate ID here
-      }));
-      
-      
-      // Prepare the tool call structure expected by LangChain AIMessage
-      const langchainToolCalls = toolCallsWithIds.map(tc => ({
-        name: tc.name,
-        args: tc.arguments, // LangChain often uses 'args'
-        id: tc.id,         // The crucial ID
-        // type: "tool_use" // Type might be inferred by LangChain
-      }));
-
-      // Add the AI response that *requested* the tools
-      // Pass the structured tool calls to the standard 'tool_calls' property
+      // Add the AI response that *requested* the tools.
+      // LangChain's AIMessage should automatically parse tool calls from providers like Anthropic
+      // into the standard `tool_calls` property.
       const aiMessageRequestingTools = new AIMessage(currentResponse, {
-        hasToolCalls: true, // Keep our flag
-        pendingToolCalls: true, // Keep our flag
-        tool_calls: langchainToolCalls, // Use the standard property
-        additional_kwargs: { 
-          // Keep additional_kwargs if needed for other purposes, 
-          // but tool_calls is the primary mechanism
-        } 
+          // Let LangChain handle populating tool_calls if the underlying model supports it
       });
+
+      // Check if the AIMessage actually contains tool calls (using the standard property)
+      const actualToolCalls = aiMessageRequestingTools.tool_calls || [];
+
+      if (actualToolCalls.length === 0) {
+          console.log("AI response did not contain standard tool calls. Exiting tool loop.");
+          // It might contain the <<<TOOL_CALL>>> delimiters but wasn't parsed correctly by LangChain,
+          // or the AI decided not to call tools this round.
+          break; // Exit the loop
+      }
+
+      console.log(`Found ${actualToolCalls.length} standard tool calls in AI response.`);
+
+      // Add the message requesting tools to history *before* execution
+      // Mark as pending
+      aiMessageRequestingTools.hasToolCalls = true;
+      aiMessageRequestingTools.pendingToolCalls = true;
       this.state.addMessage(aiMessageRequestingTools);
-      
-      // Execute tool calls, passing the calls with the generated IDs
-      // toolResults is now Map<string, string> (toolCallId -> result string)
-      const toolResultsMap = await this.executeToolCalls(toolCallsWithIds); 
-      
+
+      // Execute tool calls using the IDs provided by the AI/LangChain
+      const toolResultsMap = await this.executeToolCalls(actualToolCalls);
+
       // Mark the tool calls in the previous AI message as no longer pending
       aiMessageRequestingTools.pendingToolCalls = false;
-      
-      // Add the tool results back as plain AIMessages *after* the AIMessage that requested them
-      for (const toolCall of toolCallsWithIds) {
+
+      // Add the tool results back using ToolMessage, linked by the correct ID
+      for (const toolCall of actualToolCalls) {
           const result = toolResultsMap.get(toolCall.id) || `Error: Result not found for tool call ${toolCall.id}`;
-          // Add the result using ToolMessage, linking it to the specific tool call ID
           this.state.addMessage(new ToolMessage(
               result,
-              toolCall.id, // The ID generated earlier for this call
+              toolCall.id, // Use the ID from actualToolCalls
               toolCall.name
           ));
       }

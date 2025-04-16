@@ -167,25 +167,10 @@ async function main() {
   }
 
 
-  // --- AI Client Initialization ---
-  // Use the new function that handles prompting for keys
-  const aiClient = await initializeAiClientWithPrompting(aiConfigData, providerModels, aiConfigPath);
-  let conversationManager: ConversationManager | null = null;
-
   // --- Server Manager Initialization ---
-  const serverManager = new ServerManager(serversConfigData); // Use serversConfigData
+  const serverManager = new ServerManager(serversConfigData);
 
-  // --- Conversation Manager Initialization (if AI client is available) ---
-  if (aiClient) {
-      conversationManager = new ConversationManager(aiClient, serverManager, providerModels);
-  } else {
-      // Create a dummy or null ConversationManager if needed by Repl, or handle in Repl
-      console.log("ConversationManager not created due to missing AI client.");
-      // conversationManager = new DummyConversationManager(); // Or handle null in Repl
-  }
-
-
-  // --- Connect to Servers ---
+  // --- Connect to Servers & Fetch Tools ---
   try {
     console.log('Connecting to configured servers...');
     const connectedServers = await serverManager.connectAll();
@@ -199,17 +184,43 @@ async function main() {
     // Continue even if some servers failed to connect
   }
 
+  // --- Fetch All Available Tools ---
+  let availableTools: Tool[] = [];
+  try {
+      console.log('Fetching available tools from connected servers...');
+      availableTools = await serverManager.getAllTools();
+      console.log(`Found ${availableTools.length} tools across all connected servers.`);
+  } catch (error) {
+      console.error('Error fetching tools:', error instanceof Error ? error.message : String(error));
+      // Continue, but AI might not have tool access
+  }
+
+
+  // --- AI Client Initialization ---
+  // Pass the fetched tools to the initialization function
+  const aiClient = await initializeAiClientWithPrompting(
+      aiConfigData,
+      providerModels,
+      aiConfigPath,
+      availableTools // Pass tools here
+  );
+  let conversationManager: ConversationManager | null = null;
+
+  // --- Conversation Manager Initialization (if AI client is available) ---
+  if (aiClient) {
+      conversationManager = new ConversationManager(aiClient, serverManager, providerModels);
+  } else {
+      console.log("ConversationManager not created due to missing AI client.");
+  }
+
   // --- REPL Setup ---
-  // Handle the case where conversationManager might be null
   if (!conversationManager) {
-      console.error("Cannot start REPL in chat mode without a configured AI provider. Exiting.");
-      // Optionally, start REPL in a limited command-only mode
-      // For now, let's exit if the primary purpose (chat) isn't available.
+      console.error("Cannot start REPL or Web UI in chat mode without a configured AI provider. Exiting.");
       await serverManager.closeAll(); // Clean up connected servers
       process.exit(1);
   }
 
-  const repl = new Repl(serverManager, conversationManager, providerModels); // Pass conversationManager and providerModels
+  const repl = new Repl(serverManager, conversationManager, providerModels);
 
   // --- Initialize Web Server (if enabled in command line args) ---
   let webServer: WebServer | null = null;
@@ -352,10 +363,16 @@ async function promptForInput(promptText: string, hideInput: boolean = false): P
 /**
  * Initializes the AI client, prompting for missing API keys if necessary.
  */
+import type { Tool } from '@modelcontextprotocol/sdk/types.js'; // Import Tool type
+
+/**
+ * Initializes the AI client, prompting for missing API keys if necessary.
+ */
 async function initializeAiClientWithPrompting(
   aiConfigData: AiConfigFileStructure,
   providerModels: ProviderModelsStructure,
-  aiConfigPath: string
+  aiConfigPath: string,
+  tools: Tool[] // Accept the list of tools
 ): Promise<IAiClient | null> {
   const providerNames = Object.keys(aiConfigData.providers || {});
   const defaultProviderName = aiConfigData.defaultProvider;
@@ -376,7 +393,8 @@ async function initializeAiClientWithPrompting(
 
   while (retries > 0 && aiClient === null) {
     try {
-      aiClient = AiClientFactory.createClient(defaultProviderConfig, providerModels);
+      // Pass the tools to the factory
+      aiClient = AiClientFactory.createClient(defaultProviderConfig, providerModels, tools);
       console.log(`Initialized default AI client: ${defaultProviderName} (${aiClient.getModelName()})`);
     } catch (error) {
       if (error instanceof MissingApiKeyError) {
