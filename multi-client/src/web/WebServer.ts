@@ -147,13 +147,13 @@ export class WebServer {
           const conversations = this.conversationManager.listConversations();
           this.io.emit('conversations-list', { conversations });
         } catch (error) {
-          console.error('Error creating new conversation:', error);
-          socket.emit('error', { 
+          console.error('[WebServer] Error creating new conversation:', error);
+          socket.emit('error', { // Notify specific client about the error
             message: `Error creating new conversation: ${error instanceof Error ? error.message : String(error)}`
           });
         }
       });
-      
+
       // Handle load conversation request
       socket.on('load-conversation', (data) => {
         try {
@@ -161,7 +161,7 @@ export class WebServer {
           if (!id) {
             throw new Error('Conversation ID is required');
           }
-          
+
           const success = this.conversationManager.loadConversation(id);
           if (!success) {
             throw new Error(`Conversation with ID ${id} not found`);
