@@ -51,7 +51,7 @@
 @layer components {
   /* Example: Reusable card style */
   .card {
-    @apply shadow-md bg-white dark:bg-gray-800 overflow-hidden; /* Removed rounded-xl */
+    @apply bg-white dark:bg-gray-800 overflow-hidden; /* Removed rounded-xl and shadow-md */
   }
 
   /* Example: Button styles */
@@ -73,7 +73,7 @@
 
   /* Example: Chat bubble styles */
   .chat-bubble {
-     @apply px-3 py-2 rounded-lg shadow-sm relative transition-all hover:-translate-y-0.5 hover:shadow-md max-w-[85%] animate-fadeIn;
+     @apply px-3 py-2 rounded-lg shadow-sm relative transition-all hover:-translate-y-0.5 max-w-[85%] animate-fadeIn; /* Removed hover:shadow-md */
   }
   .chat-bubble-user {
     @apply chat-bubble bg-primary text-white rounded-br-none;
@@ -104,7 +104,7 @@
 
   /* Example: Sidebar panel section */
   .panel-section {
-     @apply card rounded-xl; /* Use card component AND add rounded-xl utility directly */
+     @apply card rounded-xl shadow-md; /* Use card component AND add rounded-xl and shadow-md utilities directly */
   }
   .panel-header {
      @apply px-5 py-3 bg-gray-50 dark:bg-gray-700 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors;
