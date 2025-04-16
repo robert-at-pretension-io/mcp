@@ -209,10 +209,9 @@ export class WebServer {
       // Send available tools, organizing by server
       const allTools = await this.serverManager.getAllTools();
       const serverNames = this.serverManager.getConnectedServers();
-      
+
       // Format tools as { serverName: toolsArray }
-      const toolsByServer = {};
-      const toolsByServer: Record<string, Tool[]> = {}; // Ensure correct type
+      const toolsByServer: Record<string, Tool[]> = {}; // Ensure correct type and declare only once
       for (const serverName of serverNames) {
         try {
           // Attempt to get tools, but handle potential errors gracefully
