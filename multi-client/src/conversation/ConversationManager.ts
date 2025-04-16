@@ -872,13 +872,15 @@ Important:
       // Add the tool results back as plain AIMessages *after* the AIMessage that requested them
       for (const toolCall of toolCallsWithIds) {
           const result = toolResultsMap.get(toolCall.id) || `Error: Result not found for tool call ${toolCall.id}`;
-          // Format the result clearly as coming from a tool
-          const toolResultMessageContent = `Tool Result for "${toolCall.name}":\n${result}`;
-          // Add as an AIMessage
-          this.state.addMessage(new AIMessage(toolResultMessageContent)); 
+          // Add the result using ToolMessage, linking it to the specific tool call ID
+          this.state.addMessage(new ToolMessage(
+              result,
+              toolCall.id, // The ID generated earlier for this call
+              toolCall.name
+          ));
       }
       
-      // Get the updated message history including the AIMessage requesting tools and the AIMessages containing results
+      // Get the updated message history including the AIMessage requesting tools and the ToolMessages containing results
       const messagesForFollowUp = this.state.getMessages();
       
       // Make the next AI call with the tool results context
