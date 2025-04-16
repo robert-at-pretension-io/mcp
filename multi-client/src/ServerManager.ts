@@ -247,7 +247,11 @@ export class ServerManager {
       const result = await server.client.callTool(
          { name: toolName, arguments: args } // Use 'arguments' field
        );
-
+    
+      // ---> DEBUG LOG <---
+      console.log('[ServerManager] Raw tool result from SDK:', JSON.stringify(result, null, 2));
+      // ---> END DEBUG LOG <---
+    
       // Check if the tool itself reported an error
       if (result.isError) {
           // Extract error message from the tool's response content if possible

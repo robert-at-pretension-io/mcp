@@ -520,10 +520,14 @@ Important:
         } else {
           resultContent = String(executionResult.toolResult || 'No content returned.');
         }
-
+    
+        // ---> DEBUG LOG <---
+        console.log(`[ConversationManager] Formatted result for tool ${toolCallId} (${toolName}):`, JSON.stringify(resultContent));
+        // ---> END DEBUG LOG <---
+    
         // Store the result with its ID
         results.set(toolCallId, resultContent);
-
+    
         // DO NOT add ToolMessage to state here. Return the result instead.
         // this.state.addMessage(new ToolMessage(
         //   resultContent,
