@@ -1,5 +1,5 @@
 import React from 'react';
-import React from 'react';
+// Removed duplicate React import
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlug, faCheckCircle } from '@fortawesome/free-solid-svg-icons';
 import AccordionSection from './AccordionSection';
@@ -16,7 +16,7 @@ const ProvidersPanel: React.FC = () => {
       providerModels: state.providerModels,
       switchProviderAndModel: state.switchProviderAndModel, // Get action from store
     }),
-    shallow
+    shallow // Correct usage: Pass shallow as the second argument
   );
 
   const handleSelectProvider = async (name: string) => {

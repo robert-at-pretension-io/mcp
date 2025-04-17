@@ -1,5 +1,5 @@
-import { create } from 'zustand'; // Correct import for Zustand v5+
-import { immer } from 'zustand/middleware/immer';
+import { create } from 'zustand';
+import { immer, type WritableDraft } from 'zustand/middleware/immer'; // Import WritableDraft
 import { devtools } from 'zustand/middleware';
 import {
     fetchConversationsListApi,
@@ -191,7 +191,7 @@ interface SocketActions {
 
 type AppState = UiState & ChatState & ConversationListState & ProviderState & ServerState & ToolState;
 type AppActions = UiActions & ChatActions & ConversationListActions & ProviderActions & ServerActions & ToolActions & SocketActions;
-type StoreType = AppState & AppActions & {
+export type StoreType = AppState & AppActions & { // Export StoreType
     // Combined actions like fetchInitialData
     fetchInitialData: () => Promise<void>;
     _socket: Socket | null; // Internal socket instance
@@ -239,7 +239,7 @@ export const useStore = create<StoreType>()(
             _socket: null, // Initialize internal socket state
 
             // --- UI Actions ---
-            setThinking: (thinking: boolean, message: string = 'AI is thinking...') => set((state: StoreType) => { // Type parameters and state
+            setThinking: (thinking: boolean, message: string = 'AI is thinking...') => set((state: WritableDraft<StoreType>) => { // Use WritableDraft
                 state.isThinking = thinking;
                 if (thinking) {
                     state.thinkingMessage = message;
@@ -249,7 +249,7 @@ export const useStore = create<StoreType>()(
                 }
             }),
             setStatusMessage: (message: string) => set({ statusMessage: message }), // Type parameter
-            toggleSidebar: () => set((state: StoreType) => { // Type state
+            toggleSidebar: () => set((state: WritableDraft<StoreType>) => { // Use WritableDraft
                 // Logic depends on screen size, ideally handled by CSS media queries reacting to classes
                 // This toggle might control both states for simplicity, CSS determines effect
                 if (typeof window !== 'undefined' && window.innerWidth < 1024) { // Check window exists
@@ -271,7 +271,7 @@ export const useStore = create<StoreType>()(
 
             // --- Chat Actions ---
             setMessages: (messages: Message[]) => set({ messages: messages }), // Type parameter
-            addMessage: (message: Message) => set((state: StoreType) => { // Type parameter and state
+            addMessage: (message: Message) => set((state: WritableDraft<StoreType>) => { // Use WritableDraft
                 state.messages.push(message);
             }),
             setCurrentConversationId: (id: string | null) => set({ currentConversationId: id }), // Type parameter
@@ -282,7 +282,7 @@ export const useStore = create<StoreType>()(
                 // Sort conversations by updatedAt descending when setting
                 conversations: [...conversations].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
             }),
-            updateConversationInList: (conversation: ConversationSummary) => set((state: StoreType) => { // Type parameter and state
+            updateConversationInList: (conversation: ConversationSummary) => set((state: WritableDraft<StoreType>) => { // Use WritableDraft
                 const index = state.conversations.findIndex((c: ConversationSummary) => c.id === conversation.id); // Type c
                 if (index !== -1) {
                     state.conversations[index] = conversation;
@@ -292,7 +292,7 @@ export const useStore = create<StoreType>()(
                 // Re-sort after update/add
                 state.conversations.sort((a: ConversationSummary, b: ConversationSummary) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()); // Type a, b
             }),
-            removeConversationFromList: (id: string) => set((state: StoreType) => { // Type parameter and state
+            removeConversationFromList: (id: string) => set((state: WritableDraft<StoreType>) => { // Use WritableDraft
                 state.conversations = state.conversations.filter((c: ConversationSummary) => c.id !== id); // Type c
             }),
             fetchConversationsList: async () => {

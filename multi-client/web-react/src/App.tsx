@@ -5,7 +5,7 @@ import MainLayout from '@/components/Layout/MainLayout';
 import ChatArea from '@/components/Chat/ChatArea';
 import Sidebar from '@/components/Sidebar/Sidebar';
 import { useSocket } from '@/hooks/useSocket';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
 import { useEffect } from 'react';
 import { shallow } from 'zustand/shallow';
 import ModelModal from '@/components/Modals/ModelModal';
@@ -25,7 +25,7 @@ function App() {
       isServersModalOpen: state.isServersModalOpen,
       isConfigEditorOpen: state.isConfigEditorOpen,
     }),
-    shallow
+    shallow // Correct usage: Pass shallow as the second argument
   );
 
   useEffect(() => {

@@ -12,7 +12,7 @@ import { StoreType } from '@/store/store'; // Import StoreType
 const ToolsPanel: React.FC = () => {
   const [filterText, setFilterText] = useState('');
   // Correct usage: Pass shallow as the second argument
-  const toolsByServer = useStore((state: StoreType) => state.allToolsData, shallow); // Type state
+  const toolsByServer = useStore((state: StoreType) => state.allToolsData, shallow);
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilterText(e.target.value);
