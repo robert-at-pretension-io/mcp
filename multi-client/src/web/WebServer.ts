@@ -47,6 +47,17 @@ export class WebServer {
         methods: ['GET', 'POST']
       }
     });
+
+    // Add error handling for the underlying HTTP server
+    this.server.on('error', (error) => {
+      console.error('[WebServer] HTTP Server Error:', error);
+      // Potentially try to gracefully shut down or handle specific errors
+      if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+        console.error(`[WebServer] Port ${this.port} is already in use.`);
+        // Optionally exit the process or attempt to use a different port
+        process.exit(1);
+      }
+    });
   }
 
   /**
