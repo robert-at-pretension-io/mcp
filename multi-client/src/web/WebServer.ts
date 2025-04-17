@@ -127,8 +127,8 @@ export class WebServer {
       this.sendInitialData(socket);
 
       // Handle disconnect
-      socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
+      socket.on('disconnect', (reason) => { // Add reason parameter type if needed
+        console.log(`Client disconnected: ${socket.id}, Reason: ${reason}`);
       });
 
       // Handle user messages from socket
