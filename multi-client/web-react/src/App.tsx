@@ -25,7 +25,7 @@ function App() {
       isServersModalOpen: state.isServersModalOpen,
       isConfigEditorOpen: state.isConfigEditorOpen,
     }),
-    shallow // Correct usage: Pass shallow as the second argument
+    shallow
   );
 
   useEffect(() => {

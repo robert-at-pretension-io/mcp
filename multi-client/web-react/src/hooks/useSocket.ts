@@ -67,7 +67,7 @@ export const useSocket = () => {
       setCurrentConversationId: state.setCurrentConversationId,
       updateConversationInList: state.updateConversationInList,
     }),
-    shallow // Correct usage: Pass shallow as the second argument
+    shallow
   );
 
   useEffect(() => {

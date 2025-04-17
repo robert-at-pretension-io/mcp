@@ -25,7 +25,7 @@ const ConversationsPanel: React.FC = () => {
       updateConversationInList: state.updateConversationInList,
       removeConversationFromList: state.removeConversationFromList,
     }),
-    shallow // Correct usage: Pass shallow as the second argument
+    shallow
   );
 
   const handleSelect = (id: string) => {

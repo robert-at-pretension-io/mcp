@@ -21,7 +21,7 @@ const Header: React.FC = () => {
       openModelModal: state.openModelModal,
       openServersModal: state.openServersModal,
     }),
-    shallow // Correct usage: Pass shallow as the second argument
+    shallow
   );
 
   const modelDisplay = currentModel !== 'N/A' && currentProvider

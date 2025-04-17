@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { immer, type WritableDraft } from 'zustand/middleware/immer'; // Import WritableDraft
+import { immer } from 'zustand/middleware/immer';
+import { type WritableDraft } from 'immer'; // Import WritableDraft from immer directly
 import { devtools } from 'zustand/middleware';
 import {
     fetchConversationsListApi,
