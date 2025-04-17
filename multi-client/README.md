@@ -1,6 +1,6 @@
 # MCP Multi-Client
 
-An improved MCP (Model Context Protocol) client that connects to multiple servers defined in a configuration file and provides both a command-line REPL and a web interface for interaction.
+An improved MCP (Model Context Protocol) client that connects to multiple servers defined in a configuration file and provides a command-line REPL for interaction.
 
 ## Features
 
@@ -10,7 +10,6 @@ An improved MCP (Model Context Protocol) client that connects to multiple server
 - Chat functionality with tool usage
 - Response verification against auto-generated criteria
 - Interactive REPL interface for command-line usage
-- Web interface for browser-based interaction
 - Conversation history management and compaction
 
 ## Setup
@@ -76,24 +75,12 @@ npm install
 npm run build
 ```
 
-### REPL Mode (Command Line)
+### Running the Client
 
 ```bash
 npm start
 # or
 npm run dev  # Build and start
-```
-
-### Web Interface
-
-```bash
-npm run web
-```
-
-### Both Modes Simultaneously
-
-```bash
-npm run both
 ```
 
 ## REPL Commands
@@ -108,19 +95,6 @@ npm run both
 - `history` - Show conversation history (in chat mode)
 - `clear` - Clear conversation history (in chat mode)
 
-## Web Interface
-
-The web interface is available at `http://localhost:3000` when running in web mode. It provides:
-
-- Chat interface for interacting with the AI
-- Real-time responses using WebSocket
-- Display of available tools
-- Connected server information
-- Conversation history
-- Tool call visualization
-- Thinking indicators
-- Responsive design with Tailwind CSS
-
 ## Architecture
 
 The multi-client implementation follows a modular architecture:
@@ -129,8 +103,6 @@ The multi-client implementation follows a modular architecture:
 - **ConversationManager**: Handles chat logic, tool calls, and verification
 - **AI Client Layer**: Provides a unified interface to different AI providers
 - **REPL**: Command-line interface for user interaction
-- **WebServer**: Web interface with REST API and WebSocket for real-time updates
-- **UI Layer**: Responsive web interface using Tailwind CSS
 
 ## Custom AI Providers
 
