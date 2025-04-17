@@ -64,7 +64,9 @@ export const useSocket = () => {
       setConversations: state.setConversations,
       setCurrentConversationId: state.setCurrentConversationId,
       updateConversationInList: state.updateConversationInList,
-  }));
+  }),
+  shallow // Use shallow since we select an object with many properties
+  );
 
   useEffect(() => {
     // Prevent multiple connections

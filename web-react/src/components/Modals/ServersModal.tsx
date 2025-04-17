@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimes, faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { useStore, ServerConfig, StoreType } from '@/store/store'; // Import StoreType
-import { shallow } from 'zustand/shallow';
+import { useStore, ServerConfig, StoreType } from '@/store/store';
+import { shallow } from 'zustand/shallow'; // Keep shallow
 import toast from 'react-hot-toast';
 import Spinner from '@/components/common/Spinner';
 import { escapeHtml } from '@/utils/helpers';
@@ -18,7 +18,7 @@ const ServersModal: React.FC = () => {
         saveServerConfig, // Action to save to backend
         fetchServerConfig, // Action to fetch initial config
     } = useStore(
-        (state: StoreType) => ({ // Type state
+        (state: StoreType) => ({
             isServersModalOpen: state.isServersModalOpen,
             closeServersModal: state.closeServersModal,
             serverConfig: state.serverConfig,
@@ -28,7 +28,7 @@ const ServersModal: React.FC = () => {
             saveServerConfig: state.saveServerConfig,
             fetchServerConfig: state.fetchServerConfig,
         }),
-        shallow
+        shallow // Use shallow since we select an object
     );
 
     const [isLoading, setIsLoading] = useState<boolean>(false);

@@ -1,13 +1,13 @@
 import React, { useEffect, useRef } from 'react';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
 import MessageItem from './MessageItem';
-// Removed shallow import
-import { Message } from '@/store/store'; // Import Message type
-
-// Removed StoreType import; using implicit any for state in selector
+// shallow is not needed here as we select a single primitive (array reference)
+import { Message } from '@/store/store';
 
 const MessageList: React.FC = () => {
-  const messages: Message[] = useStore((state: any) => state.messages);
+  // Selecting a single primitive (array reference) doesn't strictly need shallow,
+  // but ensure the selector itself doesn't create new references unnecessarily.
+  const messages = useStore((state: StoreType) => state.messages);
   const listRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom

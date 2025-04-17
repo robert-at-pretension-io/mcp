@@ -24,7 +24,8 @@ function App() {
       isModelModalOpen: state.isModelModalOpen,
       isServersModalOpen: state.isServersModalOpen,
       isConfigEditorOpen: state.isConfigEditorOpen,
-    })
+    }),
+    shallow // Use shallow since we select an object
   );
 
   useEffect(() => {

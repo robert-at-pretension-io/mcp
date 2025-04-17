@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimes } from '@fortawesome/free-solid-svg-icons';
-import { useStore, StoreType } from '@/store/store'; // Import StoreType
-import { shallow } from 'zustand/shallow';
+import { useStore, StoreType } from '@/store/store';
+import { shallow } from 'zustand/shallow'; // Keep shallow
 import toast from 'react-hot-toast';
 import Spinner from '@/components/common/Spinner';
 import { fetchConfigFileApi, saveConfigFileApi } from '@/services/api';
@@ -15,14 +15,14 @@ const ConfigEditorModal: React.FC = () => {
         fetchProviders, // To refresh AI config if needed
         fetchServerConfig, // To refresh server config if needed
     } = useStore(
-        (state: StoreType) => ({ // Type state
+        (state: StoreType) => ({
             isConfigEditorOpen: state.isConfigEditorOpen,
             closeConfigEditor: state.closeConfigEditor,
             currentEditingConfigFile: state.currentEditingConfigFile,
             fetchProviders: state.fetchProviders,
             fetchServerConfig: state.fetchServerConfig,
         }),
-        shallow
+        shallow // Use shallow since we select an object
     );
 
     const [content, setContent] = useState<string>('');

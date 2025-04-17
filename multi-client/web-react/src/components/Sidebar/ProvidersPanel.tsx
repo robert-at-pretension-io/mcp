@@ -14,7 +14,8 @@ const ProvidersPanel: React.FC = () => {
       currentProvider: state.currentProvider,
       providerModels: state.providerModels,
       switchProviderAndModel: state.switchProviderAndModel,
-    })
+    }),
+    shallow // Use shallow since we select an object
   );
 
   const handleSelectProvider = async (name: string) => {

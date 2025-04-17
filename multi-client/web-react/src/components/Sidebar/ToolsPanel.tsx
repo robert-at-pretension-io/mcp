@@ -1,17 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react'; // Import useMemo
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTools } from '@fortawesome/free-solid-svg-icons';
 import AccordionSection from './AccordionSection';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
 import { escapeHtml } from '@/utils/helpers';
-import { ToolsByServer, ToolInfo } from '@/store/store'; // Import types
-
-// Removed StoreType import; using implicit any for state
+import { ToolsByServer, ToolInfo } from '@/store/store';
 
 const ToolsPanel: React.FC = () => {
   const [filterText, setFilterText] = useState('');
-  // Correct usage: Pass shallow as the second argument
-  const toolsByServer = useStore((state: any) => state.allToolsData);
+  // Selecting single primitive (object reference) - no shallow needed
+  const toolsByServer = useStore((state: StoreType) => state.allToolsData);
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilterText(e.target.value);

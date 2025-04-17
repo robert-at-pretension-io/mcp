@@ -12,7 +12,8 @@ const ChatInput: React.FC = () => {
       thinkingMessage: state.thinkingMessage,
       emitUserMessage: state.emitUserMessage,
       emitClearConversation: state.emitClearConversation,
-    })
+    }),
+    shallow // Use shallow since we select an object
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
