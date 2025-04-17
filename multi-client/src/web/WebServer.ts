@@ -49,6 +49,12 @@ export class WebServer {
       }
     });
 
+    // ---> ADDED: Socket.IO Server Error Handling <---
+    this.io.on('error', (error) => {
+        console.error('[WebServer] Socket.IO Server Error:', error);
+    });
+    // ---> END ADDED <---
+
     // Add error handling for the underlying HTTP server
     this.server.on('error', (error) => {
       console.error('[WebServer] HTTP Server Error:', error);
