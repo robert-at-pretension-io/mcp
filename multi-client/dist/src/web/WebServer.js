@@ -37,6 +37,21 @@ export class WebServer {
                 methods: ['GET', 'POST']
             }
         });
+        // ---> ADDED: Socket.IO Server Error Handling <---
+        this.io.on('error', (error) => {
+            console.error('[WebServer] Socket.IO Server Error:', error);
+        });
+        // ---> END ADDED <---
+        // Add error handling for the underlying HTTP server
+        this.server.on('error', (error) => {
+            console.error('[WebServer] HTTP Server Error:', error);
+            // Potentially try to gracefully shut down or handle specific errors
+            if (error.code === 'EADDRINUSE') {
+                console.error(`[WebServer] Port ${this.port} is already in use.`);
+                // Optionally exit the process or attempt to use a different port
+                process.exit(1);
+            }
+        });
     }
     /**
      * Asynchronously initializes routes and socket events after dynamic imports.
@@ -75,11 +90,19 @@ export class WebServer {
     setupSocketEvents() {
         this.io.on('connection', (socket) => {
             console.log('Client connected:', socket.id);
+            // General error handler for this specific socket
+            socket.on('error', (err) => {
+                console.error(`[WebServer] Socket Error for ${socket.id}:`, err);
+                // Depending on the error, you might want to disconnect the client
+                // or just log it.
+            });
             // Send initial data to newly connected client
-            this.sendInitialData(socket);
+            // ---> TEMPORARILY COMMENTED OUT FOR DEBUGGING ECONNRESET <---
+            // this.sendInitialData(socket); 
+            // ---> END COMMENTED OUT <---
             // Handle disconnect
-            socket.on('disconnect', () => {
-                console.log('Client disconnected:', socket.id);
+            socket.on('disconnect', (reason) => {
+                console.log(`Client disconnected: ${socket.id}, Reason: ${reason}`);
             });
             // Handle user messages from socket
             socket.on('user-message', (data) => {
