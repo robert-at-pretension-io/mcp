@@ -5,9 +5,9 @@ import MainLayout from '@/components/Layout/MainLayout';
 import ChatArea from '@/components/Chat/ChatArea';
 import Sidebar from '@/components/Sidebar/Sidebar';
 import { useSocket } from '@/hooks/useSocket';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
 import { useEffect } from 'react';
-// Removed shallow import
+import { shallow } from 'zustand/shallow'; // Re-add shallow import
 import ModelModal from '@/components/Modals/ModelModal';
 import ServersModal from '@/components/Modals/ServersModal';
 import ConfigEditorModal from '@/components/Modals/ConfigEditorModal';

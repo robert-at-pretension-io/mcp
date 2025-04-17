@@ -2,7 +2,8 @@ import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faComments, faPlus, faEdit, faTrash } from '@fortawesome/free-solid-svg-icons';
 import AccordionSection from './AccordionSection';
-import { useStore, ConversationSummary } from '@/store/store';
+import { useStore, ConversationSummary, StoreType } from '@/store/store'; // Import StoreType
+import { shallow } from 'zustand/shallow'; // Import shallow
 import { formatRelativeTime, escapeHtml } from '@/utils/helpers';
 import toast from 'react-hot-toast';
 import { renameConversationApi, deleteConversationApi } from '@/services/api'; // Assuming API functions exist
@@ -15,14 +16,17 @@ const ConversationsPanel: React.FC = () => {
     emitNewConversation,
     updateConversationInList, // Add this from store
     removeConversationFromList, // Add this from store
-  } = useStore((state: any) => ({
-    conversations: state.conversations,
-    currentConversationId: state.currentConversationId,
+  } = useStore(
+    (state: StoreType) => ({ // Type state
+      conversations: state.conversations,
+      currentConversationId: state.currentConversationId,
     emitLoadConversation: state.emitLoadConversation,
     emitNewConversation: state.emitNewConversation,
     updateConversationInList: state.updateConversationInList,
     removeConversationFromList: state.removeConversationFromList,
-  }));
+  }),
+  shallow // Use shallow since we select an object
+  );
 
   const handleSelect = (id: string) => {
     if (id !== currentConversationId) {

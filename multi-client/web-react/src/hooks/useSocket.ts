@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 // Removed unused ToolInfo
-import { useStore, Message, ServerInfo, ConversationSummary, ToolsByServer } from '@/store/store';
+import { useStore, Message, ServerInfo, ConversationSummary, ToolsByServer, StoreType } from '@/store/store'; // Import StoreType
 import toast from 'react-hot-toast';
+import { shallow } from 'zustand/shallow'; // Import shallow
 
 // Define types for socket event data payloads based on backend/old frontend
 interface ServersInfoData {

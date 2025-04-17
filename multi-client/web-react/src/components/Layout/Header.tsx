@@ -1,28 +1,45 @@
-// Removed unused React import
+import React from 'react'; // Add React back if needed for useMemo
+import { useMemo } from 'react'; // Import useMemo
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faColumns, faServer, faRobot, faCog } from '@fortawesome/free-solid-svg-icons';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
+import { shallow } from 'zustand/shallow'; // Import shallow
 
 const Header: React.FC = () => {
+  // Select multiple properties - use shallow
   const {
     connectedServersText,
     currentProvider,
     currentModel,
     toggleSidebar,
+    connectedServersText,
+    currentProvider,
+    providers, // Select base state needed for derivation
+    toggleSidebar,
     openModelModal,
     openServersModal,
-  } = useStore((state: any) => ({
-    connectedServersText: state.connectedServersText,
-    currentProvider: state.currentProvider,
-    currentModel: state.providers[state.currentProvider]?.model || 'N/A',
-    toggleSidebar: state.toggleSidebar,
-    openModelModal: state.openModelModal,
-    openServersModal: state.openServersModal,
-  }));
+  } = useStore(
+    (state: StoreType) => ({ // Type state
+      connectedServersText: state.connectedServersText,
+      currentProvider: state.currentProvider,
+      providers: state.providers, // Select the providers object
+      toggleSidebar: state.toggleSidebar,
+      openModelModal: state.openModelModal,
+      openServersModal: state.openServersModal,
+    }),
+    shallow // Use shallow since we select an object
+  );
 
-  const modelDisplay = currentModel !== 'N/A' && currentProvider
-    ? `${currentModel} (${currentProvider})`
-    : 'Loading...';
+  // Derive currentModel outside the selector using useMemo
+  const currentModel = useMemo(() => {
+      return providers[currentProvider]?.model || 'N/A';
+  }, [providers, currentProvider]);
+
+  const modelDisplay = useMemo(() => (
+      currentModel !== 'N/A' && currentProvider
+          ? `${currentModel} (${currentProvider})`
+          : 'Loading...'
+  ), [currentModel, currentProvider]);
 
   return (
     <header className="header-gradient text-white py-4 px-6 shadow-md sticky top-0 z-40">

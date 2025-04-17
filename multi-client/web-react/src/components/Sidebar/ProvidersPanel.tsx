@@ -1,15 +1,15 @@
 import React from 'react';
-// Removed duplicate React import
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlug, faCheckCircle } from '@fortawesome/free-solid-svg-icons';
 import AccordionSection from './AccordionSection';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
+import { shallow } from 'zustand/shallow'; // Import shallow
 import { escapeHtml } from '@/utils/helpers';
 import toast from 'react-hot-toast';
 
 const ProvidersPanel: React.FC = () => {
   const { providers, currentProvider, providerModels, switchProviderAndModel } = useStore(
-    (state: any) => ({
+    (state: StoreType) => ({ // Type state
       providers: state.providers,
       currentProvider: state.currentProvider,
       providerModels: state.providerModels,

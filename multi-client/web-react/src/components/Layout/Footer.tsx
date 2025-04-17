@@ -1,8 +1,9 @@
 import React from 'react';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
 
 const Footer: React.FC = () => {
-  const statusMessage = useStore((state: any) => state.statusMessage);
+  // Selecting a single primitive (string) doesn't need shallow
+  const statusMessage = useStore((state: StoreType) => state.statusMessage); // Type state
 
   return (
     <footer className="bg-white dark:bg-gray-800 py-4 px-6 shadow-inner border-t border-gray-200 dark:border-gray-700">

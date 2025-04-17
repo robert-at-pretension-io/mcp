@@ -1,16 +1,22 @@
 import React from 'react';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
+import { shallow } from 'zustand/shallow'; // Import shallow
 
 interface MainLayoutProps {
   children: React.ReactNode;
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-    const isPanelCollapsed = useStore((state: any) => state.isPanelCollapsed);
-    const isPanelOpen = useStore((state: any) => state.isPanelOpen);
+    // Select multiple properties - use shallow
+    const { isPanelCollapsed, isPanelOpen } = useStore(
+        (state: StoreType) => ({ // Type state
+            isPanelCollapsed: state.isPanelCollapsed,
+            isPanelOpen: state.isPanelOpen,
+        }),
+        shallow
+    );
 
     // Determine classes based on panel state and screen size
-    // Note: Tailwind doesn't directly support conditional classes based on JS logic for breakpoints easily.
     // We apply classes based on state, and media queries in CSS handle the visual change.
     // Or use a library like react-responsive if complex logic is needed.
     const mainClasses = `flex-grow flex container mx-auto px-4 py-6 gap-6 relative ${

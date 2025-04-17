@@ -1,14 +1,14 @@
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-// Removed unused faEdit
+import React from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCog, faRobot, faServer, faList } from '@fortawesome/free-solid-svg-icons';
 import AccordionSection from './AccordionSection';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
 
 const ConfigPanel: React.FC = () => {
-    const { openConfigEditor } = useStore((state: any) => ({
-        openConfigEditor: state.openConfigEditor,
-    }));
+    // Selecting single primitive (function reference) - no shallow needed
+    const openConfigEditor = useStore((state: StoreType) => state.openConfigEditor); // Type state
 
   const handleEditClick = (fileName: string) => {
     openConfigEditor(fileName);

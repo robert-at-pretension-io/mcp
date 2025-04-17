@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
+import { shallow } from 'zustand/shallow'; // Import shallow
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperPlane, faTrash } from '@fortawesome/free-solid-svg-icons';
 import Spinner from '@/components/common/Spinner'; // Assuming Spinner component exists
