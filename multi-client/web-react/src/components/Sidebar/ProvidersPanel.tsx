@@ -15,7 +15,7 @@ const ProvidersPanel: React.FC = () => {
       providerModels: state.providerModels,
       switchProviderAndModel: state.switchProviderAndModel, // Get action from store
     }),
-    shallow // Correct usage: Pass shallow as the second argument
+    shallow
   );
 
   const handleSelectProvider = async (name: string) => {

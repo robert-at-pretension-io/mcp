@@ -9,7 +9,7 @@ import { ToolsByServer, ToolInfo } from '@/store/store'; // Import types
 
 const ToolsPanel: React.FC = () => {
   const [filterText, setFilterText] = useState('');
-  // Correct usage of shallow
+  // Correct usage: Pass shallow as the second argument
   const toolsByServer = useStore((state) => state.allToolsData, shallow);
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {

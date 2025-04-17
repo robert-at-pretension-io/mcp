@@ -1,4 +1,3 @@
-import React from 'react';
 
 // Stub component for Servers configuration modal
 export default function ServersModal() {

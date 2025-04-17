@@ -1,4 +1,3 @@
-import React from 'react';
 
 // Stub component for Config file editor modal
 export default function ConfigEditorModal() {

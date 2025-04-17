@@ -1,8 +1,9 @@
 import React from 'react';
+import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faComments, faPlus, faEdit, faTrash } from '@fortawesome/free-solid-svg-icons';
 import AccordionSection from './AccordionSection';
-import { useStore } from '@/store/store';
+import { useStore, ConversationSummary } from '@/store/store'; // Import ConversationSummary
 import { shallow } from 'zustand/shallow';
 import { formatRelativeTime, escapeHtml } from '@/utils/helpers';
 import toast from 'react-hot-toast';
@@ -25,7 +26,7 @@ const ConversationsPanel: React.FC = () => {
       updateConversationInList: state.updateConversationInList,
       removeConversationFromList: state.removeConversationFromList,
     }),
-    shallow // Correct usage: Pass shallow as the second argument
+    shallow
   );
 
   const handleSelect = (id: string) => {

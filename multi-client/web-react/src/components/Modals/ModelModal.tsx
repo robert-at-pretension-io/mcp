@@ -1,4 +1,3 @@
-import React from 'react';
 
 // Stub component for Model selection modal
 export default function ModelModal() {

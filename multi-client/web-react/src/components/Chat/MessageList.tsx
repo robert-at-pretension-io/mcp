@@ -5,7 +5,7 @@ import { shallow } from 'zustand/shallow';
 import { Message } from '@/store/store'; // Import Message type
 
 const MessageList: React.FC = () => {
-  // Correct usage of shallow and ensure messages type is inferred
+  // Correct usage: Pass shallow as the second argument
   const messages = useStore((state) => state.messages, shallow);
   const listRef = useRef<HTMLDivElement>(null);
 
