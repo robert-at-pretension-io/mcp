@@ -8,6 +8,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import type { ConversationManager } from '../conversation/ConversationManager.js';
 import type { ServerManager } from '../ServerManager.js';
+import type { Server as SocketIOServer, Socket } from 'socket.io'; // Import Socket type
 
 // Helper for ES modules to get the directory path
 const __filename = fileURLToPath(import.meta.url);
@@ -106,7 +107,7 @@ export class WebServer {
   }
 
   private setupSocketEvents() {
-    this.io.on('connection', (socket) => {
+    this.io.on('connection', (socket: Socket) => { // Add type annotation
       console.log('Client connected:', socket.id);
 
       // General error handler for this specific socket
