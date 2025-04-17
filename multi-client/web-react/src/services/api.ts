@@ -128,22 +128,11 @@ export const saveServerConfigurationsApi = async (config: McpServersConfig): Pro
         toast.success(response.data.message);
     }
     if (response.data.needsRestart) {
-        toast.custom((t) => ( // Example custom toast for warning
-            <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-amber-100 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 p-4`}>
-              <div className="flex-shrink-0 pt-0.5">
-                 {/* Warning Icon */}
-              </div>
-              <div className="ml-3 flex-1">
-                <p className="text-sm font-medium text-amber-800">Restart Required</p>
-                <p className="mt-1 text-sm text-amber-700">Restart the application to apply server changes.</p>
-              </div>
-               <div className="ml-4 flex-shrink-0 flex">
-                <button onClick={() => toast.dismiss(t.id)} className="inline-flex text-amber-600 hover:text-amber-800">
-                  Close
-                </button>
-              </div>
-            </div>
-          ), { duration: 6000 });
+        // Replace custom JSX toast with standard warning toast
+        toast.warning('Restart the application to apply server changes.', {
+             duration: 6000,
+             id: 'server-restart-warning' // Optional ID to prevent duplicates
+        });
     }
     return response.data;
   } catch (error) {
@@ -173,22 +162,11 @@ export const saveConfigFileApi = async (fileName: string, content: string): Prom
         toast.success(response.data.message);
     }
      if (response.data.needsRestart) {
-        toast.custom((t) => ( // Example custom toast for warning
-            <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-amber-100 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 p-4`}>
-              <div className="flex-shrink-0 pt-0.5">
-                 {/* Warning Icon */}
-              </div>
-              <div className="ml-3 flex-1">
-                <p className="text-sm font-medium text-amber-800">Restart Required</p>
-                <p className="mt-1 text-sm text-amber-700">Restart the application for changes to take effect.</p>
-              </div>
-               <div className="ml-4 flex-shrink-0 flex">
-                <button onClick={() => toast.dismiss(t.id)} className="inline-flex text-amber-600 hover:text-amber-800">
-                  Close
-                </button>
-              </div>
-            </div>
-          ), { duration: 6000 });
+        // Replace custom JSX toast with standard warning toast
+        toast.warning('Restart the application for configuration changes to take effect.', {
+             duration: 6000,
+             id: 'config-restart-warning' // Optional ID to prevent duplicates
+        });
     }
     return response.data;
   } catch (error) {
