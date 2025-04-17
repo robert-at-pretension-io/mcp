@@ -13,7 +13,7 @@ const Header: React.FC = () => {
     openModelModal,
     openServersModal,
   } = useStore(
-    (state) => ({
+    (state: StoreType) => ({ // Type state
       connectedServersText: state.connectedServersText,
       currentProvider: state.currentProvider,
       currentModel: state.providers[state.currentProvider]?.model || 'N/A',
