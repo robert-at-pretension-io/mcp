@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import create from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { devtools } from 'zustand/middleware';
 import {
@@ -8,10 +8,8 @@ import {
     updateApiKeyApi,
     fetchServerConfigApi,
     saveServerConfigurationsApi,
-    fetchConfigFileApi,
-    saveConfigFileApi,
     // Import other API functions as needed
-} from '@/services/api'; // Assuming API functions are defined
+} from '@/services/api';
 import { Socket } from 'socket.io-client'; // Import socket type if needed for actions
 
 // --- Types ---
@@ -95,6 +93,7 @@ interface UiState {
     isThinking: boolean;
     thinkingMessage: string;
     statusMessage: string;
+    connectedServersText: string;
     isSidebarOpen: boolean; // For large screens toggle
     isPanelOpen: boolean; // For small screens overlay
     isPanelCollapsed: boolean; // For large screens collapsed state
@@ -212,6 +211,7 @@ const initialState: AppState = {
     isServersModalOpen: false,
     isConfigEditorOpen: false,
     currentEditingConfigFile: null,
+    connectedServersText: '',
     // Chat
     messages: [],
     currentConversationId: null,
@@ -333,15 +333,13 @@ export const useStore = create<StoreType>()(
             },
 
             // --- Server Actions ---
-            setServersStatus: (servers) => {
-                 set({ servers: servers });
-                 // Update derived text state
-                 let count = 0;
-                 let statusText = 'No servers connected';
+            setServersStatus: (servers: ServerInfo[]) => {
+                set({ servers });
+                // Update derived text state
+                let statusText = 'No servers connected';
                  if (Array.isArray(servers)) {
                      const connectedCount = servers.filter(s => s.status === 'connected').length;
                      const errorCount = servers.filter(s => s.status === 'error').length;
-                     count = connectedCount;
 
                      if (servers.length === 0) {
                          statusText = 'No servers configured';
@@ -420,29 +418,3 @@ export const useStore = create<StoreType>()(
     )
 );
 
-// Add computed property for connectedServersText outside the create call
-useStore.subscribe((state) => 
-    (state.servers, // Select the servers state
-    (servers) => { // Listener function
-        let statusText = 'No servers connected';
-        if (Array.isArray(servers)) {
-            const connectedCount = servers.filter(s => s.status === 'connected').length;
-            const errorCount = servers.filter(s => s.status === 'error').length;
-
-            if (servers.length === 0) {
-                statusText = 'No servers configured';
-            } else if (connectedCount === 0 && errorCount === 0 && servers.some(s => s.status === 'connecting')) {
-                 statusText = 'Connecting...';
-            } else if (connectedCount === 0 && errorCount === 0) {
-                 statusText = 'Disconnected';
-            }
-            else {
-                statusText = `${connectedCount} server${connectedCount !== 1 ? 's' : ''} connected`;
-                if (errorCount > 0) {
-                    statusText += ` (${errorCount} error${errorCount !== 1 ? 's' : ''})`;
-                }
-            }
-        }
-        useStore.setState({ connectedServersText: statusText });
-    })
-);
