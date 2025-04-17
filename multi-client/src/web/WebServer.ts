@@ -124,7 +124,9 @@ export class WebServer {
       });
 
       // Send initial data to newly connected client
-      this.sendInitialData(socket);
+      // ---> TEMPORARILY COMMENTED OUT FOR DEBUGGING ECONNRESET <---
+      // this.sendInitialData(socket); 
+      // ---> END COMMENTED OUT <---
 
       // Handle disconnect
       socket.on('disconnect', (reason) => { // Add reason parameter type if needed
