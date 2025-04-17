@@ -25,7 +25,7 @@ const ConversationsPanel: React.FC = () => {
       updateConversationInList: state.updateConversationInList,
       removeConversationFromList: state.removeConversationFromList,
     }),
-    shallow
+    shallow // Correct usage: Pass shallow as the second argument
   );
 
   const handleSelect = (id: string) => {
@@ -41,7 +41,8 @@ const ConversationsPanel: React.FC = () => {
           try {
               await renameConversationApi(id, newTitle.trim());
               // Optimistic update (or wait for socket event if backend sends one)
-              const updatedConvo = conversations.find(c => c.id === id);
+              // Ensure conversations is treated as ConversationSummary[]
+              const updatedConvo = (conversations as ConversationSummary[]).find(c => c.id === id);
               if (updatedConvo) {
                   updateConversationInList({ ...updatedConvo, title: newTitle.trim(), updatedAt: new Date().toISOString() });
               }
@@ -89,10 +90,10 @@ const ConversationsPanel: React.FC = () => {
   return (
     <AccordionSection title={title} startOpen={true}>
       <div className="max-h-60 overflow-y-auto space-y-1 pr-1"> {/* Added padding-right */}
-        {conversations.length === 0 ? (
+        {(conversations as ConversationSummary[]).length === 0 ? ( // Cast conversations
           <div className="text-sm text-gray-500 p-3 text-center">No conversations</div>
         ) : (
-          conversations.map((c) => {
+          (conversations as ConversationSummary[]).map((c) => { // Cast conversations
             const isActive = c.id === currentConversationId;
             const activeClasses = isActive ? 'bg-primary/10 dark:bg-primary/20 border-primary' : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-700';
             let relativeTime = 'unknown time';

@@ -17,6 +17,7 @@ function App() {
   useSocket();
 
   // Fetch initial data (conversations, providers)
+  // Pass shallow as the second argument to useStore
   const { fetchInitialData, isModelModalOpen, isServersModalOpen, isConfigEditorOpen } = useStore(
     (state) => ({
       fetchInitialData: state.fetchInitialData,
@@ -24,7 +25,7 @@ function App() {
       isServersModalOpen: state.isServersModalOpen,
       isConfigEditorOpen: state.isConfigEditorOpen,
     }),
-    shallow
+    shallow // Correct usage: Pass shallow as the second argument
   );
 
   useEffect(() => {

@@ -5,9 +5,11 @@ import AccordionSection from './AccordionSection';
 import { useStore } from '@/store/store';
 import { shallow } from 'zustand/shallow';
 import { escapeHtml } from '@/utils/helpers';
+import { ToolsByServer, ToolInfo } from '@/store/store'; // Import types
 
 const ToolsPanel: React.FC = () => {
   const [filterText, setFilterText] = useState('');
+  // Correct usage of shallow
   const toolsByServer = useStore((state) => state.allToolsData, shallow);
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -16,13 +18,15 @@ const ToolsPanel: React.FC = () => {
 
   const filteredTools = React.useMemo(() => {
     const term = filterText.toLowerCase().trim();
-    if (!term && Object.keys(toolsByServer).length === 0) return {}; // No servers connected
+    // Cast toolsByServer to the correct type
+    const typedToolsByServer = toolsByServer as ToolsByServer;
+    if (!term && Object.keys(typedToolsByServer).length === 0) return {}; // No servers connected
 
-    const out: { [server: string]: { name: string; description?: string }[] } = {};
+    const out: { [server: string]: ToolInfo[] } = {}; // Use ToolInfo type
     let foundAny = false;
 
-    for (const [srv, list] of Object.entries(toolsByServer)) {
-      const filtered = term
+    for (const [srv, list] of Object.entries(typedToolsByServer)) {
+      const filtered: ToolInfo[] = term // Ensure list is ToolInfo[]
         ? list.filter(
             (t) =>
               t.name.toLowerCase().includes(term) ||
@@ -37,7 +41,7 @@ const ToolsPanel: React.FC = () => {
       }
     }
     // Return null if no tools match the filter but servers exist
-    return foundAny ? out : (Object.keys(toolsByServer).length > 0 ? null : {});
+    return foundAny ? out : (Object.keys(typedToolsByServer).length > 0 ? null : {});
   }, [toolsByServer, filterText]);
 
   const title = (

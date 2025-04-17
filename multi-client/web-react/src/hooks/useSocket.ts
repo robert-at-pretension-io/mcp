@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { useStore, Message, ServerInfo, ConversationSummary, ToolInfo, ToolsByServer } from '@/store/store'; // Import types and store hook
+// Removed unused ToolInfo
+import { useStore, Message, ServerInfo, ConversationSummary, ToolsByServer } from '@/store/store'; // Import types and store hook
 import toast from 'react-hot-toast';
 import { shallow } from 'zustand/shallow';
 
@@ -66,7 +67,7 @@ export const useSocket = () => {
       setCurrentConversationId: state.setCurrentConversationId,
       updateConversationInList: state.updateConversationInList,
     }),
-    shallow // Use shallow comparison
+    shallow // Correct usage: Pass shallow as the second argument
   );
 
   useEffect(() => {

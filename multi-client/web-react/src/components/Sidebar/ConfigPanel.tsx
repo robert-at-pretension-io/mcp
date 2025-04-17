@@ -1,6 +1,7 @@
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCog, faEdit, faRobot, faServer, faList } from '@fortawesome/free-solid-svg-icons';
+// Removed unused faEdit
+import { faCog, faRobot, faServer, faList } from '@fortawesome/free-solid-svg-icons';
 import AccordionSection from './AccordionSection';
 import { useStore } from '@/store/store';
 

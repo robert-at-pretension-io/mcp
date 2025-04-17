@@ -2,8 +2,10 @@ import React, { useEffect, useRef } from 'react';
 import { useStore } from '@/store/store';
 import MessageItem from './MessageItem';
 import { shallow } from 'zustand/shallow';
+import { Message } from '@/store/store'; // Import Message type
 
 const MessageList: React.FC = () => {
+  // Correct usage of shallow and ensure messages type is inferred
   const messages = useStore((state) => state.messages, shallow);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -28,9 +30,9 @@ const MessageList: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-4">
-          {messages.map((msg, idx) => (
+          {(messages as Message[]).map((msg, idx) => ( // Cast messages to Message[] if inference fails
             // Use a more stable key if messages have unique IDs from backend
-            <MessageItem key={msg.id || `${msg.role}-${idx}`} message={msg} />
+            <MessageItem key={msg.id || `${msg.role}-${idx}-${msg.content?.toString().slice(0,10)}`} message={msg} /> // Use a more robust key
           ))}
         </div>
       )}

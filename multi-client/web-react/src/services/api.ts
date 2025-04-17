@@ -1,7 +1,8 @@
 // Replicates functionality of web/js/api/apiClient.js using fetch or axios
 import axios from 'axios'; // Using axios for simplicity, can use fetch too
 import toast from 'react-hot-toast';
-import { ConversationSummary, McpServersConfig, ProviderConfig, Providers, ProviderModels } from '@/store/store'; // Import types
+// Removed unused ProviderConfig
+import { ConversationSummary, McpServersConfig, Providers, ProviderModels } from '@/store/store'; // Import types
 
 const API_BASE = '/api'; // Matches Vite proxy
 
@@ -128,8 +129,9 @@ export const saveServerConfigurationsApi = async (config: McpServersConfig): Pro
         toast.success(response.data.message);
     }
     if (response.data.needsRestart) {
-        // Replace custom JSX toast with standard warning toast
-        toast.warning('Restart the application to apply server changes.', {
+        // Use standard toast for warning
+        toast('Restart the application to apply server changes.', {
+             icon: '⚠️', // Add a warning icon
              duration: 6000,
              id: 'server-restart-warning' // Optional ID to prevent duplicates
         });
@@ -162,8 +164,9 @@ export const saveConfigFileApi = async (fileName: string, content: string): Prom
         toast.success(response.data.message);
     }
      if (response.data.needsRestart) {
-        // Replace custom JSX toast with standard warning toast
-        toast.warning('Restart the application for configuration changes to take effect.', {
+        // Use standard toast for warning
+        toast('Restart the application for configuration changes to take effect.', {
+             icon: '⚠️', // Add a warning icon
              duration: 6000,
              id: 'config-restart-warning' // Optional ID to prevent duplicates
         });
