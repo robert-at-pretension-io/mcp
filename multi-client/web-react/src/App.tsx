@@ -5,9 +5,9 @@ import MainLayout from '@/components/Layout/MainLayout';
 import ChatArea from '@/components/Chat/ChatArea';
 import Sidebar from '@/components/Sidebar/Sidebar';
 import { useSocket } from '@/hooks/useSocket';
-import { useStore, StoreType } from '@/store/store'; // Import StoreType
+import { useStore } from '@/store/store';
 import { useEffect } from 'react';
-import { shallow } from 'zustand/shallow';
+// Removed shallow import
 import ModelModal from '@/components/Modals/ModelModal';
 import ServersModal from '@/components/Modals/ServersModal';
 import ConfigEditorModal from '@/components/Modals/ConfigEditorModal';
@@ -19,13 +19,12 @@ function App() {
   // Fetch initial data (conversations, providers)
   // Correct usage: Pass shallow as the second argument to useStore
   const { fetchInitialData, isModelModalOpen, isServersModalOpen, isConfigEditorOpen } = useStore(
-    (state: StoreType) => ({ // Type state
+    (state: any) => ({
       fetchInitialData: state.fetchInitialData,
       isModelModalOpen: state.isModelModalOpen,
       isServersModalOpen: state.isServersModalOpen,
       isConfigEditorOpen: state.isConfigEditorOpen,
-    }),
-    shallow
+    })
   );
 
   useEffect(() => {

@@ -4,11 +4,11 @@ import MessageItem from './MessageItem';
 import { shallow } from 'zustand/shallow';
 import { Message } from '@/store/store'; // Import Message type
 
-import { StoreType } from '@/store/store'; // Import StoreType
+// Removed StoreType import; using implicit any for state in selector
 
 const MessageList: React.FC = () => {
   // Correct usage: Pass shallow as the second argument
-  const messages = useStore((state: StoreType) => state.messages, shallow);
+  const messages = useStore((state: any) => state.messages);
   const listRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
