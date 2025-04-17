@@ -1,13 +1,13 @@
 import React from 'react';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
 
 interface MainLayoutProps {
   children: React.ReactNode;
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-    const isPanelCollapsed = useStore((state) => state.isPanelCollapsed);
-    const isPanelOpen = useStore((state) => state.isPanelOpen); // For mobile
+    const isPanelCollapsed = useStore((state: StoreType) => state.isPanelCollapsed); // Type state
+    const isPanelOpen = useStore((state: StoreType) => state.isPanelOpen); // For mobile // Type state
 
     // Determine classes based on panel state and screen size
     // Note: Tailwind doesn't directly support conditional classes based on JS logic for breakpoints easily.

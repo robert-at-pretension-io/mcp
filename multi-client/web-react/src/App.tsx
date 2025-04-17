@@ -19,7 +19,7 @@ function App() {
   // Fetch initial data (conversations, providers)
   // Correct usage: Pass shallow as the second argument to useStore
   const { fetchInitialData, isModelModalOpen, isServersModalOpen, isConfigEditorOpen } = useStore(
-    (state) => ({
+    (state: StoreType) => ({ // Type state
       fetchInitialData: state.fetchInitialData,
       isModelModalOpen: state.isModelModalOpen,
       isServersModalOpen: state.isServersModalOpen,

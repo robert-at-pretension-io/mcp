@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'; // Removed unused React import
+import { useState, useEffect, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimes, faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { useStore, ServerConfig } from '@/store/store';
+import { useStore, ServerConfig, StoreType } from '@/store/store'; // Import StoreType
 import { shallow } from 'zustand/shallow';
 import toast from 'react-hot-toast';
 import Spinner from '@/components/common/Spinner';
@@ -18,7 +18,7 @@ const ServersModal: React.FC = () => {
         saveServerConfig, // Action to save to backend
         fetchServerConfig, // Action to fetch initial config
     } = useStore(
-        (state) => ({
+        (state: StoreType) => ({ // Type state
             isServersModalOpen: state.isServersModalOpen,
             closeServersModal: state.closeServersModal,
             serverConfig: state.serverConfig,

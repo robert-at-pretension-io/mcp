@@ -2,7 +2,7 @@ import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faComments, faPlus, faEdit, faTrash } from '@fortawesome/free-solid-svg-icons';
 import AccordionSection from './AccordionSection';
-import { useStore, ConversationSummary } from '@/store/store'; // Import ConversationSummary
+import { useStore, ConversationSummary, StoreType } from '@/store/store'; // Import StoreType
 import { shallow } from 'zustand/shallow';
 import { formatRelativeTime, escapeHtml } from '@/utils/helpers';
 import toast from 'react-hot-toast';
@@ -17,7 +17,7 @@ const ConversationsPanel: React.FC = () => {
     updateConversationInList, // Add this from store
     removeConversationFromList, // Add this from store
   } = useStore(
-    (state) => ({
+    (state: StoreType) => ({ // Type state
       conversations: state.conversations,
       currentConversationId: state.currentConversationId,
       emitLoadConversation: state.emitLoadConversation,

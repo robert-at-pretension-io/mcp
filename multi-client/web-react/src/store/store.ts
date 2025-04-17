@@ -1,4 +1,4 @@
-import create from 'zustand';
+import { create } from 'zustand'; // Correct import for Zustand v5+
 import { immer } from 'zustand/middleware/immer';
 import { devtools } from 'zustand/middleware';
 import {
@@ -234,12 +234,12 @@ const initialState: AppState = {
 
 export const useStore = create<StoreType>()(
     devtools(
-        immer((set, get) => ({
+        immer((set, get: () => StoreType) => ({ // Add type annotation for get
             ...initialState,
             _socket: null, // Initialize internal socket state
 
             // --- UI Actions ---
-            setThinking: (thinking, message = 'AI is thinking...') => set((state) => {
+            setThinking: (thinking: boolean, message: string = 'AI is thinking...') => set((state: StoreType) => { // Type parameters and state
                 state.isThinking = thinking;
                 if (thinking) {
                     state.thinkingMessage = message;
@@ -248,11 +248,11 @@ export const useStore = create<StoreType>()(
                     state.statusMessage = 'Ready'; // Reset status when not thinking
                 }
             }),
-            setStatusMessage: (message) => set({ statusMessage: message }),
-            toggleSidebar: () => set((state) => {
+            setStatusMessage: (message: string) => set({ statusMessage: message }), // Type parameter
+            toggleSidebar: () => set((state: StoreType) => { // Type state
                 // Logic depends on screen size, ideally handled by CSS media queries reacting to classes
                 // This toggle might control both states for simplicity, CSS determines effect
-                if (window.innerWidth < 1024) { // Example breakpoint for mobile
+                if (typeof window !== 'undefined' && window.innerWidth < 1024) { // Check window exists
                     state.isPanelOpen = !state.isPanelOpen;
                 } else {
                     state.isPanelCollapsed = !state.isPanelCollapsed;
@@ -263,42 +263,42 @@ export const useStore = create<StoreType>()(
             closeModelModal: () => set({ isModelModalOpen: false }),
             openServersModal: () => {
                 set({ isServersModalOpen: true });
-                get().fetchServerConfig(); // Fetch config when opening
+                (get() as StoreType).fetchServerConfig(); // Assert get() type
             },
             closeServersModal: () => set({ isServersModalOpen: false, selectedServerName: null }),
-            openConfigEditor: (fileName) => set({ isConfigEditorOpen: true, currentEditingConfigFile: fileName }),
+            openConfigEditor: (fileName: string) => set({ isConfigEditorOpen: true, currentEditingConfigFile: fileName }), // Type parameter
             closeConfigEditor: () => set({ isConfigEditorOpen: false, currentEditingConfigFile: null }),
 
             // --- Chat Actions ---
-            setMessages: (messages) => set({ messages: messages }),
-            addMessage: (message) => set((state) => {
+            setMessages: (messages: Message[]) => set({ messages: messages }), // Type parameter
+            addMessage: (message: Message) => set((state: StoreType) => { // Type parameter and state
                 state.messages.push(message);
             }),
-            setCurrentConversationId: (id) => set({ currentConversationId: id }),
+            setCurrentConversationId: (id: string | null) => set({ currentConversationId: id }), // Type parameter
             clearConversation: () => set({ messages: [], currentConversationId: null }), // Clear messages and ID
 
             // --- Conversation List Actions ---
-            setConversations: (conversations) => set({
+            setConversations: (conversations: ConversationSummary[]) => set({ // Type parameter
                 // Sort conversations by updatedAt descending when setting
                 conversations: [...conversations].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
             }),
-            updateConversationInList: (conversation) => set((state) => {
-                const index = state.conversations.findIndex(c => c.id === conversation.id);
+            updateConversationInList: (conversation: ConversationSummary) => set((state: StoreType) => { // Type parameter and state
+                const index = state.conversations.findIndex((c: ConversationSummary) => c.id === conversation.id); // Type c
                 if (index !== -1) {
                     state.conversations[index] = conversation;
                 } else {
                     state.conversations.push(conversation);
                 }
                 // Re-sort after update/add
-                state.conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+                state.conversations.sort((a: ConversationSummary, b: ConversationSummary) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()); // Type a, b
             }),
-            removeConversationFromList: (id) => set((state) => {
-                state.conversations = state.conversations.filter(c => c.id !== id);
+            removeConversationFromList: (id: string) => set((state: StoreType) => { // Type parameter and state
+                state.conversations = state.conversations.filter((c: ConversationSummary) => c.id !== id); // Type c
             }),
             fetchConversationsList: async () => {
                 try {
                     const convos = await fetchConversationsListApi();
-                    set({ conversations: [...convos].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()) });
+                    set({ conversations: [...convos].sort((a: ConversationSummary, b: ConversationSummary) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()) }); // Type a, b
                 } catch (error) {
                     console.error("Failed to fetch conversations list:", error);
                     // Error toast handled by API client
@@ -306,9 +306,9 @@ export const useStore = create<StoreType>()(
             },
 
             // --- Provider Actions ---
-            setCurrentProvider: (provider) => set({ currentProvider: provider }),
-            setProviders: (providers) => set({ providers: providers }),
-            setProviderModels: (models) => set({ providerModels: models }),
+            setCurrentProvider: (provider: string) => set({ currentProvider: provider }), // Type parameter
+            setProviders: (providers: Providers) => set({ providers: providers }), // Type parameter
+            setProviderModels: (models: ProviderModels) => set({ providerModels: models }), // Type parameter
             fetchProviders: async () => {
                 try {
                     const data = await fetchProvidersApi();
@@ -322,18 +322,18 @@ export const useStore = create<StoreType>()(
                     // Error toast handled by API client
                 }
             },
-            switchProviderAndModel: async (provider, model) => {
+            switchProviderAndModel: async (provider: string, model: string) => { // Type parameters
                 // API call triggers backend change, socket event 'model-changed' updates state
                 await switchProviderAndModelApi(provider, model);
                 // Optimistic update could be done here, but socket is more reliable
             },
-            updateApiKey: async (provider, apiKey) => {
+            updateApiKey: async (provider: string, apiKey: string) => { // Type parameters
                  // API call triggers backend change, potential socket event updates state if current provider changed
                  return await updateApiKeyApi(provider, apiKey);
             },
 
             // --- Server Actions ---
-            setServersStatus: (servers: ServerInfo[]) => {
+            setServersStatus: (servers: ServerInfo[]) => { // Type parameter (already correct)
                 set({ servers });
                 // Update derived text state
                 let statusText = 'No servers connected';
@@ -354,8 +354,8 @@ export const useStore = create<StoreType>()(
                  }
                  set({ connectedServersText: statusText });
             },
-            setServerConfig: (config) => set({ serverConfig: config }),
-            setSelectedServerName: (name) => set({ selectedServerName: name }),
+            setServerConfig: (config: McpServersConfig) => set({ serverConfig: config }), // Type parameter
+            setSelectedServerName: (name: string | null) => set({ selectedServerName: name }), // Type parameter
             fetchServerConfig: async () => {
                 try {
                     const config = await fetchServerConfigApi();
@@ -365,18 +365,18 @@ export const useStore = create<StoreType>()(
                     set({ serverConfig: { mcpServers: {} } }); // Reset on error
                 }
             },
-            saveServerConfig: async (config) => {
+            saveServerConfig: async (config: McpServersConfig) => { // Type parameter
                 return await saveServerConfigurationsApi(config);
                 // No state update here, requires backend restart
             },
 
             // --- Tool Actions ---
-            setAllToolsData: (tools) => set({ allToolsData: tools }),
+            setAllToolsData: (tools: ToolsByServer) => set({ allToolsData: tools }), // Type parameter
 
             // --- Socket Actions ---
-            setSocket: (socket) => set({ _socket: socket }),
-            emitUserMessage: (message) => {
-                const socket = get()._socket;
+            setSocket: (socket: Socket | null) => set({ _socket: socket }), // Type parameter
+            emitUserMessage: (message: string) => { // Type parameter
+                const socket = (get() as StoreType)._socket; // Assert get() type
                 if (socket) {
                     socket.emit('user-message', { message });
                     // Optimistically add user message to state? Or wait for history update?
@@ -385,19 +385,19 @@ export const useStore = create<StoreType>()(
                     console.error("Socket not available to emit user message");
                 }
             },
-            emitClearConversation: () => get()._socket?.emit('clear-conversation'),
-            emitNewConversation: () => get()._socket?.emit('new-conversation'),
-            emitLoadConversation: (id) => get()._socket?.emit('load-conversation', { id }),
+            emitClearConversation: () => (get() as StoreType)._socket?.emit('clear-conversation'), // Assert get() type
+            emitNewConversation: () => (get() as StoreType)._socket?.emit('new-conversation'), // Assert get() type
+            emitLoadConversation: (id: string) => (get() as StoreType)._socket?.emit('load-conversation', { id }), // Type parameter & assert get() type
 
             // --- Combined Actions ---
             fetchInitialData: async () => {
-                get().setStatusMessage('Loading initial data...');
+                (get() as StoreType).setStatusMessage('Loading initial data...'); // Assert get() type
                 await Promise.all([
-                    get().fetchConversationsList(),
-                    get().fetchProviders()
+                    (get() as StoreType).fetchConversationsList(), // Assert get() type
+                    (get() as StoreType).fetchProviders() // Assert get() type
                 ]);
                 // Determine initial conversation to load (if any)
-                const { conversations, currentConversationId, emitLoadConversation } = get();
+                const { conversations, currentConversationId, emitLoadConversation } = get() as StoreType; // Assert get() type
                 if (!currentConversationId && conversations.length > 0) {
                     // Assuming conversations are already sorted by update time
                     if (conversations[0]) {
@@ -405,10 +405,10 @@ export const useStore = create<StoreType>()(
                         emitLoadConversation(conversations[0].id);
                         // Status will be set to 'Ready' by the 'conversation-loaded' socket handler
                     } else {
-                         get().setStatusMessage('Ready');
+                         (get() as StoreType).setStatusMessage('Ready'); // Assert get() type
                     }
                 } else if (!currentConversationId) {
-                     get().setStatusMessage('Ready'); // No conversations exist
+                     (get() as StoreType).setStatusMessage('Ready'); // No conversations exist // Assert get() type
                 }
                 // If currentId exists, assume socket 'conversation-loaded' handled it
             },

@@ -1,7 +1,7 @@
 // Removed unused React import
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faColumns, faServer, faRobot, faCog } from '@fortawesome/free-solid-svg-icons';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
 import { shallow } from 'zustand/shallow';
 
 const Header: React.FC = () => {

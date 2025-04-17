@@ -7,7 +7,7 @@ import Spinner from '@/components/common/Spinner'; // Assuming Spinner component
 const ChatInput: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const { isThinking, thinkingMessage, emitUserMessage, emitClearConversation } = useStore(
-    (state) => ({
+    (state: StoreType) => ({ // Type state
       isThinking: state.isThinking,
       thinkingMessage: state.thinkingMessage,
       emitUserMessage: state.emitUserMessage,

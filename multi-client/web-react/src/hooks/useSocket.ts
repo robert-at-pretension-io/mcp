@@ -52,7 +52,7 @@ export const useSocket = () => {
     setCurrentConversationId,
     updateConversationInList,
   } = useStore(
-    (state) => ({
+    (state: StoreType) => ({ // Type state
       setSocket: state.setSocket,
       setStatusMessage: state.setStatusMessage,
       setServersStatus: state.setServersStatus,

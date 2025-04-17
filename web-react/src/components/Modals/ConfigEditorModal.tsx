@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'; // Removed unused React import
+import { useState, useEffect, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimes } from '@fortawesome/free-solid-svg-icons';
-import { useStore } from '@/store/store';
+import { useStore, StoreType } from '@/store/store'; // Import StoreType
 import { shallow } from 'zustand/shallow';
 import toast from 'react-hot-toast';
 import Spinner from '@/components/common/Spinner';
@@ -15,7 +15,7 @@ const ConfigEditorModal: React.FC = () => {
         fetchProviders, // To refresh AI config if needed
         fetchServerConfig, // To refresh server config if needed
     } = useStore(
-        (state) => ({
+        (state: StoreType) => ({ // Type state
             isConfigEditorOpen: state.isConfigEditorOpen,
             closeConfigEditor: state.closeConfigEditor,
             currentEditingConfigFile: state.currentEditingConfigFile,
