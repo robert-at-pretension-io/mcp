@@ -52,6 +52,7 @@ export interface ServerInfo {
 
 // Based on API response for /ai/providers and appState.js
 export interface ProviderConfig {
+    provider: string; // Added provider name for consistency
     model?: string; // Default model for the provider
     apiKeySet?: boolean; // Indicates if an API key is configured server-side
     // Add other config fields if present (e.g., baseURL)

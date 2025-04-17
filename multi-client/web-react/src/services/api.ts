@@ -60,7 +60,7 @@ export const deleteConversationApi = async (conversationId: string): Promise<voi
 
 interface ProvidersResponse {
     current: string;
-    providers: Providers;
+    providers: Providers; // Should include apiKeySet flag from backend
     models: ProviderModels;
 }
 
