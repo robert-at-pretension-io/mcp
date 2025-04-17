@@ -98,6 +98,13 @@ export class WebServer {
     this.io.on('connection', (socket) => {
       console.log('Client connected:', socket.id);
 
+      // General error handler for this specific socket
+      socket.on('error', (err) => {
+        console.error(`[WebServer] Socket Error for ${socket.id}:`, err);
+        // Depending on the error, you might want to disconnect the client
+        // or just log it.
+      });
+
       // Send initial data to newly connected client
       this.sendInitialData(socket);
 
