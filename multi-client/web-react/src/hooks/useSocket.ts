@@ -1,9 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 // Removed unused ToolInfo
-import { useStore, Message, ServerInfo, ConversationSummary, ToolsByServer, StoreType } from '@/store/store'; // Import StoreType
+import { useStore, Message, ServerInfo, ConversationSummary, ToolsByServer } from '@/store/store';
 import toast from 'react-hot-toast';
-import { shallow } from 'zustand/shallow';
 
 // Define types for socket event data payloads based on backend/old frontend
 interface ServersInfoData {
@@ -51,8 +50,7 @@ export const useSocket = () => {
     setConversations,
     setCurrentConversationId,
     updateConversationInList,
-  } = useStore(
-    (state: StoreType) => ({ // Type state
+  } = useStore((state: any) => ({
       setSocket: state.setSocket,
       setStatusMessage: state.setStatusMessage,
       setServersStatus: state.setServersStatus,
@@ -66,9 +64,7 @@ export const useSocket = () => {
       setConversations: state.setConversations,
       setCurrentConversationId: state.setCurrentConversationId,
       updateConversationInList: state.updateConversationInList,
-    }),
-    shallow
-  );
+  }));
 
   useEffect(() => {
     // Prevent multiple connections

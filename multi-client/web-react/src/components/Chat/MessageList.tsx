@@ -1,14 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { useStore } from '@/store/store';
 import MessageItem from './MessageItem';
-import { useShallow } from 'zustand/shallow';
+// Removed shallow import
 import { Message } from '@/store/store'; // Import Message type
 
 // Removed StoreType import; using implicit any for state in selector
 
 const MessageList: React.FC = () => {
-  // Use useShallow wrapper
-  const messages = useStore(useShallow((state: any) => state.messages));
+  const messages: Message[] = useStore((state: any) => state.messages);
   const listRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom

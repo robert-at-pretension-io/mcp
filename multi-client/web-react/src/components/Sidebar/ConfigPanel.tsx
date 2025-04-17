@@ -3,10 +3,10 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 // Removed unused faEdit
 import { faCog, faRobot, faServer, faList } from '@fortawesome/free-solid-svg-icons';
 import AccordionSection from './AccordionSection';
-import { useStore, StoreType } from '@/store/store'; // Import StoreType
+import { useStore } from '@/store/store';
 
 const ConfigPanel: React.FC = () => {
-    const { openConfigEditor } = useStore((state: StoreType) => ({ // Type state
+    const { openConfigEditor } = useStore((state: any) => ({
         openConfigEditor: state.openConfigEditor,
     }));
 

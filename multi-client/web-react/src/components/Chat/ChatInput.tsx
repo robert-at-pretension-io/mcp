@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useStore, StoreType } from '@/store/store'; // Import StoreType
+import { useStore } from '@/store/store';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperPlane, faTrash } from '@fortawesome/free-solid-svg-icons';
 import Spinner from '@/components/common/Spinner'; // Assuming Spinner component exists
@@ -7,7 +7,7 @@ import Spinner from '@/components/common/Spinner'; // Assuming Spinner component
 const ChatInput: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const { isThinking, thinkingMessage, emitUserMessage, emitClearConversation } = useStore(
-    (state: StoreType) => ({ // Type state
+    (state: any) => ({
       isThinking: state.isThinking,
       thinkingMessage: state.thinkingMessage,
       emitUserMessage: state.emitUserMessage,

@@ -5,10 +5,10 @@ import ConversationsPanel from './ConversationsPanel';
 import ProvidersPanel from './ProvidersPanel';
 import ToolsPanel from './ToolsPanel';
 import ConfigPanel from './ConfigPanel';
-import { useStore, StoreType } from '@/store/store'; // Import StoreType
+import { useStore } from '@/store/store';
 
 const Sidebar: React.FC = () => {
-    const { isPanelOpen, closeSidebar } = useStore((state: StoreType) => ({ // Type state
+    const { isPanelOpen, closeSidebar } = useStore((state: any) => ({
         isPanelOpen: state.isPanelOpen,
         closeSidebar: state.closeSidebar,
     }));

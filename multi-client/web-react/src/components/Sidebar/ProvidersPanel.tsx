@@ -3,20 +3,18 @@ import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlug, faCheckCircle } from '@fortawesome/free-solid-svg-icons';
 import AccordionSection from './AccordionSection';
-import { useStore, StoreType } from '@/store/store'; // Import StoreType
-import { shallow } from 'zustand/shallow';
+import { useStore } from '@/store/store';
 import { escapeHtml } from '@/utils/helpers';
 import toast from 'react-hot-toast';
 
 const ProvidersPanel: React.FC = () => {
   const { providers, currentProvider, providerModels, switchProviderAndModel } = useStore(
-    (state: StoreType) => ({ // Type state
+    (state: any) => ({
       providers: state.providers,
       currentProvider: state.currentProvider,
       providerModels: state.providerModels,
-      switchProviderAndModel: state.switchProviderAndModel, // Get action from store
-    }),
-    shallow
+      switchProviderAndModel: state.switchProviderAndModel,
+    })
   );
 
   const handleSelectProvider = async (name: string) => {

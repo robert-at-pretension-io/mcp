@@ -1,8 +1,7 @@
 // Removed unused React import
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faColumns, faServer, faRobot, faCog } from '@fortawesome/free-solid-svg-icons';
-import { useStore, StoreType } from '@/store/store'; // Import StoreType
-import { shallow } from 'zustand/shallow';
+import { useStore } from '@/store/store';
 
 const Header: React.FC = () => {
   const {
@@ -12,17 +11,14 @@ const Header: React.FC = () => {
     toggleSidebar,
     openModelModal,
     openServersModal,
-  } = useStore(
-    (state: StoreType) => ({ // Type state
-      connectedServersText: state.connectedServersText,
-      currentProvider: state.currentProvider,
-      currentModel: state.providers[state.currentProvider]?.model || 'N/A',
-      toggleSidebar: state.toggleSidebar,
-      openModelModal: state.openModelModal,
-      openServersModal: state.openServersModal,
-    }),
-    shallow
-  );
+  } = useStore((state: any) => ({
+    connectedServersText: state.connectedServersText,
+    currentProvider: state.currentProvider,
+    currentModel: state.providers[state.currentProvider]?.model || 'N/A',
+    toggleSidebar: state.toggleSidebar,
+    openModelModal: state.openModelModal,
+    openServersModal: state.openServersModal,
+  }));
 
   const modelDisplay = currentModel !== 'N/A' && currentProvider
     ? `${currentModel} (${currentProvider})`
