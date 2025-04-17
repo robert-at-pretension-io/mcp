@@ -4,9 +4,11 @@ import MessageItem from './MessageItem';
 import { shallow } from 'zustand/shallow';
 import { Message } from '@/store/store'; // Import Message type
 
+import { StoreType } from '@/store/store'; // Import StoreType
+
 const MessageList: React.FC = () => {
   // Correct usage: Pass shallow as the second argument
-  const messages = useStore((state) => state.messages, shallow);
+  const messages = useStore((state: StoreType) => state.messages, shallow); // Type state
   const listRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom

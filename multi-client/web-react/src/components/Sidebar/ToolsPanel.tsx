@@ -7,10 +7,12 @@ import { shallow } from 'zustand/shallow';
 import { escapeHtml } from '@/utils/helpers';
 import { ToolsByServer, ToolInfo } from '@/store/store'; // Import types
 
+import { StoreType } from '@/store/store'; // Import StoreType
+
 const ToolsPanel: React.FC = () => {
   const [filterText, setFilterText] = useState('');
   // Correct usage: Pass shallow as the second argument
-  const toolsByServer = useStore((state) => state.allToolsData, shallow);
+  const toolsByServer = useStore((state: StoreType) => state.allToolsData, shallow); // Type state
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilterText(e.target.value);
